@@ -1,0 +1,7 @@
+platform :ios, '15.0'
+use_frameworks!
+
+target 'iosApp' do
+  # Kotlin shared business logic (Supabase lives inside this framework).
+  pod 'SharedLogic', :path => '../sharedLogic'
+end
