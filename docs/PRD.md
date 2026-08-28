@@ -178,6 +178,26 @@ The product is Canada-only at launch but is built to serve multiple countries. R
 4. **If the number is `+1`, or the signals conflict → show one pre-filled confirmation** ("Looks like you bank in Canada 🇨🇦 — right?") with a country picker. One tap, and only for the population where guessing is genuinely risky. Non-`+1` numbers (`+44`, `+91`, `+61`) are unambiguous and never see this screen.
 5. **Self-correct on first upload.** The definitive signal is the statement itself: if the detected region disagrees with the statement's **currency or bank**, prompt to switch ("This looks like a Canadian account — switch your region to Canada?").
 
+**When there is no phone number (Google / Apple signup).** Social signups authenticate before any phone number exists, so region is resolved from **device signals** instead, and is always confirmed rather than accepted silently:
+
+| Signal | Quality | Notes |
+|---|---|---|
+| SIM / network country (`getNetworkCountryIso`) | Very good | No permission required; a real carrier fact. **Android only** — iOS removed the carrier APIs |
+| Device timezone | Very good | `America/Toronto` → `CA`. Mapped via tzdata's `zone1970.tab`, the canonical zone→country table |
+| OS region setting | Good | Android `Locale.getDefault().getCountry()`, iOS `Locale.current.region`. The **region**, not the language |
+| App Store / Play storefront | Strong | Tied to a payment method, so hard to fake |
+| IP geolocation | Weak | VPNs and travel; a tiebreaker only |
+
+The client sends timezone, OS region, and (Android) SIM country on its first authenticated call; the server adds IP geolocation, resolves a candidate, and returns it with `needs_confirmation: true`. The user confirms with **one tap on a pre-filled picker**. Where signals conflict, or a timezone maps to several countries in `zone1970.tab`, the picker opens **unpinned** rather than guessing.
+
+**Phone-derived region is a fact; signal-derived region is a guess** — which is why the first can be silent and the second must always be confirmed.
+
+**Phone collection is lazy (locked).** Since region no longer depends on it, a social signup is **never blocked on a phone number**. It is requested when it earns its keep — enabling notifications, or a dismissible prompt in settings. Phone entry is a high-drop-off step, and the ~30-second onboarding goal (F1) matters more than collecting a number the product does not yet need.
+
+**When a phone number arrives later and disagrees** with the confirmed region, do **not** silently overwrite it. Prompt, or leave the user's choice standing — someone with a US number banking in Canada is a real person.
+
+**Identity collision (locked).** The same person can arrive via Google, Apple, or phone OTP and produce different identifiers — Apple's **Hide My Email** yields a private relay address that will never match their Google email. Two accounts means two households and split financial data, which support cannot easily repair. Therefore: **link identities automatically where a verified email matches**, and where it does not, **detect the collision and prompt** ("this email already has an account — sign in with Google instead?"). Silently creating a second account is never acceptable.
+
 **Why the phone number alone is not enough:** an area code records where a number was *issued*, not where its owner banks. Number portability, people keeping a phone after moving, and VoIP numbers all break the inference.
 
 **Launch-gating rules (important):** at launch we serve Canada only, so a wrong detection is not merely cosmetic — it can lock a real customer out of signup before they ever reach support.
@@ -240,7 +260,15 @@ Features are grouped by phase. Phase 1 = v1/MVP. Each feature notes acceptance-l
 ### Phase 1 — Core money loop (v1)
 
 #### F1. Onboarding
-- Signup: name, email, phone. No address, no extra PII. Target ≤30s.
+- **Three signup routes:** phone + country code with **SMS OTP** (primary), **Google**, and **Apple**.
+  Sign in with Apple is **mandatory on iOS** whenever another third-party provider is offered
+  (App Store guideline 4.8) — a platform requirement, not a product choice.
+- **Apple returns email and name only on the first authorization**; every later sign-in omits them. They
+  must be persisted on that first callback or they are lost permanently. Hide My Email relay addresses are
+  valid and deliverable — never treat one as fake.
+- Region for social signups comes from **device signals with a one-tap confirmation** (§4.6); phone is
+  **not** required at signup.
+- No address, no extra PII. Target ≤30s.
 - Follow-on **skippable** financial-setup wizard: monthly after-tax income, existing debts/loans, current investments (amounts only in v1), basic monthly obligations.
 - Wizard output seeds the initial dashboard. (Client to confirm the 30s claim covers signup only — §8 Q10.)
 
@@ -419,6 +447,10 @@ flowchart TD
 | 2026-08-27 | Canadian data residency considered and **rejected** | No legal requirement (PIPEDA); Law 25 transfer assessment needed regardless since Render has no Canadian region; costs a permanent ~20ms hop for a trust claim we are not marketing |
 | 2026-08-27 | A second region (**EU/Frankfurt** — offered by both vendors) is a **trigger, not a schedule**: residency demand, DPF invalidation, or EU revenue share | One region may serve indefinitely; building two now doubles cost and ops and forces the auth-pool problem before there is data to inform it |
 | 2026-08-27 | Multi-region readiness required now: UUID keys, `country_code` as routing key, config-driven connections, no cross-region queries. Auth identity across regions is an **unsolved problem to settle before region two** | Cheap now; makes region two a deployment rather than a rewrite |
+| 2026-08-29 | Signup routes: **phone OTP, Google, and Apple**; Sign in with Apple is mandatory on iOS under App Store guideline 4.8 | Social signin lowers onboarding friction; Apple is a platform requirement once Google is offered |
+| 2026-08-29 | **Phone collection is lazy** — never required at signup, requested when a feature needs it | Region no longer depends on the phone number, and phone entry is a high-drop-off step against a ~30-second onboarding goal |
+| 2026-08-29 | Region for social signups resolved from **device signals** (SIM country, timezone via tzdata `zone1970.tab`, OS region, storefront, IP) and **always confirmed with one tap** | A signal-derived region is a guess, unlike a phone-derived one; confirming avoids showing RRSP content to someone in Ohio |
+| 2026-08-29 | **Identity collision handled explicitly**: auto-link on matching verified email, prompt otherwise; never silently create a second account | Apple Hide My Email guarantees mismatched identifiers; two households means split financial data that support cannot repair |
 | 2026-08-29 | **Web client deferred out of v1**; Android and iOS built together as the v1 clients | Web would roughly double client work in parallel with mobile; building it after the API is proven by mobile avoids designing endpoints twice |
 | 2026-08-27 | Mobile is **Kotlin Multiplatform with native UI** (Compose on Android, SwiftUI on iOS, SKIE bridge); **no shared UI module**; **iOS ships in v1** alongside Android (supersedes "iOS deferred") | Existing repo is KMP; `kmp-arch-v2` mandates native UI + maximal shared logic |
 | 2026-08-27 | **Desktop explicitly out of scope**; the React web app is the desktop experience | `kmp-arch-v2` forbids silent desktop skips — recorded as a decision |

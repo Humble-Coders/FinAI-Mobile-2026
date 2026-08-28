@@ -41,9 +41,9 @@ No product intent to capture here; these go straight to `/draft-ticket` without 
 
 | # | Ticket | Repo |
 |---|---|---|
-| 2.1 | Signup + **region resolution** — libphonenumber server-side, `+1` disambiguation, corroboration, one-tap confirmation, settings override. Signup never hard-blocked on region | backend |
+| 2.1 | Signup + **region resolution** — two paths: libphonenumber with `+1` disambiguation for phone signups, **device signals** (SIM country, timezone, OS region, storefront, IP) with one-tap confirmation for Google/Apple. Settings override; signup never hard-blocked on region | backend |
 | 2.2 | Financial setup wizard persistence — income, debts, investments, obligations | backend |
-| 2.3 | Signup + region confirmation UI | mobile |
+| 2.3 | Signup UI — phone OTP, Google, Apple — plus the one-tap region confirmation. **Lazy phone prompt** for social signups (never blocking) | mobile |
 | 2.4 | Financial setup wizard UI (skippable) | mobile |
 
 ## M3 — Money in (F2, F3)
