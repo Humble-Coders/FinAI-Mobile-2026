@@ -27,6 +27,7 @@ The long-term vision (client's words): a full money-management ecosystem — bud
 ### Non-Goals (v1 — explicitly out, phased later)
 - Bank account linking / aggregator integration (Phase 2 — schema is aggregator-ready from day one).
 - Debt payoff optimizer, subscription tracking, safe-to-spend, weekly AI tasks, alerts (Phase 2).
+- **The React web client** — mobile (Android + iOS) ships first; web follows once the API is proven.
 - Split expenses, challenges/gamification, what-if simulator, investment tracking, tax optimization module, education hub, Family Plan UI, WhatsApp notifications (Phase 3+).
 - Moving money in any form: no payments, transfers, trading, or brokerage integration — ever in scope without a separate business decision.
 - Personalized regulated financial/investment advice.
@@ -42,8 +43,8 @@ The long-term vision (client's words): a full money-management ecosystem — bud
 
 ### 4.1 Platform (locked)
 - **Mobile:** **Kotlin Multiplatform** (repo `FinAI-Mobile-2026`) — shared Kotlin business logic with **native UI on both platforms**: Android in Jetpack Compose, iOS in SwiftUI, bridged by SKIE. **No shared UI module.** Android and iOS both ship in v1 with feature parity as the default.
-- **Web:** **React** SPA (separate repo).
-- **Desktop:** explicitly out of scope — the web app is the desktop experience. Recorded as a decision, not a silent skip.
+- **Web:** **React** SPA (separate repo) — **deferred, not in v1.** Mobile ships first; the web client follows once the API has been proven by the mobile build. Repo not yet created.
+- **Desktop:** explicitly out of scope — the web app will be the desktop experience when it ships. Recorded as a decision, not a silent skip.
 - All clients consume one shared backend API. Clients hold **no server-authoritative financial math**: health score, budget allocations, goal projections, debt schedules and spending aggregates are computed by the Render API and displayed by the client. Shared KMP logic owns validation, blocking reasons, projections of API responses into screen state, filtering, and formatting — everything that could otherwise differ between Android and iOS.
 - Mobile conventions are governed by the **`kmp-arch-v2`** architecture guide and the repo's `CLAUDE.md`.
 
@@ -418,6 +419,7 @@ flowchart TD
 | 2026-08-27 | Canadian data residency considered and **rejected** | No legal requirement (PIPEDA); Law 25 transfer assessment needed regardless since Render has no Canadian region; costs a permanent ~20ms hop for a trust claim we are not marketing |
 | 2026-08-27 | A second region (**EU/Frankfurt** — offered by both vendors) is a **trigger, not a schedule**: residency demand, DPF invalidation, or EU revenue share | One region may serve indefinitely; building two now doubles cost and ops and forces the auth-pool problem before there is data to inform it |
 | 2026-08-27 | Multi-region readiness required now: UUID keys, `country_code` as routing key, config-driven connections, no cross-region queries. Auth identity across regions is an **unsolved problem to settle before region two** | Cheap now; makes region two a deployment rather than a rewrite |
+| 2026-08-29 | **Web client deferred out of v1**; Android and iOS built together as the v1 clients | Web would roughly double client work in parallel with mobile; building it after the API is proven by mobile avoids designing endpoints twice |
 | 2026-08-27 | Mobile is **Kotlin Multiplatform with native UI** (Compose on Android, SwiftUI on iOS, SKIE bridge); **no shared UI module**; **iOS ships in v1** alongside Android (supersedes "iOS deferred") | Existing repo is KMP; `kmp-arch-v2` mandates native UI + maximal shared logic |
 | 2026-08-27 | **Desktop explicitly out of scope**; the React web app is the desktop experience | `kmp-arch-v2` forbids silent desktop skips — recorded as a decision |
 | 2026-08-27 | Money boundary: **integer minor units in Postgres, decimal strings over the API and in all client code**; conversion only at the Render API layer | Reconciles the PRD's storage rule with `kmp-arch-v2`'s decimal-string Money contract; both hold where they apply |
