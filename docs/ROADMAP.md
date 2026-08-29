@@ -36,6 +36,7 @@ No product intent to capture here; these go straight to `/draft-ticket` without 
 | 1.4 | **CI workflow.** `pip install` + `pytest` on PRs. All three deploy failures during setup were CI-catchable | backend |
 | 1.5 | **Repo cleanup.** Remove `sharedUI`, drop `postgrest-kt`/`realtime-kt`, add SKIE, delete the placeholder `AuthRepository` and `Supabase.kt` postgrest exposure | mobile |
 | 1.6 | **Ktor API client + repository interfaces.** The shared `data/` layer every later feature builds on; Supabase Auth + Storage only, everything else over HTTP | mobile |
+| 1.7 | **Mobile CI workflow.** Android build + shared tests on Linux, and **`xcodebuild` on macOS for every PR** — SKIE breakages surface only in the iOS build, so nothing else enforces the two-platform commitment | mobile |
 
 ## M2 — Onboarding (F1)
 
