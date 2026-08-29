@@ -1,35 +1,70 @@
-This is a Kotlin Multiplatform project targeting Android, iOS.
+# FinAI — Mobile
 
-* [/iosApp](./iosApp/iosApp) contains an iOS application. Even if you’re sharing your UI with Compose Multiplatform,
-  you need this entry point for your iOS app. This is also where you should add SwiftUI code for your project.
+Kotlin Multiplatform client for **FinAI**, an AI money-coach platform. Users upload
+bank statements; the backend extracts and categorizes transactions, generates budgets
+from real behaviour, tracks goals and debt, scores financial health, and answers
+questions through a chatbot grounded in their actual numbers.
 
-* [/sharedLogic](./sharedLogic/src) is for the code that will be shared between app targets in the project.
-  The most important subfolder is [commonMain](./sharedLogic/src/commonMain/kotlin). If preferred, you
-  can add code to the platform-specific folders here too.
+**Shared Kotlin logic, native UI on both platforms** — Jetpack Compose on Android,
+SwiftUI on iOS, bridged by SKIE. There is no shared UI module.
 
-* [/sharedUI](./sharedUI/src) is for code that will be shared across your Compose Multiplatform applications.
-  It contains several subfolders:
-  - [commonMain](./sharedUI/src/commonMain/kotlin) is for code that’s common for all targets.
-  - Other folders are for Kotlin code that will be compiled for only the platform indicated in the folder name.
-    For example, if you want to use Apple’s CoreCrypto for the iOS part of your Kotlin app,
-    the [iosMain](./sharedUI/src/iosMain/kotlin) folder would be the right place for such calls.
-    Similarly, if you want to edit the Desktop (JVM) specific part, the [jvmMain](./sharedUI/src/jvmMain/kotlin)
-    folder is the appropriate location.
+- Product spec: [`docs/PRD.md`](docs/PRD.md)
+- Architecture and rules: [`CLAUDE.md`](CLAUDE.md) — read before writing code
+- How we work: [`docs/PROCESS.md`](docs/PROCESS.md) · Roadmap: [`docs/ROADMAP.md`](docs/ROADMAP.md)
 
-### Running the apps
+## Modules
 
-Use the run configurations provided by the run widget in your IDE's toolbar. You can also use these commands and options:
+| Module | What it holds |
+|---|---|
+| `sharedLogic` | The brain — `model/`, `repository/`, `usecase/`, `data/`, `i18n/`, `config/`, `util/` |
+| `androidApp` | Compose UI, `ui/<feature>/` per screen |
+| `iosApp` | SwiftUI views and view models |
 
-- Android app: `./gradlew :androidApp:assembleDebug`
-- iOS app: open the [/iosApp](./iosApp) directory in Xcode and run it from there.
+## Requirements
 
-### Running tests
+- **JDK 21** (Azul) — pinned in `gradle/gradle-daemon-jvm.properties`; Gradle downloads it automatically on first build
+- Android SDK (compileSdk 36, minSdk 24)
+- **Xcode and CocoaPods** for the iOS app
 
-Use the run button in your IDE's editor gutter, or run tests using Gradle tasks:
+## Setup
 
-- Android tests: `./gradlew :sharedUI:testAndroidHostTest :sharedLogic:testAndroidHostTest`
-- iOS tests: `./gradlew :sharedLogic:iosSimulatorArm64Test`
+Create `local.properties` at the repo root (untracked):
 
----
+```properties
+sdk.dir=/path/to/Android/sdk
 
-Learn more about [Kotlin Multiplatform](https://www.jetbrains.com/help/kotlin-multiplatform-dev/get-started.html)…
+# Optional — the build generates REPLACE_ME placeholders when these are absent
+supabase.url=https://YOUR_PROJECT.supabase.co
+supabase.anonKey=YOUR_PUBLISHABLE_KEY
+```
+
+Only the **publishable** (anon) key belongs here. The `service_role` key must never
+enter this repo. `SupabaseConfig.kt` is generated from these values at build time,
+never committed.
+
+## Building
+
+```bash
+./gradlew :androidApp:assembleDebug     # Android app
+./gradlew :sharedLogic:allTests         # shared tests, Android + iOS targets
+```
+
+iOS:
+
+```bash
+./gradlew :sharedLogic:generateDummyFramework
+cd iosApp && pod install
+xcodebuild -workspace iosApp.xcworkspace -scheme iosApp \
+  -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+  CODE_SIGNING_ALLOWED=NO build
+```
+
+## The rule that matters most
+
+**Clients never talk to the database.** Supabase is used for **Auth and Storage only**;
+all business data goes over Ktor to the backend API, which is the single place
+authorization, entitlement gating and audit logging live. Postgrest and Realtime are
+deliberately not installed.
+
+**A change touching `sharedLogic` is not done until Android compiles and tests pass
+*and* the iOS workspace builds** — SKIE breakages surface only in the iOS build.

@@ -11,9 +11,18 @@ kotlin {
     }
 }
 dependencies {
-    implementation(project(":sharedUI"))
+    implementation(project(":sharedLogic"))
 
     implementation(libs.androidx.activity.compose)
+    implementation(libs.androidx.lifecycle.viewmodelCompose)
+    implementation(libs.androidx.lifecycle.runtimeCompose)
+
+    // Declared directly — these previously arrived transitively via :sharedUI,
+    // which no longer exists (native UI per platform, no shared UI module).
+    implementation(libs.compose.runtime)
+    implementation(libs.compose.foundation)
+    implementation(libs.compose.material3)
+    implementation(libs.compose.ui)
 
     implementation(libs.compose.uiToolingPreview)
     debugImplementation(libs.compose.uiTooling)

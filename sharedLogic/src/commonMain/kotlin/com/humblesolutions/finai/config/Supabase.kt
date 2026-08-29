@@ -4,38 +4,36 @@ import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.auth.Auth
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.createSupabaseClient
-import io.github.jan.supabase.postgrest.Postgrest
-import io.github.jan.supabase.postgrest.postgrest
-import io.github.jan.supabase.realtime.Realtime
-import io.github.jan.supabase.realtime.realtime
 import io.github.jan.supabase.storage.Storage
 import io.github.jan.supabase.storage.storage
 
 /**
- * Single Supabase client for the whole app, shared by Android and iOS.
+ * The Supabase client, shared by Android and iOS.
  *
- * Created lazily so the app can start (and fail with a clear message) even
- * before [SupabaseConfig] has been filled in.
+ * **Auth and Storage only.** Clients never talk to the database — Postgrest and
+ * Realtime are deliberately not installed, and must not be added. All business
+ * data goes over HTTP to the backend API, which is the single place
+ * authorization, entitlement gating, region gating and audit logging live
+ * (PRD §4.2, CLAUDE.md → "The network boundary").
+ *
+ * Created lazily so the app can start, and fail with a clear message, when
+ * [SupabaseConfig] has not been filled in.
  */
 object Supabase {
 
     val client: SupabaseClient by lazy {
         require(SupabaseConfig.isConfigured) {
-            "Supabase is not configured. Set URL and ANON_KEY in SupabaseConfig.kt"
+            "Supabase is not configured. Set supabase.url and supabase.anonKey in local.properties."
         }
         createSupabaseClient(
             supabaseUrl = SupabaseConfig.URL,
             supabaseKey = SupabaseConfig.ANON_KEY,
         ) {
             install(Auth)
-            install(Postgrest)
             install(Storage)
-            install(Realtime)
         }
     }
 
     val auth get() = client.auth
-    val postgrest get() = client.postgrest
     val storage get() = client.storage
-    val realtime get() = client.realtime
 }

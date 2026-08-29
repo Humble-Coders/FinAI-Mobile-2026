@@ -14,6 +14,7 @@ junit = "4.13.2"
 kotlin = "2.4.10"
 material3 = "1.11.0-alpha07"
 supabase = "3.7.0"
+skie = "0.10.14"
 ktor = "3.5.1"
 coroutines = "1.11.0"
 serialization = "1.11.0"
@@ -46,9 +47,7 @@ kotlinx-datetime = { module = "org.jetbrains.kotlinx:kotlinx-datetime", version.
 
 # --- Supabase ---
 supabase-auth = { module = "io.github.jan-tennert.supabase:auth-kt", version.ref = "supabase" }
-supabase-postgrest = { module = "io.github.jan-tennert.supabase:postgrest-kt", version.ref = "supabase" }
 supabase-storage = { module = "io.github.jan-tennert.supabase:storage-kt", version.ref = "supabase" }
-supabase-realtime = { module = "io.github.jan-tennert.supabase:realtime-kt", version.ref = "supabase" }
 
 # --- Ktor (HTTP engine Supabase runs on) ---
 ktor-client-core = { module = "io.ktor:ktor-client-core", version.ref = "ktor" }
@@ -63,3 +62,4 @@ composeCompiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "k
 kotlinMultiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
 kotlinCocoapods = { id = "org.jetbrains.kotlin.native.cocoapods", version.ref = "kotlin" }
 kotlinSerialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
+skie = { id = "co.touchlab.skie", version.ref = "skie" }
