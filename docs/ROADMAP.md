@@ -42,9 +42,9 @@ No product intent to capture here; these go straight to `/draft-ticket` without 
 
 | # | Ticket | Repo |
 |---|---|---|
-| 2.1 | Signup + **region resolution** — two paths: libphonenumber with `+1` disambiguation for phone signups, **device signals** (SIM country, timezone, OS region, storefront, IP) with one-tap confirmation for Google/Apple. Settings override; signup never hard-blocked on region | backend |
+| 2.1 | Signup + **region resolution** — one path: every route ends with a verified phone, so region derives from it via libphonenumber with `+1` area-code disambiguation. Settings override; signup never hard-blocked on region | backend |
 | 2.2 | Financial setup wizard persistence — income, debts, investments, obligations | backend |
-| 2.3 | Signup UI — phone OTP, Google, Apple — plus the one-tap region confirmation. **Lazy phone prompt** for social signups (never blocking) | mobile |
+| 2.3 | Signup UI — phone OTP, Google, Apple. Social routes continue straight into the **phone + OTP step**; timezone/locale pre-select the country code | mobile |
 | 2.4 | Financial setup wizard UI (skippable) | mobile |
 
 ## M3 — Money in (F2, F3)
