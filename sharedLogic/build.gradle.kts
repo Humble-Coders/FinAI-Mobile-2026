@@ -1,3 +1,5 @@
+import java.io.File
+import java.util.Properties
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
@@ -5,7 +7,12 @@ plugins {
     alias(libs.plugins.androidMultiplatformLibrary)
     alias(libs.plugins.kotlinSerialization)
     alias(libs.plugins.kotlinCocoapods)
+    alias(libs.plugins.skie)
 }
+
+// Declared before the kotlin { } block below uses it — Gradle Kotlin DSL
+// initializes vals in script order.
+val generatedConfigDir = layout.buildDirectory.dir("generated/finai/config")
 
 kotlin {
     listOf(
@@ -50,11 +57,13 @@ kotlin {
     }
 
     sourceSets {
+        commonMain {
+            kotlin.srcDir(generatedConfigDir)
+        }
         commonMain.dependencies {
+            // Auth and Storage only — clients never talk to the database.
             api(libs.supabase.auth)
-            api(libs.supabase.postgrest)
             api(libs.supabase.storage)
-            api(libs.supabase.realtime)
 
             implementation(libs.ktor.client.core)
             implementation(libs.kotlinx.coroutines.core)
@@ -72,4 +81,66 @@ kotlin {
             implementation(libs.kotlin.test)
         }
     }
+}
+
+skie {
+    analytics {
+        enabled.set(false)
+    }
+}
+
+// --- Generated Supabase configuration -------------------------------------
+//
+// Values come from local.properties (untracked), never from a committed source
+// file. The anon key is publishable and safe in a client, but committed
+// configuration constants are the wrong pattern — and the service_role key must
+// never come near this repo. Placeholders are used when local.properties has no
+// entry, so a fresh clone still builds.
+
+
+val generateSupabaseConfig by tasks.registering {
+    val outputDir = generatedConfigDir
+    val localProperties = rootProject.file("local.properties")
+    val url = providers.provider {
+        readLocalProperty(localProperties, "supabase.url") ?: "https://REPLACE_ME.supabase.co"
+    }
+    val anonKey = providers.provider {
+        readLocalProperty(localProperties, "supabase.anonKey") ?: "REPLACE_ME_ANON_KEY"
+    }
+
+    inputs.property("url", url)
+    inputs.property("anonKey", anonKey)
+    outputs.dir(outputDir)
+
+    doLast {
+        val packageDir = outputDir.get().asFile.resolve("com/humblesolutions/finai/config")
+        packageDir.mkdirs()
+        packageDir.resolve("SupabaseConfig.kt").writeText(
+            buildString {
+                appendLine("package com.humblesolutions.finai.config")
+                appendLine()
+                appendLine("// GENERATED — do not edit.")
+                appendLine("// See generateSupabaseConfig in sharedLogic/build.gradle.kts;")
+                appendLine("// values come from local.properties, which is not tracked.")
+                appendLine("object SupabaseConfig {")
+                appendLine("    const val URL: String = \"" + url.get() + "\"")
+                appendLine("    const val ANON_KEY: String = \"" + anonKey.get() + "\"")
+                appendLine()
+                appendLine("    val isConfigured: Boolean")
+                appendLine("        get() = !URL.contains(\"REPLACE_ME\") && !ANON_KEY.contains(\"REPLACE_ME\")")
+                appendLine("}")
+            }
+        )
+    }
+}
+
+tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompilationTask<*>>().configureEach {
+    dependsOn(generateSupabaseConfig)
+}
+
+fun readLocalProperty(file: File, key: String): String? {
+    if (!file.exists()) return null
+    val properties = Properties()
+    file.inputStream().use { properties.load(it) }
+    return properties.getProperty(key)?.takeIf { value -> value.isNotBlank() }
 }
