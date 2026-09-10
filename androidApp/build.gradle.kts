@@ -59,5 +59,8 @@ android {
     }
     buildFeatures {
         compose = true
+        // BuildConfig.DEBUG decides whether the API client may log at all —
+        // release builds must never log tokens or response bodies.
+        buildConfig = true
     }
 }

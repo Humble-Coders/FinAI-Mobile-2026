@@ -7,6 +7,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.tooling.preview.Preview
 import com.humblesolutions.finai.ui.PlaceholderScreen
+import com.humblesolutions.finai.ui.demo.ApiDemoScreen
 import com.humblesolutions.finai.ui.theme.FinAiTheme
 
 class MainActivity : ComponentActivity() {
@@ -15,7 +16,8 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         setContent {
             FinAiTheme {
-                PlaceholderScreen()
+                // Throwaway demo for ticket #6; M2 replaces it with real navigation.
+                ApiDemoScreen(logging = BuildConfig.DEBUG)
             }
         }
     }

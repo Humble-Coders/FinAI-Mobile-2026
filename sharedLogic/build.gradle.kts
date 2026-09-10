@@ -66,6 +66,9 @@ kotlin {
             api(libs.supabase.storage)
 
             implementation(libs.ktor.client.core)
+            implementation(libs.ktor.client.contentNegotiation)
+            implementation(libs.ktor.client.logging)
+            implementation(libs.ktor.serialization.kotlinxJson)
             implementation(libs.kotlinx.coroutines.core)
             implementation(libs.kotlinx.serialization.json)
             implementation(libs.kotlinx.datetime)
@@ -79,6 +82,8 @@ kotlin {
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)
+            implementation(libs.ktor.client.mock)
+            implementation(libs.kotlinx.coroutines.test)
         }
     }
 }
@@ -89,16 +94,16 @@ skie {
     }
 }
 
-// --- Generated Supabase configuration -------------------------------------
+// --- Generated app configuration -------------------------------------------
 //
-// Values come from local.properties (untracked), never from a committed source
-// file. The anon key is publishable and safe in a client, but committed
+// Supabase URL/anon key and the Render API base URL. Values come from
+// local.properties (untracked), never from a committed source file. The anon key is publishable and safe in a client, but committed
 // configuration constants are the wrong pattern — and the service_role key must
 // never come near this repo. Placeholders are used when local.properties has no
 // entry, so a fresh clone still builds.
 
 
-val generateSupabaseConfig by tasks.registering {
+val generateAppConfig by tasks.registering {
     val outputDir = generatedConfigDir
     val localProperties = rootProject.file("local.properties")
     val url = providers.provider {
@@ -107,9 +112,15 @@ val generateSupabaseConfig by tasks.registering {
     val anonKey = providers.provider {
         readLocalProperty(localProperties, "supabase.anonKey") ?: "REPLACE_ME_ANON_KEY"
     }
+    // Build configuration rather than a source constant, so environments can
+    // differ: set api.baseUrl in local.properties to point a build elsewhere.
+    val apiBaseUrl = providers.provider {
+        readLocalProperty(localProperties, "api.baseUrl") ?: "https://finai-api-7bae.onrender.com"
+    }
 
     inputs.property("url", url)
     inputs.property("anonKey", anonKey)
+    inputs.property("apiBaseUrl", apiBaseUrl)
     outputs.dir(outputDir)
 
     doLast {
@@ -120,7 +131,7 @@ val generateSupabaseConfig by tasks.registering {
                 appendLine("package com.humblesolutions.finai.config")
                 appendLine()
                 appendLine("// GENERATED — do not edit.")
-                appendLine("// See generateSupabaseConfig in sharedLogic/build.gradle.kts;")
+                appendLine("// See generateAppConfig in sharedLogic/build.gradle.kts;")
                 appendLine("// values come from local.properties, which is not tracked.")
                 appendLine("object SupabaseConfig {")
                 appendLine("    const val URL: String = \"" + url.get() + "\"")
@@ -131,11 +142,23 @@ val generateSupabaseConfig by tasks.registering {
                 appendLine("}")
             }
         )
+        packageDir.resolve("ApiConfig.kt").writeText(
+            buildString {
+                appendLine("package com.humblesolutions.finai.config")
+                appendLine()
+                appendLine("// GENERATED — do not edit.")
+                appendLine("// See generateAppConfig in sharedLogic/build.gradle.kts; the value comes from")
+                appendLine("// api.baseUrl in local.properties, falling back to the build default.")
+                appendLine("object ApiConfig {")
+                appendLine("    const val BASE_URL: String = \"" + apiBaseUrl.get() + "\"")
+                appendLine("}")
+            }
+        )
     }
 }
 
 tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompilationTask<*>>().configureEach {
-    dependsOn(generateSupabaseConfig)
+    dependsOn(generateAppConfig)
 }
 
 fun readLocalProperty(file: File, key: String): String? {
