@@ -37,9 +37,12 @@ class SupabaseTokenSource(client: SupabaseClient) : SessionTokenSource {
     }
 
     @Throws(ApiException::class, CancellationException::class)
-    override suspend fun refreshedToken(): String? {
-        val token = auth.currentSessionOrNull()?.accessToken ?: return null
-        return refresh(token)
+    override suspend fun refreshedToken(rejected: String?): String? {
+        val current = auth.currentSessionOrNull()?.accessToken ?: return null
+        // Refresh against the token the server turned down, not whatever the
+        // session holds now — if another request already replaced it, the check
+        // in refresh() hands that one back instead of spending the refresh token.
+        return refresh(rejected ?: current)
     }
 
     private suspend fun refresh(staleToken: String): String? = refreshLock.withLock {

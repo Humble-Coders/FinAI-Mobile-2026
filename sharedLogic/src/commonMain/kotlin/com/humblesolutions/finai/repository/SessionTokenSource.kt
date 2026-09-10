@@ -16,7 +16,12 @@ interface SessionTokenSource {
     @Throws(ApiException::class, CancellationException::class)
     suspend fun currentToken(): String?
 
-    /** Refreshes regardless of expiry — used once when the server rejects a token. Null if no session remains. */
+    /**
+     * A token to retry with after the server rejected [rejected] — used once per
+     * request. If the session has already moved past [rejected] (another request
+     * refreshed first), that newer token; otherwise a fresh refresh, regardless
+     * of expiry. Null if no session remains.
+     */
     @Throws(ApiException::class, CancellationException::class)
-    suspend fun refreshedToken(): String?
+    suspend fun refreshedToken(rejected: String?): String?
 }

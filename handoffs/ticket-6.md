@@ -18,9 +18,9 @@ A throwaway demo screen on both platforms signs in with a test session, calls `/
 ### Shared — network layer (`sharedLogic/.../data/`)
 | File | Why |
 |---|---|
-| `FinAiHttpClient.kt` | The one Ktor client: JSON, 15s connect / 60s request timeouts, debug-only header logging with `Authorization` redacted, the `SessionBearer` plugin, the single 401 refresh-and-retry, and `sendMapped`/`getJson`, which turn every failure into `ApiException` |
+| `FinAiHttpClient.kt` | The one Ktor client: JSON, 15s connect / 60s request timeouts, debug-only header logging with `Authorization` redacted, the `SessionBearer` plugin — which sends the token **only to the API's own origin** (scheme, host and port), never to an absolute URL elsewhere — the single 401 refresh-and-retry (same origin only), and `sendMapped`/`getJson`, which turn every failure into `ApiException` |
 | `ApiErrorMapper.kt` | Status + body → `ApiException`. Reads the body on 403, because FastAPI answers a *missing* token with 403 "Not authenticated" |
-| `SupabaseTokenSource.kt` | The token from the Supabase session; refreshes before expiry, behind a `Mutex` so concurrent requests cannot each spend the single-use refresh token |
+| `SupabaseTokenSource.kt` | The token from the Supabase session; refreshes before expiry, behind a `Mutex` so concurrent requests cannot each spend the single-use refresh token. After a 401 it is told *which* token was rejected, so a request that lost the race picks up the newer token instead of refreshing again |
 | `TokenFreshness.kt` | The pure expiry-with-margin rule, testable without a clock |
 | `SupabaseAuthRepository.kt` | Session state as a `Flow`, test-session phone sign-in, sign-out, `/me`; plus two demo aids (below) |
 | `KtorCapabilitiesRepository.kt` | `GET /capabilities` |
@@ -45,9 +45,10 @@ A throwaway demo screen on both platforms signs in with a test session, calls `/
 ### Tests
 | File | Why |
 |---|---|
-| `commonTest/.../data/FinAiHttpClientTest.kt` | 12 tests on a mock engine: bearer header, base-URL joining, signed-out 403, refresh-and-retry, no retry loop, failed refresh, feature gate, network failure, undecodable body, cancellation, **token and body never logged**, logging off |
+| `commonTest/.../data/FinAiHttpClientTest.kt` | 15 tests on a mock engine: bearer header, base-URL joining, signed-out 403, refresh-and-retry, the rejected token handed to the refresh, no retry loop, failed refresh, **the token never sent to another origin** (host, scheme or port), another origin's 401 ignored, feature gate, network failure, undecodable body, cancellation, **token and body never logged**, logging off |
 | `commonTest/.../data/ApiErrorMapperTest.kt`, `TokenFreshnessTest.kt` | Every status mapping including both kinds of 403; the expiry boundary |
 | `commonTest/.../model/CapabilitiesDecodingTest.kt`, `MeDecodingTest.kt`, `ConfigurationProblemTest.kt` | Real payloads, unknown enum values, missing fields, extra fields, nulls |
+| `androidHostTest/.../data/SupabaseTokenSourceTest.kt` | The real token source on a real supabase-kt client, network mocked: refreshes when the rejected token is current, hands back a newer one without refreshing, **a late 401 for a token already replaced does not refresh again** (the review's case — red with the old code), two requests rejected together refresh once (the mutex), null when signed out. Android host tests only — turning off lifecycle callbacks is an Android-only Auth setting |
 | `androidHostTest/.../ThrowsAnnotationGuardTest.kt` | Fails the build on a public suspend fun without `@Throws(..., CancellationException::class)` |
 | `androidHostTest/.../StringsCoverageTest.kt` | Every `Strings` key has an English value — read by reflection, not from a hand-kept list |
 
@@ -71,7 +72,7 @@ Prerequisites: `supabase.url` and `supabase.anonKey` in `local.properties` (opti
 ```bash
 git checkout ticket-6-api-client
 export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
-./gradlew :sharedLogic:allTests :androidApp:assembleDebug        # 45 host + 43 iOS tests, 0 failures
+./gradlew :sharedLogic:allTests :androidApp:assembleDebug        # 53 host + 46 iOS tests, 0 failures
 cd iosApp && xcodebuild -workspace iosApp.xcworkspace -scheme iosApp -sdk iphonesimulator \
   -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
 ```
@@ -86,11 +87,11 @@ Unconfigured: build from a copy without the Supabase keys → the app shows "Thi
 
 | Criterion | Status | Evidence |
 |---|---|---|
-| `./gradlew :androidApp:assembleDebug` and `:sharedLogic:allTests` succeed | ✅ Met | 45 host tests + 43 iOS simulator tests, 0 failures, 0 skipped |
+| `./gradlew :androidApp:assembleDebug` and `:sharedLogic:allTests` succeed | ✅ Met | 53 host tests + 46 iOS simulator tests, 0 failures, 0 skipped |
 | **`xcodebuild` on `iosApp` succeeds** | ✅ Met | `BUILD SUCCEEDED` — both with real keys and from a copy with none |
 | Android calls `/capabilities` with a real token and renders the payload | ✅ Met | Test-number sign-in → payload rendered in Compose; request log shows `GET /capabilities` → `200` |
 | iOS does the same via SwiftUI | ✅ Met | Same flow on an iPhone 17 Pro simulator, payload rendered in SwiftUI |
-| An expired token triggers a refresh and the request still succeeds | ✅ Met — live on both platforms | *Expire token, then load*: token life **−60 s → 3598 s** on Android and on iOS, payload rendered. Android's request log shows one `GET /capabilities` → `200` and no 401; iOS's network log shows the refresh then `/capabilities`, both finished successfully — refreshed *before* sending. The SDK's auto-refresh is off for that session, so the jump is this code. Retry-after-401 covered by `FinAiHttpClientTest` |
+| An expired token triggers a refresh and the request still succeeds | ✅ Met — live on both platforms | *Expire token, then load*: token life **−60 s → 3598 s** on Android and on iOS, payload rendered. Android's request log shows one `GET /capabilities` → `200` and no 401; iOS's network log shows two successful requests back to back on separate connections — the second starting 10 ms after the first finished — and no 401: the token grant, then `/capabilities`, refreshed *before* sending. (The log hides URLs; the order is inferred from the statuses and connections.) The SDK's auto-refresh is off for that session, so the jump is this code. Retry-after-401 covered by `FinAiHttpClientTest` |
 | A 403 surfaces as the typed feature-unavailable error | ✅ Met — by tests | `ApiErrorMapperTest` and `FinAiHttpClientTest`. Not demonstrable live: no backend endpoint is feature-gated yet |
 | `ThrowsAnnotationGuardTest` passes, and **fails** when `@Throws` is removed | ✅ Met | Removed from `fetch()` → red, naming `KtorCapabilitiesRepository.kt:18 fetch`; restored byte-identical → green |
 | Release builds log no tokens and no response bodies | ✅ Met | Release `BuildConfig.DEBUG = false`, so the logger is never installed; `logs nothing when logging is off`; in debug, headers only — seen live as `-> Authorization: ***`; `never logs the token or the response body` |
@@ -109,7 +110,9 @@ Unconfigured: build from a copy without the Supabase keys → the app shows "Thi
 6. **60-second request timeout,** because Render's free tier can take most of a minute to wake.
 7. **Platforms pass the logging flag** (`BuildConfig.DEBUG`, `#if DEBUG`) — no `expect/actual`.
 8. **Two demo-only aids on `SupabaseAuthRepository`, not on the interface:** `expireAccessTokenForTesting()` and `tokenSecondsLeftForTesting()`. The second exists because a locally expired token is still accepted by the server, so a successful request alone cannot prove a refresh happened. Both go with the demo in M2.
-9. **The test session is a Supabase test phone number,** with placeholder SMS provider credentials — a manager decision: a real SMS provider is connected at launch, not before.
+9. **The token is scoped to the API's origin** *(manager review)*. `SessionBearer` attaches it only when a request's scheme, host and port match `api.baseUrl`, and a 401 from anywhere else is never refreshed for or retried. Every call is a relative path today, but the first absolute URL — a signed upload URL, a third-party call — would otherwise have received the user's Supabase token.
+10. **`refreshedToken(rejected)` takes the token the server turned down** *(manager review)*. Passing whatever the session held instead made a request that lost a race spend a second single-use refresh token for nothing.
+11. **The test session is a Supabase test phone number,** with placeholder SMS provider credentials — a manager decision: a real SMS provider is connected at launch, not before.
 
 ## Open questions / follow-ups
 

@@ -24,6 +24,7 @@ import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
+import io.ktor.http.Url
 import io.ktor.http.isSuccess
 import io.ktor.serialization.kotlinx.json.json
 import kotlin.coroutines.cancellation.CancellationException
@@ -47,6 +48,7 @@ internal object FinAiHttpClient {
         engine: HttpClientEngine? = null,
         logger: Logger = Logger.SIMPLE,
     ): HttpClient {
+        val api = Url(baseUrl.trimEnd('/') + "/")
         val configure: HttpClientConfig<*>.() -> Unit = {
             // Statuses become ApiException in sendMapped, not Ktor exceptions.
             expectSuccess = false
@@ -67,17 +69,25 @@ internal object FinAiHttpClient {
                     sanitizeHeader { header -> header == HttpHeaders.Authorization }
                 }
             }
-            install(SessionBearer) { this.tokens = tokens }
+            install(SessionBearer) {
+                this.tokens = tokens
+                this.api = api
+            }
         }
         val client = if (engine == null) HttpClient(configure) else HttpClient(engine, configure)
 
         client.plugin(HttpSend).intercept { request ->
             val call = execute(request)
             if (call.response.status != HttpStatusCode.Unauthorized) return@intercept call
+            // Another origin's 401 says nothing about our token: never refresh for
+            // it, and never hand it the token on a retry.
+            if (!request.url.build().sameOriginAs(api)) return@intercept call
             // The server rejected a token we believed valid — revoked, or clock skew
             // the expiry check could not see. Refresh once and retry; a second 401
-            // is final, so this can never loop.
-            val fresh = tokens.refreshedToken() ?: return@intercept call
+            // is final, so this can never loop. The refresh is told which token was
+            // rejected, so it can tell whether the session has already moved on.
+            val rejected = request.headers[HttpHeaders.Authorization]?.removePrefix("Bearer ")
+            val fresh = tokens.refreshedToken(rejected) ?: return@intercept call
             request.headers.remove(HttpHeaders.Authorization)
             request.bearerAuth(fresh)
             execute(request)
@@ -88,15 +98,29 @@ internal object FinAiHttpClient {
 
 internal class SessionBearerConfig {
     var tokens: SessionTokenSource? = null
+
+    /** The API's base URL. Its origin is the only place the token is sent. */
+    var api: Url? = null
 }
 
-/** Attaches a token that is valid now to every request — see [SessionTokenSource.currentToken]. */
+/**
+ * Attaches a token that is valid now to every request for the API, and to
+ * nothing else: an absolute URL on another origin (a signed upload URL, a
+ * third-party call) must never receive the user's session token.
+ * See [SessionTokenSource.currentToken].
+ */
 internal val SessionBearer = createClientPlugin("SessionBearer", ::SessionBearerConfig) {
     val tokens = requireNotNull(pluginConfig.tokens) { "SessionBearer needs a token source" }
+    val api = requireNotNull(pluginConfig.api) { "SessionBearer needs the API's base URL" }
     onRequest { request, _ ->
+        if (!request.url.build().sameOriginAs(api)) return@onRequest
         tokens.currentToken()?.let { request.bearerAuth(it) }
     }
 }
+
+/** Same scheme, host and port — the unit a bearer token may be sent to. */
+private fun Url.sameOriginAs(other: Url): Boolean =
+    protocol == other.protocol && host.equals(other.host, ignoreCase = true) && port == other.port
 
 /**
  * Sends a request and maps every failure to [ApiException]: statuses through

@@ -3,11 +3,13 @@ package com.humblesolutions.finai.data
 import com.humblesolutions.finai.model.ApiException
 import com.humblesolutions.finai.model.FeatureReason
 import com.humblesolutions.finai.repository.SessionTokenSource
+import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.MockRequestHandler
 import io.ktor.client.engine.mock.respond
 import io.ktor.client.plugins.logging.Logger
 import io.ktor.client.request.HttpRequestData
+import io.ktor.client.request.get
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
@@ -30,6 +32,7 @@ private class FakeTokens(
     private val failWith: ApiException? = null,
 ) : SessionTokenSource {
     var refreshes = 0
+    val rejected = mutableListOf<String?>()
 
     @Throws(ApiException::class, CancellationException::class)
     override suspend fun currentToken(): String? {
@@ -38,7 +41,8 @@ private class FakeTokens(
     }
 
     @Throws(ApiException::class, CancellationException::class)
-    override suspend fun refreshedToken(): String? {
+    override suspend fun refreshedToken(rejected: String?): String? {
+        this.rejected += rejected
         refreshes++
         token = refreshTo
         return refreshTo
@@ -56,19 +60,27 @@ class FinAiHttpClientTest {
 
     private val seen = mutableListOf<HttpRequestData>()
 
+    private fun client(
+        tokens: SessionTokenSource,
+        baseUrl: String = "https://api.example.test",
+        logging: Boolean = false,
+        logger: Logger = CapturingLogger(),
+        handler: MockRequestHandler,
+    ): HttpClient {
+        val engine = MockEngine { request ->
+            seen += request
+            handler(request)
+        }
+        return FinAiHttpClient.create(baseUrl, tokens, logging, engine, logger)
+    }
+
     private fun repository(
         tokens: SessionTokenSource,
         baseUrl: String = "https://api.example.test",
         logging: Boolean = false,
         logger: Logger = CapturingLogger(),
         handler: MockRequestHandler,
-    ): KtorCapabilitiesRepository {
-        val engine = MockEngine { request ->
-            seen += request
-            handler(request)
-        }
-        return KtorCapabilitiesRepository(FinAiHttpClient.create(baseUrl, tokens, logging, engine, logger))
-    }
+    ): KtorCapabilitiesRepository = KtorCapabilitiesRepository(client(tokens, baseUrl, logging, logger, handler))
 
     @Test
     fun `sends the session token as a bearer header`() = runTest {
@@ -111,6 +123,44 @@ class FinAiHttpClientTest {
         assertEquals(1, tokens.refreshes)
         assertEquals(2, seen.size)
         assertEquals("Bearer new", seen.last().headers[HttpHeaders.Authorization])
+    }
+
+    @Test
+    fun `hands the rejected token to the refresh`() = runTest {
+        val tokens = FakeTokens("old", refreshTo = "new")
+        val repo = repository(tokens) { request ->
+            if (request.headers[HttpHeaders.Authorization] == "Bearer new") {
+                respond(CAPABILITIES, HttpStatusCode.OK, jsonHeaders)
+            } else {
+                respond("", HttpStatusCode.Unauthorized)
+            }
+        }
+        repo.fetch()
+        assertEquals(listOf<String?>("old"), tokens.rejected)
+    }
+
+    @Test
+    fun `sends the token only to the API origin`() = runTest {
+        val client = client(FakeTokens("t1")) { respond("{}", HttpStatusCode.OK, jsonHeaders) }
+        client.get("https://third-party.example/upload") // another host
+        client.get("http://api.example.test/capabilities") // same host over plain HTTP
+        client.get("https://api.example.test:8443/capabilities") // same host on another port
+        assertEquals(3, seen.size)
+        assertTrue(
+            seen.none { it.headers[HttpHeaders.Authorization] != null },
+            "the session token left the API origin: ${seen.map { it.url }}",
+        )
+        client.get("capabilities")
+        assertEquals("Bearer t1", seen.last().headers[HttpHeaders.Authorization])
+    }
+
+    @Test
+    fun `ignores a 401 from another origin`() = runTest {
+        val tokens = FakeTokens("old", refreshTo = "new")
+        val client = client(tokens) { respond("", HttpStatusCode.Unauthorized) }
+        client.get("https://third-party.example/upload")
+        assertEquals(0, tokens.refreshes)
+        assertNull(seen.single().headers[HttpHeaders.Authorization])
     }
 
     @Test
