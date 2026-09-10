@@ -1,11 +1,10 @@
 package com.humblesolutions.finai.config
 
+import com.humblesolutions.finai.model.ConfigurationProblem
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.auth.Auth
-import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.createSupabaseClient
 import io.github.jan.supabase.storage.Storage
-import io.github.jan.supabase.storage.storage
 
 /**
  * The Supabase client, shared by Android and iOS.
@@ -16,15 +15,24 @@ import io.github.jan.supabase.storage.storage
  * authorization, entitlement gating, region gating and audit logging live
  * (PRD §4.2, CLAUDE.md → "The network boundary").
  *
- * Created lazily so the app can start, and fail with a clear message, when
- * [SupabaseConfig] has not been filled in.
+ * One client for the app: it owns the persisted session. Repositories never
+ * reach for it themselves — platform wiring passes it in.
  */
 object Supabase {
 
-    val client: SupabaseClient by lazy {
-        require(SupabaseConfig.isConfigured) {
-            "Supabase is not configured. Set supabase.url and supabase.anonKey in local.properties."
-        }
+    /**
+     * Why the client cannot be built, or null when it can. Check before touching
+     * auth; render [ConfigurationProblem.messageKey] otherwise.
+     */
+    val configurationProblem: ConfigurationProblem?
+        get() = ConfigurationProblem.check(SupabaseConfig.URL, SupabaseConfig.ANON_KEY)
+
+    // Only initialised through clientOrNull(), after the check above, so it never
+    // runs with REPLACE_ME values. It used to `require` the config inside this
+    // lazy, which threw on first access — and from Swift an undeclared Kotlin
+    // exception terminates the process. A property getter cannot declare @Throws,
+    // so the fix is to never throw here at all.
+    private val client: SupabaseClient by lazy {
         createSupabaseClient(
             supabaseUrl = SupabaseConfig.URL,
             supabaseKey = SupabaseConfig.ANON_KEY,
@@ -34,6 +42,6 @@ object Supabase {
         }
     }
 
-    val auth get() = client.auth
-    val storage get() = client.storage
+    /** The client, or null when this build is not configured — see [configurationProblem]. */
+    fun clientOrNull(): SupabaseClient? = if (configurationProblem == null) client else null
 }
