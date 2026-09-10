@@ -90,7 +90,7 @@ Unconfigured: build from a copy without the Supabase keys → the app shows "Thi
 | **`xcodebuild` on `iosApp` succeeds** | ✅ Met | `BUILD SUCCEEDED` — both with real keys and from a copy with none |
 | Android calls `/capabilities` with a real token and renders the payload | ✅ Met | Test-number sign-in → payload rendered in Compose; request log shows `GET /capabilities` → `200` |
 | iOS does the same via SwiftUI | ✅ Met | Same flow on an iPhone 17 Pro simulator, payload rendered in SwiftUI |
-| An expired token triggers a refresh and the request still succeeds | ✅ Met — live on Android | *Expire token, then load*: token life **−60 s → 3598 s**, with one `GET /capabilities` → `200` and no 401 — refreshed before sending. The SDK's auto-refresh is off for that session, so the jump is this code. Retry-after-401 covered by `FinAiHttpClientTest`. The same step on iOS was blocked by the network — see follow-ups |
+| An expired token triggers a refresh and the request still succeeds | ✅ Met — live on both platforms | *Expire token, then load*: token life **−60 s → 3598 s** on Android and on iOS, payload rendered. Android's request log shows one `GET /capabilities` → `200` and no 401; iOS's network log shows the refresh then `/capabilities`, both finished successfully — refreshed *before* sending. The SDK's auto-refresh is off for that session, so the jump is this code. Retry-after-401 covered by `FinAiHttpClientTest` |
 | A 403 surfaces as the typed feature-unavailable error | ✅ Met — by tests | `ApiErrorMapperTest` and `FinAiHttpClientTest`. Not demonstrable live: no backend endpoint is feature-gated yet |
 | `ThrowsAnnotationGuardTest` passes, and **fails** when `@Throws` is removed | ✅ Met | Removed from `fetch()` → red, naming `KtorCapabilitiesRepository.kt:18 fetch`; restored byte-identical → green |
 | Release builds log no tokens and no response bodies | ✅ Met | Release `BuildConfig.DEBUG = false`, so the logger is never installed; `logs nothing when logging is off`; in debug, headers only — seen live as `-> Authorization: ***`; `never logs the token or the response body` |
@@ -113,7 +113,7 @@ Unconfigured: build from a copy without the Supabase keys → the app shows "Thi
 
 ## Open questions / follow-ups
 
-- **iOS live run of *Expire token, then load*.** At 17:42 the iOS request timed out: this Mac could not connect to Render's Cloudflare front end at all (`/healthz` from the Mac failed too, while GitHub was reachable). The app handled it as designed — the typed network error, no crash, no hang. The refresh code is shared Kotlin, proven live on Android; re-run on iOS once Render is reachable.
+- **Network hiccup during verification, not a defect.** One iOS attempt timed out while this Mac could not reach Render's Cloudflare front end at all (`/healthz` from the Mac failed too, while GitHub was reachable). The app handled it as designed — the typed "Can't reach FinAI" error, no crash, no hang — and the same step passed once Render was reachable again.
 - **`onboarding_required: ["phone"]` is shown to a user who has a verified phone** — seen live. The backend derives it from `household.country_code`, which nothing sets until phone → region in **2.1**. Backend behaviour, flagged in the #12 review.
 - **No live endpoint returns `feature_unavailable` yet.** The first gated endpoint will exercise that path end to end.
 - **Before launch:** replace the placeholder SMS credentials with a real provider **and** remove or expire the test numbers — a fixed code is a sign-in path for anyone who knows it.
