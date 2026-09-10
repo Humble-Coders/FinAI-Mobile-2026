@@ -12,9 +12,10 @@ class KtorCapabilitiesRepository internal constructor(
     private val http: HttpClient,
 ) : CapabilitiesRepository {
 
-    constructor(baseUrl: String, tokens: SessionTokenSource, logging: Boolean) :
+    constructor(baseUrl: String, tokens: SessionTokenSource, logging: Boolean, retries: Int = 1) :
         this(FinAiHttpClient.create(baseUrl, tokens, logging))
 
+    @Throws(ApiException::class, CancellationException::class)
     override suspend fun fetch(): Capabilities = http.getJson("capabilities")
 
     override fun close() = http.close()
