@@ -1,0 +1,113 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+# A newer push to the same branch makes the older run irrelevant — and on this
+# private repository the macOS minutes are the expensive part.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# Builds and tests only. No secrets: nothing is signed, published, or sent to
+# Supabase or the API — the generated config holds placeholders.
+permissions:
+  contents: read
+
+jobs:
+  android:
+    name: Android
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/setup-build
+
+      - name: Build and test
+        # On Linux, allTests runs the host (JVM) tests only — Kotlin/Native iOS
+        # targets need macOS, so the iOS job runs those. ThrowsAnnotationGuardTest
+        # is a host test: this job is the one that catches a missing @Throws.
+        run: ./gradlew :androidApp:assembleDebug :sharedLogic:allTests
+
+      - name: Upload test reports
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: android-test-reports
+          path: sharedLogic/build/reports/tests/
+          if-no-files-found: ignore
+
+  ios:
+    name: iOS
+    # SKIE breakages surface only in the iOS build: a change Swift can see but
+    # Kotlin cannot compiles on Android and fails only here.
+    #
+    # A pinned image rather than macos-latest: "-latest" moves to the next macOS
+    # on GitHub's schedule, and a newer image may not carry the Xcode below.
+    runs-on: macos-26
+    # The first run is cold (Kotlin/Native toolchain, framework, SKIE); a hung
+    # build must not burn macOS minutes for GitHub's 6-hour default.
+    timeout-minutes: 60
+    env:
+      # Pinned, never inherited from the image, so an image update cannot change
+      # the toolchain silently. Matches the team's Xcode; bump it deliberately.
+      # This image ships the iOS 26.2 simulator runtime the tests below need.
+      XCODE_VERSION: "26.2"
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Select Xcode ${{ env.XCODE_VERSION }}
+        run: |
+          sudo xcode-select -s "/Applications/Xcode_${XCODE_VERSION}.app"
+          xcodebuild -version
+          xcodebuild -version | grep -qx "Xcode ${XCODE_VERSION}" \
+            || { echo "::error::Expected Xcode ${XCODE_VERSION}"; exit 1; }
+
+      - uses: ./.github/actions/setup-build
+
+      - name: Read the Kotlin version
+        id: kotlin
+        run: |
+          version=$(sed -n 's/^kotlin *= *"\(.*\)"/\1/p' gradle/libs.versions.toml)
+          if [ -z "$version" ]; then echo "::error file=gradle/libs.versions.toml::no kotlin version"; exit 1; fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Cache the Kotlin/Native toolchain
+        # Keyed on the Kotlin version alone: ~/.konan holds the compiler and its
+        # platform libraries, which change only when Kotlin does.
+        uses: actions/cache@v6
+        with:
+          path: ~/.konan
+          key: konan-${{ runner.os }}-${{ runner.arch }}-${{ steps.kotlin.outputs.version }}
+
+      - name: Shared tests on the iOS simulator
+        # The Android job's allTests skips these on Linux; this is the only place
+        # they run. They also catch what only native targets reject, such as a
+        # comma in a test name.
+        run: ./gradlew :sharedLogic:iosSimulatorArm64Test
+
+      - name: Install pods
+        # Writes the placeholder framework and the podspec (generated, not
+        # committed), then runs pod install. The real framework comes next.
+        run: ./gradlew :sharedLogic:podInstall
+
+      - name: Build the iOS app
+        # The podspec's script phase builds SharedLogic through Gradle here — this
+        # is where SKIE generates the Swift API the app compiles against.
+        working-directory: iosApp
+        run: >
+          xcodebuild -workspace iosApp.xcworkspace -scheme iosApp
+          -sdk iphonesimulator -destination 'generic/platform=iOS Simulator'
+          CODE_SIGNING_ALLOWED=NO build
+
+      - name: Upload test reports
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ios-test-reports
+          path: sharedLogic/build/reports/tests/
+          if-no-files-found: ignore

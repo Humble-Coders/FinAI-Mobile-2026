@@ -1,0 +1,45 @@
+name: Set up the pinned JDK and Gradle
+description: >
+  Installs the JDK that gradle/gradle-daemon-jvm.properties names — the same one
+  Gradle provisions on a developer's machine — then Gradle with caching.
+  Shared by both CI jobs so the pin is read in exactly one place.
+
+runs:
+  using: composite
+  steps:
+    - name: Read the JDK pin
+      id: pin
+      shell: bash
+      run: |
+        props=gradle/gradle-daemon-jvm.properties
+        vendor=$(sed -n 's/^toolchainVendor=//p' "$props" | tr -d '\r')
+        version=$(sed -n 's/^toolchainVersion=//p' "$props" | tr -d '\r')
+        # Gradle's vendor names → setup-java's distribution names. An unmapped
+        # vendor fails here rather than quietly testing on a different JDK.
+        case "$vendor" in
+          AZUL) distribution=zulu ;;
+          ADOPTIUM) distribution=temurin ;;
+          AMAZON) distribution=corretto ;;
+          MICROSOFT) distribution=microsoft ;;
+          ORACLE) distribution=oracle ;;
+          JETBRAINS) distribution=jetbrains ;;
+          *) echo "::error file=$props::toolchainVendor '$vendor' is not mapped to a setup-java distribution in .github/actions/setup-build/action.yml"; exit 1 ;;
+        esac
+        if [ -z "$version" ]; then echo "::error file=$props::no toolchainVersion"; exit 1; fi
+        echo "JDK pinned by $props: $vendor $version (setup-java distribution: $distribution)"
+        echo "distribution=$distribution" >> "$GITHUB_OUTPUT"
+        echo "version=$version" >> "$GITHUB_OUTPUT"
+
+    - uses: actions/setup-java@v6
+      with:
+        distribution: ${{ steps.pin.outputs.distribution }}
+        java-version: ${{ steps.pin.outputs.version }}
+
+    - uses: gradle/actions/setup-gradle@v6
+      with:
+        # The default "enhanced" provider is proprietary: free for public
+        # repositories, but only a "Free Preview" for private ones like this, on
+        # terms that can change. "basic" is the MIT-licensed wrapper over
+        # actions/cache, free for every repository. Caches are written from main
+        # only (the action's default), so a PR never poisons them.
+        cache-provider: basic
