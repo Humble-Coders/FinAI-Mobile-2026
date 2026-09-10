@@ -1,5 +1,7 @@
 # FinAI — Mobile
 
+[![CI](https://github.com/Humble-Coders/FinAI-Mobile-2026/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Humble-Coders/FinAI-Mobile-2026/actions/workflows/ci.yml)
+
 Kotlin Multiplatform client for **FinAI**, an AI money-coach platform. Users upload
 bank statements; the backend extracts and categorizes transactions, generates budgets
 from real behaviour, tracks goals and debt, scores financial health, and answers
@@ -52,12 +54,33 @@ never committed.
 iOS:
 
 ```bash
-./gradlew :sharedLogic:generateDummyFramework
-cd iosApp && pod install
+./gradlew :sharedLogic:podInstall   # placeholder framework + podspec + pod install
+cd iosApp
 xcodebuild -workspace iosApp.xcworkspace -scheme iosApp \
   -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
   CODE_SIGNING_ALLOWED=NO build
 ```
+
+`SharedLogic.podspec` is generated, not committed — `podInstall` writes it before
+running `pod install`. The real framework is built during `xcodebuild`, by a script
+phase in that podspec, which is where SKIE runs.
+
+## CI
+
+Every pull request to `main`, and every push to it, runs `.github/workflows/ci.yml`:
+
+| Job | Runner | Runs |
+|---|---|---|
+| **Android** | Linux | `:androidApp:assembleDebug`, `:sharedLogic:allTests` |
+| **iOS** | macOS | the shared tests on the iOS simulator, then `podInstall` and `xcodebuild` |
+
+The iOS job is the one that matters for SKIE: a change Swift can see but Kotlin
+cannot — a new parameter with a default, a renamed member — compiles on Android and
+fails only there. No secrets are needed; nothing is signed or published.
+
+The toolchain is pinned, never inherited from the runner image: the JDK comes from
+`gradle/gradle-daemon-jvm.properties`, and the macOS image and Xcode version are set
+at the top of the iOS job. Bump Xcode there, deliberately, when the team moves.
 
 ## The rule that matters most
 
