@@ -14,7 +14,7 @@ Writing it exposed a real bug in the README: its iOS steps fail on a fresh clone
 
 | File | Why |
 |---|---|
-| `.github/workflows/ci.yml` | The two jobs. Android: `:androidApp:assembleDebug :sharedLogic:allTests`. iOS: Xcode selected and asserted, Kotlin/Native toolchain cached, `:sharedLogic:iosSimulatorArm64Test`, `:sharedLogic:podInstall`, `xcodebuild` without signing. Concurrency cancels superseded runs; each job has a timeout; test reports upload on failure |
+| `.github/workflows/ci.yml` | The two jobs. Android: `:androidApp:assembleDebug :sharedLogic:allTests`. iOS: Xcode selected and asserted, Kotlin/Native toolchain cached, `:sharedLogic:iosSimulatorArm64Test`, `:sharedLogic:podInstall`, `xcodebuild` without signing. Concurrency cancels superseded runs on a PR but never on `main`, where each commit gets its own group so every merge is verified; each job has a timeout (iOS 20 min, about 5× a cold run); test reports upload on failure |
 | `.github/actions/setup-build/action.yml` | Shared by both jobs, so the JDK pin is read in one place: maps the file's vendor to a `setup-java` distribution (an unmapped vendor fails the job), then sets up Gradle with the `basic` cache provider |
 | `README.md` | CI badge and a CI section; the iOS build steps now use `:sharedLogic:podInstall` |
 
@@ -60,7 +60,7 @@ The ticket suggests verifying by removing `@Throws`. That alone cannot turn the 
 1. **`runs-on: macos-26`, not `macos-latest`.** `-latest` moves to the next macOS on GitHub's schedule, and a newer image may not carry our Xcode; pinning image and Xcode together means the toolchain changes only when we choose.
 2. **Xcode is selected with `sudo xcode-select`**, not `maxim-lobanov/setup-xcode` (which the ticket gives as an example) — no third-party code in the pipeline. The version is asserted after selection.
 3. **Xcode 26.2, not the image default 26.6** — it is what the team develops and verifies on. The image ships the iOS 26.2 simulator runtime the native tests need.
-4. **The iOS job also runs `:sharedLogic:iosSimulatorArm64Test`.** On Linux, `allTests` silently skips the 46 native tests, so without this they would run nowhere. They also catch what only native targets reject, such as a comma in a test name.
+4. **The iOS job also runs `:sharedLogic:iosSimulatorArm64Test`.** On Linux, `allTests` skips the 46 native tests with nothing but a warning in the log (`Native task 'iosSimulatorArm64Test' is disabled`), so without this they would run nowhere. They also catch what only native targets reject, such as a comma in a test name.
 5. **The `@Throws` check was verified in both directions** — see above.
 6. **`cache-provider: basic` for `setup-gradle`.** The default provider is proprietary: free for public repositories, a "Free Preview" for private ones on terms that can change. `basic` is the MIT-licensed wrapper over `actions/cache`.
 7. **`:sharedLogic:podInstall` instead of `generateDummyFramework` + `pod install`.** The podspec is generated and gitignored (`.gitignore:25`), so on a fresh clone the README's old steps stop at `[!] No podspec found for SharedLogic in ../sharedLogic` — reproduced. `podInstall` runs the dummy framework, the podspec and `pod install` in order. The README was wrong the same way and is fixed.

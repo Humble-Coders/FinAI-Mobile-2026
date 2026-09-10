@@ -6,10 +6,15 @@ on:
   push:
     branches: [main]
 
-# A newer push to the same branch makes the older run irrelevant — and on this
-# private repository the macOS minutes are the expensive part.
+# On a pull request, a newer push makes the older run irrelevant — cancel it; on
+# this private repository the macOS minutes are the expensive part. A push to
+# main gets a group of its own (its commit), so no merge ever cancels another:
+# every commit on main is verified, and main is the only ref whose runs write
+# the Gradle cache. (cancel-in-progress: false would not be enough — GitHub
+# keeps one pending run per group and cancels the older one when a third
+# arrives.)
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
   cancel-in-progress: true
 
 # Builds and tests only. No secrets: nothing is signed, published, or sent to
@@ -49,9 +54,10 @@ jobs:
     # A pinned image rather than macos-latest: "-latest" moves to the next macOS
     # on GitHub's schedule, and a newer image may not carry the Xcode below.
     runs-on: macos-26
-    # The first run is cold (Kotlin/Native toolchain, framework, SKIE); a hung
-    # build must not burn macOS minutes for GitHub's 6-hour default.
-    timeout-minutes: 60
+    # Cold runs take about 4 minutes (3m 33s and 4m 15s measured); 20 leaves ~5x
+    # headroom. A hung build must not burn billed macOS minutes for GitHub's
+    # 6-hour default.
+    timeout-minutes: 20
     env:
       # Pinned, never inherited from the image, so an image update cannot change
       # the toolchain silently. Matches the team's Xcode; bump it deliberately.
