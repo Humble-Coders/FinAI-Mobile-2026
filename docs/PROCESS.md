@@ -41,6 +41,7 @@ Run **`/read-brief <brief#>`**. Claude gives a deep product walkthrough so you *
 
 ## 3. Drafting the ticket — Manager
 Run **`/draft-ticket`**. Claude drafts the technical ticket **against the brief**, interviews you for the developer-facing decisions (access, hosting, scope), stamps `Brief: #<n>`, and creates the issue.
+- **Check `docs/ROADMAP.md` for carry-over notes** — follow-ups from earlier milestones are listed under each milestone's table, keyed by ticket number. Fold the ones for this ticket into it.
 - **Definition of Ready:** runnable by a junior dev cold.
 - **Honor the brief's non-negotiables** — don't silently override one; flag it back to the Product Owner.
 - **Secrets never go in tickets** — say *what* and *where*, never the value.

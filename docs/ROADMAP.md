@@ -37,6 +37,9 @@ No product intent to capture here; these go straight to `/draft-ticket` without 
 | 1.5 | **Repo cleanup.** Remove `sharedUI`, drop `postgrest-kt`/`realtime-kt`, add SKIE, delete the placeholder `AuthRepository` and `Supabase.kt` postgrest exposure | mobile |
 | 1.6 | **Ktor API client + repository interfaces.** The shared `data/` layer every later feature builds on; Supabase Auth + Storage only, everything else over HTTP | mobile |
 | 1.7 | **Mobile CI workflow.** Android build + shared tests on Linux, and **`xcodebuild` on macOS for every PR** — SKIE breakages surface only in the iOS build, so nothing else enforces the two-platform commitment | mobile |
+| 1.8 | **Migration testing in CI.** Every migration applied, reversed and re-applied against a real Postgres, plus the database-backed tests, as their own CI job | backend |
+
+M1 follow-ups with no roadmap ticket: [Finance-backend#23](https://github.com/Humble-Coders/Finance-backend/issues/23) (DSN diagnostic, 401 test, CI hardening) · [#14](https://github.com/Humble-Coders/FinAI-Mobile-2026/issues/14) (Kotlin linting, SHA-pinned actions). The rest are carried into the tickets below.
 
 ## M2 — Onboarding (F1)
 
@@ -46,6 +49,11 @@ No product intent to capture here; these go straight to `/draft-ticket` without 
 | 2.2 | Financial setup wizard persistence — income, debts, investments, obligations | backend |
 | 2.3 | Signup UI — phone OTP, Google, Apple. Social routes continue straight into the **phone + OTP step**; timezone/locale pre-select the country code | mobile |
 | 2.4 | Financial setup wizard UI (skippable) | mobile |
+
+**Carry-over from M1** — fold these into the ticket when drafting it.
+
+- **2.1** — Region is still unset: the backend leaves `household.country_code` NULL even when a phone is present. Until it is set, `/me` and `/capabilities` disagree about onboarding — `/me` keys `onboarding_required` off `user.phone`, `/capabilities` off `country_code` — so a user with a verified phone is "done" by one and "needs phone" by the other. Check that the fictional 555-01xx test numbers pass libphonenumber, or test sign-ups never get a region. Once region resolves, Canadian users receive `disclaimer_version: ca-v1`, which no `disclaimer_version` row backs yet — seed it before any screen shows a disclaimer. *(backend `handoffs/ticket-11.md`, `ticket-12.md`; mobile `ticket-6.md`)*
+- **2.3** — Remove the ticket-6 demo: `ApiDemoScreen` / `ApiDemoViewModel` / `ApiDemoUiState` (Android), `ApiDemoView` / `ApiDemoViewModel` (iOS), the two demo aids on `SupabaseAuthRepository` (`expireAccessTokenForTesting`, `tokenSecondsLeftForTesting`), and the now-unused `ContentView.swift` and `PlaceholderScreen.kt`. iOS view models must store their `Task`s and cancel them on unbind; the demo does not, and must not be copied. *(mobile `handoffs/ticket-6.md`, PR #11 review)*
 
 ## M3 — Money in (F2, F3)
 
@@ -58,6 +66,11 @@ No product intent to capture here; these go straight to `/draft-ticket` without 
 | 3.5 | Source-document deletion job — on user confirmation or 72h, whichever first | backend |
 | 3.6 | Upload + processing-status UI (poll/observe `document_upload.status`) | mobile |
 | 3.7 | Transaction review and correction UI | mobile |
+
+**Carry-over from M1** — fold these into the ticket when drafting it.
+
+- **3.1** — Gate with the existing `require_feature` dependency rather than new gating code; so far it is proven only on a throwaway test route. This is also the first live `403 feature_unavailable`, which the mobile client handles by tests only. *(backend `handoffs/ticket-12.md`, mobile `ticket-6.md`)*
+- **3.3** — `transaction.normalized_description` is part of the dedup key, but nothing produces it yet. It must be normalised deterministically, or dedup silently stops working. *(backend `handoffs/ticket-10.md`)*
 
 ## M4 — Money understood (F4, F6)
 
@@ -85,6 +98,10 @@ No product intent to capture here; these go straight to `/draft-ticket` without 
 | 6.3 | Learning-phase gating — advanced recommendations withheld until enough history | backend |
 | 6.4 | Chat UI | mobile |
 
+**Carry-over from M1** — fold these into the ticket when drafting it.
+
+- **6.2** — pgvector is installed on production (0.8.2), but no migration enables or uses it yet. CI's Postgres image (`ghcr.io/pgmq/pg17-pgmq`, pinned by digest) has no pgvector, so the first migration that does needs an image that provides it. *(backend `handoffs/ticket-10.md`, `ticket-15.md`)*
+
 ## M7 — Monetization (F9)
 
 | # | Ticket | Repo |
@@ -92,6 +109,20 @@ No product intent to capture here; these go straight to `/draft-ticket` without 
 | 7.1 | Entitlement enforcement on every gated endpoint; upload and chat quotas | backend |
 | 7.2 | Billing integration | backend |
 | 7.3 | Paywall and plan UI | mobile |
+
+**Carry-over from M1** — fold these into the ticket when drafting it.
+
+- **7.1 / 7.2** — Entitlements are read but never written: every household resolves to `free`, and the paid path exists only in tests until billing creates `subscription_entitlement` rows. *(backend `handoffs/ticket-12.md`)*
+
+---
+
+## Before launch
+
+Not tied to a milestone — each must be done before real users sign up.
+
+- **SMS provider.** Development signs in with Supabase test phone numbers, and the provider credentials are placeholders. Connect a real provider **and** remove or expire every test number — a test number with a fixed code is a sign-in path for anyone who knows it. *(mobile `handoffs/ticket-6.md`)*
+- **Staging.** Migrations run straight against production; there is no staging database. That has been safe only because there is no user data yet. *(backend `handoffs/ticket-10.md`, `ticket-15.md`)*
+- **Branch protection.** CI is advisory in both repos until `main` requires its checks: backend `test` + `database` (free — the repo is public); mobile `Android` + `iOS` (needs the repo public or a paid plan). *(mobile `handoffs/ticket-8.md`, backend `handoffs/ticket-15.md`)*
 
 ---
 
