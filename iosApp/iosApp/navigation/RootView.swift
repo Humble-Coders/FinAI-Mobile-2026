@@ -58,7 +58,11 @@ struct RootView: View {
         case .home:
             HomeView { model.signOut() }
         case .failed:
-            FailedView(messageKey: failureKey) { model.retry() }
+            FailedView(
+                messageKey: failureKey,
+                onRetry: { model.retry() },
+                onSignOut: { model.signOut() }
+            )
         default:
             SplashView(slow: model.startIsSlow)
                 .task { await model.watchForSlowStart() }

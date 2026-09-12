@@ -86,7 +86,11 @@ fun AppNavigation(viewModel: OnboardingViewModel) {
 
         Destination.UpdateRequired -> UpdateRequiredScreen()
         Destination.Home -> HomeScreen(onSignOut = viewModel::signOut)
-        is Destination.Failed -> FailedScreen(destination.error.messageKey, viewModel::retry)
+        is Destination.Failed -> FailedScreen(
+            messageKey = destination.error.messageKey,
+            onRetry = viewModel::retry,
+            onSignOut = viewModel::signOut,
+        )
     }
 }
 

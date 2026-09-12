@@ -61,7 +61,7 @@ The behaviour worth reading rather than running is `OnboardingRouterTest` — it
 | The app never reaches home while `onboarding_required` is non-empty | **Met in code** — every step, known or unknown, has a destination that is not Home |
 | Splash lasts only while the session restores and the first `/me` loads; slow shows progress | **Met in code** — `setKeepOnScreenCondition` on Android, `screen == .splash` on iOS; no timer on either |
 | No white flash in dark mode on Android | **Met** — launch theme now takes `@color` with a `values-night` variant |
-| **Phone route reaches home, on both platforms** | **NOT VERIFIED** — Render is suspended |
+| **Phone route reaches home, on both platforms** | **Partly verified on Android** — code sent, code verified and a session created through Supabase; the router then reaches `Failed` because `/me` returns 503, which only happens for a signed-in caller. Everything past `/me` is still unverified |
 | **Google and Apple routes** | **NOT VERIFIED** — no client ids exist yet |
 | **Phone already taken shows the message and creates no second household** | **NOT VERIFIED** — needs a second test number |
 | **Cold start with no flash of welcome** | **NOT VERIFIED** end to end — needs a live `/me` |
@@ -115,6 +115,13 @@ caught by installing on a Pixel 8 Pro (API 35) and looking at the screens.
   text with a `clickable` modifier and no background, while iOS gave the same
   control a filled surface — so the platforms disagreed and the Android one
   read as a label. It now has the same filled surface.
+
+- **The error screen was a dead end.** It offered Retry and nothing else, so a
+  signed-in caller whose `/me` fails had no other screen to be on and no way
+  back — every retry fails for as long as the server is down. It now also offers
+  Sign out, which returns to the welcome screen because that needs nothing from
+  the API. Found by verifying a phone number against a suspended backend and
+  being unable to leave the screen.
 
 Also confirmed on the device rather than asserted: the dark-mode launch screen
 paints the near-black ground with no white flash, the splash hands over without

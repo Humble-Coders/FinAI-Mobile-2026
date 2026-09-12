@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -82,9 +83,17 @@ fun UpdateRequiredScreen() {
     }
 }
 
-/** `/me` could not be loaded. Always offers a way forward. */
+/**
+ * `/me` could not be loaded.
+ *
+ * Retry is the main action, but it cannot be the only one: while the server is
+ * down every retry fails, and a signed-in caller who cannot load `/me` has no
+ * other screen to be on. Without a way out they are simply stuck, which is what
+ * the ticket's "never stuck" rule is about. Signing out returns them to the
+ * welcome screen, which always works because it needs nothing from the API.
+ */
 @Composable
-fun FailedScreen(messageKey: String, onRetry: () -> Unit) {
+fun FailedScreen(messageKey: String, onRetry: () -> Unit, onSignOut: () -> Unit) {
     ScreenScaffold(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
@@ -103,6 +112,7 @@ fun FailedScreen(messageKey: String, onRetry: () -> Unit) {
         )
         Spacer(Modifier.height(24.dp))
         PrimaryButton(text = strings(Strings.action_retry), onClick = onRetry)
+        TextButton(onClick = onSignOut) { Text(strings(Strings.action_sign_out)) }
     }
 }
 
