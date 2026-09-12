@@ -1,5 +1,3 @@
-@file:OptIn(ExperimentalTime::class)
-
 package com.humblesolutions.finai.data
 
 import com.humblesolutions.finai.model.ApiException
@@ -24,9 +22,6 @@ import kotlinx.coroutines.flow.map
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlin.coroutines.cancellation.CancellationException
-import kotlin.time.Clock
-import kotlin.time.Duration.Companion.minutes
-import kotlin.time.ExperimentalTime
 
 /**
  * The session from Supabase Auth, the caller from the Render API.
@@ -124,29 +119,6 @@ class SupabaseAuthRepository internal constructor(
     @Throws(ApiException::class, CancellationException::class)
     override suspend fun acceptTerms(version: String): Me =
         http.postJson("me/consent", ConsentIn(version))
-
-    /**
-     * Throwaway demo aid (ticket #6): marks the current access token as expired,
-     * so the next API call must refresh it first — the live check that a stale
-     * token is never sent. Not on [AuthRepository]; M2 removes it with the demo.
-     */
-    @Throws(ApiException::class, CancellationException::class)
-    suspend fun expireAccessTokenForTesting() {
-        val session = auth.currentSessionOrNull() ?: throw ApiException.Unauthorized("no session to expire")
-        val expired = session.copy(expiresIn = 0, expiresAt = Clock.System.now() - 1.minutes)
-        // autoRefresh = false, so it is this app's refresh path that must notice, not the SDK's timer.
-        callSupabase { auth.importSession(expired, false) }
-    }
-
-    /**
-     * Throwaway demo aid (ticket #6): seconds until the current access token
-     * expires — negative once it has — or null when signed out. Read before and
-     * after a load on the demo screen, as evidence that a refresh really
-     * happened: a successful request alone cannot show it, because a locally
-     * expired token is still accepted by the server. Removed with the demo.
-     */
-    fun tokenSecondsLeftForTesting(): Long? =
-        auth.currentSessionOrNull()?.let { it.expiresAt.epochSeconds - Clock.System.now().epochSeconds }
 
     override fun close() = http.close()
 

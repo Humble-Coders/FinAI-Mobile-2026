@@ -4,5 +4,20 @@
 <dict>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
+	<!--
+	  The generated launch screen was blank, so a cold start flashed white
+	  before SwiftUI drew anything - in dark mode too. Declaring one here with
+	  a colour from the asset catalog means the system paints the app's own
+	  ground in whichever appearance is active.
+
+	  The brand mark is deliberately absent: it needs the PM's logo as a
+	  vector, which ticket #16 asks for and which has not arrived. Add it as
+	  an imageset and reference it with UIImageName - nothing else changes.
+	-->
+	<key>UILaunchScreen</key>
+	<dict>
+		<key>UIColorName</key>
+		<string>Ground</string>
+	</dict>
 </dict>
 </plist>

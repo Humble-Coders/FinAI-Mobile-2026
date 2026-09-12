@@ -133,6 +133,29 @@ class OnboardingRouterTest {
     }
 
     @Test
+    fun `every destination flattens to a screen`() {
+        // Swift switches on this rather than the sealed class, so a destination
+        // with no screen would be a blank app on one platform only.
+        assertEquals(Screen.SPLASH, route(SessionState.LOADING).screen)
+        assertEquals(Screen.WELCOME, route(SessionState.SIGNED_OUT).screen)
+        assertEquals(Screen.HOME, route(SessionState.SIGNED_IN, me()).screen)
+        assertEquals(Screen.FAILED, route(SessionState.SIGNED_IN, null, network).screen)
+        assertEquals(
+            Screen.UPDATE_REQUIRED,
+            route(SessionState.SIGNED_IN, me(OnboardingStep.UNKNOWN)).screen,
+        )
+        val expected = mapOf(
+            OnboardingStep.PHONE to Screen.PHONE,
+            OnboardingStep.REGION to Screen.REGION,
+            OnboardingStep.CONSENT to Screen.CONSENT,
+            OnboardingStep.FINANCIAL_SETUP to Screen.FINANCIAL_SETUP,
+        )
+        for ((step, screen) in expected) {
+            assertEquals(screen, route(SessionState.SIGNED_IN, me(step)).screen, step.wire)
+        }
+    }
+
+    @Test
     fun `every session state is answered`() {
         for (session in SessionState.entries) {
             for (me in listOf(null, me(), me(OnboardingStep.PHONE))) {

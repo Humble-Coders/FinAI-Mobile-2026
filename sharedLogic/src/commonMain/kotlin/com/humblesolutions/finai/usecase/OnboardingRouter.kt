@@ -14,14 +14,37 @@ import com.humblesolutions.finai.model.SessionState
  */
 sealed class Destination {
 
+    /**
+     * This destination as one switchable value.
+     *
+     * A member rather than an extension because Swift reaches a member as a
+     * plain property, while a top-level extension arrives as a static function
+     * on a synthesised file class.
+     */
+    abstract val screen: Screen
+
     /** The session is restoring, or the first `/me` is still in flight. */
-    data object Splash : Destination()
+    data object Splash : Destination() {
+        override val screen: Screen get() = Screen.SPLASH
+    }
 
     /** Signed out: phone entry and the provider buttons. */
-    data object Welcome : Destination()
+    data object Welcome : Destination() {
+        override val screen: Screen get() = Screen.WELCOME
+    }
 
     /** An onboarding step this build knows how to show. */
-    data class Step(val step: OnboardingStep) : Destination()
+    data class Step(val step: OnboardingStep) : Destination() {
+        override val screen: Screen
+            get() = when (step) {
+                OnboardingStep.PHONE -> Screen.PHONE
+                OnboardingStep.REGION -> Screen.REGION
+                OnboardingStep.CONSENT -> Screen.CONSENT
+                OnboardingStep.FINANCIAL_SETUP -> Screen.FINANCIAL_SETUP
+                // The router never builds this, but the type allows it.
+                OnboardingStep.UNKNOWN -> Screen.UPDATE_REQUIRED
+            }
+    }
 
     /**
      * The API named a step this build does not know, so there is no screen to
@@ -29,13 +52,38 @@ sealed class Destination {
      * newer app. Never silently treated as "done": an unknown step means
      * something IS outstanding.
      */
-    data object UpdateRequired : Destination()
+    data object UpdateRequired : Destination() {
+        override val screen: Screen get() = Screen.UPDATE_REQUIRED
+    }
 
     /** Nothing outstanding. */
-    data object Home : Destination()
+    data object Home : Destination() {
+        override val screen: Screen get() = Screen.HOME
+    }
 
     /** `/me` could not be loaded. The screen shows [error] and a Retry. */
-    data class Failed(val error: ApiException) : Destination()
+    data class Failed(val error: ApiException) : Destination() {
+        override val screen: Screen get() = Screen.FAILED
+    }
+}
+
+/**
+ * A [Destination] flattened to one value.
+ *
+ * Exists for Swift: a sealed class with associated values is awkward to switch
+ * on across the bridge, whereas an enum is not. The payloads stay on
+ * [Destination] for whoever needs them.
+ */
+enum class Screen {
+    SPLASH,
+    WELCOME,
+    PHONE,
+    REGION,
+    CONSENT,
+    FINANCIAL_SETUP,
+    UPDATE_REQUIRED,
+    HOME,
+    FAILED,
 }
 
 /**
