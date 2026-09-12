@@ -459,6 +459,7 @@ flowchart TD
 | 2026-08-27 | **Signup is never hard-blocked on detected region**; region gates features only, and the override is reachable during onboarding | At a Canada-only launch, a misdetected Canadian would otherwise be locked out before reaching support |
 | 2026-08-27 | Clients never access the database directly; all traffic via the Render API. RLS enabled as defense in depth; `service_role` key backend-only | Single place for authorization, entitlements, audit logging |
 | 2026-08-22 | No money movement anywhere in the product (splits = tracking only, no trading/transfers) | Avoids money-transmitter/brokerage licensing entirely |
+| 2026-09-11 | **No region-confirmation screen.** Region is libphonenumber's answer from the verified phone, shown during onboarding with an option to change it; a number libphonenumber cannot place asks the user to pick. §4.6 steps 2–4 (device-signal corroboration, one-tap confirmation for `+1`) are superseded and not built | The 2026-08-29 phone-first decision already removed device-signal inference and `needs_region_confirmation`; the onboarding override satisfies the launch-gating rule (manager decision, M2 drafting) |
 
 
 ---
