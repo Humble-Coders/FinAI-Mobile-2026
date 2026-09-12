@@ -49,6 +49,23 @@ class CapabilitiesDecodingTest {
     }
 
     @Test
+    fun `decodes every onboarding step the API can send`() {
+        val capabilities = decode(
+            """{"onboarding_required":["phone","region","consent","financial_setup"]}""",
+        )
+        assertEquals(
+            listOf(
+                OnboardingStep.PHONE,
+                OnboardingStep.REGION,
+                OnboardingStep.CONSENT,
+                OnboardingStep.FINANCIAL_SETUP,
+            ),
+            capabilities.onboardingRequired,
+        )
+        assertTrue(capabilities.needsOnboarding)
+    }
+
+    @Test
     fun `keeps an onboarding step this build does not know`() {
         val capabilities = decode("""{"onboarding_required":["phone","selfie"]}""")
         assertEquals(listOf(OnboardingStep.PHONE, OnboardingStep.UNKNOWN), capabilities.onboardingRequired)

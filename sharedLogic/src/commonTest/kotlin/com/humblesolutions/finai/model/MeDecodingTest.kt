@@ -32,6 +32,16 @@ class MeDecodingTest {
     }
 
     @Test
+    fun `decodes a caller who still owes the financial setup figures`() {
+        val me = decode(
+            """{"user":{"id":"u3","phone":"+14165550100"},
+               "household":{"id":"h3","country_code":"CA"},
+               "onboarding_required":["financial_setup"]}""",
+        )
+        assertEquals(listOf(OnboardingStep.FINANCIAL_SETUP), me.onboardingRequired)
+    }
+
+    @Test
     fun `decodes an empty object to safe defaults`() {
         assertEquals(Me(), decode("{}"))
     }
