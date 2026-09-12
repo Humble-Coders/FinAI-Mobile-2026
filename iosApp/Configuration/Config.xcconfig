@@ -1,7 +1,11 @@
-// Your Apple Developer team id, for code signing. Per developer: set it
-// locally, leave it empty here. CI builds with CODE_SIGNING_ALLOWED=NO and
-// needs no team at all.
-TEAM_ID=
+// The Apple Developer team everything ships under: Humble Solutions Private
+// Limited. Committed rather than set per developer, because there is one team
+// and one App ID — a per-developer value is what made the bundle identifier
+// unregisterable in the first place (see below).
+//
+// Not a secret: a team id is embedded in every shipped app. CI needs none of
+// it, building with CODE_SIGNING_ALLOWED=NO.
+TEAM_ID=53GDRR35QU
 
 PRODUCT_NAME=FinAI
 
