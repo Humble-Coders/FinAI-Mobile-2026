@@ -92,6 +92,12 @@ The behaviour worth reading rather than running is `OnboardingRouterTest` — it
   ground with no image. Replacing them is one file each.
 - **`Config.xcconfig` now sets `CODE_SIGN_ENTITLEMENTS`** rather than editing
   `project.pbxproj`, so the setting stays hand-editable.
+- **One vertical scroll per screen, in the scaffold.** The consent screen
+  originally nested a second one inside it on both platforms. Nesting does not
+  crash the way a lazy list would, so the mistake is silent: the gesture goes to
+  whichever claims it first. The terms now lay out in full and the page scrolls,
+  which also keeps the Agree button reachable at the largest accessibility font
+  sizes. Both scaffolds document the rule.
 
 ## Open questions / follow-ups
 

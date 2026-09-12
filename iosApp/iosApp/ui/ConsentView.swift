@@ -18,17 +18,19 @@ struct ConsentView: View {
                 .font(.subheadline)
                 .foregroundColor(Brand.textMuted)
 
-            ScrollView {
+            // Laid out in full, with no scroll of its own - ScreenScaffold's is
+            // the only one. Long terms push the button below the fold, which for
+            // a consent screen is the right way round anyway.
+            Group {
                 if let terms = model.terms {
                     Text(terms.body)
                         .font(.footnote)
                         .foregroundColor(Brand.textMuted)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 } else {
-                    ProgressView().frame(maxWidth: .infinity)
+                    ProgressView().frame(maxWidth: .infinity, minHeight: 120)
                 }
             }
-            .frame(minHeight: 160, maxHeight: 320)
             .padding(16)
             .background(Brand.surface)
             .clipShape(RoundedRectangle(cornerRadius: 12))

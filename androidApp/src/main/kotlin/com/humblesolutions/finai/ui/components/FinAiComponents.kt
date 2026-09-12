@@ -42,19 +42,19 @@ private val ContentMaxWidth = 480.dp
  * `safeDrawingPadding` is what keeps text and buttons clear of the status bar,
  * the display cutout and the gesture bar while the background still bleeds
  * underneath.
+ *
+ * **This scroll is the only one a screen gets.** Nothing placed inside may
+ * scroll vertically as well: two vertical scrolls inside each other do not
+ * crash the way a lazy list would, so the mistake is silent — the gesture goes
+ * to whichever claims it first, and a drag in the inner one moves the page.
+ * Content that is too tall simply scrolls, which is also what keeps a screen
+ * usable at the largest accessibility font sizes.
  */
 @Composable
 fun ScreenScaffold(
     modifier: Modifier = Modifier,
     horizontalAlignment: Alignment.Horizontal = Alignment.Start,
     verticalArrangement: Arrangement.Vertical = Arrangement.Top,
-    /**
-     * False for a screen that scrolls something of its own. Two vertical scrolls
-     * inside each other do not crash the way a lazy list would, but the gesture
-     * belongs to whichever claims it first, so a drag in the inner one can move
-     * the page instead.
-     */
-    scrollable: Boolean = true,
     content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit,
 ) {
     Box(
@@ -67,7 +67,7 @@ fun ScreenScaffold(
             modifier = Modifier
                 .widthIn(max = ContentMaxWidth)
                 .fillMaxSize()
-                .then(if (scrollable) Modifier.verticalScroll(rememberScrollState()) else Modifier)
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal = 24.dp, vertical = 24.dp),
             horizontalAlignment = horizontalAlignment,
             verticalArrangement = verticalArrangement,

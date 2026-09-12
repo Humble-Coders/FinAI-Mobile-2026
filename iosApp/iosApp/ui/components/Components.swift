@@ -15,6 +15,11 @@ enum Brand {
 
 /// Every screen's frame: the brand ground edge to edge, content inside the safe
 /// area, and a width cap so a form does not stretch across an iPad.
+///
+/// **This scroll is the only one a screen gets.** Nothing placed inside may
+/// scroll vertically as well: SwiftUI gives the gesture to the inner one, which
+/// leaves the page barely movable. Content that is too tall simply scrolls,
+/// which is also what keeps a screen usable at the largest Dynamic Type sizes.
 struct ScreenScaffold<Content: View>: View {
     var alignment: HorizontalAlignment = .leading
     var centred = false
