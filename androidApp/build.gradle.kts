@@ -14,6 +14,11 @@ dependencies {
     implementation(project(":sharedLogic"))
 
     implementation(libs.androidx.activity.compose)
+
+    // The system paints the launch window before any of our code runs, so the
+    // splash has to be a theme. This backports the Android 12 API far enough
+    // to hold that window open while the session restores.
+    implementation(libs.androidx.core.splashscreen)
     implementation(libs.androidx.lifecycle.viewmodelCompose)
     implementation(libs.androidx.lifecycle.runtimeCompose)
 

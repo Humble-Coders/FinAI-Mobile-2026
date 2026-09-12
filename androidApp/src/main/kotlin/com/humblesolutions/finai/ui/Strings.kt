@@ -14,3 +14,14 @@ import com.humblesolutions.finai.i18n.LocalizationRegistry
 @Composable
 @ReadOnlyComposable
 fun strings(key: String): String = LocalizationRegistry.get(key)
+
+/**
+ * The same, filling `{0}`-style placeholders.
+ *
+ * Substitution lives in the shared registry, not here, so both platforms render
+ * one translator's template the same way.
+ */
+@Composable
+@ReadOnlyComposable
+fun strings(key: String, vararg args: String): String =
+    LocalizationRegistry.format(key, args.toList())
