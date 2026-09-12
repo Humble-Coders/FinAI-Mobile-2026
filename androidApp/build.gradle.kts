@@ -14,6 +14,18 @@ dependencies {
     implementation(project(":sharedLogic"))
 
     implementation(libs.androidx.activity.compose)
+
+    // The system paints the launch window before any of our code runs, so the
+    // splash has to be a theme. This backports the Android 12 API far enough
+    // to hold that window open while the session restores.
+    implementation(libs.androidx.core.splashscreen)
+
+    // Google sign-in. Credential Manager is the supported path; the older
+    // GoogleSignInClient is deprecated. A native SDK, so it stays per platform
+    // and only the ID token crosses into shared code (kmp-arch-v2).
+    implementation(libs.androidx.credentials)
+    implementation(libs.androidx.credentials.playServicesAuth)
+    implementation(libs.google.id)
     implementation(libs.androidx.lifecycle.viewmodelCompose)
     implementation(libs.androidx.lifecycle.runtimeCompose)
 

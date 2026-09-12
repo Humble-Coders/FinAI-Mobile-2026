@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  A stand-in for the brand mark: three rising bars and an arrow, in the
+  design's green. The PM's actual logo vector has not been supplied yet
+  (ticket #16 asks for it as SVG or PDF) - replace this file with it, no other
+  change needed.
+
+  Sized 108x108 with the mark inside the middle two thirds, which is the
+  area Android's splash keeps unmasked.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <path
+        android:fillColor="@color/splash_icon"
+        android:pathData="M32,64 h10 v14 h-10 z" />
+    <path
+        android:fillColor="@color/splash_icon"
+        android:pathData="M49,54 h10 v24 h-10 z" />
+    <path
+        android:fillColor="@color/splash_icon"
+        android:pathData="M66,42 h10 v36 h-10 z" />
+
+    <path
+        android:strokeColor="@color/splash_icon"
+        android:strokeWidth="5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M32,56 L50,44 L62,50 L76,32" />
+    <path
+        android:fillColor="@color/splash_icon"
+        android:pathData="M63,30 L78,30 L78,45 z" />
+
+</vector>

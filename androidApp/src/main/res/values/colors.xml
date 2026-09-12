@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The launch window's colours, which have to exist as resources rather than
+  Compose values: the system paints this window before any Kotlin runs, so a
+  Compose theme is far too late to stop a flash. values-night/ holds the dark
+  variant and the system picks between them.
+-->
+<resources>
+    <color name="splash_background">#FFFFFF</color>
+    <color name="splash_icon">#22C55E</color>
+</resources>

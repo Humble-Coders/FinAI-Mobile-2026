@@ -19,10 +19,14 @@ import io.ktor.client.plugins.plugin
 import io.ktor.client.request.accept
 import io.ktor.client.request.bearerAuth
 import io.ktor.client.request.get
+import io.ktor.client.request.post
+import io.ktor.client.request.put
+import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
+import io.ktor.http.contentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.Url
 import io.ktor.http.isSuccess
@@ -161,3 +165,9 @@ internal suspend inline fun <reified T> HttpResponse.decoded(): T = try {
 
 internal suspend inline fun <reified T> HttpClient.getJson(path: String): T =
     sendMapped { get(path) }.decoded()
+
+internal suspend inline fun <reified B, reified T> HttpClient.putJson(path: String, body: B): T =
+    sendMapped { put(path) { contentType(ContentType.Application.Json); setBody(body) } }.decoded()
+
+internal suspend inline fun <reified B, reified T> HttpClient.postJson(path: String, body: B): T =
+    sendMapped { post(path) { contentType(ContentType.Application.Json); setBody(body) } }.decoded()

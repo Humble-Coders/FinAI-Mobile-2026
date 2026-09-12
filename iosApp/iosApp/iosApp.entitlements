@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	  Sign in with Apple. The capability must also be enabled on the App ID
+	  (com.humblesolutions.finai) in the Apple Developer portal under team
+	  53GDRR35QU, or signing fails with a provisioning error.
+
+	  CI is unaffected: it builds with CODE_SIGNING_ALLOWED=NO, which skips
+	  entitlements entirely.
+	-->
+	<key>com.apple.developer.applesignin</key>
+	<array>
+		<string>Default</string>
+	</array>
+</dict>
+</plist>

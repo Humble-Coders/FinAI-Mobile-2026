@@ -13,14 +13,36 @@ internal object ApiErrorMapper {
     // What FastAPI's HTTPBearer answers when no Authorization header was sent.
     private const val MISSING_BEARER = "Not authenticated"
     private const val FEATURE_UNAVAILABLE = "feature_unavailable"
+    private const val PHONE_ALREADY_LINKED = "phone_already_linked"
+    private const val TERMS_VERSION_MISMATCH = "terms_version_mismatch"
 
     fun fromResponse(status: Int, body: String): ApiException = when (status) {
         401 -> ApiException.Unauthorized("token rejected")
         403 -> forbidden(body)
         404 -> ApiException.NotFound()
-        400, 409, 422 -> ApiException.Validation(status)
+        400, 409, 422 -> rejected(status, body)
         in 500..599 -> ApiException.Server(status)
         else -> ApiException.Unexpected(status)
+    }
+
+    /**
+     * A rejection the client can act on specifically, or a generic one.
+     *
+     * Two codes matter to onboarding: a number that already belongs to another
+     * account, and terms that changed between being shown and being accepted.
+     * Both need their own screen behaviour, so neither can stay folded into
+     * [ApiException.Validation].
+     */
+    private fun rejected(status: Int, body: String): ApiException {
+        val detail = runCatching { FinAiJson.parseToJsonElement(body).jsonObject["detail"] }.getOrNull()
+        if (detail is JsonObject) {
+            when (detail.string("code")) {
+                PHONE_ALREADY_LINKED -> return ApiException.PhoneAlreadyLinked()
+                TERMS_VERSION_MISMATCH ->
+                    return ApiException.TermsChanged(detail.string("current_version"))
+            }
+        }
+        return ApiException.Validation(status)
     }
 
     /**

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The launch theme was @android:style/Theme.Material.Light.NoActionBar — light
+  only — so on Android 12+ every cold start painted a WHITE system splash, in
+  dark mode too. Both themes below take their background from @color, which has
+  a values-night variant, so the system splash matches the app in either mode.
+-->
+<resources>
+
+    <!-- What the window wears once the splash hands over. -->
+    <style name="Theme.FinAI" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/splash_background</item>
+    </style>
+
+    <!-- The launch theme. Handed to the system, not to Compose. -->
+    <style name="Theme.FinAISplash" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/splash_background</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_splash_logo</item>
+        <item name="postSplashScreenTheme">@style/Theme.FinAI</item>
+    </style>
+
+</resources>

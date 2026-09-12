@@ -40,6 +40,29 @@ sealed class ApiException(message: String, cause: Throwable? = null) : Exception
         override val messageKey: String = Strings.error_validation
     }
 
+    /**
+     * The phone number already belongs to another account.
+     *
+     * Raised by the API (`phone_already_linked`) and by Supabase
+     * (`AuthErrorCode.PhoneExists`), which may refuse first — the number is the
+     * identity key, so this is how one person is stopped from becoming two
+     * households. Merging two sign-in methods is a follow-up, so the only way
+     * on is to sign in with the number instead.
+     */
+    class PhoneAlreadyLinked : ApiException("phone already linked to another account") {
+        override val messageKey: String = Strings.error_phone_already_linked
+    }
+
+    /**
+     * The terms changed between being shown and being accepted, so consent was
+     * refused rather than recorded against text the user never read. Reload the
+     * terms and ask again; [currentVersion] is the one now in force.
+     */
+    class TermsChanged(val currentVersion: String?) :
+        ApiException("terms version mismatch") {
+        override val messageKey: String = Strings.error_terms_changed
+    }
+
     class Server(val status: Int) : ApiException("server error $status") {
         override val messageKey: String = Strings.error_server
     }

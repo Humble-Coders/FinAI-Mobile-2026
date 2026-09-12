@@ -20,4 +20,15 @@ object LocalizationRegistry {
         languages[language]?.get(key)
             ?: languages.getValue(DEFAULT_LANGUAGE)[key]
             ?: key
+
+    /**
+     * [get], with `{0}`-style placeholders filled from [args].
+     *
+     * Substitution happens here rather than per platform so a translator writes
+     * one template and both apps render it identically. A placeholder with no
+     * argument is left as-is rather than blanked: a visible `{1}` is a bug
+     * report, an empty gap is a mystery.
+     */
+    fun format(key: String, args: List<String>, language: String = DEFAULT_LANGUAGE): String =
+        args.foldIndexed(get(key, language)) { index, text, arg -> text.replace("{$index}", arg) }
 }

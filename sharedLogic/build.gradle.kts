@@ -118,9 +118,21 @@ val generateAppConfig by tasks.registering {
         readLocalProperty(localProperties, "api.baseUrl") ?: "https://finai-api-7bae.onrender.com"
     }
 
+    // Google OAuth client ids, created in Google Cloud and pasted into
+    // local.properties. Not secrets — a client id ships inside every app — but
+    // they differ per environment, so they are configuration, not constants.
+    val googleWebClientId = providers.provider {
+        readLocalProperty(localProperties, "google.webClientId") ?: "REPLACE_ME_GOOGLE_WEB_CLIENT_ID"
+    }
+    val googleIosClientId = providers.provider {
+        readLocalProperty(localProperties, "google.iosClientId") ?: "REPLACE_ME_GOOGLE_IOS_CLIENT_ID"
+    }
+
     inputs.property("url", url)
     inputs.property("anonKey", anonKey)
     inputs.property("apiBaseUrl", apiBaseUrl)
+    inputs.property("googleWebClientId", googleWebClientId)
+    inputs.property("googleIosClientId", googleIosClientId)
     outputs.dir(outputDir)
 
     doLast {
@@ -139,6 +151,24 @@ val generateAppConfig by tasks.registering {
                 appendLine()
                 appendLine("    val isConfigured: Boolean")
                 appendLine("        get() = !URL.contains(\"REPLACE_ME\") && !ANON_KEY.contains(\"REPLACE_ME\")")
+                appendLine("}")
+            }
+        )
+        packageDir.resolve("GoogleConfig.kt").writeText(
+            buildString {
+                appendLine("package com.humblesolutions.finai.config")
+                appendLine()
+                appendLine("// GENERATED — do not edit.")
+                appendLine("// See generateAppConfig in sharedLogic/build.gradle.kts; values come from")
+                appendLine("// google.webClientId / google.iosClientId in local.properties.")
+                appendLine("object GoogleConfig {")
+                appendLine("    /** Android's Credential Manager sends this as the serverClientId. */")
+                appendLine("    const val WEB_CLIENT_ID: String = \"" + googleWebClientId.get() + "\"")
+                appendLine("    const val IOS_CLIENT_ID: String = \"" + googleIosClientId.get() + "\"")
+                appendLine()
+                appendLine("    /** False until the ids are configured, so the UI can say so instead of failing oddly. */")
+                appendLine("    val isConfigured: Boolean")
+                appendLine("        get() = !WEB_CLIENT_ID.contains(\"REPLACE_ME\") && !IOS_CLIENT_ID.contains(\"REPLACE_ME\")")
                 appendLine("}")
             }
         )

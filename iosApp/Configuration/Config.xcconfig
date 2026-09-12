@@ -1,7 +1,29 @@
-TEAM_ID=
+// The Apple Developer team everything ships under: Humble Solutions Private
+// Limited. Committed rather than set per developer, because there is one team
+// and one App ID — a per-developer value is what made the bundle identifier
+// unregisterable in the first place (see below).
+//
+// Not a secret: a team id is embedded in every shipped app. CI needs none of
+// it, building with CODE_SIGNING_ALLOWED=NO.
+TEAM_ID=53GDRR35QU
 
 PRODUCT_NAME=FinAI
-PRODUCT_BUNDLE_IDENTIFIER=com.humblesolutions.finai.FinAI$(TEAM_ID)
+
+// Fixed, and deliberately NOT suffixed with $(TEAM_ID).
+//
+// The project template appended the team id so two developers could install
+// side by side. But the bundle identifier is the value Apple registers Sign in
+// with Apple against, and the value Supabase validates a native Apple ID token
+// against — so one that changes per developer cannot be registered at all, and
+// every registration would break the moment TEAM_ID was filled in (#16).
+//
+// Matches the Android applicationId, so both platforms are one identity.
+PRODUCT_BUNDLE_IDENTIFIER=com.humblesolutions.finai
 
 CURRENT_PROJECT_VERSION=1
 MARKETING_VERSION=1.0
+
+// Sign in with Apple needs an entitlement, and the entitlement needs to be
+// declared somewhere the project reads. Set here rather than in project.pbxproj
+// so the file stays hand-editable.
+CODE_SIGN_ENTITLEMENTS=iosApp/iosApp.entitlements
