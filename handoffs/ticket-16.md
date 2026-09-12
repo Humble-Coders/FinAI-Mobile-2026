@@ -1,7 +1,7 @@
 # Handoff — ticket #16
 
 **Ticket:** [#16 — \[M2\] Build the splash screen and signup flow](https://github.com/Humble-Coders/FinAI-Mobile-2026/issues/16)
-**Branch:** `ticket-16-splash-and-signup` · **Base:** `main` (`0098139`) · **PR:** #21 · 71 files (19 shared, 26 Android, 24 iOS, 2 other)
+**Branch:** `ticket-16-splash-and-signup` · **Base:** `main` (`0098139`) · **PR:** #21 · 72 files (19 shared, 26 Android, 24 iOS, 3 other)
 
 ## Summary
 
@@ -54,7 +54,8 @@ The behaviour worth reading rather than running is `OnboardingRouterTest` — it
 |---|---|
 | The routing function has a test for every session state and `onboarding_required` value including `UNKNOWN` | **Met** — `OnboardingRouterTest`, 14 cases |
 | The demo screens, demo aids, `ContentView.swift` and `PlaceholderScreen.kt` are gone | **Met** |
-| `ThrowsAnnotationGuardTest` passes; no user-facing string literal in `androidApp` or `iosApp` | **Met** |
+| `ThrowsAnnotationGuardTest` passes | **Met** |
+| No user-facing string literal in `androidApp` or `iosApp` | **Met except the wordmark**, which hardcodes `Fin` + `AI` on both platforms so the accent can be coloured. A brand mark, never translated — raised in review for the manager to exempt or change |
 | Gradle and `xcodebuild` both pass | **Met** |
 | Changing the dropdown's country changes only the dialling code | **Met** — `DialCodes` carries no region decision; `DialCodesTest` pins that CA and US share `+1` |
 | The app never reaches home while `onboarding_required` is non-empty | **Met in code** — every step, known or unknown, has a destination that is not Home |

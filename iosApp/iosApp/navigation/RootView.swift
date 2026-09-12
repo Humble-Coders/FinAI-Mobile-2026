@@ -35,7 +35,11 @@ struct RootView: View {
     private var content: some View {
         switch model.destination.screen {
         case .splash:
+            // .task is cancelled when the splash goes away and restarted on
+            // every entry, so the splash after a code verify gets an indicator
+            // too - not just the one at launch.
             SplashView(slow: model.startIsSlow)
+                .task { await model.watchForSlowStart() }
         case .welcome:
             phoneOrCode(showProviders: true)
         case .phone:
@@ -57,6 +61,7 @@ struct RootView: View {
             FailedView(messageKey: failureKey) { model.retry() }
         default:
             SplashView(slow: model.startIsSlow)
+                .task { await model.watchForSlowStart() }
         }
     }
 

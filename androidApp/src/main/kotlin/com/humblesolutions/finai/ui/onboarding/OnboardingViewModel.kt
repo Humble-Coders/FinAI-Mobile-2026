@@ -73,20 +73,21 @@ class OnboardingViewModel : ViewModel() {
                 }
             }
         }
-        watchForSlowStart()
     }
 
     /**
      * A frozen logo is indistinguishable from a hang, and Render's free tier can
      * take most of a minute to wake. After a few seconds the splash says so.
+     *
+     * Driven by the splash screen itself, for as long as it is on screen, rather
+     * than once at startup. The splash a user actually waits on is usually the
+     * SECOND one — after verifying a code, while the first `/me` loads — and a
+     * one-shot timer armed at launch has always expired by then.
      */
-    private fun watchForSlowStart() {
-        viewModelScope.launch {
-            delay(SLOW_START_MS)
-            if (_uiState.value.destination == Destination.Splash) {
-                _uiState.update { it.copy(startIsSlow = true) }
-            }
-        }
+    suspend fun watchForSlowStart() {
+        _uiState.update { it.copy(startIsSlow = false) }
+        delay(SLOW_START_MS)
+        _uiState.update { it.copy(startIsSlow = true) }
     }
 
     fun loadMe() {
@@ -94,12 +95,12 @@ class OnboardingViewModel : ViewModel() {
         viewModelScope.launch {
             try {
                 val me = auth.me()
-                _uiState.update { it.copy(me = me, meFailure = null, startIsSlow = false) }
+                _uiState.update { it.copy(me = me, meFailure = null) }
                 if (me.onboardingRequired.firstOrNull() == OnboardingStep.CONSENT) loadTerms()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: ApiException) {
-                _uiState.update { it.copy(meFailure = e, startIsSlow = false) }
+                _uiState.update { it.copy(meFailure = e) }
             }
         }
     }

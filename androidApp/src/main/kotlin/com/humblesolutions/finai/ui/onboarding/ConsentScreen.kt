@@ -43,7 +43,8 @@ fun ConsentScreen(
     onChangeRegion: () -> Unit,
     onAccept: () -> Unit,
 ) {
-    ScreenScaffold(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+    // The terms box scrolls, so the page must not: see ScreenScaffold.scrollable.
+    ScreenScaffold(verticalArrangement = Arrangement.spacedBy(16.dp), scrollable = false) {
         Spacer(Modifier.height(24.dp))
         Text(strings(Strings.consent_title), style = MaterialTheme.typography.headlineSmall)
         Text(
@@ -55,7 +56,7 @@ fun ConsentScreen(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(min = 160.dp, max = 320.dp)
+                .weight(1f)
                 .clip(RoundedCornerShape(12.dp))
                 .background(MaterialTheme.colorScheme.surfaceVariant)
                 .verticalScroll(rememberScrollState())

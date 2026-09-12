@@ -35,7 +35,6 @@ final class OnboardingViewModel: ObservableObject {
     private var auth: AuthRepository?
     private var sessionTask: Task<Void, Never>?
     private var resendTask: Task<Void, Never>?
-    private var slowStartTask: Task<Void, Never>?
 
     #if DEBUG
     private let logging = true
@@ -105,22 +104,27 @@ final class OnboardingViewModel: ObservableObject {
             }
         }
 
-        // A motionless logo is indistinguishable from a hang, and Render's free
-        // tier can take most of a minute to wake.
-        slowStartTask = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: 4_000_000_000)
-            guard let self, !Task.isCancelled else { return }
-            if self.destination.screen == .splash { self.startIsSlow = true }
-        }
+    }
+
+    /// A motionless logo is indistinguishable from a hang, and Render's free tier
+    /// can take most of a minute to wake. After a few seconds the splash says so.
+    ///
+    /// Driven by the splash view's own lifetime, for as long as it is on screen,
+    /// rather than once at startup. The splash a user actually waits on is
+    /// usually the SECOND one - after verifying a code, while the first `/me`
+    /// loads - and a one-shot timer armed at launch has always expired by then.
+    func watchForSlowStart() async {
+        startIsSlow = false
+        try? await Task.sleep(nanoseconds: 4_000_000_000)
+        guard !Task.isCancelled else { return }
+        startIsSlow = true
     }
 
     func unbind() {
         sessionTask?.cancel()
         resendTask?.cancel()
-        slowStartTask?.cancel()
         sessionTask = nil
         resendTask = nil
-        slowStartTask = nil
         auth?.close()
         auth = nil
     }
@@ -134,11 +138,9 @@ final class OnboardingViewModel: ObservableObject {
                 let loaded = try await auth.me()
                 self?.me = loaded
                 self?.meFailure = nil
-                self?.startIsSlow = false
                 if loaded.onboardingRequired.first == .consent { self?.loadTerms() }
             } catch {
                 self?.meFailure = Self.apiException(error)
-                self?.startIsSlow = false
             }
         }
     }

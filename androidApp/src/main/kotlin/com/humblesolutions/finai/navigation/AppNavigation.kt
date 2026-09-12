@@ -2,6 +2,7 @@ package com.humblesolutions.finai.navigation
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -59,7 +60,12 @@ fun AppNavigation(viewModel: OnboardingViewModel) {
     }
 
     when (val destination = state.destination) {
-        Destination.Splash -> SplashScreen(slow = state.startIsSlow)
+        Destination.Splash -> {
+            // Re-armed on every entry, so the splash after a code verify gets an
+            // indicator too — not just the one at launch.
+            LaunchedEffect(Unit) { viewModel.watchForSlowStart() }
+            SplashScreen(slow = state.startIsSlow)
+        }
 
         Destination.Welcome -> PhoneOrCode(viewModel, state.codeSent, showProviders = true)
 

@@ -48,6 +48,13 @@ fun ScreenScaffold(
     modifier: Modifier = Modifier,
     horizontalAlignment: Alignment.Horizontal = Alignment.Start,
     verticalArrangement: Arrangement.Vertical = Arrangement.Top,
+    /**
+     * False for a screen that scrolls something of its own. Two vertical scrolls
+     * inside each other do not crash the way a lazy list would, but the gesture
+     * belongs to whichever claims it first, so a drag in the inner one can move
+     * the page instead.
+     */
+    scrollable: Boolean = true,
     content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit,
 ) {
     Box(
@@ -60,7 +67,7 @@ fun ScreenScaffold(
             modifier = Modifier
                 .widthIn(max = ContentMaxWidth)
                 .fillMaxSize()
-                .verticalScroll(rememberScrollState())
+                .then(if (scrollable) Modifier.verticalScroll(rememberScrollState()) else Modifier)
                 .padding(horizontal = 24.dp, vertical = 24.dp),
             horizontalAlignment = horizontalAlignment,
             verticalArrangement = verticalArrangement,
