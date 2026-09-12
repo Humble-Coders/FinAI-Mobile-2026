@@ -42,7 +42,6 @@ object Strings {
     const val welcome_dial_code_label = "welcome_dial_code_label" // "Country calling code"
     const val welcome_or = "welcome_or" // "or"
     const val welcome_google = "welcome_google" // "Continue with Google"
-    const val welcome_apple = "welcome_apple" // "Continue with Apple"
     const val welcome_code_notice = "welcome_code_notice" // "We'll text a code to confirm it's you"
 
     // The phone step after a Google or Apple sign-in.

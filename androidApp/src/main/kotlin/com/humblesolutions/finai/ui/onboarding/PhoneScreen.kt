@@ -60,7 +60,6 @@ fun PhoneScreen(
     onDialCodeSelected: (DialCode) -> Unit,
     onContinue: () -> Unit,
     onGoogle: () -> Unit,
-    onApple: () -> Unit,
 ) {
     var pickerOpen by remember { mutableStateOf(false) }
 
@@ -122,8 +121,13 @@ fun PhoneScreen(
             Spacer(Modifier.height(8.dp))
             OrDivider()
             ProviderButton(strings(Strings.welcome_google), onGoogle, enabled = !state.busy)
-            // Apple is iOS only (manager decision, 2026-09-11): someone who
-            // signed up with Apple signs in here with their number instead.
+            // No Apple button here, by decision (2026-09-11): Apple is iOS
+            // only. Someone who signed up with Apple on an iPhone signs in
+            // here with their phone number and lands in the same account,
+            // because the verified number is the identity key. Offering it on
+            // Android would mean the OAuth web redirect flow - a Services ID,
+            // a signing key and a browser round-trip - to reach an account
+            // they can already reach by typing their number.
         }
     }
 

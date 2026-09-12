@@ -121,6 +121,16 @@ paints the near-black ground with no white flash, the splash hands over without
 hanging, and a `/me` that returns 503 lands on the error screen with Retry —
 the `Failed` destination working end to end against a genuinely dead backend.
 
+- **Apple is offered on iOS only** (manager decision, 2026-09-11), so the
+  Android welcome screen shows phone + Google and no Apple button. Someone who
+  signed up with Apple on an iPhone signs in on Android with their number and
+  lands in the same account — the verified number is the identity key. Offering
+  it on Android would mean the OAuth web redirect flow (Services ID, signing
+  key, browser round-trip) to reach an account they can already reach by typing
+  their number. `PhoneScreen`'s unused `onApple` parameter and the
+  `welcome_apple` string key are gone with it: Apple's own button supplies and
+  localises its label, so nothing ever read that key.
+
 ## Open questions / follow-ups
 
 - **Nothing that ends at `/me` has been exercised.** Render returns 503

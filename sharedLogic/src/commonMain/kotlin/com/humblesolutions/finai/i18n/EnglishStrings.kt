@@ -28,7 +28,6 @@ val EnglishStrings: Map<String, String> = mapOf(
     Strings.welcome_dial_code_label to "Country calling code",
     Strings.welcome_or to "or",
     Strings.welcome_google to "Continue with Google",
-    Strings.welcome_apple to "Continue with Apple",
     Strings.welcome_code_notice to "We'll text a code to confirm it's you",
     Strings.phone_link_title to "Add your phone number",
     Strings.phone_link_body to "Your number confirms it's you and sets your region.",

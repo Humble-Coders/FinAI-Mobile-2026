@@ -133,8 +133,6 @@ private fun PhoneOrCode(viewModel: OnboardingViewModel, codeSent: Boolean, showP
                     }
                 }
             },
-            // Apple is iOS only (manager decision, 2026-09-11).
-            onApple = {},
         )
     }
 }
