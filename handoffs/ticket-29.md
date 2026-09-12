@@ -74,5 +74,15 @@ Both were run on this branch: Gradle **BUILD SUCCESSFUL** (including
   wizard on every launch to anyone who skipped.
 - **The wizard's shared model, repository and `Money` utility are still 2.4's**
   — this change touches none of them.
+- **`UNKNOWN` has no defined routing behaviour, and 2.3 must give it one.**
+  Decoding is safe — an unrecognised step maps to `UNKNOWN` and keeps
+  `needsOnboarding` true — but that holds a stale build in onboarding with no
+  screen to route to. The router needs an explicit "update the app" destination
+  rather than a loop or a blank. Neither #16 nor #17 says so yet. Raised in the
+  review of PR #20.
+- **Adding an enum case is free today and will not be later.** Nothing switches
+  over `OnboardingStep`: iOS only reads `.wire`, and there is no Kotlin `when`
+  over it. Once 2.3 adds a router that switches on the step, a new case becomes
+  a breaking change for Swift exhaustiveness under SKIE.
 - **Not verified against a live API.** Render is suspended, so the new step has
   only been exercised against decoded JSON, not a real response.
