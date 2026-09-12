@@ -9,6 +9,37 @@ import kotlin.test.assertIs
 class ApiErrorMapperTest {
 
     @Test
+    fun `a taken phone number is its own error not a generic rejection`() {
+        val error = ApiErrorMapper.fromResponse(
+            409,
+            """{"detail":{"code":"phone_already_linked","message":"already linked"}}""",
+        )
+        assertIs<ApiException.PhoneAlreadyLinked>(error)
+    }
+
+    @Test
+    fun `terms that moved on carry the version now in force`() {
+        val error = ApiErrorMapper.fromResponse(
+            409,
+            """{"detail":{"code":"terms_version_mismatch","current_version":"terms-v2"}}""",
+        )
+        assertIs<ApiException.TermsChanged>(error)
+        assertEquals("terms-v2", error.currentVersion)
+    }
+
+    @Test
+    fun `a 409 without a known code stays a generic rejection`() {
+        val error = ApiErrorMapper.fromResponse(409, """{"detail":{"code":"something_else"}}""")
+        assertIs<ApiException.Validation>(error)
+    }
+
+    @Test
+    fun `a 409 whose body is not json stays a generic rejection`() {
+        val error = ApiErrorMapper.fromResponse(409, "gateway says no")
+        assertIs<ApiException.Validation>(error)
+    }
+
+    @Test
     fun `maps 401 to Unauthorized`() {
         assertIs<ApiException.Unauthorized>(ApiErrorMapper.fromResponse(401, """{"detail":"token expired"}"""))
     }

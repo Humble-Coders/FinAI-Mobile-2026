@@ -22,6 +22,8 @@ object Strings {
     const val error_network = "error_network" // "Can't reach FinAI. Check your connection and try again."
     const val error_not_configured = "error_not_configured" // "This build isn't connected to a backend yet."
     const val error_unexpected = "error_unexpected" // "Something unexpected happened. Please try again."
+    const val error_phone_already_linked = "error_phone_already_linked" // "This number already has an account — sign in with your phone number instead."
+    const val error_terms_changed = "error_terms_changed" // "The terms have been updated. Please read them again."
 
     // Why a feature is unavailable — FeatureReason.messageKey.
     const val feature_reason_coming_soon = "feature_reason_coming_soon" // "Coming soon"

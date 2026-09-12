@@ -14,6 +14,8 @@ val EnglishStrings: Map<String, String> = mapOf(
     Strings.error_network to "Can't reach FinAI. Check your connection and try again.",
     Strings.error_not_configured to "This build isn't connected to a backend yet.",
     Strings.error_unexpected to "Something unexpected happened. Please try again.",
+    Strings.error_phone_already_linked to "This number already has an account — sign in with your phone number instead.",
+    Strings.error_terms_changed to "The terms have been updated. Please read them again.",
     Strings.feature_reason_coming_soon to "Coming soon",
     Strings.feature_reason_not_in_plan to "Not included in your plan",
     Strings.feature_reason_region_unsupported to "Not available in your region yet",

@@ -42,6 +42,24 @@ class MeDecodingTest {
     }
 
     @Test
+    fun `decodes the terms status`() {
+        val me = decode(
+            """{"user":{"id":"u4"},"household":{"id":"h4"},
+               "onboarding_required":["consent"],
+               "terms":{"version":"terms-v1","accepted":false}}""",
+        )
+        assertEquals("terms-v1", me.terms.version)
+        assertEquals(false, me.terms.accepted)
+    }
+
+    @Test
+    fun `a payload with no terms still decodes`() {
+        val me = decode("""{"user":{"id":"u5"},"household":{"id":"h5"}}""")
+        assertNull(me.terms.version)
+        assertEquals(false, me.terms.accepted)
+    }
+
+    @Test
     fun `decodes an empty object to safe defaults`() {
         assertEquals(Me(), decode("{}"))
     }
