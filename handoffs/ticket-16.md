@@ -99,6 +99,28 @@ The behaviour worth reading rather than running is `OnboardingRouterTest` — it
   which also keeps the Agree button reachable at the largest accessibility font
   sizes. Both scaffolds document the rule.
 
+## Found by running it
+
+Two defects that no test, no build and neither CI job could see. Both were
+caught by installing on a Pixel 8 Pro (API 35) and looking at the screens.
+
+- **Every screen heading was invisible in dark mode.** `FinAiTheme` called
+  `MaterialTheme(...)` without a `Surface`, so `LocalContentColor` was never
+  supplied from the colour scheme and fell back to Compose's default of BLACK.
+  In light mode that looked right by accident; on the near-black dark ground it
+  left the wordmark's `Fin`, `code_title`, `consent_title`, `region_title`,
+  `phone_link_title`, `home_title` and the status headings unreadable. Fixed at
+  the theme, which fixes every screen at once.
+- **The dialling-code picker did not look tappable on Android.** It was bare
+  text with a `clickable` modifier and no background, while iOS gave the same
+  control a filled surface — so the platforms disagreed and the Android one
+  read as a label. It now has the same filled surface.
+
+Also confirmed on the device rather than asserted: the dark-mode launch screen
+paints the near-black ground with no white flash, the splash hands over without
+hanging, and a `/me` that returns 503 lands on the error screen with Retry —
+the `Failed` destination working end to end against a genuinely dead backend.
+
 ## Open questions / follow-ups
 
 - **Nothing that ends at `/me` has been exercised.** Render returns 503

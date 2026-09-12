@@ -2,10 +2,13 @@ package com.humblesolutions.finai.ui.theme
 
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.SideEffect
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 
@@ -35,7 +38,19 @@ fun FinAiTheme(
         }
     }
 
-    MaterialTheme(colorScheme = colors, content = content)
+    MaterialTheme(colorScheme = colors) {
+        // The Surface is what supplies LocalContentColor. Without it, every
+        // Text that does not name a colour falls back to Compose's default of
+        // BLACK — which looked right in light mode by accident and left every
+        // heading invisible on the near-black dark ground. Found by running it;
+        // no test or build could see it.
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            color = colors.background,
+            contentColor = colors.onBackground,
+            content = content,
+        )
+    }
 }
 
 private val DarkColors = darkColorScheme(

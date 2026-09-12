@@ -1,5 +1,6 @@
 package com.humblesolutions.finai.ui.onboarding
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -140,13 +141,17 @@ fun PhoneScreen(
 /** The dialling prefix, and only that — never the user's region. */
 @Composable
 private fun DialCodeField(dialCode: DialCode, onClick: () -> Unit) {
-    Box(
+    // Needs to read as a control, not a label: it was bare text with a
+    // clickable modifier, so nothing suggested it could be tapped — and iOS
+    // gave the same picker a filled background, so the two disagreed.
+    Row(
         modifier = Modifier
             .heightIn(min = 56.dp)
-            .clip(RoundedCornerShape(4.dp))
+            .clip(RoundedCornerShape(8.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant)
             .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp),
-        contentAlignment = Alignment.Center,
+            .padding(horizontal = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(dialCode.display, style = MaterialTheme.typography.titleMedium)
     }
