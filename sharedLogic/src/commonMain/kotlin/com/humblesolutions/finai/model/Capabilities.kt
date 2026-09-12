@@ -83,7 +83,21 @@ enum class FeatureReason(val wire: String, val messageKey: String) {
 
 @Serializable(with = OnboardingStepSerializer::class)
 enum class OnboardingStep(val wire: String) {
+    /** No verified phone yet — a Google or Apple signup, before the phone step (PRD §4.6). */
     PHONE("phone"),
+
+    /** A phone libphonenumber could not place, so the user picks their country rather than us guessing (#24). */
+    REGION("region"),
+
+    /** The account terms in force have not been accepted (PRD Appendix A.5, item 1). */
+    CONSENT("consent"),
+
+    /**
+     * Monthly income or monthly expense is missing. The wizard is the destination for this
+     * step and its two mandatory screens carry no Skip: without both figures the dashboard
+     * has nothing to reason from (PRD §9, 2026-09-12; backend #29).
+     */
+    FINANCIAL_SETUP("financial_setup"),
 
     /** A step this build does not know yet — kept, so the app still knows onboarding is incomplete. */
     UNKNOWN("");
