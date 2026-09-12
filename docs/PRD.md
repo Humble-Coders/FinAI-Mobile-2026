@@ -260,7 +260,10 @@ Features are grouped by phase. Phase 1 = v1/MVP. Each feature notes acceptance-l
   and OTP verification (§4.6). Region derives from it, and the verified number acts as the identity key that
   prevents duplicate accounts across providers. Flow: tap Google → phone → 6-digit code.
 - No address, no extra PII. Target ≤30s.
-- Follow-on **skippable** financial-setup wizard: monthly after-tax income, existing debts/loans, current investments (amounts only in v1), basic monthly obligations.
+- Follow-on financial-setup wizard, **part mandatory, part optional** (manager decision, 2026-09-12 — §9):
+  - **Mandatory to reach the app:** a verified **phone**, a resolved **region** (both from signup, §4.6), **monthly after-tax income**, and **monthly expense**. Without these the dashboard has nothing to reason from, so the app holds the user at the wizard rather than opening onto an empty product.
+  - **Optional, and editable later from the profile:** debts and loans, current investments (amounts only in v1), and an itemised breakdown of monthly obligations. These are never required to proceed.
+  - The mandatory set is enforced **server-side**, as an onboarding step alongside phone, region and consent — a client-side gate is not a gate (§4.6).
 - Wizard output seeds the initial dashboard. (Client to confirm the 30s claim covers signup only — §8 Q10.)
 
 #### F2. Document upload & transaction extraction
@@ -412,7 +415,7 @@ flowchart TD
 7. **Privacy:** delete uploaded statements after extraction, or retain for re-viewing/re-extraction? Confirm export/delete rights and no cross-user training.
 8. **Market data:** are 15-min delayed quotes acceptable for investment tracking (real-time feeds are expensive)?
 9. **Family Plan details:** partner visibility/privacy (see everything vs per-account privacy), pooled vs linked finances, shared vs separate chat context, admin/breakup handling.
-10. **Onboarding:** confirm "30 seconds" = signup only; financial setup is a skippable follow-on wizard.
+10. **Onboarding:** confirm "30 seconds" = signup only. Financial setup is a follow-on wizard whose **core figures (income, monthly expense) are mandatory** and whose detail (debts, investments, itemised obligations) is optional and editable later (2026-09-12 decision, §9) — confirm the mandatory set, since it is what stands between a new account and the app.
 11. **Education hub:** article sourcing (client offered to supply), format, volume, licensing.
 12. **WhatsApp notifications:** confirm deferred until scale (Business API cost + approval process).
 13. **Privacy counsel:** confirm budget for a lawyer review of privacy policy, consent flows and processor agreements before launch (Appendix A).
@@ -460,6 +463,7 @@ flowchart TD
 | 2026-08-27 | Clients never access the database directly; all traffic via the Render API. RLS enabled as defense in depth; `service_role` key backend-only | Single place for authorization, entitlements, audit logging |
 | 2026-08-22 | No money movement anywhere in the product (splits = tracking only, no trading/transfers) | Avoids money-transmitter/brokerage licensing entirely |
 | 2026-09-11 | **No region-confirmation screen.** Region is libphonenumber's answer from the verified phone, shown during onboarding with an option to change it; a number libphonenumber cannot place asks the user to pick. §4.6 steps 2–4 (device-signal corroboration, one-tap confirmation for `+1`) are superseded and not built | The 2026-08-29 phone-first decision already removed device-signal inference and `needs_region_confirmation`; the onboarding override satisfies the launch-gating rule (manager decision, M2 drafting) |
+| 2026-09-12 | **Financial setup is part mandatory, part optional.** Phone, region, monthly income and monthly expense are required to reach the app; debts, investments and itemised obligations are optional and editable later from the profile. Supersedes the wholly skippable wizard in F1 | A dashboard with no income or expense figure can say nothing useful, so the first session would open onto an empty product. Keeping the detail optional protects the ~30s target: two figures, not an inventory. Enforced server-side as an onboarding step, since a client-side gate is not a gate |
 
 
 ---
