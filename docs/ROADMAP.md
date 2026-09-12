@@ -48,7 +48,8 @@ M1 follow-ups with no roadmap ticket: [Finance-backend#23](https://github.com/Hu
 | 2.1 | Signup + **region resolution** — one path: every route ends with a verified phone, so region derives from it via libphonenumber with `+1` area-code disambiguation. Settings override; signup never hard-blocked on region. Also records **signup consent** with its policy version (PRD Appendix A.5 #1) | backend |
 | 2.2 | Financial setup wizard persistence — income, debts, investments, obligations | backend |
 | 2.3 | **Splash screen** + signup UI — phone OTP, Google, Apple. Social routes continue straight into the **phone + OTP step**; timezone/locale pre-select the country code. Region and consent steps | mobile |
-| 2.4 | Financial setup wizard UI (skippable) | mobile |
+| 2.4 | Financial setup wizard UI — the mandatory steps (income, monthly expense) cannot be skipped; the optional ones can (2.5) | mobile |
+| 2.5 | **Mandatory financial setup** — adds monthly expense; income + monthly expense become an onboarding step (`financial_setup`) enforced server-side, alongside phone and region. Debts, investments and itemised obligations stay optional and editable later from the profile | backend + mobile |
 
 **Carry-over from M1** — fold these into the ticket when drafting it.
 
