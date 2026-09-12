@@ -51,6 +51,8 @@ val EnglishStrings: Map<String, String> = mapOf(
     Strings.update_required_body to "This version doesn't know one of the steps your account still needs. Update the app to finish setting up.",
     Strings.setup_pending_title to "One more step",
     Strings.setup_pending_body to "We need a couple of figures before your dashboard can say anything useful. This step arrives in the next update.",
+    Strings.error_provider_failed to "That sign-in didn't complete. Try again, or use your phone number.",
+    Strings.error_provider_not_configured to "This build isn't set up for that sign-in method yet.",
     Strings.error_title to "Something went wrong",
 
     Strings.feature_reason_coming_soon to "Coming soon",

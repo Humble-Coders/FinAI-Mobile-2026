@@ -80,6 +80,10 @@ object Strings {
     const val setup_pending_title = "setup_pending_title" // "One more step"
     const val setup_pending_body = "setup_pending_body" // "We need a couple of figures before your dashboard can say anything useful. This step arrives in the next update."
 
+    // A provider sign-in that failed for a reason of its own.
+    const val error_provider_failed = "error_provider_failed" // "That sign-in didn't complete. Try again, or use your phone number."
+    const val error_provider_not_configured = "error_provider_not_configured" // "This build isn't set up for that sign-in method yet."
+
     // Failure to load.
     const val error_title = "error_title" // "Something went wrong"
 

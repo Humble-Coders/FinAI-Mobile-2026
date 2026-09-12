@@ -22,3 +22,8 @@ PRODUCT_BUNDLE_IDENTIFIER=com.humblesolutions.finai
 
 CURRENT_PROJECT_VERSION=1
 MARKETING_VERSION=1.0
+
+// Sign in with Apple needs an entitlement, and the entitlement needs to be
+// declared somewhere the project reads. Set here rather than in project.pbxproj
+// so the file stays hand-editable.
+CODE_SIGN_ENTITLEMENTS=iosApp/iosApp.entitlements

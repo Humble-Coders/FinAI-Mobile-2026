@@ -10,6 +10,7 @@ import com.humblesolutions.finai.i18n.Strings
 import com.humblesolutions.finai.model.ApiException
 import com.humblesolutions.finai.model.OnboardingStep
 import com.humblesolutions.finai.model.SessionState
+import com.humblesolutions.finai.model.SocialProvider
 import com.humblesolutions.finai.repository.AuthRepository
 import com.humblesolutions.finai.usecase.Destination
 import com.humblesolutions.finai.util.DialCode
@@ -177,6 +178,25 @@ class OnboardingViewModel : ViewModel() {
             if (me.onboardingRequired.firstOrNull() == OnboardingStep.CONSENT) loadTerms()
         }) { it }
     }
+
+    /**
+     * Signs in with an ID token the platform obtained natively.
+     *
+     * Only half a signup: every route ends at a verified phone, so the router
+     * sends the user to the phone step next (PRD §4.6).
+     */
+    fun signInWithProvider(provider: SocialProvider, idToken: String, nonce: String?) {
+        val auth = auth ?: return
+        perform({ auth.signInWithIdToken(provider, idToken, nonce) }) { it }
+    }
+
+    /** The provider sheet was dismissed. Silently back — a cancel is not an error. */
+    fun onProviderCancelled() = _uiState.update { it.copy(busy = false, errorKey = null) }
+
+    fun onProviderFailed(messageKey: String) =
+        _uiState.update { it.copy(busy = false, errorKey = messageKey) }
+
+    fun onProviderStarted() = _uiState.update { it.copy(busy = true, errorKey = null) }
 
     fun signOut() {
         val auth = auth ?: return

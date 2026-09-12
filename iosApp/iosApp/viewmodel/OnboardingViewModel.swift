@@ -220,6 +220,33 @@ final class OnboardingViewModel: ObservableObject {
         } onSuccess: {}
     }
 
+    /// Signs in with an ID token the platform obtained natively.
+    ///
+    /// Only half a signup: every route ends at a verified phone, so the router
+    /// sends the user to the phone step next (PRD §4.6).
+    func signInWithProvider(_ provider: SocialProvider, idToken: String, nonce: String?) {
+        guard let auth else { return }
+        perform {
+            try await auth.signInWithIdToken(provider: provider, idToken: idToken, nonce: nonce)
+        } onSuccess: {}
+    }
+
+    /// The provider sheet was dismissed. Silently back — a cancel is not an error.
+    func onProviderCancelled() {
+        busy = false
+        errorKey = nil
+    }
+
+    func onProviderFailed(_ messageKey: String) {
+        busy = false
+        errorKey = messageKey
+    }
+
+    func onProviderStarted() {
+        busy = true
+        errorKey = nil
+    }
+
     func signOut() {
         guard let auth else { return }
         perform { try await auth.signOut() } onSuccess: {}

@@ -5,8 +5,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.humblesolutions.finai.auth.GoogleSignIn
+import com.humblesolutions.finai.auth.GoogleSignInCancelled
+import com.humblesolutions.finai.auth.GoogleSignInNotConfigured
+import com.humblesolutions.finai.i18n.Strings
+import com.humblesolutions.finai.model.SocialProvider
 import com.humblesolutions.finai.model.OnboardingStep
 import com.humblesolutions.finai.ui.home.HomeScreen
 import com.humblesolutions.finai.ui.onboarding.CodeScreen
@@ -20,6 +27,7 @@ import com.humblesolutions.finai.ui.onboarding.SetupPendingScreen
 import com.humblesolutions.finai.ui.onboarding.SplashScreen
 import com.humblesolutions.finai.ui.onboarding.UpdateRequiredScreen
 import com.humblesolutions.finai.usecase.Destination
+import kotlinx.coroutines.launch
 
 /**
  * The router: a state variable, not a navigation framework (kmp-arch-v2).
@@ -85,6 +93,8 @@ fun AppNavigation(viewModel: OnboardingViewModel) {
 @Composable
 private fun PhoneOrCode(viewModel: OnboardingViewModel, codeSent: Boolean, showProviders: Boolean) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     if (codeSent) {
         BackHandler { viewModel.editNumber() }
         CodeScreen(
@@ -101,8 +111,23 @@ private fun PhoneOrCode(viewModel: OnboardingViewModel, codeSent: Boolean, showP
             onPhoneChange = viewModel::onPhoneChange,
             onDialCodeSelected = viewModel::onDialCodeSelected,
             onContinue = viewModel::sendCode,
-            // Wired in phase 4, once Supabase has the providers configured.
-            onGoogle = {},
+            onGoogle = {
+                viewModel.onProviderStarted()
+                scope.launch {
+                    try {
+                        val idToken = GoogleSignIn.idToken(context)
+                        // Credential Manager supplies no nonce, so none is sent.
+                        viewModel.signInWithProvider(SocialProvider.GOOGLE, idToken, null)
+                    } catch (e: GoogleSignInCancelled) {
+                        viewModel.onProviderCancelled()
+                    } catch (e: GoogleSignInNotConfigured) {
+                        viewModel.onProviderFailed(Strings.error_provider_not_configured)
+                    } catch (e: Exception) {
+                        viewModel.onProviderFailed(Strings.error_provider_failed)
+                    }
+                }
+            },
+            // Apple is iOS only (manager decision, 2026-09-11).
             onApple = {},
         )
     }

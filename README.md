@@ -38,7 +38,23 @@ sdk.dir=/path/to/Android/sdk
 # Optional — the build generates REPLACE_ME placeholders when these are absent
 supabase.url=https://YOUR_PROJECT.supabase.co
 supabase.anonKey=YOUR_PUBLISHABLE_KEY
+
+# Google sign-in. Created in Google Cloud, then added to the Supabase Google
+# provider's Authorized Client IDs. Not secrets — a client id ships inside every
+# app — but they differ per environment, so they are not committed.
+#
+# webClientId is what Android sends as the serverClientId, and what Supabase
+# validates the token's audience against. The ANDROID client id is never used in
+# code: it exists so Google can match the app's signing certificate, and needs
+# your debug SHA-1 registered against it.
+google.webClientId=YOUR_WEB_CLIENT_ID.apps.googleusercontent.com
+google.iosClientId=YOUR_IOS_CLIENT_ID.apps.googleusercontent.com
 ```
+
+Until the Google ids are set, the provider buttons say so rather than failing
+oddly. Sign in with Apple needs no id here — it validates against the bundle id
+(`com.humblesolutions.finai`), which must be registered on the App ID with the
+Sign in with Apple capability.
 
 Only the **publishable** (anon) key belongs here. The `service_role` key must never
 enter this repo. `SupabaseConfig.kt` is generated from these values at build time,

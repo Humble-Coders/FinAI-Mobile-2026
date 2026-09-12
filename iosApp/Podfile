@@ -4,4 +4,8 @@ use_frameworks!
 target 'iosApp' do
   # Kotlin shared business logic (Supabase lives inside this framework).
   pod 'SharedLogic', :path => '../sharedLogic'
+
+  # Google sign-in. A native SDK, so it lives per platform; the ID token it
+  # returns goes through the shared repository like Apple's (kmp-arch-v2).
+  pod 'GoogleSignIn', '~> 8.0'
 end
