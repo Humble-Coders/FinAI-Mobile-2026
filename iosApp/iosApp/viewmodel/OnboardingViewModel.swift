@@ -28,6 +28,14 @@ final class OnboardingViewModel: ObservableObject {
     @Published private(set) var busy = false
     @Published private(set) var errorKey: String?
 
+    /// A provider sign-in that failed, kept apart from `errorKey`.
+    ///
+    /// They are shown in different places and mean different things: one is
+    /// about what the user typed, the other about a button they pressed.
+    /// Sharing a field turned the phone box red because Google was
+    /// misconfigured.
+    @Published private(set) var providerErrorKey: String?
+
     static let codeLength = 6
     private static let minPhoneDigits = 4
     private static let resendSecondsStart = 60
@@ -236,17 +244,18 @@ final class OnboardingViewModel: ObservableObject {
     /// The provider sheet was dismissed. Silently back — a cancel is not an error.
     func onProviderCancelled() {
         busy = false
-        errorKey = nil
+        providerErrorKey = nil
     }
 
     func onProviderFailed(_ messageKey: String) {
         busy = false
-        errorKey = messageKey
+        providerErrorKey = messageKey
     }
 
     func onProviderStarted() {
         busy = true
         errorKey = nil
+        providerErrorKey = nil
     }
 
     func signOut() {

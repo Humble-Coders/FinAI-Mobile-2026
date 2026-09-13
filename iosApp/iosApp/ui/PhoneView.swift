@@ -66,6 +66,9 @@ struct PhoneView: View {
                 ProviderButton(title: L.t(Strings.shared.welcome_google), enabled: !model.busy) {
                     GoogleSignInLauncher.start(model: model)
                 }
+                // Under the buttons it belongs to, not under the phone field: a
+                // provider failing says nothing about the number the user typed.
+                ErrorText(messageKey: model.providerErrorKey)
                 // Sign in with Apple is mandatory on iOS wherever another
                 // provider is offered (App Store guideline 4.8).
                 AppleSignInButton(model: model)

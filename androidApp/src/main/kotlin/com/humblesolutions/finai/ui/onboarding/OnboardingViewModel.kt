@@ -107,7 +107,8 @@ class OnboardingViewModel : ViewModel() {
 
     fun onDialCodeSelected(dialCode: DialCode) = _uiState.update { it.copy(dialCode = dialCode) }
 
-    fun onPhoneChange(value: String) = _uiState.update { it.copy(phoneDigits = value, errorKey = null) }
+    fun onPhoneChange(value: String) =
+        _uiState.update { it.copy(phoneDigits = value, errorKey = null, providerErrorKey = null) }
 
     fun onCodeChange(value: String) = _uiState.update {
         it.copy(code = value.filter(Char::isDigit).take(OnboardingUiState.CODE_LENGTH), errorKey = null)
@@ -192,12 +193,14 @@ class OnboardingViewModel : ViewModel() {
     }
 
     /** The provider sheet was dismissed. Silently back — a cancel is not an error. */
-    fun onProviderCancelled() = _uiState.update { it.copy(busy = false, errorKey = null) }
+    fun onProviderCancelled() =
+        _uiState.update { it.copy(busy = false, providerErrorKey = null) }
 
     fun onProviderFailed(messageKey: String) =
-        _uiState.update { it.copy(busy = false, errorKey = messageKey) }
+        _uiState.update { it.copy(busy = false, providerErrorKey = messageKey) }
 
-    fun onProviderStarted() = _uiState.update { it.copy(busy = true, errorKey = null) }
+    fun onProviderStarted() =
+        _uiState.update { it.copy(busy = true, errorKey = null, providerErrorKey = null) }
 
     fun signOut() {
         val auth = auth ?: return

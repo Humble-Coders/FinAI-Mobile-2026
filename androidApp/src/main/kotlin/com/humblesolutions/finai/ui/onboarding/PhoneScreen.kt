@@ -121,6 +121,9 @@ fun PhoneScreen(
             Spacer(Modifier.height(8.dp))
             OrDivider()
             ProviderButton(strings(Strings.welcome_google), onGoogle, enabled = !state.busy)
+            // Under the buttons it belongs to, not under the phone field: a
+            // provider failing says nothing about the number the user typed.
+            ErrorText(state.providerErrorKey)
             // No Apple button here, by decision (2026-09-11): Apple is iOS
             // only. Someone who signed up with Apple on an iPhone signs in
             // here with their phone number and lands in the same account,

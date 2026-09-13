@@ -38,6 +38,15 @@ data class OnboardingUiState(
     val terms: Terms? = null,
     val busy: Boolean = false,
     val errorKey: String? = null,
+
+    /**
+     * A provider sign-in that failed, kept apart from [errorKey].
+     *
+     * They are shown in different places and mean different things: one is
+     * about what the user typed, the other about a button they pressed. Sharing
+     * a field turned the phone box red because Google was misconfigured.
+     */
+    val providerErrorKey: String? = null,
 ) {
 
     /**
