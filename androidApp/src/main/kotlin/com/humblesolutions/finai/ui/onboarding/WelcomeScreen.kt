@@ -44,7 +44,6 @@ fun WelcomeScreen(
     onSubmit: () -> Unit,
     onForgotPassword: () -> Unit,
     onGoogle: () -> Unit,
-    onCancelLink: () -> Unit,
 ) {
     val creating = state.creatingAccount
 
@@ -56,15 +55,6 @@ fun WelcomeScreen(
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-
-        if (state.pendingLink != null) {
-            Text(
-                text = strings(Strings.link_banner),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.primary,
-            )
-            TextButton(onClick = onCancelLink) { Text(strings(Strings.action_cancel)) }
-        }
 
         Spacer(Modifier.height(8.dp))
         Text(

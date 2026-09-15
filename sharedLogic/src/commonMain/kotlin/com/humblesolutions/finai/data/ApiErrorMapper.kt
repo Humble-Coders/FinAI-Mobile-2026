@@ -15,8 +15,6 @@ internal object ApiErrorMapper {
     private const val FEATURE_UNAVAILABLE = "feature_unavailable"
     private const val PHONE_ALREADY_LINKED = "phone_already_linked"
     private const val TERMS_VERSION_MISMATCH = "terms_version_mismatch"
-    private const val INVALID_ORPHAN_TOKEN = "invalid_orphan_token"
-    private val LINK_REFUSED = setOf("orphan_not_empty", "link_target_incomplete", "nothing_to_link")
 
     fun fromResponse(status: Int, body: String): ApiException = when (status) {
         401 -> ApiException.Unauthorized("token rejected")
@@ -30,10 +28,10 @@ internal object ApiErrorMapper {
     /**
      * A rejection the client can act on specifically, or a generic one.
      *
-     * Onboarding acts on these codes: a number that already belongs to another
-     * account, terms that changed between being shown and being accepted, and
-     * the ways linking a sign-in method can be refused. Each needs its own
-     * screen behaviour, so none can stay folded into [ApiException.Validation].
+     * Two codes matter to onboarding: a number that already belongs to another
+     * account, and terms that changed between being shown and being accepted.
+     * Both need their own screen behaviour, so neither can stay folded into
+     * [ApiException.Validation].
      */
     private fun rejected(status: Int, body: String): ApiException {
         val detail = runCatching { FinAiJson.parseToJsonElement(body).jsonObject["detail"] }.getOrNull()
@@ -42,8 +40,6 @@ internal object ApiErrorMapper {
                 PHONE_ALREADY_LINKED -> return ApiException.PhoneAlreadyLinked()
                 TERMS_VERSION_MISMATCH ->
                     return ApiException.TermsChanged(detail.string("current_version"))
-                INVALID_ORPHAN_TOKEN -> return ApiException.LinkExpired()
-                in LINK_REFUSED -> return ApiException.LinkRefused()
             }
         }
         return ApiException.Validation(status)

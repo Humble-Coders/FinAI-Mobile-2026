@@ -3,7 +3,6 @@ package com.humblesolutions.finai.ui.onboarding
 import com.humblesolutions.finai.model.ApiException
 import com.humblesolutions.finai.model.ConfigurationProblem
 import com.humblesolutions.finai.model.Me
-import com.humblesolutions.finai.model.PendingLink
 import com.humblesolutions.finai.model.ResetStage
 import com.humblesolutions.finai.model.SessionState
 import com.humblesolutions.finai.model.Terms
@@ -44,18 +43,11 @@ data class OnboardingUiState(
     // The phone step.
     val dialCode: DialCode = DialCodes.fallback,
     val phoneDigits: String = "",
-    /** The number belongs to another account; the phone screen offers to link instead. */
-    val phoneTaken: Boolean = false,
 
     /** A code has been sent for [e164]; the code screen replaces phone entry. */
     val codeSent: Boolean = false,
     val code: String = "",
     val resendSeconds: Int = 0,
-
-    /** A sign-in method waiting to move onto the account being signed in to. */
-    val pendingLink: PendingLink? = null,
-    /** The empty account is gone; only adding the provider remains. */
-    val orphanRemoved: Boolean = false,
 
     val terms: Terms? = null,
     val busy: Boolean = false,
@@ -73,8 +65,8 @@ data class OnboardingUiState(
 
     /**
      * Where the app should be — from the one shared rule, never decided here.
-     * The sub-states above (a sent code, a reset, a pending link) are the
-     * exceptions the router does not model; the navigation layer checks them first.
+     * The sub-states above (a sent code, a reset) are the exceptions the
+     * router does not model; the navigation layer checks them first.
      */
     val destination: Destination get() = OnboardingRouter.destinationFor(session, me, meFailure)
 
@@ -92,10 +84,6 @@ data class OnboardingUiState(
     val canRequestReset: Boolean get() = !busy && Credentials.looksLikeEmail(email)
     val canSaveNewPassword: Boolean
         get() = !busy && Credentials.passwordProblem(password, creating = true) == null
-
-    /** Signed in to the account being linked into, with its `/me` loaded. */
-    val showLinkScreen: Boolean
-        get() = pendingLink != null && session == SessionState.SIGNED_IN && me != null
 
     val canSendCode: Boolean get() = !busy && digits.length >= MIN_PHONE_DIGITS
     val canVerify: Boolean get() = !busy && code.length == CODE_LENGTH

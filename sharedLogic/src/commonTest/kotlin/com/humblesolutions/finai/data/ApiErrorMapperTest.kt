@@ -28,23 +28,6 @@ class ApiErrorMapperTest {
     }
 
     @Test
-    fun `an orphan token that did not verify is a link to restart not a sign out`() {
-        val error = ApiErrorMapper.fromResponse(
-            422,
-            """{"detail":{"code":"invalid_orphan_token","message":"could not verify"}}""",
-        )
-        assertIs<ApiException.LinkExpired>(error)
-    }
-
-    @Test
-    fun `every refusal to remove the other account is one link refusal`() {
-        listOf("orphan_not_empty", "link_target_incomplete", "nothing_to_link").forEach { code ->
-            val error = ApiErrorMapper.fromResponse(409, """{"detail":{"code":"$code"}}""")
-            assertIs<ApiException.LinkRefused>(error, code)
-        }
-    }
-
-    @Test
     fun `a 409 without a known code stays a generic rejection`() {
         val error = ApiErrorMapper.fromResponse(409, """{"detail":{"code":"something_else"}}""")
         assertIs<ApiException.Validation>(error)

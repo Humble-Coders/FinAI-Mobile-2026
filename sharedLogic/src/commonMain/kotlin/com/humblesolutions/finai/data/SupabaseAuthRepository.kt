@@ -22,8 +22,6 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.contentOrNull
 import kotlin.coroutines.cancellation.CancellationException
 
 /**
@@ -126,15 +124,6 @@ class SupabaseAuthRepository internal constructor(
         }
     }
 
-    /** Needs "manual linking" enabled in Supabase, or it fails as SignInMethodUnavailable. */
-    @Throws(ApiException::class, CancellationException::class)
-    override suspend fun linkProvider(provider: SocialProvider, idToken: String, nonce: String?) {
-        val rawNonce = nonce
-        callSupabase(SupabaseCall.PROVIDER) {
-            auth.linkIdentityWithIdToken(provider.idTokenProvider(), idToken) { this.nonce = rawNonce }
-        }
-    }
-
     /**
      * Adds the number to the signed-in user, which is what sends the code.
      *
@@ -152,29 +141,6 @@ class SupabaseAuthRepository internal constructor(
     override suspend fun verifyPhoneLink(phone: String, code: String) {
         callSupabase(SupabaseCall.CODE) { auth.verifyPhoneOtp(OtpType.Phone.PHONE_CHANGE, phone, code) }
     }
-
-    @Throws(ApiException::class, CancellationException::class)
-    override suspend fun currentAccessToken(): String? {
-        auth.awaitInitialization()
-        if (auth.currentSessionOrNull() == null) return null
-        // Refreshed rather than read: the token has to outlive the person
-        // signing in to their other account, which can take a while.
-        callSupabase { auth.refreshCurrentSession() }
-        return auth.currentSessionOrNull()?.accessToken
-    }
-
-    override fun currentSignInProvider(): SocialProvider? {
-        val metadata = auth.currentSessionOrNull()?.user?.appMetadata ?: return null
-        return when ((metadata["provider"] as? JsonPrimitive)?.contentOrNull) {
-            "google" -> SocialProvider.GOOGLE
-            "apple" -> SocialProvider.APPLE
-            else -> null
-        }
-    }
-
-    @Throws(ApiException::class, CancellationException::class)
-    override suspend fun removeOrphanAccount(orphanToken: String): Me =
-        http.postJson("me/link", LinkIn(orphanToken))
 
     @Throws(ApiException::class, CancellationException::class)
     override suspend fun signOut() {
@@ -219,7 +185,3 @@ private data class RegionIn(@SerialName("country_code") val countryCode: String)
 
 @Serializable
 private data class ConsentIn(val version: String)
-
-/** The orphan's access token. A credential — the request body is never logged. */
-@Serializable
-private data class LinkIn(@SerialName("orphan_token") val orphanToken: String)

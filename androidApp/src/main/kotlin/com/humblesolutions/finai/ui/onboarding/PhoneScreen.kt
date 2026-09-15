@@ -37,7 +37,6 @@ import com.humblesolutions.finai.ui.components.ErrorText
 import com.humblesolutions.finai.ui.components.countryName
 import com.humblesolutions.finai.ui.components.FinAiTextField
 import com.humblesolutions.finai.ui.components.PrimaryButton
-import com.humblesolutions.finai.ui.components.ProviderButton
 import com.humblesolutions.finai.ui.components.ScreenScaffold
 import com.humblesolutions.finai.ui.strings
 import com.humblesolutions.finai.util.DialCode
@@ -48,8 +47,9 @@ import com.humblesolutions.finai.util.DialCodes
  * (PRD §4.6). The number is the key that stops one person becoming two
  * households, and it sets the region. It is never a way to sign in.
  *
- * When the number already belongs to another account, the screen does not
- * treat it as an error: it offers to link this sign-in method there instead.
+ * A number another account already has is refused under the field, and the
+ * user types a different one. Nothing offers to sign in to or link with that
+ * account (manager decision, 2026-09-15).
  */
 @Composable
 fun PhoneScreen(
@@ -57,8 +57,6 @@ fun PhoneScreen(
     onPhoneChange: (String) -> Unit,
     onDialCodeSelected: (DialCode) -> Unit,
     onContinue: () -> Unit,
-    onLinkToExisting: () -> Unit,
-    onUseDifferentNumber: () -> Unit,
     onSignOut: () -> Unit,
 ) {
     var pickerOpen by remember { mutableStateOf(false) }
@@ -95,32 +93,17 @@ fun PhoneScreen(
 
         ErrorText(state.errorKey)
 
-        if (state.phoneTaken) {
-            Text(strings(Strings.phone_taken_title), style = MaterialTheme.typography.titleMedium)
-            Text(
-                text = strings(Strings.phone_taken_body),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            PrimaryButton(
-                text = strings(Strings.phone_taken_sign_in),
-                onClick = onLinkToExisting,
-                busy = state.busy,
-            )
-            ProviderButton(strings(Strings.phone_taken_other_number), onUseDifferentNumber, enabled = !state.busy)
-        } else {
-            PrimaryButton(
-                text = strings(Strings.action_continue),
-                onClick = onContinue,
-                enabled = state.canSendCode,
-                busy = state.busy,
-            )
-            Text(
-                text = strings(Strings.welcome_code_notice),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
+        PrimaryButton(
+            text = strings(Strings.action_continue),
+            onClick = onContinue,
+            enabled = state.canSendCode,
+            busy = state.busy,
+        )
+        Text(
+            text = strings(Strings.welcome_code_notice),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
 
         // The way out. Without it someone who signed in with the wrong account
         // is held here with no route back to the welcome screen.

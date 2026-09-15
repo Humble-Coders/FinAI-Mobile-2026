@@ -31,11 +31,7 @@ final class OnboardingViewModel: ObservableObject {
 
     // The phone step.
     @Published var dialCode: DialCode = DialCodes.shared.fallback
-    @Published var phoneDigits = "" {
-        didSet { if phoneTaken, oldValue != phoneDigits { phoneTaken = false } }
-    }
-    /// The number belongs to another account; the phone screen offers to link instead.
-    @Published private(set) var phoneTaken = false
+    @Published var phoneDigits = ""
     @Published private(set) var codeSent = false
     /// Digits only, at most `codeLength` of them.
     ///
@@ -52,11 +48,6 @@ final class OnboardingViewModel: ObservableObject {
         }
     }
     @Published private(set) var resendSeconds = 0
-
-    /// A sign-in method waiting to move onto the account being signed in to.
-    @Published private(set) var pendingLink: PendingLink?
-    /// The empty account is gone; only adding the provider remains.
-    @Published private(set) var orphanRemoved = false
 
     @Published private(set) var terms: Terms?
     @Published private(set) var busy = false
@@ -107,9 +98,6 @@ final class OnboardingViewModel: ObservableObject {
         !busy && Credentials.shared.passwordProblem(password: password, creating: true) == nil
     }
 
-    /// Signed in to the account being linked into, with its `/me` loaded.
-    var showLinkScreen: Bool { pendingLink != nil && session == .signedIn && me != nil }
-
     var canSendCode: Bool { !busy && digits.count >= Self.minPhoneDigits }
     var canVerify: Bool { !busy && code.count == Self.codeLength }
     var canResend: Bool { !busy && resendSeconds == 0 }
@@ -151,16 +139,12 @@ final class OnboardingViewModel: ObservableObject {
                 if state == .signedIn {
                     self.loadMe()
                 } else if state == .signedOut, was != .signedOut {
-                    // A pending link survives: signing out of the empty
-                    // account is how the link begins.
                     self.me = nil
                     self.meFailure = nil
                     self.terms = nil
                     self.code = ""
                     self.codeSent = false
-                    self.phoneTaken = false
                     self.phoneDigits = ""
-                    self.orphanRemoved = false
                     self.reset = nil
                     self.emailCodeFor = nil
                     self.password = ""
@@ -340,26 +324,20 @@ final class OnboardingViewModel: ObservableObject {
     // MARK: - The phone step
 
     /// Attaches the number to the signed-in account, which texts the code.
+    ///
+    /// A number another account already has fails as `PhoneAlreadyLinked`,
+    /// shown under the field like any other refusal: the user types a different
+    /// number. Nothing offers to sign in to or link with that account (manager
+    /// decision, 2026-09-15).
     func sendCode() {
         guard let auth, canSendCode else { return }
         let number = e164
-        var taken = false
         perform {
-            do {
-                try await auth.requestPhoneLink(phone: number)
-            } catch {
-                // Not an error to show: the phone screen offers the way on.
-                guard Self.apiException(error) is ApiException.PhoneAlreadyLinked else { throw error }
-                taken = true
-            }
+            try await auth.requestPhoneLink(phone: number)
         } onSuccess: { [weak self] in
-            if taken {
-                self?.phoneTaken = true
-            } else {
-                self?.codeSent = true
-                self?.code = ""
-                self?.startResendCountdown()
-            }
+            self?.codeSent = true
+            self?.code = ""
+            self?.startResendCountdown()
         }
     }
 
@@ -387,76 +365,11 @@ final class OnboardingViewModel: ObservableObject {
         errorKey = nil
     }
 
-    func useDifferentNumber() {
-        phoneDigits = ""
-        phoneTaken = false
-        errorKey = nil
-    }
-
-    // MARK: - Linking a sign-in method to an existing account
-
-    /// The number belongs to another account and the person says it is theirs.
-    ///
-    /// Keeps proof of this (empty) session, then signs out of it so they can
-    /// sign in to the real account. `me` is dropped first so the phone screen
-    /// cannot be used again while the sign-out is in flight.
-    func startLink() {
-        guard let auth else { return }
-        busy = true
-        errorKey = nil
-        Task { [weak self] in
-            do {
-                guard let token = try await auth.currentAccessToken() else {
-                    throw LinkNotPossible()
-                }
-                let link = PendingLink(orphanToken: token, provider: auth.currentSignInProvider())
-                self?.pendingLink = link
-                self?.me = nil
-                self?.welcomeMode = .signIn
-                self?.email = ""
-                self?.password = ""
-                try await auth.signOut()
-                self?.busy = false
-            } catch {
-                // Stay on the phone step, signed in as before.
-                self?.pendingLink = nil
-                self?.busy = false
-                self?.errorKey = Self.messageKey(error)
-                self?.loadMe()
-            }
-        }
-    }
-
-    /// Removes the empty account. For an email orphan that is the whole link.
-    func removeOrphan() {
-        guard let auth, let link = pendingLink else { return }
-        perform {
-            let updated = try await auth.removeOrphanAccount(orphanToken: link.orphanToken)
-            await MainActor.run { self.me = updated }
-        } onSuccess: { [weak self] in
-            if link.provider == nil {
-                self?.pendingLink = nil
-            } else {
-                self?.orphanRemoved = true
-            }
-        }
-    }
-
-    /// Abandons the link. The empty account stays; signing in with its method resumes it.
-    func cancelLink() {
-        pendingLink = nil
-        orphanRemoved = false
-        errorKey = nil
-        providerErrorKey = nil
-    }
-
     // MARK: - Google and Apple
 
-    /// An ID token the platform obtained natively: a sign-in, or — on the link
-    /// screen, once the empty account is gone — the method being linked.
+    /// Signs in with an ID token the platform obtained natively.
     func signInWithProvider(_ provider: SocialProvider, idToken: String, nonce: String?) {
         guard let auth else { return }
-        let linking = showLinkScreen && orphanRemoved
         // Deliberately not `perform`: that reports into `errorKey`, which the
         // form fields render. A provider Supabase refuses - one not enabled in
         // the dashboard, say - would then read as though what was typed were
@@ -465,14 +378,7 @@ final class OnboardingViewModel: ObservableObject {
         providerErrorKey = nil
         Task { [weak self] in
             do {
-                if linking {
-                    try await auth.linkProvider(provider: provider, idToken: idToken, nonce: nonce)
-                    self?.pendingLink = nil
-                    self?.orphanRemoved = false
-                    self?.loadMe()
-                } else {
-                    try await auth.signInWithIdToken(provider: provider, idToken: idToken, nonce: nonce)
-                }
+                try await auth.signInWithIdToken(provider: provider, idToken: idToken, nonce: nonce)
             } catch {
                 self?.providerErrorKey = Self.messageKey(error)
             }
@@ -555,8 +461,6 @@ final class OnboardingViewModel: ObservableObject {
     }
 
     // MARK: - Plumbing
-
-    private struct LinkNotPossible: Error {}
 
     private func startResendCountdown() {
         resendTask?.cancel()

@@ -1,4 +1,4 @@
-# Auth setup — email, Google, Apple, and linking
+# Auth setup — email, Google and Apple
 
 What has to be switched on outside the code for sign-in to work (PRD §9,
 2026-09-15). None of it is in either repo, and every item fails in a way that
@@ -57,22 +57,8 @@ unavailable.
 Resend's Supabase integration (Resend → Integrations) can fill step 3 in for
 you; the result must match the values above.
 
-**Authentication → Settings (or Sign In / Providers)**
-- **Allow manual linking:** on. Linking Google or Apple to an existing account
-  (`linkIdentityWithIdToken`) is refused without it.
-
 **Google** and **Apple** providers are as set up for ticket 2.3 (#16); nothing
 changes there.
-
-## Render (`finai-shared` environment group)
-
-- `SUPABASE_SERVICE_ROLE_KEY` — a **secret key** (`sb_secret_…`, Project
-  Settings → API Keys → Secret keys) or the legacy `service_role` key; the
-  backend handles either. Used only by
-  `app/services/supabase_admin.py` to delete the empty Supabase account when a
-  sign-in method is linked. Without it, `POST /me/link` answers
-  `502 orphan_auth_cleanup_failed`. **Backend only: it must never appear in this
-  repo, a client build, or a log.**
 
 ## Database
 
@@ -82,6 +68,7 @@ changes there.
 
 ## Still to do before launch
 
-- **Orphan cleanup job.** The app removes the empty account when linking
-  finishes. If someone abandons the flow, it stays. A periodic sweep of
-  phone-less accounts with no data, older than a day, closes that.
+- **Accounts that never finish the phone step.** A signup whose number is
+  already registered stays signed in with no phone until the user enters
+  another number or signs out. A periodic sweep of phone-less accounts with no
+  data, older than a day, keeps them from piling up.
