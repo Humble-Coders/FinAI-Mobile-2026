@@ -91,7 +91,7 @@ struct RootView: View {
         case .financialSetup:
             // 2.4 replaces this with the wizard. Until then it still blocks
             // home, which is what the server requires.
-            SetupPendingView()
+            SetupPendingView { model.signOut() }
         case .updateRequired:
             UpdateRequiredView()
         case .home:
