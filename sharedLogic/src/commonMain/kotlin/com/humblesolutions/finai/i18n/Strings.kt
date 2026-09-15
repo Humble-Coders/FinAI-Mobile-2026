@@ -22,6 +22,9 @@ object Strings {
     const val error_network = "error_network" // "Can't reach FinAI. Check your connection and try again."
     const val error_not_configured = "error_not_configured" // "This build isn't connected to a backend yet."
     const val error_unexpected = "error_unexpected" // "Something unexpected happened. Please try again."
+    const val error_invalid_phone = "error_invalid_phone" // "That number doesn't look right. Check the country code and try again."
+    const val error_invalid_code = "error_invalid_code" // "That code is wrong or has expired. Request a new one."
+    const val error_too_many_attempts = "error_too_many_attempts" // "Too many attempts. Wait a minute before trying again."
     const val error_phone_already_linked = "error_phone_already_linked" // "This number already has an account — sign in with your phone number instead."
     const val error_terms_changed = "error_terms_changed" // "The terms have been updated. Please read them again."
 

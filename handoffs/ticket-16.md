@@ -145,6 +145,19 @@ caught by installing on a Pixel 8 Pro (API 35) and looking at the screens.
   read as though the typed number were wrong. It now reports to
   `providerErrorKey`, under the buttons it came from, on Android and iOS alike.
 
+- **`Supabase.client` could poison itself.** It was a non-null `by lazy`; a
+  Kotlin/Native lazy whose initializer throws is marked permanently failed, and
+  every later access raises *"invalid reuse after initialization failure"* — an
+  error about the cache that names nothing about the cause, from a call site
+  that did nothing wrong. The config check catches the usual reason but not a
+  URL that is present yet malformed. It is nullable now and the failure is
+  swallowed, so an unbuildable client reads like an unconfigured one, which the
+  UI already handles.
+- **Deleting the old app matters.** Before the bundle-id fix the app installed
+  as `com.humblesolutions.finai.FinAI`; that install survives, looks identical
+  on the home screen, and still contains every pre-fix bug. Remove it, or half
+  a day gets spent debugging a build that is not the one being edited.
+
 Also confirmed on the device rather than asserted: the dark-mode launch screen
 paints the near-black ground with no white flash, the splash hands over without
 hanging, and a `/me` that returns 503 lands on the error screen with Retry —

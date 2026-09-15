@@ -49,6 +49,26 @@ sealed class ApiException(message: String, cause: Throwable? = null) : Exception
      * households. Merging two sign-in methods is a follow-up, so the only way
      * on is to sign in with the number instead.
      */
+    /** The number itself was refused — usually the wrong country code in front of it. */
+    class InvalidPhone : ApiException("phone number rejected") {
+        override val messageKey: String = Strings.error_invalid_phone
+    }
+
+    /** The six digits were wrong, or the code has expired. */
+    class InvalidCode : ApiException("verification code rejected") {
+        override val messageKey: String = Strings.error_invalid_code
+    }
+
+    /** Too many codes requested. Supabase rate-limits SMS per number. */
+    class TooManyAttempts : ApiException("sms rate limit reached") {
+        override val messageKey: String = Strings.error_too_many_attempts
+    }
+
+    /** Phone sign-in is switched off for this Supabase project. */
+    class SignInMethodUnavailable : ApiException("sign-in method disabled") {
+        override val messageKey: String = Strings.error_provider_not_configured
+    }
+
     class PhoneAlreadyLinked : ApiException("phone already linked to another account") {
         override val messageKey: String = Strings.error_phone_already_linked
     }

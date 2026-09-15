@@ -54,12 +54,12 @@ class SupabaseAuthRepository internal constructor(
     @Throws(ApiException::class, CancellationException::class)
     override suspend fun requestPhoneCode(phone: String) {
         val number = phone
-        callSupabase { auth.signInWith(OTP) { this.phone = number } }
+        callSupabase(SupabaseCall.PHONE) { auth.signInWith(OTP) { this.phone = number } }
     }
 
     @Throws(ApiException::class, CancellationException::class)
     override suspend fun verifyPhoneCode(phone: String, code: String) {
-        callSupabase { auth.verifyPhoneOtp(OtpType.Phone.SMS, phone, code) }
+        callSupabase(SupabaseCall.CODE) { auth.verifyPhoneOtp(OtpType.Phone.SMS, phone, code) }
     }
 
     @Throws(ApiException::class, CancellationException::class)
@@ -74,7 +74,7 @@ class SupabaseAuthRepository internal constructor(
             SocialProvider.GOOGLE -> Google
             SocialProvider.APPLE -> Apple
         }
-        callSupabase {
+        callSupabase(SupabaseCall.PROVIDER) {
             auth.signInWith(IDToken) {
                 this.idToken = token
                 this.provider = idTokenProvider
@@ -93,12 +93,12 @@ class SupabaseAuthRepository internal constructor(
     @Throws(ApiException::class, CancellationException::class)
     override suspend fun requestPhoneLink(phone: String) {
         val number = phone
-        callSupabase { auth.updateUser { this.phone = number } }
+        callSupabase(SupabaseCall.PHONE) { auth.updateUser { this.phone = number } }
     }
 
     @Throws(ApiException::class, CancellationException::class)
     override suspend fun verifyPhoneLink(phone: String, code: String) {
-        callSupabase { auth.verifyPhoneOtp(OtpType.Phone.PHONE_CHANGE, phone, code) }
+        callSupabase(SupabaseCall.CODE) { auth.verifyPhoneOtp(OtpType.Phone.PHONE_CHANGE, phone, code) }
     }
 
     @Throws(ApiException::class, CancellationException::class)
@@ -122,12 +122,15 @@ class SupabaseAuthRepository internal constructor(
 
     override fun close() = http.close()
 
-    private suspend fun <T> callSupabase(block: suspend () -> T): T = try {
+    private suspend fun <T> callSupabase(
+        call: SupabaseCall = SupabaseCall.OTHER,
+        block: suspend () -> T,
+    ): T = try {
         block()
     } catch (e: CancellationException) {
         throw e
     } catch (e: Exception) {
-        throw SupabaseErrors.map(e, whileRefreshing = false)
+        throw SupabaseErrors.map(e, whileRefreshing = false, call = call)
     }
 }
 
