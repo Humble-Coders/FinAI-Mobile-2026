@@ -1,12 +1,13 @@
 import SwiftUI
 import SharedLogic
 
-/// The in-app splash, continuing the launch screen.
+/// The in-app splash.
 ///
-/// The logo sits at the launch screen image's size and centre (Info.plist ->
-/// `UILaunchScreen`), so the hand-over is still; the wordmark and tagline sit
-/// below it. That is why this view does not use `ScreenScaffold`: the launch
-/// screen centres its image on the whole screen, not on the safe area.
+/// Logo, wordmark and tagline are centred together as one group, so they sit in
+/// the middle third of the screen. The launch screen shows only the ground
+/// colour (Info.plist -> `UILaunchScreen`): its image is always centred on the
+/// screen, and would jump up to meet this group. The slow-start notice sits in
+/// the bottom third, so appearing never moves the group.
 ///
 /// With `animate`, the launch intro plays once (shared `SplashIntro`) and then
 /// calls `onIntroFinished`. Every later splash shows the finished wordmark at
@@ -20,7 +21,7 @@ struct SplashView: View {
     @State private var frame: WordmarkFrame
     @State private var taglineShown: Bool
 
-    /// The launch image's size (LogoMark.imageset is 120pt).
+    /// LogoMark.imageset is drawn for this size.
     private static let logoSize: CGFloat = 120
 
     init(slow: Bool, animate: Bool = false, onIntroFinished: @escaping () -> Void = {}) {
@@ -33,37 +34,42 @@ struct SplashView: View {
 
     var body: some View {
         ZStack {
-            Brand.ground
-            Image("LogoMark")
-                .resizable()
-                .scaledToFit()
-                .frame(width: Self.logoSize, height: Self.logoSize)
-                .accessibilityHidden(true)
-                .overlay(alignment: .top) {
-                    VStack(spacing: 8) {
-                        Wordmark(frame: frame, font: .system(size: 40, weight: .bold))
-                            // Read once as the name, never letter by letter.
-                            .accessibilityElement(children: .ignore)
-                            .accessibilityLabel(L.t(Strings.shared.app_name))
-                        Text(L.t(Strings.shared.app_tagline))
-                            .font(.subheadline)
-                            .foregroundColor(Brand.textMuted)
-                            .multilineTextAlignment(.center)
-                            // Faded rather than added, so nothing above it moves.
-                            .opacity(taglineShown ? 1 : 0)
-                        if slow {
-                            ProgressView().padding(.top, 24)
-                            Text(L.t(Strings.shared.splash_slow))
-                                .font(.footnote)
-                                .foregroundColor(Brand.textMuted)
-                                .multilineTextAlignment(.center)
-                        }
-                    }
-                    .fixedSize(horizontal: true, vertical: true)
-                    .offset(y: Self.logoSize + 24)
+            Brand.ground.ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                Image("LogoMark")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: Self.logoSize, height: Self.logoSize)
+                    .accessibilityHidden(true)
+                Wordmark(frame: frame, font: .system(size: 40, weight: .bold))
+                    // Read once as the name, never letter by letter.
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(L.t(Strings.shared.app_name))
+                    .padding(.top, 24)
+                Text(L.t(Strings.shared.app_tagline))
+                    .font(.subheadline)
+                    .foregroundColor(Brand.textMuted)
+                    .multilineTextAlignment(.center)
+                    // Faded rather than added, so nothing above it moves.
+                    .opacity(taglineShown ? 1 : 0)
+                    .padding(.top, 8)
+            }
+            .padding(.horizontal, 24)
+
+            if slow {
+                VStack(spacing: 12) {
+                    ProgressView()
+                    Text(L.t(Strings.shared.splash_slow))
+                        .font(.footnote)
+                        .foregroundColor(Brand.textMuted)
+                        .multilineTextAlignment(.center)
                 }
+                .padding(.horizontal, 24)
+                .padding(.bottom, 48)
+                .frame(maxHeight: .infinity, alignment: .bottom)
+            }
         }
-        .ignoresSafeArea()
         .task { await playIntro() }
     }
 

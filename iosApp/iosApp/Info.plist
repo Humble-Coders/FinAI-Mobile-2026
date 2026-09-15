@@ -39,10 +39,9 @@
 	<dict>
 		<key>UIColorName</key>
 		<string>Ground</string>
-		<!-- 120pt, centred on the screen: SplashView draws it at the same size and
-		     centre, so launch hands over to the intro without the logo moving. -->
-		<key>UIImageName</key>
-		<string>LogoMark</string>
+		<!-- Deliberately no UIImageName: a launch image is always centred on the
+		     screen, while SplashView centres logo, wordmark and tagline together,
+		     so the logo would visibly jump up at the hand-over. -->
 	</dict>
 </dict>
 </plist>

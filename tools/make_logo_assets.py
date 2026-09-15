@@ -97,9 +97,7 @@ for name, s in DENSITIES.items():
     legacy = on_canvas(round(48 * s), round(46 * s))                     # API 24-25 launchers
     save(legacy, f"{A}/mipmap-{name}/ic_launcher.png")
     save(legacy, f"{A}/mipmap-{name}/ic_launcher_round.png")
-# System splash (Android 12+ and the compat library): 240dp canvas, 120dp circle, 3x.
-save(on_canvas(720, 360), f"{A}/drawable-xxhdpi/ic_splash_logo.png")
-# The in-app splash logo: 120dp, the same size and centre as the system splash icon.
+# The in-app splash logo, 120dp. (The system splash deliberately has no icon.)
 save(mark(360), f"{A}/drawable-xxhdpi/logo_mark.png")
 
 I = "iosApp/iosApp/Assets.xcassets"

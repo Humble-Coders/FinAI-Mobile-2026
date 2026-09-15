@@ -5,7 +5,8 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -45,12 +46,13 @@ import com.humblesolutions.finai.usecase.SplashIntro
 import kotlinx.coroutines.delay
 
 /**
- * The in-app splash, which continues the system one.
+ * The in-app splash.
  *
- * The logo sits at the exact size and centre of the system splash icon, so the
- * hand-over is still; the wordmark and tagline sit below it. That is why this
- * screen does not use [ScreenScaffold]: the system splash centres its icon on
- * the whole window, not on the safe area.
+ * Logo, wordmark and tagline are centred together as one group, so they sit in
+ * the middle third of the screen. The system splash shows only the ground colour
+ * (res/values/themes.xml): its icon is always centred on the window, and would
+ * jump up to meet this group. The slow-start notice sits in the bottom third, so
+ * appearing never moves the group.
  *
  * With [animate], the launch intro plays once ([SplashIntro]) and then calls
  * [onIntroFinished]. Every later splash — while the first `/me` loads after a
@@ -87,19 +89,17 @@ fun SplashScreen(slow: Boolean, animate: Boolean = false, onIntroFinished: () ->
     }
 
     val appName = strings(Strings.app_name)
-    BoxWithConstraints(Modifier.fillMaxSize()) {
-        Image(
-            painter = painterResource(R.drawable.logo_mark),
-            contentDescription = null,
-            modifier = Modifier.align(Alignment.Center).size(LogoSize),
-        )
+    Box(Modifier.fillMaxSize().safeDrawingPadding()) {
         Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = maxHeight / 2 + LogoSize / 2 + 24.dp)
-                .padding(horizontal = 24.dp),
+            modifier = Modifier.align(Alignment.Center).padding(horizontal = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
+            Image(
+                painter = painterResource(R.drawable.logo_mark),
+                contentDescription = null,
+                modifier = Modifier.size(LogoSize),
+            )
+            Spacer(Modifier.height(24.dp))
             Wordmark(
                 frame = frame,
                 style = MaterialTheme.typography.displaySmall.copy(fontWeight = FontWeight.Bold),
@@ -115,8 +115,12 @@ fun SplashScreen(slow: Boolean, animate: Boolean = false, onIntroFinished: () ->
                 // Faded rather than added, so nothing above it moves.
                 modifier = Modifier.alpha(taglineAlpha),
             )
-            if (slow) {
-                Spacer(Modifier.height(32.dp))
+        }
+        if (slow) {
+            Column(
+                modifier = Modifier.align(Alignment.BottomCenter).padding(horizontal = 24.dp, vertical = 48.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
                 CircularProgressIndicator(modifier = Modifier.heightIn(max = 28.dp), strokeWidth = 2.dp)
                 Spacer(Modifier.height(12.dp))
                 Text(
@@ -130,7 +134,7 @@ fun SplashScreen(slow: Boolean, animate: Boolean = false, onIntroFinished: () ->
     }
 }
 
-/** The system splash draws its icon circle at this size (res/drawable-xxhdpi/ic_splash_logo.png). */
+/** res/drawable-xxhdpi/logo_mark.png is drawn for this size. */
 private val LogoSize = 120.dp
 
 /**

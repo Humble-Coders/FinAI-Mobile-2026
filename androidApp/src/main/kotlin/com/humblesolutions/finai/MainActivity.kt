@@ -21,9 +21,9 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
 
-        // No keep-on-screen condition: the system splash leaves at the first
-        // frame, and the in-app splash — logo in the same place — plays the
-        // intro and holds routing until both it and the first decision are done.
+        // No keep-on-screen condition: the system splash (ground colour only)
+        // leaves at the first frame, and the in-app splash plays the intro and
+        // holds routing until both it and the first decision are done.
 
         viewModel.bind(
             logging = BuildConfig.DEBUG,
