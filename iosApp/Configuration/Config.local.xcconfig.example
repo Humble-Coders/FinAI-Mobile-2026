@@ -1,0 +1,13 @@
+// Copy to Config.local.xcconfig (gitignored) and fill in. Config.xcconfig
+// includes it last, so values here override the empty defaults there.
+//
+// The iOS Google client id, reversed - Google's SDK needs it as a URL scheme.
+// Take the id you put in local.properties (google.iosClientId) and move the
+// domain to the front:
+//
+//   123-abc.apps.googleusercontent.com
+//   -> com.googleusercontent.apps.123-abc
+//
+// Leave empty until Google sign-in is configured; the launcher checks for the
+// scheme and refuses politely rather than letting the SDK crash the app.
+GOOGLE_REVERSED_CLIENT_ID=

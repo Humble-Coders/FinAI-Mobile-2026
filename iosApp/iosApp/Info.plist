@@ -19,9 +19,10 @@
 	  reversed - and raises an UNCAUGHT NSException the moment sign-in starts
 	  if the app has not registered it. Not an error it hands back: a crash.
 
-	  The value comes from GOOGLE_REVERSED_CLIENT_ID in Config.xcconfig, so a
-	  developer sets it once beside the other build settings. It is not a
-	  secret; the same string ships inside every copy of the app.
+	  The value comes from GOOGLE_REVERSED_CLIENT_ID, set per developer in the
+	  gitignored Config.local.xcconfig (see Config.local.xcconfig.example). It
+	  is not a secret - the same string ships inside every copy of the app - but
+	  it stays out of git like the rest of the client configuration.
 	-->
 	<key>CFBundleURLTypes</key>
 	<array>
