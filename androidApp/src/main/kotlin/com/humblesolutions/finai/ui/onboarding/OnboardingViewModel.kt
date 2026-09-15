@@ -96,6 +96,9 @@ class OnboardingViewModel : ViewModel() {
         _uiState.update { it.copy(startIsSlow = true) }
     }
 
+    /** The launch splash finished its intro; routing may take over. */
+    fun onIntroFinished() = _uiState.update { it.copy(introFinished = true) }
+
     fun loadMe() {
         val auth = auth ?: return
         viewModelScope.launch {

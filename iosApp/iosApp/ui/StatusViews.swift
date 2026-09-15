@@ -3,27 +3,87 @@ import SharedLogic
 
 /// The in-app splash, continuing the launch screen.
 ///
-/// No timer: it lasts exactly as long as the session restore and the first
-/// `/me`. If that turns out to be slow it says so, because a motionless logo is
-/// indistinguishable from a hang.
+/// The logo sits at the launch screen image's size and centre (Info.plist ->
+/// `UILaunchScreen`), so the hand-over is still; the wordmark and tagline sit
+/// below it. That is why this view does not use `ScreenScaffold`: the launch
+/// screen centres its image on the whole screen, not on the safe area.
+///
+/// With `animate`, the launch intro plays once (shared `SplashIntro`) and then
+/// calls `onIntroFinished`. Every later splash shows the finished wordmark at
+/// once, and so does the launch splash with Reduce Motion on.
 struct SplashView: View {
     let slow: Bool
+    var animate = false
+    var onIntroFinished: () -> Void = {}
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var frame: WordmarkFrame
+    @State private var taglineShown: Bool
+
+    /// The launch image's size (LogoMark.imageset is 120pt).
+    private static let logoSize: CGFloat = 120
+
+    init(slow: Bool, animate: Bool = false, onIntroFinished: @escaping () -> Void = {}) {
+        self.slow = slow
+        self.animate = animate
+        self.onIntroFinished = onIntroFinished
+        _frame = State(initialValue: animate ? SplashIntro.shared.frames.first! : SplashIntro.shared.finalFrame)
+        _taglineShown = State(initialValue: !animate)
+    }
 
     var body: some View {
-        ScreenScaffold(alignment: .center, centred: true) {
-            Wordmark()
-            Text(L.t(Strings.shared.app_tagline))
-                .font(.subheadline)
-                .foregroundColor(Brand.textMuted)
-                .multilineTextAlignment(.center)
-            if slow {
-                ProgressView().padding(.top, 24)
-                Text(L.t(Strings.shared.splash_slow))
-                    .font(.footnote)
-                    .foregroundColor(Brand.textMuted)
-                    .multilineTextAlignment(.center)
-            }
+        ZStack {
+            Brand.ground
+            Image("LogoMark")
+                .resizable()
+                .scaledToFit()
+                .frame(width: Self.logoSize, height: Self.logoSize)
+                .accessibilityHidden(true)
+                .overlay(alignment: .top) {
+                    VStack(spacing: 8) {
+                        Wordmark(frame: frame, font: .system(size: 40, weight: .bold))
+                            // Read once as the name, never letter by letter.
+                            .accessibilityElement(children: .ignore)
+                            .accessibilityLabel(L.t(Strings.shared.app_name))
+                        Text(L.t(Strings.shared.app_tagline))
+                            .font(.subheadline)
+                            .foregroundColor(Brand.textMuted)
+                            .multilineTextAlignment(.center)
+                            // Faded rather than added, so nothing above it moves.
+                            .opacity(taglineShown ? 1 : 0)
+                        if slow {
+                            ProgressView().padding(.top, 24)
+                            Text(L.t(Strings.shared.splash_slow))
+                                .font(.footnote)
+                                .foregroundColor(Brand.textMuted)
+                                .multilineTextAlignment(.center)
+                        }
+                    }
+                    .fixedSize(horizontal: true, vertical: true)
+                    .offset(y: Self.logoSize + 24)
+                }
         }
+        .ignoresSafeArea()
+        .task { await playIntro() }
+    }
+
+    private func playIntro() async {
+        guard animate else { return }
+        let fade = Double(SplashIntro.shared.TAGLINE_FADE_MS) / 1000
+        if reduceMotion {
+            frame = SplashIntro.shared.finalFrame
+            taglineShown = true
+        } else {
+            for next in SplashIntro.shared.frames {
+                frame = next
+                try? await Task.sleep(nanoseconds: UInt64(next.holdMs) * 1_000_000)
+                if Task.isCancelled { return }
+            }
+            withAnimation(.easeIn(duration: fade)) { taglineShown = true }
+            try? await Task.sleep(nanoseconds: UInt64(fade * 1_000_000_000))
+            if Task.isCancelled { return }
+        }
+        onIntroFinished()
     }
 }
 

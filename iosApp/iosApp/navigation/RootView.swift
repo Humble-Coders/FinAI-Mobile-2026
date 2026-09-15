@@ -14,6 +14,11 @@ struct RootView: View {
         Group {
             if let problemKey = model.configurationProblemKey {
                 NotConfiguredView(messageKey: problemKey)
+            } else if !model.introFinished {
+                // The launch intro plays in full before anything routes, so a
+                // signed-in user's fast start still sees it. It hands over to
+                // the static splash if routing is still deciding.
+                SplashView(slow: false, animate: true) { model.finishIntro() }
             } else {
                 content
             }

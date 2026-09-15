@@ -9,7 +9,6 @@ import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import com.humblesolutions.finai.navigation.AppNavigation
 import com.humblesolutions.finai.ui.onboarding.OnboardingViewModel
 import com.humblesolutions.finai.ui.theme.FinAiTheme
-import com.humblesolutions.finai.usecase.Destination
 import java.util.TimeZone
 
 class MainActivity : ComponentActivity() {
@@ -17,16 +16,14 @@ class MainActivity : ComponentActivity() {
     private val viewModel: OnboardingViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        // Before super.onCreate: this swaps the launch theme for the app theme,
-        // and it is what keeps the system splash on screen below.
-        val splash = installSplashScreen()
+        // Before super.onCreate: this swaps the launch theme for the app theme.
+        installSplashScreen()
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
 
-        // The system splash stays up for exactly as long as the shared rule
-        // says we are still deciding — no timer, and no gap where a signed-in
-        // user would see the welcome screen flash before home.
-        splash.setKeepOnScreenCondition { viewModel.uiState.value.destination == Destination.Splash }
+        // No keep-on-screen condition: the system splash leaves at the first
+        // frame, and the in-app splash — logo in the same place — plays the
+        // intro and holds routing until both it and the first decision are done.
 
         viewModel.bind(
             logging = BuildConfig.DEBUG,

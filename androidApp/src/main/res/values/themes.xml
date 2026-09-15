@@ -15,6 +15,8 @@
     <!-- The launch theme. Handed to the system, not to Compose. -->
     <style name="Theme.FinAISplash" parent="Theme.SplashScreen">
         <item name="windowSplashScreenBackground">@color/splash_background</item>
+        <!-- 240dp with the 120dp logo circle in the middle: the in-app splash
+             draws the logo at the same size and centre, so the hand-over is still. -->
         <item name="windowSplashScreenAnimatedIcon">@drawable/ic_splash_logo</item>
         <item name="postSplashScreenTheme">@style/Theme.FinAI</item>
     </style>

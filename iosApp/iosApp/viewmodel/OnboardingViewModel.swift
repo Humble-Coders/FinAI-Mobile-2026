@@ -17,6 +17,8 @@ final class OnboardingViewModel: ObservableObject {
     @Published private(set) var me: Me?
     @Published private(set) var meFailure: ApiException?
     @Published private(set) var startIsSlow = false
+    /// The launch intro has played. Once per process, so a sign-out never replays it.
+    @Published private(set) var introFinished = false
 
     // Welcome.
     @Published var welcomeMode: WelcomeMode = .createAccount {
@@ -165,6 +167,11 @@ final class OnboardingViewModel: ObservableObject {
         try? await Task.sleep(nanoseconds: 4_000_000_000)
         guard !Task.isCancelled else { return }
         startIsSlow = true
+    }
+
+    /// The launch splash finished its intro; routing may take over.
+    func finishIntro() {
+        introFinished = true
     }
 
     func unbind() {

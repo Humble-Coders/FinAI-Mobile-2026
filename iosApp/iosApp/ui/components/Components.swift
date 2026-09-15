@@ -44,11 +44,18 @@ struct ScreenScaffold<Content: View>: View {
     }
 }
 
-/// `FinAI`, with the AI in the accent — the wordmark from the splash design.
+/// `FinAI`, with the AI in the accent — the wordmark from the logo.
+///
+/// Spelled by the shared `SplashIntro`, never here: `frame` is the finished
+/// name everywhere except the splash, which animates through the others.
 struct Wordmark: View {
+    var frame: WordmarkFrame = SplashIntro.shared.finalFrame
+    var font: Font = .largeTitle.weight(.bold)
+
     var body: some View {
-        (Text("Fin").foregroundColor(.primary) + Text("AI").foregroundColor(Brand.green).bold())
-            .font(.largeTitle.weight(.bold))
+        (Text(frame.plain).foregroundColor(.primary) + Text(frame.accent).foregroundColor(Brand.green).bold())
+            .font(font)
+            .lineLimit(1)
     }
 }
 

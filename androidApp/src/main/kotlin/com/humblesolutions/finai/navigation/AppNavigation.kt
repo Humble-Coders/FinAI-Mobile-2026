@@ -55,6 +55,14 @@ fun AppNavigation(viewModel: OnboardingViewModel) {
         return
     }
 
+    // The launch intro plays in full before anything routes, so a signed-in
+    // user's fast start still sees it. It hands over to the static splash below
+    // if routing is still deciding, which looks identical minus the motion.
+    if (!state.introFinished) {
+        SplashScreen(slow = false, animate = true, onIntroFinished = viewModel::onIntroFinished)
+        return
+    }
+
     // The region override, reached from consent. Not an onboarding step: the
     // server is not asking for it, the user chose to correct it (PRD §4.6).
     var changingRegion by rememberSaveable { mutableStateOf(false) }

@@ -39,6 +39,10 @@
 	<dict>
 		<key>UIColorName</key>
 		<string>Ground</string>
+		<!-- 120pt, centred on the screen: SplashView draws it at the same size and
+		     centre, so launch hands over to the intro without the logo moving. -->
+		<key>UIImageName</key>
+		<string>LogoMark</string>
 	</dict>
 </dict>
 </plist>

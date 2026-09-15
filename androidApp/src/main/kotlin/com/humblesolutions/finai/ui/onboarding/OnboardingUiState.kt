@@ -31,6 +31,12 @@ data class OnboardingUiState(
     /** True once the splash has been up long enough to deserve a progress indicator. */
     val startIsSlow: Boolean = false,
 
+    /**
+     * The launch intro has played. Once per process: it is held in the view
+     * model, so a rotation or a sign-out never replays it.
+     */
+    val introFinished: Boolean = false,
+
     // Welcome.
     val welcomeMode: WelcomeMode = WelcomeMode.CREATE_ACCOUNT,
     val email: String = "",
