@@ -24,12 +24,38 @@ Never paste a key or secret into a ticket, PR, chat or commit. Names only.
 - **Confirm signup** and **Reset password** must include `{{ .Token }}`. The
   apps take a typed code, not a link. A template with only
   `{{ .ConfirmationURL }}` sends an email the app cannot use.
+- Paste the bodies from `docs/email-templates/` — `confirm-signup.html` and
+  `reset-password.html`. Subjects: "Your FinAI code: {{ .Token }}" and
+  "Reset your FinAI password".
 
-**Authentication → Emails → SMTP settings**
-- Configure a real sender **before anyone outside the team signs up**.
-  Supabase's built-in mailer only delivers to project team members and is
-  heavily rate-limited. Anyone else gets `email_address_not_authorized`, which
-  the app shows as the sign-in method being unavailable.
+**Authentication → Emails → SMTP settings — Resend**
+
+Supabase creates, emails and checks the codes itself; Resend only delivers
+them. Supabase's built-in mailer is for testing: it delivers only to project
+team members and is heavily rate-limited, so anyone else gets
+`email_address_not_authorized`, which the app shows as the sign-in method being
+unavailable.
+
+1. **Resend → Domains → Add domain.** Use a subdomain you control (e.g.
+   `mail.<your-domain>`), add the DNS records Resend shows (SPF and DKIM), and
+   wait for **Verified**. Until then Resend only delivers to the address the
+   Resend account was created with.
+2. **Resend → API Keys → Create.** Permission **Sending access**, restricted to
+   that domain. Copy it straight into step 3 — do not paste it anywhere else.
+3. **Supabase → Authentication → Emails → SMTP settings → Enable custom SMTP:**
+   - Sender email: `no-reply@mail.<your-domain>` (must be on the verified domain)
+   - Sender name: `FinAI`
+   - Host: `smtp.resend.com`
+   - Port: `465`
+   - Username: `resend`
+   - Password: the API key from step 2
+4. **Supabase → Authentication → Rate Limits → emails sent per hour.** Custom
+   SMTP starts low; raise it to what launch needs (Resend's plan caps it too).
+5. Test: create an account in the app with an address on a real inbox, and
+   check the code arrives and verifies; then do Forgot password.
+
+Resend's Supabase integration (Resend → Integrations) can fill step 3 in for
+you; the result must match the values above.
 
 **Authentication → Settings (or Sign In / Providers)**
 - **Allow manual linking:** on. Linking Google or Apple to an existing account
