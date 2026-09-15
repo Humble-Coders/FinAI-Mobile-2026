@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -21,13 +22,21 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import com.humblesolutions.finai.i18n.Strings
@@ -123,7 +132,7 @@ fun PrimaryButton(
     }
 }
 
-/** A provider route. Outlined, never accented: the phone route is the primary one. */
+/** A provider route. Outlined, never accented: the form's own button is the primary one. */
 @Composable
 fun ProviderButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) {
     OutlinedButton(
@@ -136,7 +145,7 @@ fun ProviderButton(text: String, onClick: () -> Unit, modifier: Modifier = Modif
     }
 }
 
-/** `──── or ────`, between the phone route and the provider routes. */
+/** `──── or ────`, between the email form and the provider routes. */
 @Composable
 fun OrDivider(modifier: Modifier = Modifier) {
     Row(modifier = modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -161,8 +170,11 @@ fun FinAiTextField(
     placeholder: String? = null,
     keyboardType: KeyboardType = KeyboardType.Text,
     keyboardOptions: KeyboardOptions = KeyboardOptions(keyboardType = keyboardType),
+    keyboardActions: KeyboardActions = KeyboardActions.Default,
     isError: Boolean = false,
     singleLine: Boolean = true,
+    visualTransformation: VisualTransformation = VisualTransformation.None,
+    trailingIcon: (@Composable () -> Unit)? = null,
 ) {
     OutlinedTextField(
         value = value,
@@ -171,8 +183,44 @@ fun FinAiTextField(
         label = { Text(label) },
         placeholder = placeholder?.let { { Text(it) } },
         keyboardOptions = keyboardOptions,
+        keyboardActions = keyboardActions,
         isError = isError,
         singleLine = singleLine,
+        visualTransformation = visualTransformation,
+        trailingIcon = trailingIcon,
+    )
+}
+
+/**
+ * A password, hidden until the user asks to see it.
+ *
+ * Show/Hide is a word rather than an eye icon: the icon set is not a
+ * dependency, and a labelled control needs no content description.
+ */
+@Composable
+fun PasswordField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    label: String,
+    onDone: () -> Unit,
+    modifier: Modifier = Modifier,
+    isError: Boolean = false,
+) {
+    var visible by rememberSaveable { mutableStateOf(false) }
+    FinAiTextField(
+        value = value,
+        onValueChange = onValueChange,
+        label = label,
+        modifier = modifier,
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
+        keyboardActions = KeyboardActions(onDone = { onDone() }),
+        isError = isError,
+        visualTransformation = if (visible) VisualTransformation.None else PasswordVisualTransformation(),
+        trailingIcon = {
+            TextButton(onClick = { visible = !visible }) {
+                Text(strings(if (visible) Strings.action_hide else Strings.action_show))
+            }
+        },
     )
 }
 

@@ -34,6 +34,8 @@ private struct MessageView: View {
     let message: String
     var actionTitle: String?
     var action: (() -> Void)?
+    var secondaryTitle: String?
+    var secondaryAction: (() -> Void)?
 
     var body: some View {
         ScreenScaffold(alignment: .center, centred: true) {
@@ -46,6 +48,10 @@ private struct MessageView: View {
                 .multilineTextAlignment(.center)
             if let actionTitle, let action {
                 PrimaryButton(title: actionTitle) { action() }.padding(.top, 16)
+            }
+            if let secondaryTitle, let secondaryAction {
+                Button(secondaryTitle, action: secondaryAction)
+                    .foregroundColor(Brand.green)
             }
         }
     }
@@ -63,17 +69,26 @@ struct UpdateRequiredView: View {
     }
 }
 
-/// `/me` could not be loaded. Always offers a way forward.
+/// `/me` could not be loaded.
+///
+/// Retry is the main action, but it cannot be the only one: while the server is
+/// down every retry fails, and a signed-in caller who cannot load `/me` has no
+/// other screen to be on. Without a way out they are simply stuck, which is what
+/// the ticket's "never stuck" rule is about. Signing out returns them to the
+/// welcome screen, which always works because it needs nothing from the API.
 struct FailedView: View {
     let messageKey: String
     let onRetry: () -> Void
+    let onSignOut: () -> Void
 
     var body: some View {
         MessageView(
             title: L.t(Strings.shared.error_title),
             message: L.t(messageKey),
             actionTitle: L.t(Strings.shared.action_retry),
-            action: onRetry
+            action: onRetry,
+            secondaryTitle: L.t(Strings.shared.action_sign_out),
+            secondaryAction: onSignOut
         )
     }
 }

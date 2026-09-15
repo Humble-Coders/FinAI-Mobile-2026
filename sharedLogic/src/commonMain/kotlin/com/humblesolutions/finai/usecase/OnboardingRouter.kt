@@ -8,9 +8,9 @@ import com.humblesolutions.finai.model.SessionState
 /**
  * Where the app should be right now.
  *
- * The code-entry screen is deliberately absent: it is not a state the server
- * knows about. It is reached from [Step] `PHONE` once a code has been sent, and
- * that transition belongs to the phone screen.
+ * Code entry, a password reset and a pending link are deliberately absent:
+ * none is a state the server knows about. Each is a sub-state the screen that
+ * starts it owns, and the platform navigation checks them before this.
  */
 sealed class Destination {
 
@@ -28,7 +28,7 @@ sealed class Destination {
         override val screen: Screen get() = Screen.SPLASH
     }
 
-    /** Signed out: phone entry and the provider buttons. */
+    /** Signed out: email and password, and the provider buttons. */
     data object Welcome : Destination() {
         override val screen: Screen get() = Screen.WELCOME
     }

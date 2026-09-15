@@ -1,17 +1,34 @@
 import SwiftUI
 import SharedLogic
 
-/// Six digits, and the way back to a mistyped number.
+/// Six digits, and the way back to a mistyped address or number.
+///
+/// One view for every code — SMS for the phone step, email for signup and a
+/// password reset — so they cannot drift apart.
 struct CodeView: View {
     @ObservedObject var model: OnboardingViewModel
+    /// The number or address, shown so a typo is noticed.
+    let sentTo: String
+    /// The label for going back to fix `sentTo`.
+    let editKey: String
+    var hintKey: String?
+    let onVerify: () -> Void
+    let onResend: () -> Void
+    let onEdit: () -> Void
+
     @FocusState private var focused: Bool
 
     var body: some View {
         ScreenScaffold {
             Text(L.t(Strings.shared.code_title)).font(.title2.weight(.semibold))
-            Text(L.t(Strings.shared.code_sent_to, model.e164))
+            Text(L.t(Strings.shared.code_sent_to, sentTo))
                 .font(.subheadline)
                 .foregroundColor(Brand.textMuted)
+            if let hintKey {
+                Text(L.t(hintKey))
+                    .font(.footnote)
+                    .foregroundColor(Brand.textMuted)
+            }
 
             cells
                 .contentShape(Rectangle())
@@ -23,10 +40,10 @@ struct CodeView: View {
                 title: L.t(Strings.shared.code_verify),
                 enabled: model.canVerify,
                 busy: model.busy
-            ) { model.verifyCode() }
+            ) { onVerify() }
 
             if model.canResend {
-                Button(L.t(Strings.shared.code_resend)) { model.sendCode() }
+                Button(L.t(Strings.shared.code_resend)) { onResend() }
                     .foregroundColor(Brand.green)
             } else {
                 Text(L.t(Strings.shared.code_resend_in, model.resendCountdown))
@@ -34,7 +51,7 @@ struct CodeView: View {
                     .foregroundColor(Brand.textMuted)
             }
 
-            Button(L.t(Strings.shared.code_wrong_number)) { model.editNumber() }
+            Button(L.t(editKey)) { onEdit() }
                 .font(.footnote)
                 .foregroundColor(Brand.textMuted)
         }

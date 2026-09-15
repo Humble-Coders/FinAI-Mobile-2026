@@ -1,7 +1,7 @@
 import Foundation
 import SharedLogic
 
-/// Drives signup and the onboarding steps after it.
+/// Drives sign-in, signup and the onboarding steps after it.
 ///
 /// The repository is built fresh in `bind()` and closed in `unbind()` — never a
 /// singleton. Every stored `Task` is cancelled on unbind (kmp-arch-v2); the
@@ -18,16 +18,60 @@ final class OnboardingViewModel: ObservableObject {
     @Published private(set) var meFailure: ApiException?
     @Published private(set) var startIsSlow = false
 
+    // Welcome.
+    @Published var welcomeMode: WelcomeMode = .createAccount {
+        didSet { errorKey = nil; providerErrorKey = nil }
+    }
+    @Published var email = ""
+    /// Cleared as soon as it has been sent; never kept once it is no longer needed.
+    @Published var password = ""
+    /// A signup code was emailed to this address; the code screen replaces the form.
+    @Published private(set) var emailCodeFor: String?
+    @Published private(set) var reset: ResetStage?
+
+    // The phone step.
     @Published var dialCode: DialCode = DialCodes.shared.fallback
-    @Published var phoneDigits = ""
+    @Published var phoneDigits = "" {
+        didSet { if phoneTaken, oldValue != phoneDigits { phoneTaken = false } }
+    }
+    /// The number belongs to another account; the phone screen offers to link instead.
+    @Published private(set) var phoneTaken = false
     @Published private(set) var codeSent = false
-    @Published var code = "" { didSet { code = String(code.filter(\.isNumber).prefix(Self.codeLength)) } }
+    /// Digits only, at most `codeLength` of them.
+    ///
+    /// The guard is load-bearing. `@Published` routes assignment through the
+    /// property wrapper's setter, so writing to `code` inside its own `didSet`
+    /// re-enters `didSet` - unlike a plain stored property, where Swift
+    /// suppresses that. Without the comparison it recursed until the stack
+    /// overflowed, and `bind()` sets `code = ""` the moment Supabase reports no
+    /// stored session: every signed-out launch crashed on the splash screen.
+    @Published var code = "" {
+        didSet {
+            let sanitized = String(code.filter(\.isNumber).prefix(Self.codeLength))
+            if sanitized != code { code = sanitized }
+        }
+    }
     @Published private(set) var resendSeconds = 0
+
+    /// A sign-in method waiting to move onto the account being signed in to.
+    @Published private(set) var pendingLink: PendingLink?
+    /// The empty account is gone; only adding the provider remains.
+    @Published private(set) var orphanRemoved = false
 
     @Published private(set) var terms: Terms?
     @Published private(set) var busy = false
     @Published private(set) var errorKey: String?
 
+    /// A provider sign-in that failed, kept apart from `errorKey`.
+    ///
+    /// They are shown in different places and mean different things: one is
+    /// about what the user typed, the other about a button they pressed.
+    /// Sharing a field turned the phone box red because Google was
+    /// misconfigured.
+    @Published private(set) var providerErrorKey: String?
+
+    /// SMS and email codes alike. Supabase's email code length is a project
+    /// setting: keep it at 6.
     static let codeLength = 6
     private static let minPhoneDigits = 4
     private static let resendSecondsStart = 60
@@ -53,10 +97,22 @@ final class OnboardingViewModel: ObservableObject {
     /// The number as the API wants it: digits only behind a `+`.
     var e164: String { "+" + dialCode.code + digits }
 
+    var creatingAccount: Bool { welcomeMode == .createAccount }
+
+    var canSubmitCredentials: Bool {
+        !busy && Credentials.shared.problem(email: email, password: password, creating: creatingAccount) == nil
+    }
+    var canRequestReset: Bool { !busy && Credentials.shared.looksLikeEmail(raw: email) }
+    var canSaveNewPassword: Bool {
+        !busy && Credentials.shared.passwordProblem(password: password, creating: true) == nil
+    }
+
+    /// Signed in to the account being linked into, with its `/me` loaded.
+    var showLinkScreen: Bool { pendingLink != nil && session == .signedIn && me != nil }
+
     var canSendCode: Bool { !busy && digits.count >= Self.minPhoneDigits }
     var canVerify: Bool { !busy && code.count == Self.codeLength }
     var canResend: Bool { !busy && resendSeconds == 0 }
-    var showCodeScreen: Bool { codeSent }
 
     var resendCountdown: String {
         String(format: "%d:%02d", resendSeconds / 60, resendSeconds % 60)
@@ -95,15 +151,22 @@ final class OnboardingViewModel: ObservableObject {
                 if state == .signedIn {
                     self.loadMe()
                 } else if state == .signedOut, was != .signedOut {
+                    // A pending link survives: signing out of the empty
+                    // account is how the link begins.
                     self.me = nil
                     self.meFailure = nil
                     self.terms = nil
                     self.code = ""
                     self.codeSent = false
+                    self.phoneTaken = false
+                    self.phoneDigits = ""
+                    self.orphanRemoved = false
+                    self.reset = nil
+                    self.emailCodeFor = nil
+                    self.password = ""
                 }
             }
         }
-
     }
 
     /// A motionless logo is indistinguishable from a hang, and Render's free tier
@@ -129,7 +192,312 @@ final class OnboardingViewModel: ObservableObject {
         auth = nil
     }
 
-    // MARK: - Actions
+    // MARK: - Welcome: email and password
+
+    /// Creates the account or signs in, depending on the mode.
+    func submitCredentials() {
+        guard let auth, canSubmitCredentials else { return }
+        let address = Credentials.shared.normalizeEmail(raw: email)
+        let secret = password
+
+        if creatingAccount {
+            perform {
+                try await auth.signUpWithEmail(email: address, password: secret)
+            } onSuccess: { [weak self] in
+                self?.showEmailCode(for: address)
+            }
+            return
+        }
+
+        var needsCode = false
+        perform {
+            do {
+                try await auth.signInWithEmail(email: address, password: secret)
+            } catch {
+                guard Self.apiException(error) is ApiException.EmailNotConfirmed else { throw error }
+                // An account that never entered its code. Send a fresh one
+                // rather than naming a problem they cannot act on. A rate limit
+                // means one was sent moments ago.
+                needsCode = true
+                do {
+                    try await auth.resendSignupCode(email: address)
+                } catch {
+                    guard Self.apiException(error) is ApiException.TooManyAttempts else { throw error }
+                }
+            }
+        } onSuccess: { [weak self] in
+            if needsCode {
+                self?.showEmailCode(for: address)
+            } else {
+                self?.password = ""
+            }
+        }
+    }
+
+    /// Typing again clears a failure about what was typed.
+    func clearFormError() {
+        if errorKey != nil { errorKey = nil }
+    }
+
+    private func showEmailCode(for address: String) {
+        emailCodeFor = address
+        code = ""
+        password = ""
+        startResendCountdown()
+    }
+
+    /// Verifies the emailed signup code, which signs the user in.
+    func verifyEmailCode() {
+        guard let auth, let address = emailCodeFor, canVerify else { return }
+        let entered = code
+        perform {
+            try await auth.verifySignupCode(email: address, code: entered)
+        } onSuccess: { [weak self] in
+            self?.emailCodeFor = nil
+            self?.code = ""
+        }
+    }
+
+    func resendEmailCode() {
+        guard let auth, let address = emailCodeFor else { return }
+        perform {
+            try await auth.resendSignupCode(email: address)
+        } onSuccess: { [weak self] in
+            self?.startResendCountdown()
+        }
+    }
+
+    /// Back from the email code screen, to fix a mistyped address.
+    func editEmail() {
+        resendTask?.cancel()
+        emailCodeFor = nil
+        code = ""
+        resendSeconds = 0
+        errorKey = nil
+    }
+
+    // MARK: - Forgot password
+
+    func startReset() {
+        reset = .request
+        password = ""
+        code = ""
+        errorKey = nil
+        providerErrorKey = nil
+    }
+
+    func requestResetCode() {
+        guard let auth, canRequestReset else { return }
+        let address = Credentials.shared.normalizeEmail(raw: email)
+        perform {
+            try await auth.requestPasswordReset(email: address)
+        } onSuccess: { [weak self] in
+            self?.email = address
+            self?.reset = .code
+            self?.code = ""
+            self?.startResendCountdown()
+        }
+    }
+
+    func verifyResetCode() {
+        guard let auth, canVerify else { return }
+        let address = email
+        let entered = code
+        perform {
+            try await auth.verifyPasswordResetCode(email: address, code: entered)
+        } onSuccess: { [weak self] in
+            self?.reset = .newPassword
+            self?.code = ""
+            self?.password = ""
+        }
+    }
+
+    func saveNewPassword() {
+        guard let auth, canSaveNewPassword else { return }
+        let secret = password
+        perform {
+            try await auth.setNewPassword(password: secret)
+        } onSuccess: { [weak self] in
+            self?.reset = nil
+            self?.password = ""
+        }
+    }
+
+    /// Leaves the reset. Once the code has verified the user is signed in with
+    /// a recovery session and no new password, so leaving then signs out: the
+    /// app is never reached by a reset that did not finish.
+    func cancelReset() {
+        let signedInForReset = reset == .newPassword
+        resendTask?.cancel()
+        reset = nil
+        code = ""
+        password = ""
+        resendSeconds = 0
+        errorKey = nil
+        if signedInForReset { signOut() }
+    }
+
+    // MARK: - The phone step
+
+    /// Attaches the number to the signed-in account, which texts the code.
+    func sendCode() {
+        guard let auth, canSendCode else { return }
+        let number = e164
+        var taken = false
+        perform {
+            do {
+                try await auth.requestPhoneLink(phone: number)
+            } catch {
+                // Not an error to show: the phone screen offers the way on.
+                guard Self.apiException(error) is ApiException.PhoneAlreadyLinked else { throw error }
+                taken = true
+            }
+        } onSuccess: { [weak self] in
+            if taken {
+                self?.phoneTaken = true
+            } else {
+                self?.codeSent = true
+                self?.code = ""
+                self?.startResendCountdown()
+            }
+        }
+    }
+
+    func verifyCode() {
+        guard let auth, canVerify else { return }
+        let number = e164
+        let entered = code
+        perform {
+            try await auth.verifyPhoneLink(phone: number, code: entered)
+        } onSuccess: { [weak self] in
+            self?.codeSent = false
+            self?.code = ""
+            // Linking keeps the same session, so no new signedIn arrives to
+            // trigger a reload — ask for the new state directly.
+            self?.loadMe()
+        }
+    }
+
+    /// Back from the code screen, to fix a mistyped number.
+    func editNumber() {
+        resendTask?.cancel()
+        codeSent = false
+        code = ""
+        resendSeconds = 0
+        errorKey = nil
+    }
+
+    func useDifferentNumber() {
+        phoneDigits = ""
+        phoneTaken = false
+        errorKey = nil
+    }
+
+    // MARK: - Linking a sign-in method to an existing account
+
+    /// The number belongs to another account and the person says it is theirs.
+    ///
+    /// Keeps proof of this (empty) session, then signs out of it so they can
+    /// sign in to the real account. `me` is dropped first so the phone screen
+    /// cannot be used again while the sign-out is in flight.
+    func startLink() {
+        guard let auth else { return }
+        busy = true
+        errorKey = nil
+        Task { [weak self] in
+            do {
+                guard let token = try await auth.currentAccessToken() else {
+                    throw LinkNotPossible()
+                }
+                let link = PendingLink(orphanToken: token, provider: auth.currentSignInProvider())
+                self?.pendingLink = link
+                self?.me = nil
+                self?.welcomeMode = .signIn
+                self?.email = ""
+                self?.password = ""
+                try await auth.signOut()
+                self?.busy = false
+            } catch {
+                // Stay on the phone step, signed in as before.
+                self?.pendingLink = nil
+                self?.busy = false
+                self?.errorKey = Self.messageKey(error)
+                self?.loadMe()
+            }
+        }
+    }
+
+    /// Removes the empty account. For an email orphan that is the whole link.
+    func removeOrphan() {
+        guard let auth, let link = pendingLink else { return }
+        perform {
+            let updated = try await auth.removeOrphanAccount(orphanToken: link.orphanToken)
+            await MainActor.run { self.me = updated }
+        } onSuccess: { [weak self] in
+            if link.provider == nil {
+                self?.pendingLink = nil
+            } else {
+                self?.orphanRemoved = true
+            }
+        }
+    }
+
+    /// Abandons the link. The empty account stays; signing in with its method resumes it.
+    func cancelLink() {
+        pendingLink = nil
+        orphanRemoved = false
+        errorKey = nil
+        providerErrorKey = nil
+    }
+
+    // MARK: - Google and Apple
+
+    /// An ID token the platform obtained natively: a sign-in, or — on the link
+    /// screen, once the empty account is gone — the method being linked.
+    func signInWithProvider(_ provider: SocialProvider, idToken: String, nonce: String?) {
+        guard let auth else { return }
+        let linking = showLinkScreen && orphanRemoved
+        // Deliberately not `perform`: that reports into `errorKey`, which the
+        // form fields render. A provider Supabase refuses - one not enabled in
+        // the dashboard, say - would then read as though what was typed were
+        // wrong. It belongs under the buttons it came from.
+        busy = true
+        providerErrorKey = nil
+        Task { [weak self] in
+            do {
+                if linking {
+                    try await auth.linkProvider(provider: provider, idToken: idToken, nonce: nonce)
+                    self?.pendingLink = nil
+                    self?.orphanRemoved = false
+                    self?.loadMe()
+                } else {
+                    try await auth.signInWithIdToken(provider: provider, idToken: idToken, nonce: nonce)
+                }
+            } catch {
+                self?.providerErrorKey = Self.messageKey(error)
+            }
+            self?.busy = false
+        }
+    }
+
+    /// The provider sheet was dismissed. Silently back — a cancel is not an error.
+    func onProviderCancelled() {
+        busy = false
+        providerErrorKey = nil
+    }
+
+    func onProviderFailed(_ messageKey: String) {
+        busy = false
+        providerErrorKey = messageKey
+    }
+
+    func onProviderStarted() {
+        busy = true
+        errorKey = nil
+        providerErrorKey = nil
+    }
+
+    // MARK: - Session and onboarding
 
     func loadMe() {
         guard let auth else { return }
@@ -143,53 +511,6 @@ final class OnboardingViewModel: ObservableObject {
                 self?.meFailure = Self.apiException(error)
             }
         }
-    }
-
-    /// Sends the code. A signed-in user is ATTACHING a number, a different call.
-    func sendCode() {
-        guard let auth, canSendCode else { return }
-        let number = e164
-        let linking = session == .signedIn
-        perform {
-            if linking {
-                try await auth.requestPhoneLink(phone: number)
-            } else {
-                try await auth.requestPhoneCode(phone: number)
-            }
-        } onSuccess: { [weak self] in
-            self?.codeSent = true
-            self?.code = ""
-            self?.startResendCountdown()
-        }
-    }
-
-    func verifyCode() {
-        guard let auth, canVerify else { return }
-        let number = e164
-        let entered = code
-        let linking = session == .signedIn
-        perform {
-            if linking {
-                try await auth.verifyPhoneLink(phone: number, code: entered)
-            } else {
-                try await auth.verifyPhoneCode(phone: number, code: entered)
-            }
-        } onSuccess: { [weak self] in
-            self?.codeSent = false
-            self?.code = ""
-            // Linking keeps the same session, so no new signedIn arrives to
-            // trigger a reload — ask for the new state directly.
-            if linking { self?.loadMe() }
-        }
-    }
-
-    /// Back from the code screen, to fix a mistyped number.
-    func editNumber() {
-        resendTask?.cancel()
-        codeSent = false
-        code = ""
-        resendSeconds = 0
-        errorKey = nil
     }
 
     func loadTerms() {
@@ -222,33 +543,6 @@ final class OnboardingViewModel: ObservableObject {
         } onSuccess: {}
     }
 
-    /// Signs in with an ID token the platform obtained natively.
-    ///
-    /// Only half a signup: every route ends at a verified phone, so the router
-    /// sends the user to the phone step next (PRD §4.6).
-    func signInWithProvider(_ provider: SocialProvider, idToken: String, nonce: String?) {
-        guard let auth else { return }
-        perform {
-            try await auth.signInWithIdToken(provider: provider, idToken: idToken, nonce: nonce)
-        } onSuccess: {}
-    }
-
-    /// The provider sheet was dismissed. Silently back — a cancel is not an error.
-    func onProviderCancelled() {
-        busy = false
-        errorKey = nil
-    }
-
-    func onProviderFailed(_ messageKey: String) {
-        busy = false
-        errorKey = messageKey
-    }
-
-    func onProviderStarted() {
-        busy = true
-        errorKey = nil
-    }
-
     func signOut() {
         guard let auth else { return }
         perform { try await auth.signOut() } onSuccess: {}
@@ -261,6 +555,8 @@ final class OnboardingViewModel: ObservableObject {
     }
 
     // MARK: - Plumbing
+
+    private struct LinkNotPossible: Error {}
 
     private func startResendCountdown() {
         resendTask?.cancel()

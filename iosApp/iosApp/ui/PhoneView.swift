@@ -1,29 +1,23 @@
 import SwiftUI
 import SharedLogic
 
-/// Phone entry — the primary signup route, and the step every other route ends
-/// at (PRD §4.6).
+/// The phone step: once per account, after whichever sign-in created it
+/// (PRD §4.6). The number is the key that stops one person becoming two
+/// households, and it sets the region. It is never a way to sign in.
+///
+/// When the number already belongs to another account, the screen does not
+/// treat it as an error: it offers to link this sign-in method there instead.
 struct PhoneView: View {
     @ObservedObject var model: OnboardingViewModel
-    /// False once the user is signed in with a provider and is only attaching a
-    /// number: offering the providers again there would be a loop.
-    let showProviders: Bool
 
     @State private var pickerOpen = false
 
     var body: some View {
         ScreenScaffold {
-            if showProviders {
-                Wordmark()
-                Text(L.t(Strings.shared.app_tagline))
-                    .font(.subheadline)
-                    .foregroundColor(Brand.textMuted)
-            } else {
-                Text(L.t(Strings.shared.phone_link_title)).font(.title2.weight(.semibold))
-                Text(L.t(Strings.shared.phone_link_body))
-                    .font(.subheadline)
-                    .foregroundColor(Brand.textMuted)
-            }
+            Text(L.t(Strings.shared.phone_link_title)).font(.title2.weight(.semibold))
+            Text(L.t(Strings.shared.phone_link_body))
+                .font(.subheadline)
+                .foregroundColor(Brand.textMuted)
 
             HStack(spacing: 8) {
                 Button { pickerOpen = true } label: {
@@ -51,25 +45,35 @@ struct PhoneView: View {
 
             ErrorText(messageKey: model.errorKey)
 
-            PrimaryButton(
-                title: L.t(Strings.shared.action_continue),
-                enabled: model.canSendCode,
-                busy: model.busy
-            ) { model.sendCode() }
-
-            Text(L.t(Strings.shared.welcome_code_notice))
-                .font(.footnote)
-                .foregroundColor(Brand.textMuted)
-
-            if showProviders {
-                OrDivider().padding(.vertical, 8)
-                ProviderButton(title: L.t(Strings.shared.welcome_google), enabled: !model.busy) {
-                    GoogleSignInLauncher.start(model: model)
+            if model.phoneTaken {
+                Text(L.t(Strings.shared.phone_taken_title)).font(.headline)
+                Text(L.t(Strings.shared.phone_taken_body))
+                    .font(.subheadline)
+                    .foregroundColor(Brand.textMuted)
+                PrimaryButton(
+                    title: L.t(Strings.shared.phone_taken_sign_in),
+                    busy: model.busy
+                ) { model.startLink() }
+                ProviderButton(title: L.t(Strings.shared.phone_taken_other_number), enabled: !model.busy) {
+                    model.useDifferentNumber()
                 }
-                // Sign in with Apple is mandatory on iOS wherever another
-                // provider is offered (App Store guideline 4.8).
-                AppleSignInButton(model: model)
+            } else {
+                PrimaryButton(
+                    title: L.t(Strings.shared.action_continue),
+                    enabled: model.canSendCode,
+                    busy: model.busy
+                ) { model.sendCode() }
+
+                Text(L.t(Strings.shared.welcome_code_notice))
+                    .font(.footnote)
+                    .foregroundColor(Brand.textMuted)
             }
+
+            // The way out. Without it someone who signed in with the wrong
+            // account is held here with no route back to the welcome screen.
+            Button(L.t(Strings.shared.action_sign_out)) { model.signOut() }
+                .foregroundColor(Brand.green)
+                .disabled(model.busy)
         }
         .sheet(isPresented: $pickerOpen) {
             DialCodePicker { picked in

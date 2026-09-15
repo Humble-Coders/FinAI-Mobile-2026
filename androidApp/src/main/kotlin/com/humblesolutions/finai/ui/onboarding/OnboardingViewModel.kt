@@ -9,10 +9,13 @@ import com.humblesolutions.finai.data.SupabaseTokenSource
 import com.humblesolutions.finai.i18n.Strings
 import com.humblesolutions.finai.model.ApiException
 import com.humblesolutions.finai.model.OnboardingStep
+import com.humblesolutions.finai.model.PendingLink
+import com.humblesolutions.finai.model.ResetStage
 import com.humblesolutions.finai.model.SessionState
 import com.humblesolutions.finai.model.SocialProvider
+import com.humblesolutions.finai.model.WelcomeMode
 import com.humblesolutions.finai.repository.AuthRepository
-import com.humblesolutions.finai.usecase.Destination
+import com.humblesolutions.finai.util.Credentials
 import com.humblesolutions.finai.util.DialCode
 import com.humblesolutions.finai.util.DialCodes
 import kotlinx.coroutines.Job
@@ -25,7 +28,7 @@ import kotlinx.coroutines.launch
 import kotlin.coroutines.cancellation.CancellationException
 
 /**
- * Drives signup and the onboarding steps after it.
+ * Drives sign-in, signup and the onboarding steps after it.
  *
  * The repository is built fresh in [bind] and closed in [onCleared] — never a
  * singleton (kmp-arch-v2). Where to go next is never decided here: the state's
@@ -66,9 +69,15 @@ class OnboardingViewModel : ViewModel() {
                     // Signed in, and we have nothing (or stale) to route on.
                     session == SessionState.SIGNED_IN -> loadMe()
                     // Signing out clears everything the previous account loaded.
+                    // A pending link survives: signing out of the empty account
+                    // is how the link begins.
                     session == SessionState.SIGNED_OUT && was != SessionState.SIGNED_OUT ->
                         _uiState.update {
-                            it.copy(me = null, meFailure = null, terms = null, code = "", codeSent = false)
+                            it.copy(
+                                me = null, meFailure = null, terms = null, code = "", codeSent = false,
+                                phoneTaken = false, phoneDigits = "", orphanRemoved = false, reset = null,
+                                emailCodeFor = null, password = "",
+                            )
                         }
                 }
             }
@@ -105,26 +114,161 @@ class OnboardingViewModel : ViewModel() {
         }
     }
 
+    // ── Welcome: email and password ─────────────────────────────────────
+
+    fun onWelcomeModeChange(mode: WelcomeMode) =
+        _uiState.update { it.copy(welcomeMode = mode, errorKey = null, providerErrorKey = null) }
+
+    fun onEmailChange(value: String) = _uiState.update { it.copy(email = value, errorKey = null) }
+
+    fun onPasswordChange(value: String) = _uiState.update { it.copy(password = value, errorKey = null) }
+
+    /** Creates the account or signs in, depending on the mode. */
+    fun submitCredentials() {
+        val auth = auth ?: return
+        val state = _uiState.value
+        if (!state.canSubmitCredentials) return
+        val email = Credentials.normalizeEmail(state.email)
+        val password = state.password
+
+        if (state.creatingAccount) {
+            perform({ auth.signUpWithEmail(email, password) }) {
+                startResendCountdown()
+                it.copy(emailCodeFor = email, code = "", password = "")
+            }
+            return
+        }
+
+        var needsCode = false
+        perform({
+            try {
+                auth.signInWithEmail(email, password)
+            } catch (e: ApiException.EmailNotConfirmed) {
+                // An account that never entered its code. Send a fresh one and
+                // go to the code screen, rather than naming a problem they
+                // cannot act on. A rate limit means one was sent moments ago.
+                needsCode = true
+                try {
+                    auth.resendSignupCode(email)
+                } catch (limited: ApiException.TooManyAttempts) {
+                    // The earlier code is still on its way.
+                }
+            }
+        }) {
+            if (needsCode) {
+                startResendCountdown()
+                it.copy(emailCodeFor = email, code = "", password = "")
+            } else {
+                it.copy(password = "")
+            }
+        }
+    }
+
+    /** Verifies the emailed signup code, which signs the user in. */
+    fun verifyEmailCode() {
+        val auth = auth ?: return
+        val state = _uiState.value
+        val email = state.emailCodeFor ?: return
+        if (!state.canVerify) return
+        val code = state.code
+        perform({ auth.verifySignupCode(email, code) }) { it.copy(emailCodeFor = null, code = "") }
+    }
+
+    fun resendEmailCode() {
+        val auth = auth ?: return
+        val email = _uiState.value.emailCodeFor ?: return
+        perform({ auth.resendSignupCode(email) }) {
+            startResendCountdown()
+            it
+        }
+    }
+
+    /** Back from the email code screen, to fix a mistyped address. */
+    fun editEmail() {
+        resendTicker?.cancel()
+        _uiState.update { it.copy(emailCodeFor = null, code = "", resendSeconds = 0, errorKey = null) }
+    }
+
+    // ── Forgot password ─────────────────────────────────────────────────
+
+    fun startReset() = _uiState.update {
+        it.copy(reset = ResetStage.REQUEST, password = "", code = "", errorKey = null, providerErrorKey = null)
+    }
+
+    fun requestResetCode() {
+        val auth = auth ?: return
+        val state = _uiState.value
+        if (!state.canRequestReset) return
+        val email = Credentials.normalizeEmail(state.email)
+        perform({ auth.requestPasswordReset(email) }) {
+            startResendCountdown()
+            it.copy(reset = ResetStage.CODE, email = email, code = "")
+        }
+    }
+
+    fun verifyResetCode() {
+        val auth = auth ?: return
+        val state = _uiState.value
+        if (!state.canVerify) return
+        val email = state.email
+        val code = state.code
+        perform({ auth.verifyPasswordResetCode(email, code) }) {
+            it.copy(reset = ResetStage.NEW_PASSWORD, code = "", password = "")
+        }
+    }
+
+    fun saveNewPassword() {
+        val auth = auth ?: return
+        val state = _uiState.value
+        if (!state.canSaveNewPassword) return
+        val password = state.password
+        perform({ auth.setNewPassword(password) }) { it.copy(reset = null, password = "") }
+    }
+
+    /**
+     * Leaves the reset. Once the code has verified the user is signed in with
+     * a recovery session and no new password, so leaving then signs out: the
+     * app is never reached by a reset that did not finish.
+     */
+    fun cancelReset() {
+        val signedInForReset = _uiState.value.reset == ResetStage.NEW_PASSWORD
+        resendTicker?.cancel()
+        _uiState.update { it.copy(reset = null, code = "", password = "", resendSeconds = 0, errorKey = null) }
+        if (signedInForReset) signOut()
+    }
+
+    // ── The phone step ──────────────────────────────────────────────────
+
     fun onDialCodeSelected(dialCode: DialCode) = _uiState.update { it.copy(dialCode = dialCode) }
 
-    fun onPhoneChange(value: String) = _uiState.update { it.copy(phoneDigits = value, errorKey = null) }
+    fun onPhoneChange(value: String) =
+        _uiState.update { it.copy(phoneDigits = value, errorKey = null, phoneTaken = false) }
 
     fun onCodeChange(value: String) = _uiState.update {
         it.copy(code = value.filter(Char::isDigit).take(OnboardingUiState.CODE_LENGTH), errorKey = null)
     }
 
-    /** Sends the code. A signed-in user is ATTACHING a number, which is a different call. */
+    /** Attaches the number to the signed-in account, which texts the code. */
     fun sendCode() {
         val auth = auth ?: return
         val state = _uiState.value
         if (!state.canSendCode) return
         val number = state.e164
-        val linking = state.session == SessionState.SIGNED_IN
+        var taken = false
         perform({
-            if (linking) auth.requestPhoneLink(number) else auth.requestPhoneCode(number)
+            try {
+                auth.requestPhoneLink(number)
+            } catch (e: ApiException.PhoneAlreadyLinked) {
+                // Not an error to show: the phone screen offers the way on.
+                taken = true
+            }
         }) {
-            startResendCountdown()
-            it.copy(codeSent = true, code = "")
+            if (taken) {
+                it.copy(phoneTaken = true)
+            } else {
+                startResendCountdown()
+                it.copy(codeSent = true, code = "")
+            }
         }
     }
 
@@ -134,12 +278,11 @@ class OnboardingViewModel : ViewModel() {
         if (!state.canVerify) return
         val number = state.e164
         val code = state.code
-        val linking = state.session == SessionState.SIGNED_IN
         perform({
-            if (linking) auth.verifyPhoneLink(number, code) else auth.verifyPhoneCode(number, code)
+            auth.verifyPhoneLink(number, code)
             // Linking keeps the same session, so no new SIGNED_IN arrives to
             // trigger a reload — ask for the new state directly.
-            if (linking) loadMe()
+            loadMe()
         }) { it.copy(codeSent = false, code = "") }
     }
 
@@ -147,6 +290,118 @@ class OnboardingViewModel : ViewModel() {
     fun editNumber() {
         resendTicker?.cancel()
         _uiState.update { it.copy(codeSent = false, code = "", resendSeconds = 0, errorKey = null) }
+    }
+
+    fun useDifferentNumber() = _uiState.update { it.copy(phoneTaken = false, phoneDigits = "", errorKey = null) }
+
+    // ── Linking a sign-in method to an existing account ─────────────────
+
+    /**
+     * The number belongs to another account and the person says it is theirs.
+     *
+     * Keeps proof of this (empty) session, then signs out of it so they can
+     * sign in to the real account. `me` is dropped first so the phone screen
+     * cannot be used again while the sign-out is in flight.
+     */
+    fun startLink() {
+        val auth = auth ?: return
+        _uiState.update { it.copy(busy = true, errorKey = null) }
+        viewModelScope.launch {
+            try {
+                val token = auth.currentAccessToken() ?: throw ApiException.Unauthorized("no session to link")
+                val link = PendingLink(orphanToken = token, provider = auth.currentSignInProvider())
+                _uiState.update {
+                    it.copy(pendingLink = link, me = null, welcomeMode = WelcomeMode.SIGN_IN, email = "", password = "")
+                }
+                auth.signOut()
+                _uiState.update { it.copy(busy = false) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // Stay on the phone step, signed in as before.
+                _uiState.update {
+                    it.copy(
+                        busy = false,
+                        pendingLink = null,
+                        errorKey = (e as? ApiException)?.messageKey ?: Strings.error_unexpected,
+                    )
+                }
+                loadMe()
+            }
+        }
+    }
+
+    /** Removes the empty account. For an email orphan that is the whole link. */
+    fun removeOrphan() {
+        val auth = auth ?: return
+        val link = _uiState.value.pendingLink ?: return
+        perform({
+            val me = auth.removeOrphanAccount(link.orphanToken)
+            _uiState.update { it.copy(me = me) }
+        }) {
+            if (link.provider == null) it.copy(pendingLink = null) else it.copy(orphanRemoved = true)
+        }
+    }
+
+    /** Abandons the link. The empty account stays; signing in with its method resumes it. */
+    fun cancelLink() = _uiState.update {
+        it.copy(pendingLink = null, orphanRemoved = false, errorKey = null, providerErrorKey = null)
+    }
+
+    // ── Google and Apple ────────────────────────────────────────────────
+
+    /**
+     * An ID token the platform obtained natively: a sign-in, or — on the link
+     * screen, once the empty account is gone — the method being linked.
+     *
+     * Deliberately not [perform]: that reports into `errorKey`, which the form
+     * fields render. A provider Supabase refuses — one not enabled in the
+     * dashboard, say — would then read as though what was typed were wrong.
+     * It belongs under the buttons it came from.
+     */
+    fun signInWithProvider(provider: SocialProvider, idToken: String, nonce: String?) {
+        val auth = auth ?: return
+        val state = _uiState.value
+        val linking = state.showLinkScreen && state.orphanRemoved
+        _uiState.update { it.copy(busy = true, providerErrorKey = null) }
+        viewModelScope.launch {
+            try {
+                if (linking) {
+                    auth.linkProvider(provider, idToken, nonce)
+                    _uiState.update { it.copy(busy = false, pendingLink = null, orphanRemoved = false) }
+                    loadMe()
+                } else {
+                    auth.signInWithIdToken(provider, idToken, nonce)
+                    _uiState.update { it.copy(busy = false) }
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: ApiException) {
+                _uiState.update { it.copy(busy = false, providerErrorKey = e.messageKey) }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(busy = false, providerErrorKey = Strings.error_unexpected) }
+            }
+        }
+    }
+
+    /** The provider sheet was dismissed. Silently back — a cancel is not an error. */
+    fun onProviderCancelled() =
+        _uiState.update { it.copy(busy = false, providerErrorKey = null) }
+
+    fun onProviderFailed(messageKey: String) =
+        _uiState.update { it.copy(busy = false, providerErrorKey = messageKey) }
+
+    fun onProviderStarted() =
+        _uiState.update { it.copy(busy = true, errorKey = null, providerErrorKey = null) }
+
+    fun signOut() {
+        val auth = auth ?: return
+        perform({ auth.signOut() }) { it }
+    }
+
+    fun retry() {
+        _uiState.update { it.copy(meFailure = null, errorKey = null) }
+        loadMe()
     }
 
     fun loadTerms() {
@@ -178,35 +433,6 @@ class OnboardingViewModel : ViewModel() {
             _uiState.update { it.copy(me = me) }
             if (me.onboardingRequired.firstOrNull() == OnboardingStep.CONSENT) loadTerms()
         }) { it }
-    }
-
-    /**
-     * Signs in with an ID token the platform obtained natively.
-     *
-     * Only half a signup: every route ends at a verified phone, so the router
-     * sends the user to the phone step next (PRD §4.6).
-     */
-    fun signInWithProvider(provider: SocialProvider, idToken: String, nonce: String?) {
-        val auth = auth ?: return
-        perform({ auth.signInWithIdToken(provider, idToken, nonce) }) { it }
-    }
-
-    /** The provider sheet was dismissed. Silently back — a cancel is not an error. */
-    fun onProviderCancelled() = _uiState.update { it.copy(busy = false, errorKey = null) }
-
-    fun onProviderFailed(messageKey: String) =
-        _uiState.update { it.copy(busy = false, errorKey = messageKey) }
-
-    fun onProviderStarted() = _uiState.update { it.copy(busy = true, errorKey = null) }
-
-    fun signOut() {
-        val auth = auth ?: return
-        perform({ auth.signOut() }) { it }
-    }
-
-    fun retry() {
-        _uiState.update { it.copy(meFailure = null, errorKey = null) }
-        loadMe()
     }
 
     private fun startResendCountdown() {

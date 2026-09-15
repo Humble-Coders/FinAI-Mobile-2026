@@ -3,10 +3,10 @@ import SharedLogic
 
 /// The router: a state switch, not a navigation framework (kmp-arch-v2).
 ///
-/// It renders whatever the **shared** rule says and decides nothing itself. The
-/// only two things it owns are genuinely UI: whether a code has been sent (a
-/// sub-state of the phone step), and whether the user tapped Change on consent
-/// to revisit their region.
+/// It renders whatever the **shared** rule says and decides nothing itself. What
+/// it checks first are sub-states the server knows nothing about: a password
+/// reset, a sign-in method waiting to be linked, a sent code, and the region
+/// override reached from consent.
 struct RootView: View {
     @StateObject private var model = OnboardingViewModel()
     @State private var changingRegion = false
@@ -33,6 +33,33 @@ struct RootView: View {
 
     @ViewBuilder
     private var content: some View {
+        // Ahead of the router: once the reset code verifies, the user is signed
+        // in, and must choose the new password before going anywhere.
+        switch model.reset {
+        case .request:
+            ResetRequestView(model: model)
+        case .code:
+            CodeView(
+                model: model,
+                sentTo: model.email,
+                editKey: Strings.shared.code_wrong_email,
+                onVerify: { model.verifyResetCode() },
+                onResend: { model.requestResetCode() },
+                onEdit: { model.startReset() }
+            )
+        case .newPassword:
+            NewPasswordView(model: model)
+        default:
+            if model.showLinkScreen {
+                LinkAccountView(model: model)
+            } else {
+                routed
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var routed: some View {
         switch model.destination.screen {
         case .splash:
             // .task is cancelled when the splash goes away and restarted on
@@ -41,10 +68,22 @@ struct RootView: View {
             SplashView(slow: model.startIsSlow)
                 .task { await model.watchForSlowStart() }
         case .welcome:
-            phoneOrCode(showProviders: true)
+            if let sentTo = model.emailCodeFor {
+                CodeView(
+                    model: model,
+                    sentTo: sentTo,
+                    editKey: Strings.shared.code_wrong_email,
+                    hintKey: Strings.shared.email_code_hint,
+                    onVerify: { model.verifyEmailCode() },
+                    onResend: { model.resendEmailCode() },
+                    onEdit: { model.editEmail() }
+                )
+            } else {
+                WelcomeView(model: model)
+            }
         case .phone:
-            // Signed in but no number yet: the Google or Apple route, mid-way.
-            phoneOrCode(showProviders: false)
+            // Signed in, and the account has not verified a number yet.
+            phoneOrCode
         case .region:
             RegionView(model: model) { model.setRegion($0) }
         case .consent:
@@ -58,7 +97,11 @@ struct RootView: View {
         case .home:
             HomeView { model.signOut() }
         case .failed:
-            FailedView(messageKey: failureKey) { model.retry() }
+            FailedView(
+                messageKey: failureKey,
+                onRetry: { model.retry() },
+                onSignOut: { model.signOut() }
+            )
         default:
             SplashView(slow: model.startIsSlow)
                 .task { await model.watchForSlowStart() }
@@ -71,11 +114,18 @@ struct RootView: View {
     }
 
     @ViewBuilder
-    private func phoneOrCode(showProviders: Bool) -> some View {
-        if model.showCodeScreen {
-            CodeView(model: model)
+    private var phoneOrCode: some View {
+        if model.codeSent {
+            CodeView(
+                model: model,
+                sentTo: model.e164,
+                editKey: Strings.shared.code_wrong_number,
+                onVerify: { model.verifyCode() },
+                onResend: { model.sendCode() },
+                onEdit: { model.editNumber() }
+            )
         } else {
-            PhoneView(model: model, showProviders: showProviders)
+            PhoneView(model: model)
         }
     }
 }

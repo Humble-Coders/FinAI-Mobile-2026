@@ -61,7 +61,7 @@ The behaviour worth reading rather than running is `OnboardingRouterTest` — it
 | The app never reaches home while `onboarding_required` is non-empty | **Met in code** — every step, known or unknown, has a destination that is not Home |
 | Splash lasts only while the session restores and the first `/me` loads; slow shows progress | **Met in code** — `setKeepOnScreenCondition` on Android, `screen == .splash` on iOS; no timer on either |
 | No white flash in dark mode on Android | **Met** — launch theme now takes `@color` with a `values-night` variant |
-| **Phone route reaches home, on both platforms** | **NOT VERIFIED** — Render is suspended |
+| **Phone route reaches home, on both platforms** | **Partly verified on Android** — code sent, code verified and a session created through Supabase; the router then reaches `Failed` because `/me` returns 503, which only happens for a signed-in caller. Everything past `/me` is still unverified |
 | **Google and Apple routes** | **NOT VERIFIED** — no client ids exist yet |
 | **Phone already taken shows the message and creates no second household** | **NOT VERIFIED** — needs a second test number |
 | **Cold start with no flash of welcome** | **NOT VERIFIED** end to end — needs a live `/me` |
@@ -98,6 +98,80 @@ The behaviour worth reading rather than running is `OnboardingRouterTest` — it
   whichever claims it first. The terms now lay out in full and the page scrolls,
   which also keeps the Agree button reachable at the largest accessibility font
   sizes. Both scaffolds document the rule.
+
+## Found by running it
+
+Two defects that no test, no build and neither CI job could see. Both were
+caught by installing on a Pixel 8 Pro (API 35) and looking at the screens.
+
+- **Every screen heading was invisible in dark mode.** `FinAiTheme` called
+  `MaterialTheme(...)` without a `Surface`, so `LocalContentColor` was never
+  supplied from the colour scheme and fell back to Compose's default of BLACK.
+  In light mode that looked right by accident; on the near-black dark ground it
+  left the wordmark's `Fin`, `code_title`, `consent_title`, `region_title`,
+  `phone_link_title`, `home_title` and the status headings unreadable. Fixed at
+  the theme, which fixes every screen at once.
+- **The dialling-code picker did not look tappable on Android.** It was bare
+  text with a `clickable` modifier and no background, while iOS gave the same
+  control a filled surface — so the platforms disagreed and the Android one
+  read as a label. It now has the same filled surface.
+
+- **The error screen was a dead end.** It offered Retry and nothing else, so a
+  signed-in caller whose `/me` fails had no other screen to be on and no way
+  back — every retry fails for as long as the server is down. It now also offers
+  Sign out, which returns to the welcome screen because that needs nothing from
+  the API. Found by verifying a phone number against a suspended backend and
+  being unable to leave the screen.
+
+- **iOS crashed on launch for every signed-out user.** `@Published var code`
+  assigned to itself inside its own `didSet`; unlike a plain stored property,
+  `@Published` routes that through the wrapper's setter and re-enters `didSet`,
+  so it recursed until the stack overflowed (`EXC_BAD_ACCESS`, *"Thread stack
+  size exceeded due to excessive recursion"*). `bind()` sets `code = ""` the
+  moment Supabase reports no stored session, so the app died on the splash
+  before ever showing signup. Found only by running it — the iOS build, the
+  shared tests and CI were all green throughout.
+
+- **Google sign-in crashed the iOS app.** Google's SDK returns through a custom
+  URL scheme (the iOS client id reversed) and raises an *uncaught* NSException —
+  a crash, not an error it hands back — when `CFBundleURLTypes` does not list
+  it. `Info.plist` had no URL types at all. It now declares the scheme from
+  `GOOGLE_REVERSED_CLIENT_ID` in `Config.xcconfig`, and the launcher checks the
+  bundle for it first, so a build without the value refuses politely instead of
+  dying.
+- **A provider failure was reported in the phone field's error slot.** Both
+  platforms routed `signInWithProvider` through `perform`, which writes
+  `errorKey` — so Supabase refusing an Apple token (its provider not enabled)
+  read as though the typed number were wrong. It now reports to
+  `providerErrorKey`, under the buttons it came from, on Android and iOS alike.
+
+- **`Supabase.client` could poison itself.** It was a non-null `by lazy`; a
+  Kotlin/Native lazy whose initializer throws is marked permanently failed, and
+  every later access raises *"invalid reuse after initialization failure"* — an
+  error about the cache that names nothing about the cause, from a call site
+  that did nothing wrong. The config check catches the usual reason but not a
+  URL that is present yet malformed. It is nullable now and the failure is
+  swallowed, so an unbuildable client reads like an unconfigured one, which the
+  UI already handles.
+- **Deleting the old app matters.** Before the bundle-id fix the app installed
+  as `com.humblesolutions.finai.FinAI`; that install survives, looks identical
+  on the home screen, and still contains every pre-fix bug. Remove it, or half
+  a day gets spent debugging a build that is not the one being edited.
+
+Also confirmed on the device rather than asserted: the dark-mode launch screen
+paints the near-black ground with no white flash, the splash hands over without
+hanging, and a `/me` that returns 503 lands on the error screen with Retry —
+the `Failed` destination working end to end against a genuinely dead backend.
+
+- **Apple is offered on iOS only** (manager decision, 2026-09-11), so the
+  Android welcome screen shows phone + Google and no Apple button. Someone who
+  signed up with Apple on an iPhone signs in on Android with their number and
+  lands in the same account — the verified number is the identity key. Offering
+  it on Android would mean the OAuth web redirect flow (Services ID, signing
+  key, browser round-trip) to reach an account they can already reach by typing
+  their number. `PhoneScreen`'s unused `onApple` parameter and the
+  `welcome_apple` string key are gone with it: Apple's own button supplies and
+  localises its label, so nothing ever read that key.
 
 ## Open questions / follow-ups
 

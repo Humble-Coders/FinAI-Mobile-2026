@@ -40,17 +40,87 @@ sealed class ApiException(message: String, cause: Throwable? = null) : Exception
         override val messageKey: String = Strings.error_validation
     }
 
+    /** The number itself was refused — usually the wrong country code in front of it. */
+    class InvalidPhone : ApiException("phone number rejected") {
+        override val messageKey: String = Strings.error_invalid_phone
+    }
+
+    /** The six digits were wrong, or the code has expired. */
+    class InvalidCode : ApiException("verification code rejected") {
+        override val messageKey: String = Strings.error_invalid_code
+    }
+
+    /** Too many codes requested. Supabase rate-limits SMS per number. */
+    class TooManyAttempts : ApiException("sms rate limit reached") {
+        override val messageKey: String = Strings.error_too_many_attempts
+    }
+
+    /** A sign-in method, or identity linking, is switched off for this Supabase project. */
+    class SignInMethodUnavailable : ApiException("sign-in method disabled") {
+        override val messageKey: String = Strings.error_provider_not_configured
+    }
+
     /**
      * The phone number already belongs to another account.
      *
      * Raised by the API (`phone_already_linked`) and by Supabase
      * (`AuthErrorCode.PhoneExists`), which may refuse first — the number is the
      * identity key, so this is how one person is stopped from becoming two
-     * households. Merging two sign-in methods is a follow-up, so the only way
-     * on is to sign in with the number instead.
+     * households. The phone step answers it by offering to link this sign-in
+     * method to that account ([PendingLink]).
      */
     class PhoneAlreadyLinked : ApiException("phone already linked to another account") {
         override val messageKey: String = Strings.error_phone_already_linked
+    }
+
+    /** Creating an account with an email that already has one. */
+    class EmailAlreadyRegistered : ApiException("email already registered") {
+        override val messageKey: String = Strings.error_email_taken
+    }
+
+    /**
+     * Signing in to an account whose email was never confirmed. The app answers
+     * by sending a fresh code rather than showing this.
+     */
+    class EmailNotConfirmed : ApiException("email not confirmed") {
+        override val messageKey: String = Strings.error_email_not_confirmed
+    }
+
+    /** Email and password do not match. Deliberately does not say which is wrong. */
+    class WrongCredentials : ApiException("invalid login credentials") {
+        override val messageKey: String = Strings.error_wrong_credentials
+    }
+
+    /** The password is too short, too simple, reused, or known to be leaked. */
+    class WeakPassword : ApiException("password rejected") {
+        override val messageKey: String = Strings.error_weak_password
+    }
+
+    class InvalidEmail : ApiException("email address rejected") {
+        override val messageKey: String = Strings.error_invalid_email
+    }
+
+    /** The sign-in method being linked still belongs to another account. */
+    class IdentityInUse : ApiException("identity already linked elsewhere") {
+        override val messageKey: String = Strings.error_identity_in_use
+    }
+
+    /**
+     * The empty account's session could not be verified — usually it expired
+     * while the person was signing in to their real account. Signing in with the
+     * new method again starts the link over.
+     */
+    class LinkExpired : ApiException("orphan session rejected") {
+        override val messageKey: String = Strings.error_link_expired
+    }
+
+    /**
+     * The API refused to remove the other account: it is this account, it has
+     * a verified phone or data of its own, or this account has no phone yet.
+     * Either way the person signed in to the wrong account.
+     */
+    class LinkRefused : ApiException("link refused") {
+        override val messageKey: String = Strings.error_link_refused
     }
 
     /**

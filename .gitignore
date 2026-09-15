@@ -23,3 +23,6 @@ iosApp/Pods/
 iosApp/Podfile.lock
 sharedLogic/build/cocoapods/
 sharedLogic/*.podspec
+
+# Per-developer iOS build values (Google client id)
+iosApp/Configuration/Config.local.xcconfig

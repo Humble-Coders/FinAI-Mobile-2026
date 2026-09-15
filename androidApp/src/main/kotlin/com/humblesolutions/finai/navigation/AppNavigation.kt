@@ -1,5 +1,6 @@
 package com.humblesolutions.finai.navigation
 
+import android.content.Context
 import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -14,33 +15,42 @@ import com.humblesolutions.finai.auth.GoogleSignIn
 import com.humblesolutions.finai.auth.GoogleSignInCancelled
 import com.humblesolutions.finai.auth.GoogleSignInNotConfigured
 import com.humblesolutions.finai.i18n.Strings
-import com.humblesolutions.finai.model.SocialProvider
 import com.humblesolutions.finai.model.OnboardingStep
+import com.humblesolutions.finai.model.ResetStage
+import com.humblesolutions.finai.model.SocialProvider
 import com.humblesolutions.finai.ui.home.HomeScreen
 import com.humblesolutions.finai.ui.onboarding.CodeScreen
 import com.humblesolutions.finai.ui.onboarding.ConsentScreen
 import com.humblesolutions.finai.ui.onboarding.FailedScreen
+import com.humblesolutions.finai.ui.onboarding.LinkAccountScreen
+import com.humblesolutions.finai.ui.onboarding.NewPasswordScreen
 import com.humblesolutions.finai.ui.onboarding.NotConfiguredScreen
 import com.humblesolutions.finai.ui.onboarding.OnboardingViewModel
 import com.humblesolutions.finai.ui.onboarding.PhoneScreen
 import com.humblesolutions.finai.ui.onboarding.RegionScreen
+import com.humblesolutions.finai.ui.onboarding.ResetRequestScreen
 import com.humblesolutions.finai.ui.onboarding.SetupPendingScreen
 import com.humblesolutions.finai.ui.onboarding.SplashScreen
 import com.humblesolutions.finai.ui.onboarding.UpdateRequiredScreen
+import com.humblesolutions.finai.ui.onboarding.WelcomeScreen
 import com.humblesolutions.finai.usecase.Destination
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
 /**
  * The router: a state variable, not a navigation framework (kmp-arch-v2).
  *
- * It renders whatever the **shared** rule says, and decides nothing itself. The
- * only two things it owns are genuinely UI: whether a code has been sent (a
- * sub-state of the phone step), and whether the user tapped Change on the
- * consent screen to revisit their region.
+ * It renders whatever the **shared** rule says, and decides nothing itself. What
+ * it checks first are sub-states the server knows nothing about: a password
+ * reset, a sign-in method waiting to be linked, a sent code, and the region
+ * override reached from consent.
  */
 @Composable
 fun AppNavigation(viewModel: OnboardingViewModel) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val onGoogle = { launchGoogle(context, scope, viewModel) }
 
     state.configurationProblem?.let { problem ->
         NotConfiguredScreen(problem)
@@ -59,6 +69,45 @@ fun AppNavigation(viewModel: OnboardingViewModel) {
         return
     }
 
+    // Ahead of the router: once the reset code verifies, the user is signed in,
+    // and must choose the new password before going anywhere.
+    when (state.reset) {
+        ResetStage.REQUEST -> {
+            BackHandler { viewModel.cancelReset() }
+            ResetRequestScreen(state, viewModel::onEmailChange, viewModel::requestResetCode, viewModel::cancelReset)
+            return
+        }
+        ResetStage.CODE -> {
+            BackHandler { viewModel.startReset() }
+            CodeScreen(
+                state = state,
+                sentTo = state.email,
+                editKey = Strings.code_wrong_email,
+                onCodeChange = viewModel::onCodeChange,
+                onVerify = viewModel::verifyResetCode,
+                onResend = viewModel::requestResetCode,
+                onEdit = viewModel::startReset,
+            )
+            return
+        }
+        ResetStage.NEW_PASSWORD -> {
+            BackHandler { viewModel.cancelReset() }
+            NewPasswordScreen(state, viewModel::onPasswordChange, viewModel::saveNewPassword, viewModel::cancelReset)
+            return
+        }
+        null -> Unit
+    }
+
+    if (state.showLinkScreen) {
+        LinkAccountScreen(
+            state = state,
+            onRemoveOrphan = viewModel::removeOrphan,
+            onAddGoogle = onGoogle,
+            onCancel = viewModel::cancelLink,
+        )
+        return
+    }
+
     when (val destination = state.destination) {
         Destination.Splash -> {
             // Re-armed on every entry, so the splash after a code verify gets an
@@ -67,11 +116,36 @@ fun AppNavigation(viewModel: OnboardingViewModel) {
             SplashScreen(slow = state.startIsSlow)
         }
 
-        Destination.Welcome -> PhoneOrCode(viewModel, state.codeSent, showProviders = true)
+        Destination.Welcome -> {
+            val sentTo = state.emailCodeFor
+            if (sentTo != null) {
+                BackHandler { viewModel.editEmail() }
+                CodeScreen(
+                    state = state,
+                    sentTo = sentTo,
+                    editKey = Strings.code_wrong_email,
+                    hintKey = Strings.email_code_hint,
+                    onCodeChange = viewModel::onCodeChange,
+                    onVerify = viewModel::verifyEmailCode,
+                    onResend = viewModel::resendEmailCode,
+                    onEdit = viewModel::editEmail,
+                )
+            } else {
+                WelcomeScreen(
+                    state = state,
+                    onModeChange = viewModel::onWelcomeModeChange,
+                    onEmailChange = viewModel::onEmailChange,
+                    onPasswordChange = viewModel::onPasswordChange,
+                    onSubmit = viewModel::submitCredentials,
+                    onForgotPassword = viewModel::startReset,
+                    onGoogle = onGoogle,
+                    onCancelLink = viewModel::cancelLink,
+                )
+            }
+        }
 
         is Destination.Step -> when (destination.step) {
-            // Signed in but no number yet: the Google or Apple route, mid-way.
-            OnboardingStep.PHONE -> PhoneOrCode(viewModel, state.codeSent, showProviders = false)
+            OnboardingStep.PHONE -> PhoneOrCode(viewModel)
             OnboardingStep.REGION -> RegionScreen(state, viewModel::setRegion)
             OnboardingStep.CONSENT -> ConsentScreen(
                 state = state,
@@ -86,7 +160,11 @@ fun AppNavigation(viewModel: OnboardingViewModel) {
 
         Destination.UpdateRequired -> UpdateRequiredScreen()
         Destination.Home -> HomeScreen(onSignOut = viewModel::signOut)
-        is Destination.Failed -> FailedScreen(destination.error.messageKey, viewModel::retry)
+        is Destination.Failed -> FailedScreen(
+            messageKey = destination.error.messageKey,
+            onRetry = viewModel::retry,
+            onSignOut = viewModel::signOut,
+        )
     }
 }
 
@@ -97,44 +175,46 @@ fun AppNavigation(viewModel: OnboardingViewModel) {
  * a mistyped digit is the commonest reason to press it.
  */
 @Composable
-private fun PhoneOrCode(viewModel: OnboardingViewModel, codeSent: Boolean, showProviders: Boolean) {
+private fun PhoneOrCode(viewModel: OnboardingViewModel) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    if (codeSent) {
+    if (state.codeSent) {
         BackHandler { viewModel.editNumber() }
         CodeScreen(
             state = state,
+            sentTo = state.e164,
+            editKey = Strings.code_wrong_number,
             onCodeChange = viewModel::onCodeChange,
             onVerify = viewModel::verifyCode,
             onResend = viewModel::sendCode,
-            onEditNumber = viewModel::editNumber,
+            onEdit = viewModel::editNumber,
         )
     } else {
         PhoneScreen(
             state = state,
-            showProviders = showProviders,
             onPhoneChange = viewModel::onPhoneChange,
             onDialCodeSelected = viewModel::onDialCodeSelected,
             onContinue = viewModel::sendCode,
-            onGoogle = {
-                viewModel.onProviderStarted()
-                scope.launch {
-                    try {
-                        val idToken = GoogleSignIn.idToken(context)
-                        // Credential Manager supplies no nonce, so none is sent.
-                        viewModel.signInWithProvider(SocialProvider.GOOGLE, idToken, null)
-                    } catch (e: GoogleSignInCancelled) {
-                        viewModel.onProviderCancelled()
-                    } catch (e: GoogleSignInNotConfigured) {
-                        viewModel.onProviderFailed(Strings.error_provider_not_configured)
-                    } catch (e: Exception) {
-                        viewModel.onProviderFailed(Strings.error_provider_failed)
-                    }
-                }
-            },
-            // Apple is iOS only (manager decision, 2026-09-11).
-            onApple = {},
+            onLinkToExisting = viewModel::startLink,
+            onUseDifferentNumber = viewModel::useDifferentNumber,
+            onSignOut = viewModel::signOut,
         )
+    }
+}
+
+/** Google's sheet; the view model decides whether the token signs in or links. */
+private fun launchGoogle(context: Context, scope: CoroutineScope, viewModel: OnboardingViewModel) {
+    viewModel.onProviderStarted()
+    scope.launch {
+        try {
+            val idToken = GoogleSignIn.idToken(context)
+            // Credential Manager supplies no nonce, so none is sent.
+            viewModel.signInWithProvider(SocialProvider.GOOGLE, idToken, null)
+        } catch (e: GoogleSignInCancelled) {
+            viewModel.onProviderCancelled()
+        } catch (e: GoogleSignInNotConfigured) {
+            viewModel.onProviderFailed(Strings.error_provider_not_configured)
+        } catch (e: Exception) {
+            viewModel.onProviderFailed(Strings.error_provider_failed)
+        }
     }
 }
