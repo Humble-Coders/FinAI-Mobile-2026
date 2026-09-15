@@ -132,6 +132,19 @@ caught by installing on a Pixel 8 Pro (API 35) and looking at the screens.
   before ever showing signup. Found only by running it — the iOS build, the
   shared tests and CI were all green throughout.
 
+- **Google sign-in crashed the iOS app.** Google's SDK returns through a custom
+  URL scheme (the iOS client id reversed) and raises an *uncaught* NSException —
+  a crash, not an error it hands back — when `CFBundleURLTypes` does not list
+  it. `Info.plist` had no URL types at all. It now declares the scheme from
+  `GOOGLE_REVERSED_CLIENT_ID` in `Config.xcconfig`, and the launcher checks the
+  bundle for it first, so a build without the value refuses politely instead of
+  dying.
+- **A provider failure was reported in the phone field's error slot.** Both
+  platforms routed `signInWithProvider` through `perform`, which writes
+  `errorKey` — so Supabase refusing an Apple token (its provider not enabled)
+  read as though the typed number were wrong. It now reports to
+  `providerErrorKey`, under the buttons it came from, on Android and iOS alike.
+
 Also confirmed on the device rather than asserted: the dark-mode launch screen
 paints the near-black ground with no white flash, the splash hands over without
 hanging, and a `/me` that returns 503 lands on the error screen with Retry —

@@ -20,6 +20,17 @@ PRODUCT_NAME=FinAI
 // Matches the Android applicationId, so both platforms are one identity.
 PRODUCT_BUNDLE_IDENTIFIER=com.humblesolutions.finai
 
+// The iOS Google client id, reversed, which Google's SDK requires as a URL
+// scheme (see Info.plist). Derive it by moving the domain to the front:
+//
+//   123-abc.apps.googleusercontent.com
+//   -> com.googleusercontent.apps.123-abc
+//
+// Leave empty until Google sign-in is configured; the launcher checks for the
+// scheme and refuses politely rather than letting the SDK crash the app.
+// Not a secret - it ships inside every copy of the app.
+GOOGLE_REVERSED_CLIENT_ID=
+
 CURRENT_PROJECT_VERSION=1
 MARKETING_VERSION=1.0
 

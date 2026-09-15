@@ -14,6 +14,26 @@
 	  vector, which ticket #16 asks for and which has not arrived. Add it as
 	  an imageset and reference it with UIImageName - nothing else changes.
 	-->
+	<!--
+	  Google's iOS SDK returns through a custom URL scheme - the iOS client id
+	  reversed - and raises an UNCAUGHT NSException the moment sign-in starts
+	  if the app has not registered it. Not an error it hands back: a crash.
+
+	  The value comes from GOOGLE_REVERSED_CLIENT_ID in Config.xcconfig, so a
+	  developer sets it once beside the other build settings. It is not a
+	  secret; the same string ships inside every copy of the app.
+	-->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>$(GOOGLE_REVERSED_CLIENT_ID)</string>
+			</array>
+		</dict>
+	</array>
 	<key>UILaunchScreen</key>
 	<dict>
 		<key>UIColorName</key>

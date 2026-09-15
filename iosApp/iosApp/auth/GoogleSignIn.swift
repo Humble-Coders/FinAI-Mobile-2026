@@ -17,6 +17,12 @@ enum GoogleSignInLauncher {
             model.onProviderFailed(Strings.shared.error_provider_not_configured)
             return
         }
+        // Google's SDK raises an uncaught NSException - a crash, not an error -
+        // when its URL scheme is absent from Info.plist. Refuse first.
+        guard urlSchemeRegistered(for: GoogleConfig.shared.IOS_CLIENT_ID) else {
+            model.onProviderFailed(Strings.shared.error_provider_not_configured)
+            return
+        }
         guard let presenter = topViewController() else {
             model.onProviderFailed(Strings.shared.error_provider_failed)
             return
@@ -44,6 +50,22 @@ enum GoogleSignInLauncher {
             // Supabase provider needs "skip nonce check" enabled for it.
             model.signInWithProvider(.google, idToken: idToken, nonce: nil)
         }
+    }
+
+    /// Whether `Info.plist` registers the scheme Google will try to return on.
+    private static func urlSchemeRegistered(for clientId: String) -> Bool {
+        guard let reversed = reversedClientId(for: clientId) else { return false }
+        let types = Bundle.main.object(forInfoDictionaryKey: "CFBundleURLTypes") as? [[String: Any]] ?? []
+        return types.contains { entry in
+            (entry["CFBundleURLSchemes"] as? [String])?.contains(reversed) == true
+        }
+    }
+
+    /// `123-abc.apps.googleusercontent.com` -> `com.googleusercontent.apps.123-abc`.
+    private static func reversedClientId(for clientId: String) -> String? {
+        let suffix = ".apps.googleusercontent.com"
+        guard clientId.hasSuffix(suffix) else { return nil }
+        return "com.googleusercontent.apps." + String(clientId.dropLast(suffix.count))
     }
 
     private static func topViewController() -> UIViewController? {

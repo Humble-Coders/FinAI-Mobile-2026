@@ -187,9 +187,29 @@ class OnboardingViewModel : ViewModel() {
      * Only half a signup: every route ends at a verified phone, so the router
      * sends the user to the phone step next (PRD §4.6).
      */
+    /**
+     * Deliberately not [perform]: that reports into `errorKey`, which the phone
+     * field renders. A provider Supabase refuses — one not enabled in the
+     * dashboard, say — would then read as though the typed number were wrong.
+     * It belongs under the buttons it came from.
+     */
     fun signInWithProvider(provider: SocialProvider, idToken: String, nonce: String?) {
         val auth = auth ?: return
-        perform({ auth.signInWithIdToken(provider, idToken, nonce) }) { it }
+        _uiState.update { it.copy(busy = true, providerErrorKey = null) }
+        viewModelScope.launch {
+            try {
+                auth.signInWithIdToken(provider, idToken, nonce)
+                _uiState.update { it.copy(busy = false) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: ApiException) {
+                _uiState.update { it.copy(busy = false, providerErrorKey = e.messageKey) }
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(busy = false, providerErrorKey = Strings.error_unexpected)
+                }
+            }
+        }
     }
 
     /** The provider sheet was dismissed. Silently back — a cancel is not an error. */

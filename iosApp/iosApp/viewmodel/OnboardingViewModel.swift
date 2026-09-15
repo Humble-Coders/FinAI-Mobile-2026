@@ -249,9 +249,20 @@ final class OnboardingViewModel: ObservableObject {
     /// sends the user to the phone step next (PRD §4.6).
     func signInWithProvider(_ provider: SocialProvider, idToken: String, nonce: String?) {
         guard let auth else { return }
-        perform {
-            try await auth.signInWithIdToken(provider: provider, idToken: idToken, nonce: nonce)
-        } onSuccess: {}
+        // Deliberately not `perform`: that reports into `errorKey`, which the
+        // phone field renders. A provider Supabase refuses - one not enabled in
+        // the dashboard, say - would then read as though the typed number were
+        // wrong. It belongs under the buttons it came from.
+        busy = true
+        providerErrorKey = nil
+        Task { [weak self] in
+            do {
+                try await auth.signInWithIdToken(provider: provider, idToken: idToken, nonce: nonce)
+            } catch {
+                self?.providerErrorKey = Self.messageKey(error)
+            }
+            self?.busy = false
+        }
     }
 
     /// The provider sheet was dismissed. Silently back — a cancel is not an error.
