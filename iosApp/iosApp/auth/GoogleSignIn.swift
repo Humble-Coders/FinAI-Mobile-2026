@@ -32,23 +32,35 @@ enum GoogleSignInLauncher {
             GIDConfiguration(clientID: GoogleConfig.shared.IOS_CLIENT_ID)
         model.onProviderStarted()
 
+        // Google's completion handler is nonisolated, and every method on the
+        // model is @MainActor. Calling straight across only compiles today
+        // because the compiler downgrades it to a warning; under Swift 6 it is
+        // an error, and in the meantime it is a main-actor method invoked from
+        // no guaranteed actor at all. Hop explicitly.
         GIDSignIn.sharedInstance.signIn(withPresenting: presenter) { result, error in
             if let error {
                 // A dismissed sheet is a choice, not a failure.
-                if (error as NSError).code == GIDSignInError.canceled.rawValue {
-                    model.onProviderCancelled()
-                } else {
-                    model.onProviderFailed(Strings.shared.error_provider_failed)
+                let cancelled = (error as NSError).code == GIDSignInError.canceled.rawValue
+                Task { @MainActor in
+                    if cancelled {
+                        model.onProviderCancelled()
+                    } else {
+                        model.onProviderFailed(Strings.shared.error_provider_failed)
+                    }
                 }
                 return
             }
             guard let idToken = result?.user.idToken?.tokenString else {
-                model.onProviderFailed(Strings.shared.error_provider_failed)
+                Task { @MainActor in
+                    model.onProviderFailed(Strings.shared.error_provider_failed)
+                }
                 return
             }
             // No nonce: Google's iOS SDK does not expose one, which is why the
             // Supabase provider needs "skip nonce check" enabled for it.
-            model.signInWithProvider(.google, idToken: idToken, nonce: nil)
+            Task { @MainActor in
+                model.signInWithProvider(.google, idToken: idToken, nonce: nil)
+            }
         }
     }
 
