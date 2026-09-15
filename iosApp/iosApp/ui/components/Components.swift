@@ -79,7 +79,7 @@ struct PrimaryButton: View {
     }
 }
 
-/// A provider route. Outlined, never accented: the phone route is primary.
+/// A provider route. Outlined, never accented: the form's own button is primary.
 struct ProviderButton: View {
     let title: String
     var enabled = true
@@ -98,7 +98,7 @@ struct ProviderButton: View {
     }
 }
 
-/// `──── or ────`, between the phone route and the provider routes.
+/// `──── or ────`, between the email form and the provider routes.
 struct OrDivider: View {
     var body: some View {
         HStack(spacing: 12) {
@@ -122,5 +122,68 @@ struct ErrorText: View {
                 .foregroundColor(.red)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
+    }
+}
+
+/// A text field in the brand's filled style, with the keyboard it needs.
+struct FormField: View {
+    let placeholder: String
+    @Binding var text: String
+    var keyboard: UIKeyboardType = .default
+    var content: UITextContentType?
+    var isError = false
+
+    var body: some View {
+        TextField(placeholder, text: $text)
+            .keyboardType(keyboard)
+            .textContentType(content)
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled()
+            .frame(minHeight: 52)
+            .padding(.horizontal, 14)
+            .background(Brand.surface)
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .overlay(RoundedRectangle(cornerRadius: 10).stroke(isError ? .red : .clear, lineWidth: 1))
+    }
+}
+
+/// A password, hidden until the user asks to see it. Show/Hide is a word, so
+/// VoiceOver reads it without a separate label.
+struct PasswordField: View {
+    let placeholder: String
+    @Binding var text: String
+    /// `.password` to sign in, `.newPassword` so iOS offers a strong one.
+    var content: UITextContentType = .password
+    var isError = false
+    let onSubmit: () -> Void
+
+    @State private var visible = false
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Group {
+                if visible {
+                    TextField(placeholder, text: $text)
+                } else {
+                    SecureField(placeholder, text: $text)
+                }
+            }
+            .textContentType(content)
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled()
+            .submitLabel(.done)
+            .onSubmit(onSubmit)
+
+            Button(L.t(visible ? Strings.shared.action_hide : Strings.shared.action_show)) {
+                visible.toggle()
+            }
+            .font(.footnote.weight(.semibold))
+            .foregroundColor(Brand.green)
+        }
+        .frame(minHeight: 52)
+        .padding(.horizontal, 14)
+        .background(Brand.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(isError ? .red : .clear, lineWidth: 1))
     }
 }

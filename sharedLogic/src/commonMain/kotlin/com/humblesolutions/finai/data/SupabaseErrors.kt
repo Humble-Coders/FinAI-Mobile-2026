@@ -14,8 +14,14 @@ internal enum class SupabaseCall {
     /** Verifying the six digits. */
     CODE,
 
-    /** Exchanging a Google or Apple ID token. */
+    /** Exchanging a Google or Apple ID token, or linking one to an account. */
     PROVIDER,
+
+    /** Creating an account, or signing in, with an email and password. */
+    EMAIL,
+
+    /** Choosing a new password. */
+    PASSWORD,
 
     OTHER,
 }
@@ -58,13 +64,36 @@ internal object SupabaseErrors {
             // refuses before the API ever sees it, so both sides map here.
             AuthErrorCode.PhoneExists -> ApiException.PhoneAlreadyLinked()
 
-            AuthErrorCode.OtpExpired,
-            AuthErrorCode.InvalidCredentials,
-            -> ApiException.InvalidCode()
+            AuthErrorCode.OtpExpired -> ApiException.InvalidCode()
 
-            AuthErrorCode.OverSmsSendRateLimit -> ApiException.TooManyAttempts()
+            // The same code for a wrong password and a wrong one-time code.
+            AuthErrorCode.InvalidCredentials ->
+                if (call == SupabaseCall.EMAIL) ApiException.WrongCredentials() else ApiException.InvalidCode()
 
+            AuthErrorCode.OverSmsSendRateLimit,
+            AuthErrorCode.OverEmailSendRateLimit,
+            -> ApiException.TooManyAttempts()
+
+            AuthErrorCode.EmailExists,
+            AuthErrorCode.UserAlreadyExists,
+            -> ApiException.EmailAlreadyRegistered()
+
+            AuthErrorCode.EmailNotConfirmed -> ApiException.EmailNotConfirmed()
+
+            AuthErrorCode.WeakPassword,
+            AuthErrorCode.SamePassword,
+            -> ApiException.WeakPassword()
+
+            AuthErrorCode.EmailAddressInvalid -> ApiException.InvalidEmail()
+
+            AuthErrorCode.IdentityAlreadyExists -> ApiException.IdentityInUse()
+
+            // EmailAddressNotAuthorized is Supabase's built-in mailer refusing
+            // anyone outside the project team: a setup gap, not a bad address.
             AuthErrorCode.PhoneProviderDisabled,
+            AuthErrorCode.EmailProviderDisabled,
+            AuthErrorCode.EmailAddressNotAuthorized,
+            AuthErrorCode.ManualLinkingDisabled,
             AuthErrorCode.OtpDisabled,
             AuthErrorCode.SignupDisabled,
             -> ApiException.SignInMethodUnavailable()
@@ -76,6 +105,8 @@ internal object SupabaseErrors {
             AuthErrorCode.ValidationFailed -> when (call) {
                 SupabaseCall.PHONE -> ApiException.InvalidPhone()
                 SupabaseCall.CODE -> ApiException.InvalidCode()
+                SupabaseCall.EMAIL -> ApiException.InvalidEmail()
+                SupabaseCall.PASSWORD -> ApiException.WeakPassword()
                 else -> ApiException.Validation(error.statusCode)
             }
 

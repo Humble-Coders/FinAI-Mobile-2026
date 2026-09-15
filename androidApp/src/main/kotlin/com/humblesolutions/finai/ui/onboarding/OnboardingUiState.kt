@@ -3,10 +3,15 @@ package com.humblesolutions.finai.ui.onboarding
 import com.humblesolutions.finai.model.ApiException
 import com.humblesolutions.finai.model.ConfigurationProblem
 import com.humblesolutions.finai.model.Me
+import com.humblesolutions.finai.model.PendingLink
+import com.humblesolutions.finai.model.ResetStage
 import com.humblesolutions.finai.model.SessionState
 import com.humblesolutions.finai.model.Terms
+import com.humblesolutions.finai.model.WelcomeMode
 import com.humblesolutions.finai.usecase.Destination
 import com.humblesolutions.finai.usecase.OnboardingRouter
+import com.humblesolutions.finai.util.Credentials
+import com.humblesolutions.finai.util.CredentialsProblem
 import com.humblesolutions.finai.util.DialCode
 import com.humblesolutions.finai.util.DialCodes
 
@@ -27,13 +32,30 @@ data class OnboardingUiState(
     /** True once the splash has been up long enough to deserve a progress indicator. */
     val startIsSlow: Boolean = false,
 
+    // Welcome.
+    val welcomeMode: WelcomeMode = WelcomeMode.CREATE_ACCOUNT,
+    val email: String = "",
+    /** Cleared as soon as it has been sent; never kept once it is no longer needed. */
+    val password: String = "",
+    /** A signup code was emailed to this address; the code screen replaces the form. */
+    val emailCodeFor: String? = null,
+    val reset: ResetStage? = null,
+
+    // The phone step.
     val dialCode: DialCode = DialCodes.fallback,
     val phoneDigits: String = "",
+    /** The number belongs to another account; the phone screen offers to link instead. */
+    val phoneTaken: Boolean = false,
 
     /** A code has been sent for [e164]; the code screen replaces phone entry. */
     val codeSent: Boolean = false,
     val code: String = "",
     val resendSeconds: Int = 0,
+
+    /** A sign-in method waiting to move onto the account being signed in to. */
+    val pendingLink: PendingLink? = null,
+    /** The empty account is gone; only adding the provider remains. */
+    val orphanRemoved: Boolean = false,
 
     val terms: Terms? = null,
     val busy: Boolean = false,
@@ -51,8 +73,8 @@ data class OnboardingUiState(
 
     /**
      * Where the app should be — from the one shared rule, never decided here.
-     * The code screen is the single exception the router does not model: it is
-     * a sub-state of the phone step, entered once a code has been sent.
+     * The sub-states above (a sent code, a reset, a pending link) are the
+     * exceptions the router does not model; the navigation layer checks them first.
      */
     val destination: Destination get() = OnboardingRouter.destinationFor(session, me, meFailure)
 
@@ -60,6 +82,20 @@ data class OnboardingUiState(
     val e164: String get() = "+" + dialCode.code + digits
 
     private val digits: String get() = phoneDigits.filter { it.isDigit() }
+
+    val creatingAccount: Boolean get() = welcomeMode == WelcomeMode.CREATE_ACCOUNT
+
+    val credentialsProblem: CredentialsProblem?
+        get() = Credentials.problem(email, password, creating = creatingAccount)
+
+    val canSubmitCredentials: Boolean get() = !busy && credentialsProblem == null
+    val canRequestReset: Boolean get() = !busy && Credentials.looksLikeEmail(email)
+    val canSaveNewPassword: Boolean
+        get() = !busy && Credentials.passwordProblem(password, creating = true) == null
+
+    /** Signed in to the account being linked into, with its `/me` loaded. */
+    val showLinkScreen: Boolean
+        get() = pendingLink != null && session == SessionState.SIGNED_IN && me != null
 
     val canSendCode: Boolean get() = !busy && digits.length >= MIN_PHONE_DIGITS
     val canVerify: Boolean get() = !busy && code.length == CODE_LENGTH
@@ -70,6 +106,11 @@ data class OnboardingUiState(
         get() = (resendSeconds / 60).toString() + ":" + (resendSeconds % 60).toString().padStart(2, '0')
 
     companion object {
+        /**
+         * SMS and email codes alike. Supabase's email code length is a project
+         * setting: keep it at 6, or the cells and the Verify gate disagree with
+         * what arrives.
+         */
         const val CODE_LENGTH = 6
 
         /**

@@ -9,9 +9,8 @@ package com.humblesolutions.finai.model
  * native SDK per platform, one shared repository behind it).
  *
  * Apple is offered on iOS only (manager decision, 2026-09-11). Someone who
- * signed up with Apple on an iPhone signs in on Android with their phone
- * number and lands in the same account — the verified number is the identity
- * key, not the provider.
+ * signed up with Apple on an iPhone signs in on Android with the email and
+ * password or Google they linked to that account.
  */
 enum class SocialProvider {
     GOOGLE,

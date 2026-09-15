@@ -25,8 +25,16 @@ object Strings {
     const val error_invalid_phone = "error_invalid_phone" // "That number doesn't look right. Check the country code and try again."
     const val error_invalid_code = "error_invalid_code" // "That code is wrong or has expired. Request a new one."
     const val error_too_many_attempts = "error_too_many_attempts" // "Too many attempts. Wait a minute before trying again."
-    const val error_phone_already_linked = "error_phone_already_linked" // "This number already has an account — sign in with your phone number instead."
+    const val error_phone_already_linked = "error_phone_already_linked" // "This number already belongs to a FinAI account."
     const val error_terms_changed = "error_terms_changed" // "The terms have been updated. Please read them again."
+    const val error_email_taken = "error_email_taken" // "An account with this email already exists. Sign in instead."
+    const val error_email_not_confirmed = "error_email_not_confirmed" // "Confirm your email first. We've sent you a new code."
+    const val error_wrong_credentials = "error_wrong_credentials" // "That email and password don't match."
+    const val error_weak_password = "error_weak_password" // "Choose a stronger password: at least 8 characters, and not one that's been leaked or used here before."
+    const val error_invalid_email = "error_invalid_email" // "That email address doesn't look right."
+    const val error_identity_in_use = "error_identity_in_use" // "That sign-in is still attached to another account. Try linking again."
+    const val error_link_expired = "error_link_expired" // "That took too long. Sign in with your new method again to restart linking."
+    const val error_link_refused = "error_link_refused" // "We couldn't link these accounts. Make sure you signed in to the account that has your phone number."
 
     // Shared actions.
     const val action_continue = "action_continue" // "Continue"
@@ -39,7 +47,7 @@ object Strings {
     const val app_tagline = "app_tagline" // "AI-Powered Personal Finance"
     const val splash_slow = "splash_slow" // "Still working — the server may be waking up."
 
-    // Welcome: phone entry and the provider routes.
+    // Phone entry, and what is shared with the welcome screen.
     const val welcome_phone_label = "welcome_phone_label" // "Phone number"
     const val welcome_phone_hint = "welcome_phone_hint" // "416 555 0100"
     const val welcome_dial_code_label = "welcome_dial_code_label" // "Country calling code"
@@ -47,7 +55,43 @@ object Strings {
     const val welcome_google = "welcome_google" // "Continue with Google"
     const val welcome_code_notice = "welcome_code_notice" // "We'll text a code to confirm it's you"
 
-    // The phone step after a Google or Apple sign-in.
+    // Welcome: email and password, and the provider routes.
+    const val action_cancel = "action_cancel" // "Cancel"
+    const val action_show = "action_show" // "Show"
+    const val action_hide = "action_hide" // "Hide"
+    const val welcome_create_title = "welcome_create_title" // "Create your account"
+    const val welcome_sign_in_title = "welcome_sign_in_title" // "Welcome back"
+    const val welcome_email_label = "welcome_email_label" // "Email"
+    const val welcome_email_hint = "welcome_email_hint" // "you@example.com"
+    const val welcome_password_label = "welcome_password_label" // "Password"
+    const val welcome_password_rule = "welcome_password_rule" // "At least 8 characters"
+    const val welcome_create_action = "welcome_create_action" // "Create account"
+    const val welcome_sign_in_action = "welcome_sign_in_action" // "Sign in"
+    const val welcome_have_account = "welcome_have_account" // "Already have an account? Sign in"
+    const val welcome_need_account = "welcome_need_account" // "New to FinAI? Create an account"
+    const val welcome_forgot_password = "welcome_forgot_password" // "Forgot password?"
+    const val email_code_hint = "email_code_hint" // "Can't find it? Check your spam folder. If this email already has an account, go back and sign in instead."
+    const val code_wrong_email = "code_wrong_email" // "Wrong email? Go back and edit it."
+    const val reset_title = "reset_title" // "Reset your password"
+    const val reset_body = "reset_body" // "We'll email you a code so you can choose a new password."
+    const val reset_send = "reset_send" // "Send code"
+    const val reset_new_password_title = "reset_new_password_title" // "Choose a new password"
+    const val reset_new_password_label = "reset_new_password_label" // "New password"
+    const val reset_save = "reset_save" // "Save password"
+    const val phone_taken_title = "phone_taken_title" // "This number already has an account"
+    const val phone_taken_body = "phone_taken_body" // "If it's yours, sign in to that account and we'll add this sign-in method to it."
+    const val phone_taken_sign_in = "phone_taken_sign_in" // "Sign in to that account"
+    const val phone_taken_other_number = "phone_taken_other_number" // "Use a different number"
+    const val link_banner = "link_banner" // "Sign in to the account that already has your phone number."
+    const val link_title = "link_title" // "Link your sign-in"
+    const val link_body_provider = "link_body_provider" // "We'll remove the empty account you just created, then add {0} to this one so you can sign in with either."
+    const val link_body_email = "link_body_email" // "We'll remove the empty account you just created. From now on, sign in to this account the way you just did."
+    const val link_add_provider = "link_add_provider" // "Add {0}"
+    const val link_cancel = "link_cancel" // "Not now"
+    const val provider_google = "provider_google" // "Google"
+    const val provider_apple = "provider_apple" // "Apple"
+
+    // The phone step, once, after whichever sign-in created the account.
     const val phone_link_title = "phone_link_title" // "Add your phone number"
     const val phone_link_body = "phone_link_body" // "Your number confirms it's you and sets your region."
 
@@ -83,7 +127,7 @@ object Strings {
     const val setup_pending_body = "setup_pending_body" // "We need a couple of figures before your dashboard can say anything useful. This step arrives in the next update."
 
     // A provider sign-in that failed for a reason of its own.
-    const val error_provider_failed = "error_provider_failed" // "That sign-in didn't complete. Try again, or use your phone number."
+    const val error_provider_failed = "error_provider_failed" // "That sign-in didn't complete. Try again, or use your email."
     const val error_provider_not_configured = "error_provider_not_configured" // "This build isn't set up for that sign-in method yet."
 
     // Failure to load.

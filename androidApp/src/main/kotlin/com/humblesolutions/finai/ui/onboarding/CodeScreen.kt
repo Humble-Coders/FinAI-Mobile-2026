@@ -34,23 +34,42 @@ import com.humblesolutions.finai.ui.components.PrimaryButton
 import com.humblesolutions.finai.ui.components.ScreenScaffold
 import com.humblesolutions.finai.ui.strings
 
-/** Six digits, and the way back to a mistyped number. */
+/**
+ * Six digits, and the way back to a mistyped address or number.
+ *
+ * One screen for every code — SMS for the phone step, email for signup and a
+ * password reset — so they cannot drift apart.
+ *
+ * @param sentTo the number or address, shown so a typo is noticed.
+ * @param hintKey extra guidance under the heading, or null.
+ * @param editKey the label for going back to fix [sentTo].
+ */
 @Composable
 fun CodeScreen(
     state: OnboardingUiState,
+    sentTo: String,
+    editKey: String,
     onCodeChange: (String) -> Unit,
     onVerify: () -> Unit,
     onResend: () -> Unit,
-    onEditNumber: () -> Unit,
+    onEdit: () -> Unit,
+    hintKey: String? = null,
 ) {
     ScreenScaffold(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Spacer(Modifier.height(24.dp))
         Text(strings(Strings.code_title), style = MaterialTheme.typography.headlineSmall)
         Text(
-            text = strings(Strings.code_sent_to, state.e164),
+            text = strings(Strings.code_sent_to, sentTo),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        if (hintKey != null) {
+            Text(
+                text = strings(hintKey),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
 
         CodeCells(code = state.code, onCodeChange = onCodeChange, isError = state.errorKey != null)
 
@@ -73,7 +92,7 @@ fun CodeScreen(
             )
         }
 
-        TextButton(onClick = onEditNumber) { Text(strings(Strings.code_wrong_number)) }
+        TextButton(onClick = onEdit) { Text(strings(editKey)) }
     }
 }
 
