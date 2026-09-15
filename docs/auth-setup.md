@@ -66,7 +66,9 @@ changes there.
 
 ## Render (`finai-shared` environment group)
 
-- `SUPABASE_SERVICE_ROLE_KEY` — used only by
+- `SUPABASE_SERVICE_ROLE_KEY` — a **secret key** (`sb_secret_…`, Project
+  Settings → API Keys → Secret keys) or the legacy `service_role` key; the
+  backend handles either. Used only by
   `app/services/supabase_admin.py` to delete the empty Supabase account when a
   sign-in method is linked. Without it, `POST /me/link` answers
   `502 orphan_auth_cleanup_failed`. **Backend only: it must never appear in this
