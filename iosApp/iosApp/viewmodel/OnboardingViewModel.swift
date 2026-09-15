@@ -21,7 +21,20 @@ final class OnboardingViewModel: ObservableObject {
     @Published var dialCode: DialCode = DialCodes.shared.fallback
     @Published var phoneDigits = ""
     @Published private(set) var codeSent = false
-    @Published var code = "" { didSet { code = String(code.filter(\.isNumber).prefix(Self.codeLength)) } }
+    /// Digits only, at most `codeLength` of them.
+    ///
+    /// The guard is load-bearing. `@Published` routes assignment through the
+    /// property wrapper's setter, so writing to `code` inside its own `didSet`
+    /// re-enters `didSet` - unlike a plain stored property, where Swift
+    /// suppresses that. Without the comparison it recursed until the stack
+    /// overflowed, and `bind()` sets `code = ""` the moment Supabase reports no
+    /// stored session: every signed-out launch crashed on the splash screen.
+    @Published var code = "" {
+        didSet {
+            let sanitized = String(code.filter(\.isNumber).prefix(Self.codeLength))
+            if sanitized != code { code = sanitized }
+        }
+    }
     @Published private(set) var resendSeconds = 0
 
     @Published private(set) var terms: Terms?

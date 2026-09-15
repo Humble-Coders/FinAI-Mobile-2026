@@ -123,6 +123,15 @@ caught by installing on a Pixel 8 Pro (API 35) and looking at the screens.
   the API. Found by verifying a phone number against a suspended backend and
   being unable to leave the screen.
 
+- **iOS crashed on launch for every signed-out user.** `@Published var code`
+  assigned to itself inside its own `didSet`; unlike a plain stored property,
+  `@Published` routes that through the wrapper's setter and re-enters `didSet`,
+  so it recursed until the stack overflowed (`EXC_BAD_ACCESS`, *"Thread stack
+  size exceeded due to excessive recursion"*). `bind()` sets `code = ""` the
+  moment Supabase reports no stored session, so the app died on the splash
+  before ever showing signup. Found only by running it — the iOS build, the
+  shared tests and CI were all green throughout.
+
 Also confirmed on the device rather than asserted: the dark-mode launch screen
 paints the near-black ground with no white flash, the splash hands over without
 hanging, and a `/me` that returns 503 lands on the error screen with Retry —
