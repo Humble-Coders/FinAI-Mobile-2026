@@ -105,11 +105,16 @@ struct NotConfiguredView: View {
 /// The `financial_setup` step, until 2.4 builds the wizard behind it. A
 /// deliberate seam: the step must still block home, because the server refuses
 /// everything else until the figures exist (Finance-backend#29).
+/// Sign out is the only way off it until then.
 struct SetupPendingView: View {
+    let onSignOut: () -> Void
+
     var body: some View {
         MessageView(
             title: L.t(Strings.shared.setup_pending_title),
-            message: L.t(Strings.shared.setup_pending_body)
+            message: L.t(Strings.shared.setup_pending_body),
+            secondaryTitle: L.t(Strings.shared.action_sign_out),
+            secondaryAction: onSignOut
         )
     }
 }

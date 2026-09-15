@@ -138,10 +138,10 @@ fun NotConfiguredScreen(problem: ConfigurationProblem) {
  *
  * A deliberate seam rather than a gap: the step must still block home, because
  * the server refuses everything else until the figures exist
- * (Finance-backend#29).
+ * (Finance-backend#29). Sign out is the only way off it until then.
  */
 @Composable
-fun SetupPendingScreen() {
+fun SetupPendingScreen(onSignOut: () -> Unit) {
     ScreenScaffold(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
@@ -158,5 +158,7 @@ fun SetupPendingScreen() {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
         )
+        Spacer(Modifier.height(24.dp))
+        TextButton(onClick = onSignOut) { Text(strings(Strings.action_sign_out)) }
     }
 }

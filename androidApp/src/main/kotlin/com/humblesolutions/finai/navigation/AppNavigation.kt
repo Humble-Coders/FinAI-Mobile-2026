@@ -154,7 +154,7 @@ fun AppNavigation(viewModel: OnboardingViewModel) {
             )
             // 2.4 replaces this with the wizard. Until then it still blocks
             // home, which is the behaviour the server requires.
-            OnboardingStep.FINANCIAL_SETUP -> SetupPendingScreen()
+            OnboardingStep.FINANCIAL_SETUP -> SetupPendingScreen(onSignOut = viewModel::signOut)
             OnboardingStep.UNKNOWN -> UpdateRequiredScreen()
         }
 
