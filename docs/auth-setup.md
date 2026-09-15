@@ -74,6 +74,12 @@ changes there.
   `502 orphan_auth_cleanup_failed`. **Backend only: it must never appear in this
   repo, a client build, or a log.**
 
+- `RESEND_API_KEY` and `NOTIFICATION_FROM` — the backend's own emails, today
+  only the "sign-in method added" alert. The key can be the same Resend key
+  Supabase uses, or a second one with sending access to the same domain.
+  `NOTIFICATION_FROM` looks like `FinAI <no-reply@mail.<your-domain>>` and must
+  be on the verified domain. Either missing, and alerts are logged as not sent.
+
 ## Database
 
 - Migration `d91e4b7c2a15` (adds `email` to `auth_provider`) must be applied to
@@ -82,9 +88,9 @@ changes there.
 
 ## Still to do before launch
 
-- **"Sign-in method added" notification.** `app/services/notifications.py`
-  only logs today. Email linking is safe because the account owner hears about
-  a new method, so a real sender has to exist before launch.
+- **Alert sender configured in production.** Email linking is safe because the
+  account owner hears about a new method, so `RESEND_API_KEY` and
+  `NOTIFICATION_FROM` must be set in Render before launch.
 - **Orphan cleanup job.** The app removes the empty account when linking
   finishes. If someone abandons the flow, it stays. A periodic sweep of
   phone-less accounts with no data, older than a day, closes that.
