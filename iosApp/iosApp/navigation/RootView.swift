@@ -5,8 +5,7 @@ import SharedLogic
 ///
 /// It renders whatever the **shared** rule says and decides nothing itself. What
 /// it checks first are sub-states the server knows nothing about: a password
-/// reset, a sign-in method waiting to be linked, a sent code, and the region
-/// override reached from consent.
+/// reset, a sent code, and the region override reached from consent.
 struct RootView: View {
     @StateObject private var model = OnboardingViewModel()
     @State private var changingRegion = false
@@ -50,11 +49,7 @@ struct RootView: View {
         case .newPassword:
             NewPasswordView(model: model)
         default:
-            if model.showLinkScreen {
-                LinkAccountView(model: model)
-            } else {
-                routed
-            }
+            routed
         }
     }
 

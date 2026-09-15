@@ -9,7 +9,6 @@ import com.humblesolutions.finai.data.SupabaseTokenSource
 import com.humblesolutions.finai.i18n.Strings
 import com.humblesolutions.finai.model.ApiException
 import com.humblesolutions.finai.model.OnboardingStep
-import com.humblesolutions.finai.model.PendingLink
 import com.humblesolutions.finai.model.ResetStage
 import com.humblesolutions.finai.model.SessionState
 import com.humblesolutions.finai.model.SocialProvider
@@ -69,13 +68,11 @@ class OnboardingViewModel : ViewModel() {
                     // Signed in, and we have nothing (or stale) to route on.
                     session == SessionState.SIGNED_IN -> loadMe()
                     // Signing out clears everything the previous account loaded.
-                    // A pending link survives: signing out of the empty account
-                    // is how the link begins.
                     session == SessionState.SIGNED_OUT && was != SessionState.SIGNED_OUT ->
                         _uiState.update {
                             it.copy(
                                 me = null, meFailure = null, terms = null, code = "", codeSent = false,
-                                phoneTaken = false, phoneDigits = "", orphanRemoved = false, reset = null,
+                                phoneDigits = "", reset = null,
                                 emailCodeFor = null, password = "",
                             )
                         }
@@ -242,33 +239,28 @@ class OnboardingViewModel : ViewModel() {
     fun onDialCodeSelected(dialCode: DialCode) = _uiState.update { it.copy(dialCode = dialCode) }
 
     fun onPhoneChange(value: String) =
-        _uiState.update { it.copy(phoneDigits = value, errorKey = null, phoneTaken = false) }
+        _uiState.update { it.copy(phoneDigits = value, errorKey = null) }
 
     fun onCodeChange(value: String) = _uiState.update {
         it.copy(code = value.filter(Char::isDigit).take(OnboardingUiState.CODE_LENGTH), errorKey = null)
     }
 
-    /** Attaches the number to the signed-in account, which texts the code. */
+    /**
+     * Attaches the number to the signed-in account, which texts the code.
+     *
+     * A number another account already has fails as
+     * [ApiException.PhoneAlreadyLinked], shown under the field like any other
+     * refusal: the user types a different number. Nothing offers to sign in to
+     * or link with that account (manager decision, 2026-09-15).
+     */
     fun sendCode() {
         val auth = auth ?: return
         val state = _uiState.value
         if (!state.canSendCode) return
         val number = state.e164
-        var taken = false
-        perform({
-            try {
-                auth.requestPhoneLink(number)
-            } catch (e: ApiException.PhoneAlreadyLinked) {
-                // Not an error to show: the phone screen offers the way on.
-                taken = true
-            }
-        }) {
-            if (taken) {
-                it.copy(phoneTaken = true)
-            } else {
-                startResendCountdown()
-                it.copy(codeSent = true, code = "")
-            }
+        perform({ auth.requestPhoneLink(number) }) {
+            startResendCountdown()
+            it.copy(codeSent = true, code = "")
         }
     }
 
@@ -292,67 +284,10 @@ class OnboardingViewModel : ViewModel() {
         _uiState.update { it.copy(codeSent = false, code = "", resendSeconds = 0, errorKey = null) }
     }
 
-    fun useDifferentNumber() = _uiState.update { it.copy(phoneTaken = false, phoneDigits = "", errorKey = null) }
-
-    // ── Linking a sign-in method to an existing account ─────────────────
-
-    /**
-     * The number belongs to another account and the person says it is theirs.
-     *
-     * Keeps proof of this (empty) session, then signs out of it so they can
-     * sign in to the real account. `me` is dropped first so the phone screen
-     * cannot be used again while the sign-out is in flight.
-     */
-    fun startLink() {
-        val auth = auth ?: return
-        _uiState.update { it.copy(busy = true, errorKey = null) }
-        viewModelScope.launch {
-            try {
-                val token = auth.currentAccessToken() ?: throw ApiException.Unauthorized("no session to link")
-                val link = PendingLink(orphanToken = token, provider = auth.currentSignInProvider())
-                _uiState.update {
-                    it.copy(pendingLink = link, me = null, welcomeMode = WelcomeMode.SIGN_IN, email = "", password = "")
-                }
-                auth.signOut()
-                _uiState.update { it.copy(busy = false) }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                // Stay on the phone step, signed in as before.
-                _uiState.update {
-                    it.copy(
-                        busy = false,
-                        pendingLink = null,
-                        errorKey = (e as? ApiException)?.messageKey ?: Strings.error_unexpected,
-                    )
-                }
-                loadMe()
-            }
-        }
-    }
-
-    /** Removes the empty account. For an email orphan that is the whole link. */
-    fun removeOrphan() {
-        val auth = auth ?: return
-        val link = _uiState.value.pendingLink ?: return
-        perform({
-            val me = auth.removeOrphanAccount(link.orphanToken)
-            _uiState.update { it.copy(me = me) }
-        }) {
-            if (link.provider == null) it.copy(pendingLink = null) else it.copy(orphanRemoved = true)
-        }
-    }
-
-    /** Abandons the link. The empty account stays; signing in with its method resumes it. */
-    fun cancelLink() = _uiState.update {
-        it.copy(pendingLink = null, orphanRemoved = false, errorKey = null, providerErrorKey = null)
-    }
-
     // ── Google and Apple ────────────────────────────────────────────────
 
     /**
-     * An ID token the platform obtained natively: a sign-in, or — on the link
-     * screen, once the empty account is gone — the method being linked.
+     * Signs in with an ID token the platform obtained natively.
      *
      * Deliberately not [perform]: that reports into `errorKey`, which the form
      * fields render. A provider Supabase refuses — one not enabled in the
@@ -361,19 +296,11 @@ class OnboardingViewModel : ViewModel() {
      */
     fun signInWithProvider(provider: SocialProvider, idToken: String, nonce: String?) {
         val auth = auth ?: return
-        val state = _uiState.value
-        val linking = state.showLinkScreen && state.orphanRemoved
         _uiState.update { it.copy(busy = true, providerErrorKey = null) }
         viewModelScope.launch {
             try {
-                if (linking) {
-                    auth.linkProvider(provider, idToken, nonce)
-                    _uiState.update { it.copy(busy = false, pendingLink = null, orphanRemoved = false) }
-                    loadMe()
-                } else {
-                    auth.signInWithIdToken(provider, idToken, nonce)
-                    _uiState.update { it.copy(busy = false) }
-                }
+                auth.signInWithIdToken(provider, idToken, nonce)
+                _uiState.update { it.copy(busy = false) }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: ApiException) {

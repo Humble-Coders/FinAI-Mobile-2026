@@ -5,8 +5,9 @@ import SharedLogic
 /// (PRD §4.6). The number is the key that stops one person becoming two
 /// households, and it sets the region. It is never a way to sign in.
 ///
-/// When the number already belongs to another account, the screen does not
-/// treat it as an error: it offers to link this sign-in method there instead.
+/// A number another account already has is refused under the field, and the
+/// user types a different one. Nothing offers to sign in to or link with that
+/// account (manager decision, 2026-09-15).
 struct PhoneView: View {
     @ObservedObject var model: OnboardingViewModel
 
@@ -45,29 +46,15 @@ struct PhoneView: View {
 
             ErrorText(messageKey: model.errorKey)
 
-            if model.phoneTaken {
-                Text(L.t(Strings.shared.phone_taken_title)).font(.headline)
-                Text(L.t(Strings.shared.phone_taken_body))
-                    .font(.subheadline)
-                    .foregroundColor(Brand.textMuted)
-                PrimaryButton(
-                    title: L.t(Strings.shared.phone_taken_sign_in),
-                    busy: model.busy
-                ) { model.startLink() }
-                ProviderButton(title: L.t(Strings.shared.phone_taken_other_number), enabled: !model.busy) {
-                    model.useDifferentNumber()
-                }
-            } else {
-                PrimaryButton(
-                    title: L.t(Strings.shared.action_continue),
-                    enabled: model.canSendCode,
-                    busy: model.busy
-                ) { model.sendCode() }
+            PrimaryButton(
+                title: L.t(Strings.shared.action_continue),
+                enabled: model.canSendCode,
+                busy: model.busy
+            ) { model.sendCode() }
 
-                Text(L.t(Strings.shared.welcome_code_notice))
-                    .font(.footnote)
-                    .foregroundColor(Brand.textMuted)
-            }
+            Text(L.t(Strings.shared.welcome_code_notice))
+                .font(.footnote)
+                .foregroundColor(Brand.textMuted)
 
             // The way out. Without it someone who signed in with the wrong
             // account is held here with no route back to the welcome screen.

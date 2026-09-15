@@ -55,7 +55,7 @@ sealed class ApiException(message: String, cause: Throwable? = null) : Exception
         override val messageKey: String = Strings.error_too_many_attempts
     }
 
-    /** A sign-in method, or identity linking, is switched off for this Supabase project. */
+    /** A sign-in method is switched off for this Supabase project. */
     class SignInMethodUnavailable : ApiException("sign-in method disabled") {
         override val messageKey: String = Strings.error_provider_not_configured
     }
@@ -66,8 +66,8 @@ sealed class ApiException(message: String, cause: Throwable? = null) : Exception
      * Raised by the API (`phone_already_linked`) and by Supabase
      * (`AuthErrorCode.PhoneExists`), which may refuse first — the number is the
      * identity key, so this is how one person is stopped from becoming two
-     * households. The phone step answers it by offering to link this sign-in
-     * method to that account ([PendingLink]).
+     * households. The phone step shows it and asks for another number; it never
+     * offers to sign in to, or link with, the account that has it.
      */
     class PhoneAlreadyLinked : ApiException("phone already linked to another account") {
         override val messageKey: String = Strings.error_phone_already_linked
@@ -98,29 +98,6 @@ sealed class ApiException(message: String, cause: Throwable? = null) : Exception
 
     class InvalidEmail : ApiException("email address rejected") {
         override val messageKey: String = Strings.error_invalid_email
-    }
-
-    /** The sign-in method being linked still belongs to another account. */
-    class IdentityInUse : ApiException("identity already linked elsewhere") {
-        override val messageKey: String = Strings.error_identity_in_use
-    }
-
-    /**
-     * The empty account's session could not be verified — usually it expired
-     * while the person was signing in to their real account. Signing in with the
-     * new method again starts the link over.
-     */
-    class LinkExpired : ApiException("orphan session rejected") {
-        override val messageKey: String = Strings.error_link_expired
-    }
-
-    /**
-     * The API refused to remove the other account: it is this account, it has
-     * a verified phone or data of its own, or this account has no phone yet.
-     * Either way the person signed in to the wrong account.
-     */
-    class LinkRefused : ApiException("link refused") {
-        override val messageKey: String = Strings.error_link_refused
     }
 
     /**

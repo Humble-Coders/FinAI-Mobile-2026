@@ -14,7 +14,7 @@ internal enum class SupabaseCall {
     /** Verifying the six digits. */
     CODE,
 
-    /** Exchanging a Google or Apple ID token, or linking one to an account. */
+    /** Exchanging a Google or Apple ID token. */
     PROVIDER,
 
     /** Creating an account, or signing in, with an email and password. */
@@ -86,14 +86,11 @@ internal object SupabaseErrors {
 
             AuthErrorCode.EmailAddressInvalid -> ApiException.InvalidEmail()
 
-            AuthErrorCode.IdentityAlreadyExists -> ApiException.IdentityInUse()
-
             // EmailAddressNotAuthorized is Supabase's built-in mailer refusing
             // anyone outside the project team: a setup gap, not a bad address.
             AuthErrorCode.PhoneProviderDisabled,
             AuthErrorCode.EmailProviderDisabled,
             AuthErrorCode.EmailAddressNotAuthorized,
-            AuthErrorCode.ManualLinkingDisabled,
             AuthErrorCode.OtpDisabled,
             AuthErrorCode.SignupDisabled,
             -> ApiException.SignInMethodUnavailable()

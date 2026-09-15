@@ -22,7 +22,6 @@ import com.humblesolutions.finai.ui.home.HomeScreen
 import com.humblesolutions.finai.ui.onboarding.CodeScreen
 import com.humblesolutions.finai.ui.onboarding.ConsentScreen
 import com.humblesolutions.finai.ui.onboarding.FailedScreen
-import com.humblesolutions.finai.ui.onboarding.LinkAccountScreen
 import com.humblesolutions.finai.ui.onboarding.NewPasswordScreen
 import com.humblesolutions.finai.ui.onboarding.NotConfiguredScreen
 import com.humblesolutions.finai.ui.onboarding.OnboardingViewModel
@@ -42,8 +41,7 @@ import kotlinx.coroutines.launch
  *
  * It renders whatever the **shared** rule says, and decides nothing itself. What
  * it checks first are sub-states the server knows nothing about: a password
- * reset, a sign-in method waiting to be linked, a sent code, and the region
- * override reached from consent.
+ * reset, a sent code, and the region override reached from consent.
  */
 @Composable
 fun AppNavigation(viewModel: OnboardingViewModel) {
@@ -98,16 +96,6 @@ fun AppNavigation(viewModel: OnboardingViewModel) {
         null -> Unit
     }
 
-    if (state.showLinkScreen) {
-        LinkAccountScreen(
-            state = state,
-            onRemoveOrphan = viewModel::removeOrphan,
-            onAddGoogle = onGoogle,
-            onCancel = viewModel::cancelLink,
-        )
-        return
-    }
-
     when (val destination = state.destination) {
         Destination.Splash -> {
             // Re-armed on every entry, so the splash after a code verify gets an
@@ -139,7 +127,6 @@ fun AppNavigation(viewModel: OnboardingViewModel) {
                     onSubmit = viewModel::submitCredentials,
                     onForgotPassword = viewModel::startReset,
                     onGoogle = onGoogle,
-                    onCancelLink = viewModel::cancelLink,
                 )
             }
         }
@@ -194,8 +181,6 @@ private fun PhoneOrCode(viewModel: OnboardingViewModel) {
             onPhoneChange = viewModel::onPhoneChange,
             onDialCodeSelected = viewModel::onDialCodeSelected,
             onContinue = viewModel::sendCode,
-            onLinkToExisting = viewModel::startLink,
-            onUseDifferentNumber = viewModel::useDifferentNumber,
             onSignOut = viewModel::signOut,
         )
     }

@@ -27,25 +27,3 @@ enum class ResetStage {
      */
     NEW_PASSWORD,
 }
-
-/**
- * A sign-in method waiting to be moved onto an existing account.
- *
- * Created when the phone step finds the number already belongs to another
- * account: the new sign-in made an empty account (the orphan), and the person
- * is about to sign in to their real one. After that, [orphanToken] proves to
- * the API they held the orphan too, so it can be removed and [provider] linked.
- *
- * Held in memory only. If the app dies mid-way the orphan simply stays, and
- * signing in with the same method again starts over.
- *
- * @property orphanToken the orphan session's access token. A credential —
- *   never log it, never persist it.
- * @property provider the method to link afterwards, or null when the orphan
- *   was an email signup, which has nothing to link: the person just uses the
- *   existing account's own sign-in.
- */
-data class PendingLink(
-    val orphanToken: String = "",
-    val provider: SocialProvider? = null,
-)

@@ -16,15 +16,6 @@ struct WelcomeView: View {
                 .font(.subheadline)
                 .foregroundColor(Brand.textMuted)
 
-            if model.pendingLink != nil {
-                Text(L.t(Strings.shared.link_banner))
-                    .font(.subheadline)
-                    .foregroundColor(Brand.green)
-                Button(L.t(Strings.shared.action_cancel)) { model.cancelLink() }
-                    .font(.footnote)
-                    .foregroundColor(Brand.textMuted)
-            }
-
             Text(L.t(model.creatingAccount
                      ? Strings.shared.welcome_create_title
                      : Strings.shared.welcome_sign_in_title))

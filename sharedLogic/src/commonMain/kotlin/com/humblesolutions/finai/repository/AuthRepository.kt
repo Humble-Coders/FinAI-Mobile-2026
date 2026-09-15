@@ -15,7 +15,7 @@ import kotlin.coroutines.cancellation.CancellationException
  * 2026-09-15 — PRD §9). Whichever is used, the account then verifies a phone
  * number once (PRD §4.6): it is the key that stops one person becoming two
  * households, and what the server derives the region from. The number is never
- * a way to sign in.
+ * a way to sign in, and a number another account already has is refused.
  *
  * Every public suspend function declares `@Throws`: from Swift an undeclared
  * Kotlin exception terminates the process (kmp-arch-v2 → SKIE).
@@ -72,46 +72,18 @@ interface AuthRepository {
     @Throws(ApiException::class, CancellationException::class)
     suspend fun signInWithIdToken(provider: SocialProvider, idToken: String, nonce: String?)
 
-    /**
-     * Adds a Google or Apple identity to the signed-in account. Supabase refuses
-     * with [ApiException.IdentityInUse] while that identity still belongs to
-     * another account, so [removeOrphanAccount] comes first.
-     */
-    @Throws(ApiException::class, CancellationException::class)
-    suspend fun linkProvider(provider: SocialProvider, idToken: String, nonce: String?)
-
     // ── The phone step ──────────────────────────────────────────────────
 
     /**
      * Attaches [phone] to the signed-in user and texts a code. Raises
      * [ApiException.PhoneAlreadyLinked] when the number already belongs to
-     * someone else.
+     * another account; the user is asked for a different number.
      */
     @Throws(ApiException::class, CancellationException::class)
     suspend fun requestPhoneLink(phone: String)
 
     @Throws(ApiException::class, CancellationException::class)
     suspend fun verifyPhoneLink(phone: String, code: String)
-
-    // ── Linking an orphan ───────────────────────────────────────────────
-
-    /**
-     * A freshly refreshed access token for the current session, so it lasts as
-     * long as possible — the orphan's proof in a [com.humblesolutions.finai.model.PendingLink].
-     * Null when signed out. A credential: never log it.
-     */
-    @Throws(ApiException::class, CancellationException::class)
-    suspend fun currentAccessToken(): String?
-
-    /** The provider the current session signed in with, or null for email (or no session). */
-    fun currentSignInProvider(): SocialProvider?
-
-    /**
-     * Removes the empty account [orphanToken] belongs to, while signed in to
-     * the real one. Returns this account's `/me`.
-     */
-    @Throws(ApiException::class, CancellationException::class)
-    suspend fun removeOrphanAccount(orphanToken: String): Me
 
     // ── Session and onboarding ──────────────────────────────────────────
 

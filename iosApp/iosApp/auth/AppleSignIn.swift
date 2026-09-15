@@ -34,8 +34,7 @@ struct AppleSignInButton: View {
                 }
                 // Apple returns name and email ONLY on the first authorization
                 // (PRD F1). The name is deliberately not captured at signup
-                // (manager decision, 2026-09-15). The model decides whether this
-                // token signs in or links to the account on the link screen.
+                // (manager decision, 2026-09-15).
                 model.signInWithProvider(.apple, idToken: idToken, nonce: rawNonce)
 
             case let .failure(error):
