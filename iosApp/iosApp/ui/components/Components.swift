@@ -505,3 +505,20 @@ struct CardScreen<Content: View>: View {
         }
     }
 }
+
+
+/// What a step's hand-over looks like: the card, with the coin in the middle.
+///
+/// Shown while the session is signed in but `/me` has not arrived — after
+/// verifying an email code, say, on the way to the phone step. The brand splash
+/// belongs to launch; between steps it reads as the app restarting.
+struct LoadingCard: View {
+    var body: some View {
+        CardScreen(busy: true) {
+            Text(L.t(Strings.shared.loading_body))
+                .font(.subheadline)
+                .foregroundColor(Brand.textMuted)
+                .multilineTextAlignment(.center)
+        }
+    }
+}

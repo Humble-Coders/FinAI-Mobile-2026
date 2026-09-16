@@ -19,6 +19,9 @@ struct RootView: View {
                 // signed-in user's fast start still sees it. It hands over to
                 // the static splash if routing is still deciding.
                 SplashView(slow: false, animate: true) { model.finishIntro() }
+            } else if model.showLoadingCard {
+                // Between steps, not at launch: the coin carries the wait.
+                LoadingCard()
             } else {
                 content
             }

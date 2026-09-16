@@ -22,6 +22,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -46,6 +47,8 @@ import com.airbnb.lottie.compose.LottieConstants
 import com.airbnb.lottie.compose.animateLottieCompositionAsState
 import com.airbnb.lottie.compose.rememberLottieComposition
 import com.humblesolutions.finai.R
+import com.humblesolutions.finai.i18n.LocalizationRegistry
+import com.humblesolutions.finai.i18n.Strings
 import com.humblesolutions.finai.ui.theme.FinAiPalette
 
 /** The coin that sits on the card's top edge. */
@@ -191,6 +194,25 @@ fun CardScreen(
             spacing = spacing,
             busy = busy,
             content = content,
+        )
+    }
+}
+
+
+/**
+ * What a step's hand-over looks like: the card, with the coin in the middle.
+ *
+ * Shown while the session is signed in but `/me` has not arrived — after
+ * verifying an email code, say, on the way to the phone step. The brand splash
+ * belongs to launch; between steps it reads as the app restarting.
+ */
+@Composable
+fun LoadingCard() {
+    CardScreen(busy = true) {
+        Text(
+            text = LocalizationRegistry.get(Strings.loading_body),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }

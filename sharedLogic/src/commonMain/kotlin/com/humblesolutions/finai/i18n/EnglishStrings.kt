@@ -62,6 +62,7 @@ val EnglishStrings: Map<String, String> = mapOf(
     Strings.reset_save to "Save password",
     Strings.app_tagline to "AI-Powered Personal Finance",
     Strings.splash_slow to "Still working — the server may be waking up.",
+    Strings.loading_body to "Getting things ready…",
     Strings.welcome_phone_label to "Phone number",
     Strings.welcome_phone_hint to "416 555 0100",
     Strings.welcome_dial_code_label to "Country calling code",

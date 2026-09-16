@@ -81,6 +81,15 @@ final class OnboardingViewModel: ObservableObject {
 
     // MARK: - Derived
 
+    /// Signed in, with `/me` still on its way - the gap between two steps.
+    ///
+    /// The router calls this splash, which is right at launch and wrong
+    /// afterwards: mid-flow the brand screen reads as the app restarting, so
+    /// the root shows the card with its coin instead.
+    var showLoadingCard: Bool {
+        introFinished && session == .signedIn && me == nil && meFailure == nil
+    }
+
     var destination: Destination {
         OnboardingRouter.shared.destinationFor(session: session, me: me, failure: meFailure)
     }

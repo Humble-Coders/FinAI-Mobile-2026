@@ -18,6 +18,7 @@ import com.humblesolutions.finai.i18n.Strings
 import com.humblesolutions.finai.model.OnboardingStep
 import com.humblesolutions.finai.model.ResetStage
 import com.humblesolutions.finai.model.SocialProvider
+import com.humblesolutions.finai.ui.components.LoadingCard
 import com.humblesolutions.finai.ui.home.HomeScreen
 import com.humblesolutions.finai.ui.onboarding.CodeScreen
 import com.humblesolutions.finai.ui.onboarding.ConsentScreen
@@ -102,6 +103,13 @@ fun AppNavigation(viewModel: OnboardingViewModel) {
             return
         }
         null -> Unit
+    }
+
+    // Between steps, not at launch: the coin carries the wait rather than the
+    // brand screen, which would read as the app starting over.
+    if (state.showLoadingCard) {
+        LoadingCard()
+        return
     }
 
     when (val destination = state.destination) {

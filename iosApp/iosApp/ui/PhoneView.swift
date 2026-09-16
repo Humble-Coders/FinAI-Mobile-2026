@@ -23,13 +23,16 @@ struct PhoneView: View {
 
             HStack(spacing: 8) {
                 Button { pickerOpen = true } label: {
-                    Text(model.dialCode.display)
-                        .font(.title3)
-                        .foregroundColor(.primary)
-                        .frame(minHeight: 52)
-                        .padding(.horizontal, 14)
-                        .background(Brand.surface)
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                    HStack(spacing: 6) {
+                        Text(flagEmoji(region: model.dialCode.region))
+                        Text(model.dialCode.display)
+                    }
+                    .font(.title3)
+                    .foregroundColor(.primary)
+                    .frame(minHeight: 52)
+                    .padding(.horizontal, 12)
+                    .background(Brand.surface)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(L.t(Strings.shared.welcome_dial_code_label))
@@ -66,11 +69,15 @@ struct PhoneView: View {
             }
             .padding(.top, 8)
         }
-        .sheet(isPresented: $pickerOpen) {
+        // A dropdown anchored to the field rather than a sheet over the whole
+        // screen: it is one small choice, and the number stays in view.
+        .popover(isPresented: $pickerOpen) {
             DialCodePicker { picked in
                 model.dialCode = picked
                 pickerOpen = false
             }
+            .frame(width: 320, height: 380)
+            .presentationCompactAdaptation(.popover)
         }
     }
 }
@@ -96,13 +103,15 @@ private struct DialCodePicker: View {
         NavigationStack {
             List(entries, id: \.region) { entry in
                 Button { onPick(entry) } label: {
-                    HStack {
+                    HStack(spacing: 8) {
+                        Text(flagEmoji(region: entry.region))
                         Text(countryName(entry.region)).foregroundColor(.primary)
                         Spacer()
                         Text(entry.display).foregroundColor(Brand.textMuted)
                     }
                 }
             }
+            .listStyle(.plain)
             .searchable(text: $query)
             .navigationTitle(L.t(Strings.shared.welcome_dial_code_label))
             .navigationBarTitleDisplayMode(.inline)

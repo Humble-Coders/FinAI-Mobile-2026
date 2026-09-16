@@ -70,6 +70,16 @@ data class OnboardingUiState(
 ) {
 
     /**
+     * Signed in, with `/me` still on its way — the gap between two steps.
+     *
+     * The router calls this Splash, which is right at launch and wrong
+     * afterwards: mid-flow the brand screen reads as the app restarting, so the
+     * navigation shows the card with its coin instead.
+     */
+    val showLoadingCard: Boolean
+        get() = introFinished && session == SessionState.SIGNED_IN && me == null && meFailure == null
+
+    /**
      * Where the app should be — from the one shared rule, never decided here.
      * The sub-states above (a sent code, a reset) are the exceptions the
      * router does not model; the navigation layer checks them first.

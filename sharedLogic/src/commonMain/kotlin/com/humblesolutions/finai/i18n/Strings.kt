@@ -43,6 +43,7 @@ object Strings {
     // Splash and launch.
     const val app_tagline = "app_tagline" // "AI-Powered Personal Finance"
     const val splash_slow = "splash_slow" // "Still working — the server may be waking up."
+    const val loading_body = "loading_body" // "Getting things ready…"
 
     // Phone entry, and what is shared with the welcome screen.
     const val welcome_phone_label = "welcome_phone_label" // "Phone number"
