@@ -35,6 +35,15 @@ sealed class ApiException(message: String, cause: Throwable? = null) : Exception
         override val messageKey: String = Strings.error_not_found
     }
 
+    /**
+     * An amount the server would not store, named by its path in the request
+     * (`debts.0.balance`). The path is what lets the wizard highlight the row
+     * the user typed rather than reddening the whole form.
+     */
+    class InvalidAmount(val field: String?) : ApiException("amount rejected: " + (field ?: "unknown")) {
+        override val messageKey: String = Strings.error_invalid_amount
+    }
+
     /** The server rejected what was sent (400, 409, 422). */
     class Validation(val status: Int) : ApiException("rejected with $status") {
         override val messageKey: String = Strings.error_validation

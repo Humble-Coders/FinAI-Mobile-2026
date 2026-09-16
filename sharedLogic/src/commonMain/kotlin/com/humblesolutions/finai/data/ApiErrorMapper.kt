@@ -15,6 +15,7 @@ internal object ApiErrorMapper {
     private const val FEATURE_UNAVAILABLE = "feature_unavailable"
     private const val PHONE_ALREADY_LINKED = "phone_already_linked"
     private const val TERMS_VERSION_MISMATCH = "terms_version_mismatch"
+    private const val INVALID_AMOUNT = "invalid_amount"
 
     fun fromResponse(status: Int, body: String): ApiException = when (status) {
         401 -> ApiException.Unauthorized("token rejected")
@@ -40,6 +41,7 @@ internal object ApiErrorMapper {
                 PHONE_ALREADY_LINKED -> return ApiException.PhoneAlreadyLinked()
                 TERMS_VERSION_MISMATCH ->
                     return ApiException.TermsChanged(detail.string("current_version"))
+                INVALID_AMOUNT -> return ApiException.InvalidAmount(detail.string("field"))
             }
         }
         return ApiException.Validation(status)
