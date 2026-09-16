@@ -221,17 +221,36 @@ struct ProviderCircleButton<Logo: View>: View {
     }
 }
 
-/// Google's "G".
+/// Google's "G", drawn to their colours.
 ///
-/// Drawn from the mark's own geometry into an image asset, as a stand-in:
-/// Google's branding rules ask for their supplied artwork, so replace
-/// GoogleG.imageset with the official file before release.
+/// A stand-in, and knowingly not exact: Google's branding rules ask for their
+/// supplied artwork, and attempts to reproduce the mark by hand do not match
+/// it. Replace this with the official asset before release.
 struct GoogleMark: View {
     var body: some View {
-        Image("GoogleG")
-            .resizable()
-            .scaledToFit()
-            .frame(width: 26, height: 26)
+        ZStack {
+            Circle()
+                .trim(from: 0.0, to: 0.25)
+                .stroke(Color(red: 0.918, green: 0.263, blue: 0.208), lineWidth: 6)
+                .rotationEffect(.degrees(-135))
+            Circle()
+                .trim(from: 0.0, to: 0.25)
+                .stroke(Color(red: 0.984, green: 0.737, blue: 0.020), lineWidth: 6)
+                .rotationEffect(.degrees(135))
+            Circle()
+                .trim(from: 0.0, to: 0.25)
+                .stroke(Color(red: 0.204, green: 0.659, blue: 0.325), lineWidth: 6)
+                .rotationEffect(.degrees(45))
+            Circle()
+                .trim(from: 0.0, to: 0.30)
+                .stroke(Color(red: 0.259, green: 0.522, blue: 0.957), lineWidth: 6)
+                .rotationEffect(.degrees(-45))
+            Rectangle()
+                .fill(Color(red: 0.259, green: 0.522, blue: 0.957))
+                .frame(width: 11, height: 6)
+                .offset(x: 5.5, y: 0)
+        }
+        .frame(width: 26, height: 26)
     }
 }
 

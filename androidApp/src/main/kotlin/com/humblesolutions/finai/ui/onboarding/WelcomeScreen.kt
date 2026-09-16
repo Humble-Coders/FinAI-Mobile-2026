@@ -344,7 +344,7 @@ private fun AuthSheet(
         // Google (2026-09-11), so the row holds one.
         ProviderCircle(
             label = strings(Strings.welcome_google),
-            icon = R.drawable.google_g,
+            icon = R.drawable.ic_google_g,
             onClick = onGoogle,
             enabled = !state.busy,
         )
