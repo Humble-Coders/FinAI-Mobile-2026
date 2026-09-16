@@ -28,6 +28,16 @@ class ApiErrorMapperTest {
     }
 
     @Test
+    fun `an amount the server refuses carries the field it refused`() {
+        val error = ApiErrorMapper.fromResponse(
+            422,
+            """{"detail":{"code":"invalid_amount","field":"investments.1.amount"}}""",
+        )
+        assertIs<ApiException.InvalidAmount>(error)
+        assertEquals("investments.1.amount", error.field)
+    }
+
+    @Test
     fun `a 409 without a known code stays a generic rejection`() {
         val error = ApiErrorMapper.fromResponse(409, """{"detail":{"code":"something_else"}}""")
         assertIs<ApiException.Validation>(error)
