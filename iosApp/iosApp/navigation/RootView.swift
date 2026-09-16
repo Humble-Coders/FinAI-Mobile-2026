@@ -8,6 +8,9 @@ import SharedLogic
 /// reset, a sent code, and the region override reached from consent.
 struct RootView: View {
     @StateObject private var model = OnboardingViewModel()
+    /// The wizard owns a repository and a draft nothing else needs, so it has
+    /// its own model, built and closed with the screen.
+    @StateObject private var setupModel = SetupViewModel()
     @State private var changingRegion = false
 
     var body: some View {
@@ -99,9 +102,9 @@ struct RootView: View {
         case .consent:
             ConsentView(model: model) { changingRegion = true }
         case .financialSetup:
-            // 2.4 replaces this with the wizard. Until then it still blocks
-            // home, which is what the server requires.
-            SetupPendingView { model.signOut() }
+            SetupView(model: setupModel) { model.loadMe() }
+                .onAppear { setupModel.bind() }
+                .onDisappear { setupModel.unbind() }
         case .updateRequired:
             UpdateRequiredView()
         case .home:

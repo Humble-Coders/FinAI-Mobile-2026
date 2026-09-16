@@ -2,15 +2,20 @@ package com.humblesolutions.finai.navigation
 
 import android.content.Context
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.humblesolutions.finai.BuildConfig
 import com.humblesolutions.finai.auth.GoogleSignIn
 import com.humblesolutions.finai.auth.GoogleSignInCancelled
 import com.humblesolutions.finai.auth.GoogleSignInNotConfigured
@@ -18,9 +23,6 @@ import com.humblesolutions.finai.i18n.Strings
 import com.humblesolutions.finai.model.OnboardingStep
 import com.humblesolutions.finai.model.ResetStage
 import com.humblesolutions.finai.model.SocialProvider
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.ui.Modifier
 import com.humblesolutions.finai.ui.components.LoadingCard
 import com.humblesolutions.finai.ui.components.LoadingCoin
 import com.humblesolutions.finai.ui.home.HomeScreen
@@ -33,10 +35,11 @@ import com.humblesolutions.finai.ui.onboarding.OnboardingViewModel
 import com.humblesolutions.finai.ui.onboarding.PhoneScreen
 import com.humblesolutions.finai.ui.onboarding.RegionScreen
 import com.humblesolutions.finai.ui.onboarding.ResetRequestScreen
-import com.humblesolutions.finai.ui.onboarding.SetupPendingScreen
 import com.humblesolutions.finai.ui.onboarding.SplashScreen
 import com.humblesolutions.finai.ui.onboarding.UpdateRequiredScreen
 import com.humblesolutions.finai.ui.onboarding.WelcomeScreen
+import com.humblesolutions.finai.ui.setup.SetupScreen
+import com.humblesolutions.finai.ui.setup.SetupViewModel
 import com.humblesolutions.finai.usecase.Destination
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
@@ -173,9 +176,10 @@ private fun AppContent(viewModel: OnboardingViewModel) {
                 onChangeRegion = { changingRegion = true },
                 onAccept = viewModel::acceptTerms,
             )
-            // 2.4 replaces this with the wizard. Until then it still blocks
-            // home, which is the behaviour the server requires.
-            OnboardingStep.FINANCIAL_SETUP -> SetupPendingScreen(onSignOut = viewModel::signOut)
+            OnboardingStep.FINANCIAL_SETUP -> SetupRoute(
+                userId = state.me?.user?.id.orEmpty(),
+                onFinished = viewModel::loadMe,
+            )
             OnboardingStep.UNKNOWN -> UpdateRequiredScreen()
         }
 
@@ -187,6 +191,41 @@ private fun AppContent(viewModel: OnboardingViewModel) {
             onSignOut = viewModel::signOut,
         )
     }
+}
+
+/**
+ * The financial setup wizard, with its own view model: it owns a repository and
+ * a draft that nothing else needs.
+ *
+ * A real `ViewModel`, not something remembered by the composition: a rotation
+ * tears the composition down, and a wizard that lost the figure being typed
+ * every time the phone turned would fail the standard it is held to. It is
+ * cleared with the activity, which closes the clients it opened.
+ *
+ * Because it outlives a sign-out, the bind is keyed on who is signed in: a
+ * different account rebinds and starts from an empty wizard.
+ */
+@Composable
+private fun SetupRoute(userId: String, onFinished: () -> Unit) {
+    val model: SetupViewModel = viewModel()
+    val state by model.uiState.collectAsStateWithLifecycle()
+    LaunchedEffect(userId) { model.bind(userId, logging = BuildConfig.DEBUG) }
+
+    SetupScreen(
+        state = state,
+        onBack = model::back,
+        onIncomeChange = model::onIncomeChange,
+        onExpenseChange = model::onExpenseChange,
+        onOpenList = model::openList,
+        onContinue = { model.continueStep(onFinished) },
+        onSkip = { model.skip(onFinished) },
+        onGoTo = model::goTo,
+        onRowChange = model::onRowChange,
+        onAddRow = model::addRow,
+        onRemoveRow = model::removeRow,
+        onKeepRows = model::keepRows,
+        onDiscardRows = model::discardRows,
+    )
 }
 
 /**
