@@ -412,37 +412,53 @@ struct CoinBadge: View {
 
 /// The white card every signed-out screen sits in.
 ///
+/// It is **as tall as its content** — the stack is measured and the card capped
+/// to that height — but it always scrolls, so when the keyboard takes half the
+/// screen everything below the fields can still be reached. It runs to the very
+/// bottom of the screen: the rounded background ignores the safe area, while
+/// the content stays clear of the home indicator.
+///
 /// While `busy`, the coin leaves its place on the edge and settles in the middle
 /// of the card: it is the loading indicator, so the screens it frames show no
 /// spinner of their own. It returns to the edge when the work ends.
-///
-/// It is **as tall as its content**: `ViewThatFits` takes the plain stack when
-/// that fits and a scrolling one only when it does not, so a short form gets a
-/// short card. It runs to the bottom edge, carrying its colour past the safe
-/// area, and the coin straddles its top edge.
 struct AuthCard<Content: View>: View {
     var busy = false
     @ViewBuilder var content: () -> Content
 
-    /// Measured, not guessed: the card is as tall as its content, so its centre
-    /// is only known once it has been laid out.
+    /// Measured, not guessed: the card is as tall as its content, and its centre
+    /// is only known once that has been laid out.
+    @State private var contentHeight: CGFloat = 0
     @State private var cardHeight: CGFloat = 0
 
     var body: some View {
         ZStack(alignment: .top) {
-            ViewThatFits(in: .vertical) {
-                stack
-                ScrollView { stack }.scrollBounceBehavior(.basedOnSize)
+            ScrollView {
+                stack.onGeometryChange(for: CGFloat.self) { $0.size.height } action: { contentHeight = $0 }
             }
-            .background(Brand.sheet.ignoresSafeArea(edges: .bottom))
-            .clipShape(UnevenRoundedRectangle(topLeadingRadius: 28, topTrailingRadius: 28))
-            .ignoresSafeArea(edges: .bottom)
+            .scrollBounceBehavior(.basedOnSize)
+            .scrollDismissesKeyboard(.interactively)
+            .frame(maxHeight: contentHeight == 0 ? nil : contentHeight)
+            // The colour and the rounded top run past the safe area; clipping
+            // the card itself would cut that extension off again.
+            .background(alignment: .top) {
+                UnevenRoundedRectangle(topLeadingRadius: 28, topTrailingRadius: 28)
+                    .fill(Brand.sheet)
+                    .ignoresSafeArea(edges: .bottom)
+            }
             .padding(.top, CoinBadge.size / 2)
             .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { cardHeight = $0 }
 
             CoinBadge()
                 .offset(y: busy ? max(0, cardHeight / 2 - CoinBadge.size / 2) : 0)
                 .animation(.easeInOut(duration: 0.42), value: busy)
+        }
+        .toolbar {
+            // Number pads have no return key, so without this there is no way
+            // off the keyboard but tapping the little that stays visible.
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button(L.t(Strings.shared.action_done)) { dismissKeyboard() }
+            }
         }
     }
 
@@ -458,6 +474,11 @@ struct AuthCard<Content: View>: View {
         .padding(.bottom, 40)
         .frame(maxWidth: .infinity)
     }
+}
+
+/// Puts the keyboard away from anywhere, without the caller holding the focus.
+func dismissKeyboard() {
+    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
 }
 
 /// The wash plus the card: the frame the code and phone steps share with the

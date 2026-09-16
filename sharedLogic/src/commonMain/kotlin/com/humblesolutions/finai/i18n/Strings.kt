@@ -75,6 +75,7 @@ object Strings {
     const val welcome_or_continue = "welcome_or_continue" // "Or continue with"
     const val welcome_apple = "welcome_apple" // "Continue with Apple"
     const val action_close = "action_close" // "Close"
+    const val action_done = "action_done" // "Done"
     const val email_code_hint = "email_code_hint" // "Can't find it? Check your spam folder. If this email already has an account, go back and sign in instead."
     const val code_wrong_email = "code_wrong_email" // "Wrong email? Go back and edit it."
     const val reset_title = "reset_title" // "Reset your password"

@@ -51,6 +51,7 @@ val EnglishStrings: Map<String, String> = mapOf(
     Strings.welcome_or_continue to "Or continue with",
     Strings.welcome_apple to "Continue with Apple",
     Strings.action_close to "Close",
+    Strings.action_done to "Done",
     Strings.email_code_hint to "Can't find it? Check your spam folder. If this email already has an account, go back and sign in instead.",
     Strings.code_wrong_email to "Wrong email? Go back and edit it.",
     Strings.reset_title to "Reset your password",
