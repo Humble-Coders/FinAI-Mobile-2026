@@ -8,4 +8,7 @@ target 'iosApp' do
   # Google sign-in. A native SDK, so it lives per platform; the ID token it
   # returns goes through the shared repository like Apple's (kmp-arch-v2).
   pod 'GoogleSignIn', '~> 8.0'
+
+  # The coin animation on the auth sheet: the same Lottie file Android plays.
+  pod 'lottie-ios', '~> 4.5'
 end

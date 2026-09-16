@@ -5,10 +5,16 @@ import SharedLogic
 /// `FinAiPalette` so the two apps cannot drift.
 enum Brand {
     static let green = Color(red: 0x22 / 255, green: 0xC5 / 255, blue: 0x5E / 255)
+    /// The dark end of the logo's gradient, used for the primary button.
+    static let greenDeep = Color(red: 0x15 / 255, green: 0x80 / 255, blue: 0x3D / 255)
     static let onGreen = Color(red: 0x05 / 255, green: 0x2E / 255, blue: 0x16 / 255)
 
     static let ground = Color("Ground")
+    /// The auth sheet's card: white on light, a lifted grey on dark.
+    static let sheet = Color("Surface")
     static let surface = Color("Surface")
+    /// A field inside the sheet, a shade off the card behind it.
+    static let surfaceField = Color("Surface")
     static let border = Color("BorderColor")
     static let textMuted = Color("TextMuted")
 }
@@ -86,6 +92,100 @@ struct PrimaryButton: View {
     }
 }
 
+/// The one accented control on a screen, in the logo's green gradient.
+struct GradientButton: View {
+    let title: String
+    var enabled = true
+    var busy = false
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: { if !busy { action() } }) {
+            ZStack {
+                if busy {
+                    ProgressView().tint(Brand.onGreen)
+                } else {
+                    Text(title).font(.headline)
+                }
+            }
+            .frame(maxWidth: .infinity, minHeight: 56)
+        }
+        .buttonStyle(.plain)
+        .background(
+            LinearGradient(colors: [Brand.green, Brand.greenDeep], startPoint: .leading, endPoint: .trailing)
+                .opacity(enabled && !busy ? 1 : 0.5)
+        )
+        .foregroundColor(Brand.onGreen)
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .disabled(!enabled || busy)
+    }
+}
+
+/// An email or password field in the sheet's filled style.
+struct SheetField: View {
+    let placeholder: String
+    let systemImage: String
+    @Binding var text: String
+    var keyboard: UIKeyboardType = .default
+    var content: UITextContentType?
+    var isError = false
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: systemImage).foregroundColor(Brand.textMuted)
+            TextField(placeholder, text: $text)
+                .keyboardType(keyboard)
+                .textContentType(content)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+        }
+        .frame(minHeight: 56)
+        .padding(.horizontal, 14)
+        .background(Brand.surfaceField)
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .overlay(RoundedRectangle(cornerRadius: 14).stroke(isError ? .red : .clear, lineWidth: 1))
+    }
+}
+
+/// A password in the same style, hidden until the user asks to see it.
+struct SheetPasswordField: View {
+    @Binding var text: String
+    var content: UITextContentType = .password
+    var isError = false
+    let onSubmit: () -> Void
+
+    @State private var visible = false
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "lock").foregroundColor(Brand.textMuted)
+            Group {
+                if visible {
+                    TextField(L.t(Strings.shared.welcome_password_label), text: $text)
+                } else {
+                    SecureField(L.t(Strings.shared.welcome_password_label), text: $text)
+                }
+            }
+            .textContentType(content)
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled()
+            .submitLabel(.done)
+            .onSubmit(onSubmit)
+            Button {
+                visible.toggle()
+            } label: {
+                Image(systemName: visible ? "eye.slash" : "eye").foregroundColor(Brand.textMuted)
+            }
+            .accessibilityLabel(L.t(visible ? Strings.shared.action_hide : Strings.shared.action_show))
+        }
+        .frame(minHeight: 56)
+        .padding(.horizontal, 14)
+        .background(Brand.surfaceField)
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .overlay(RoundedRectangle(cornerRadius: 14).stroke(isError ? .red : .clear, lineWidth: 1))
+    }
+}
+
 /// A provider route. Outlined, never accented: the form's own button is primary.
 struct ProviderButton: View {
     let title: String
@@ -107,10 +207,12 @@ struct ProviderButton: View {
 
 /// `──── or ────`, between the email form and the provider routes.
 struct OrDivider: View {
+    var title: String = L.t(Strings.shared.welcome_or)
+
     var body: some View {
         HStack(spacing: 12) {
             Rectangle().fill(Brand.border).frame(height: 1)
-            Text(L.t(Strings.shared.welcome_or))
+            Text(title)
                 .font(.footnote)
                 .foregroundColor(Brand.textMuted)
             Rectangle().fill(Brand.border).frame(height: 1)

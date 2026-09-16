@@ -17,6 +17,9 @@ internal object FinAiPalette {
 
     val Green = Color(0xFF22C55E)
 
+    /** The dark end of the logo's gradient, used for the primary button. */
+    val GreenDeep = Color(0xFF15803D)
+
     /** Text and icons on top of [Green]: near-black, not white, for contrast. */
     val OnGreen = Color(0xFF052E16)
 
