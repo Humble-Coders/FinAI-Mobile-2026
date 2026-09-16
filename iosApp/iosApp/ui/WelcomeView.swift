@@ -19,23 +19,32 @@ struct WelcomeView: View {
 
     var body: some View {
         ZStack(alignment: .bottom) {
-            hero.ignoresSafeArea()
-            VStack(spacing: 0) {
-                brand
-                Spacer(minLength: 12)
-                // The same animation the sheet carries, filling the space the
-                // design's illustration occupies.
-                LottieView(animation: .named("coin_animation"))
-                    .looping()
-                    .animationSpeed(Self.animationSpeed)
-                    .frame(maxWidth: 360, maxHeight: 300)
-                    .accessibilityHidden(true)
-                Spacer(minLength: 12)
+            // Blurred behind the sheet, so the card reads as the near layer.
+            hero.blur(radius: sheetOpen ? 24 : 0).ignoresSafeArea()
+
+            if !sheetOpen {
+                VStack(spacing: 0) {
+                    brand
+                    Spacer(minLength: 12)
+                    // The same animation the sheet carries, filling the space
+                    // the design's illustration occupies.
+                    LottieView(animation: .named("coin_animation"))
+                        .looping()
+                        .animationSpeed(Self.animationSpeed)
+                        .frame(maxWidth: 360, maxHeight: 300)
+                        .accessibilityHidden(true)
+                    Spacer(minLength: 12)
+                }
+                .padding(.bottom, 180)
+                // Away as the card rises, back as it falls: the brand must not
+                // show through or behind the card.
+                .transition(.move(edge: .top).combined(with: .opacity))
+
+                entryButtons
             }
-            .padding(.bottom, 180)
-            if !sheetOpen { entryButtons }
+
             if sheetOpen {
-                Color.black.opacity(0.35)
+                Color.black.opacity(0.25)
                     .ignoresSafeArea()
                     .onTapGesture { close() }
                     .accessibilityLabel(L.t(Strings.shared.action_close))
@@ -286,7 +295,10 @@ private struct AuthSheet: View {
         .clipShape(UnevenRoundedRectangle(topLeadingRadius: 28, topTrailingRadius: 28))
         .frame(maxHeight: 680)
         // The card runs to the screen's edge, as a sheet should; the content's
-        // own bottom padding keeps it clear of the home indicator.
+        // own bottom padding keeps it clear of the home indicator. The colour
+        // is carried past the safe area too, or a strip of the wash shows
+        // below the card.
+        .background(Brand.sheet.ignoresSafeArea(edges: .bottom))
         .ignoresSafeArea(edges: .bottom)
     }
 }

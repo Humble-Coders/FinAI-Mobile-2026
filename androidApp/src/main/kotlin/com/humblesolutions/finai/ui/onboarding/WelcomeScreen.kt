@@ -2,6 +2,7 @@ package com.humblesolutions.finai.ui.onboarding
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -60,6 +61,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -118,9 +120,19 @@ fun WelcomeScreen(
         sheetOpen = true
     }
 
-    Box(Modifier.fillMaxSize()) {
-        HeroBackground()
+    // Blur needs API 31; below that the scrim alone separates the layers.
+    val backgroundBlur by animateDpAsState(if (sheetOpen) 24.dp else 0.dp, label = "blur")
 
+    Box(Modifier.fillMaxSize()) {
+        Box(Modifier.fillMaxSize().blur(backgroundBlur)) { HeroBackground() }
+
+        // Away as the card rises, back as it falls: the brand must not show
+        // through or behind the card.
+        AnimatedVisibility(
+            visible = !sheetOpen,
+            enter = slideInVertically { -it / 4 } + fadeIn(),
+            exit = slideOutVertically { -it / 4 } + fadeOut(),
+        ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -162,11 +174,17 @@ fun WelcomeScreen(
             // Room for the buttons, which sit in their own layer below.
             Spacer(Modifier.height(148.dp))
         }
+        }
 
         // The two ways in, where the design's page dots were.
+        AnimatedVisibility(
+            visible = !sheetOpen,
+            modifier = Modifier.align(Alignment.BottomCenter),
+            enter = fadeIn(),
+            exit = fadeOut(),
+        ) {
         Column(
             modifier = Modifier
-                .align(Alignment.BottomCenter)
                 .safeDrawingPadding()
                 .padding(horizontal = 24.dp, vertical = 32.dp)
                 .widthIn(max = 480.dp),
@@ -194,6 +212,7 @@ fun WelcomeScreen(
             ) {
                 Text(strings(Strings.welcome_log_in), style = MaterialTheme.typography.titleSmall)
             }
+        }
         }
 
         if (sheetOpen) {
