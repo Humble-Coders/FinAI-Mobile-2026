@@ -30,13 +30,25 @@ rows they hold; and `androidApp` gained the unit-test source set the ticket asks
 for. What the earlier version of this report claimed, and the diff did not
 support, is corrected in **Acceptance criteria** below.
 
+**Revised again after a second review pass.** That `ViewModel` change carried a
+worse bug than the one it fixed: scoped to the activity, the model outlived a
+sign-out, so the next account to sign in inherited the previous user's draft and
+would have written it to their own record on the first Continue. `bind` now takes
+the signed-in user's id and starts from an empty wizard when it changes, and
+`SetupViewModelTest` holds that shut. iOS clears the same state in `unbind`. Two
+smaller ones: the notice now says a figure that is *already wrong* straight away
+and waits only when the question is simply unanswered — so coming back to a bad
+figure explains itself; and `Money.add` returns null rather than reading what it
+cannot parse as zero, so a total can never come out quietly too small.
+
 ## Files changed
 
 **Shared — money**
 - `util/Money.kt` — normalise, validate, compare and format decimal strings; the
   currency's symbol and decimal places. `"1.234"` is refused rather than guessed.
   `add` sums two decimal strings digit by digit, so a total never arrives via
-  binary floating point.
+  binary floating point, and returns null rather than treating a figure it
+  cannot read as zero.
 - `util/MoneyTest.kt` — blanks, separators, too many decimals, huge values, zero,
   and addition (including `0.10 + 0.20`, the case that gives `Double` away).
 
@@ -61,6 +73,8 @@ support, is corrected in **Acceptance criteria** below.
 - `ui/setup/SetupUiStateTest.kt` — **new**; the derived rules (`canContinue`,
   `canSkip`, `notice`, `totalOf`, `canKeepRows`) asserted with a plain
   constructor, no Android and no coroutines.
+- `ui/setup/SetupViewModelTest.kt` — **new**; that a different signed-in user
+  gets an empty wizard, and that the same one keeps what they typed.
 - `androidApp/build.gradle.kts` — the unit-test dependencies that source set needs.
 - `navigation/AppNavigation.kt` — `financial_setup` routes to the wizard, which is
   now held as a `ViewModel()` rather than a remembered object.

@@ -65,8 +65,15 @@ data class SetupUiState(
 
     val canContinue: Boolean get() = !busy && block == null
 
-    /** What the notice renders: the block, once there is something for it to be about. */
-    val notice: SetupBlock? get() = if (touched) block else null
+    /**
+     * What the notice renders.
+     *
+     * A figure that is already wrong is said whenever it is on screen — coming
+     * back to a step later included. A question merely unanswered waits until
+     * the user has typed, so a step never opens by telling them off for not
+     * having started.
+     */
+    val notice: SetupBlock? get() = block?.takeIf { touched || !it.isUnanswered }
 
     /**
      * Only a step that is optional in full offers a Skip (ticket #17).

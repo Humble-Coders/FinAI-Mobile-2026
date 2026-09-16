@@ -176,7 +176,10 @@ private fun AppContent(viewModel: OnboardingViewModel) {
                 onChangeRegion = { changingRegion = true },
                 onAccept = viewModel::acceptTerms,
             )
-            OnboardingStep.FINANCIAL_SETUP -> SetupRoute(onFinished = viewModel::loadMe)
+            OnboardingStep.FINANCIAL_SETUP -> SetupRoute(
+                userId = state.me?.user?.id.orEmpty(),
+                onFinished = viewModel::loadMe,
+            )
             OnboardingStep.UNKNOWN -> UpdateRequiredScreen()
         }
 
@@ -198,12 +201,15 @@ private fun AppContent(viewModel: OnboardingViewModel) {
  * tears the composition down, and a wizard that lost the figure being typed
  * every time the phone turned would fail the standard it is held to. It is
  * cleared with the activity, which closes the clients it opened.
+ *
+ * Because it outlives a sign-out, the bind is keyed on who is signed in: a
+ * different account rebinds and starts from an empty wizard.
  */
 @Composable
-private fun SetupRoute(onFinished: () -> Unit) {
+private fun SetupRoute(userId: String, onFinished: () -> Unit) {
     val model: SetupViewModel = viewModel()
     val state by model.uiState.collectAsStateWithLifecycle()
-    LaunchedEffect(Unit) { model.bind(logging = BuildConfig.DEBUG) }
+    LaunchedEffect(userId) { model.bind(userId, logging = BuildConfig.DEBUG) }
 
     SetupScreen(
         state = state,

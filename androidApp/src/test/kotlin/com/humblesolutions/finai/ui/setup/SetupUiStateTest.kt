@@ -81,6 +81,14 @@ class SetupUiStateTest {
     }
 
     @Test
+    fun `a figure that is already wrong is said without waiting to be touched`() {
+        // Coming back to a step whose stored figure will not do: Continue is
+        // disabled, so something has to explain why it is disabled.
+        val revisited = SetupUiState(loading = false, draft = SetupDraft(income = "abc"))
+        assertEquals(SetupBlock.INCOME_NOT_MONEY, revisited.notice)
+    }
+
+    @Test
     fun `a list row shows what it adds up to`() {
         val state = SetupUiState(
             loading = false,

@@ -83,12 +83,16 @@ object Money {
      * Anything that is not money reads as `"0"`, so a half-typed row adds
      * nothing rather than breaking the total.
      *
+     * Null when either side is not money at this scale. A total must never
+     * quietly come out smaller because one figure could not be read — a wrong
+     * total is worse than no total, because nobody checks it.
+     *
      * For display only. A sum wider than [MAX_WHOLE_DIGITS] is beyond what the
      * server stores, and no sum of real balances reaches it.
      */
-    fun add(a: String, b: String, fractionDigits: Int = 2): String {
-        val left = normalize(a, fractionDigits) ?: zero(fractionDigits)
-        val right = normalize(b, fractionDigits) ?: zero(fractionDigits)
+    fun add(a: String, b: String, fractionDigits: Int = 2): String? {
+        val left = normalize(a, fractionDigits) ?: return null
+        val right = normalize(b, fractionDigits) ?: return null
         // Both are normalized to the same scale, so dropping the point leaves
         // two integers of the same units that can simply be added.
         val sum = addDigits(left.filter { it.isDigit() }, right.filter { it.isDigit() })
@@ -96,9 +100,6 @@ object Money {
         val padded = sum.padStart(fractionDigits + 1, '0')
         return padded.dropLast(fractionDigits) + "." + padded.takeLast(fractionDigits)
     }
-
-    private fun zero(fractionDigits: Int): String =
-        if (fractionDigits == 0) "0" else "0." + "0".repeat(fractionDigits)
 
     /** Schoolbook addition of two digit strings, right to left. */
     private fun addDigits(a: String, b: String): String {

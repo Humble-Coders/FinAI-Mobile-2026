@@ -64,8 +64,15 @@ final class SetupViewModel: ObservableObject {
 
     var canContinue: Bool { !busy && block == nil }
 
-    /// What the notice renders: the block, once there is something for it to be about.
-    var notice: SetupBlock? { touched ? block : nil }
+    /// What the notice renders.
+    ///
+    /// A figure that is already wrong is said whenever it is on screen; a
+    /// question merely unanswered waits until the user has typed, so a step
+    /// never opens by telling them off for not having started.
+    var notice: SetupBlock? {
+        guard let block else { return nil }
+        return (touched || !block.isUnanswered) ? block : nil
+    }
 
     /// Only a step that is optional in full offers a Skip (ticket #17).
     ///
@@ -129,6 +136,19 @@ final class SetupViewModel: ObservableObject {
         repository = nil
         capabilities?.close()
         capabilities = nil
+        // Nothing of this user survives into the next one's session. The model
+        // itself outlives a sign-out, so leaving the draft here would show one
+        // person's figures to whoever signs in next if their load failed.
+        draft = SetupDraft(income: "", monthlyExpense: "", obligations: [], debts: [], investments: [])
+        currency = ""
+        locale = ""
+        step = .income
+        reached = .income
+        editing = nil
+        rows = []
+        errorKey = nil
+        touched = false
+        loading = true
     }
 
     /// What is already saved decides where the wizard opens.

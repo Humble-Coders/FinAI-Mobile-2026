@@ -101,9 +101,11 @@ class MoneyTest {
     }
 
     @Test
-    fun `adding something that is not money adds nothing`() {
-        assertEquals("1200.00", Money.add("1200", ""))
-        assertEquals("1200.00", Money.add("1200", "abc"))
-        assertEquals("0.00", Money.add("", ""))
+    fun `adding something that is not money refuses rather than reading it as zero`() {
+        // A total that silently drops an unreadable figure is worse than no
+        // total: it looks right, so nobody checks it.
+        assertNull(Money.add("1200", ""))
+        assertNull(Money.add("1200", "abc"))
+        assertNull(Money.add("", ""))
     }
 }

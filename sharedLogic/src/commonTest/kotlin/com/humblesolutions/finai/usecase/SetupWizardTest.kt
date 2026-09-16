@@ -61,6 +61,17 @@ class SetupWizardTest {
     }
 
     @Test
+    fun `a question not yet answered is told apart from an answer that is wrong`() {
+        // The two are shown at different moments, so the difference has to be
+        // something the platforms can read rather than guess.
+        assertTrue(SetupBlock.INCOME_MISSING.isUnanswered)
+        assertTrue(SetupBlock.EXPENSE_MISSING.isUnanswered)
+        assertFalse(SetupBlock.INCOME_NOT_MONEY.isUnanswered)
+        assertFalse(SetupBlock.EXPENSE_NOT_MONEY.isUnanswered)
+        assertFalse(SetupBlock.ITEM_AMOUNT_INVALID.isUnanswered)
+    }
+
+    @Test
     fun `a list totals the rows that are finished`() {
         assertNull(SetupWizard.total(emptyList()))
         val items = listOf(

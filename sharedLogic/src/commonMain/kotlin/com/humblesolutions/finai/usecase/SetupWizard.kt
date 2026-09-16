@@ -49,6 +49,16 @@ enum class SetupBlock(val messageKey: String) {
     ITEM_NAME_MISSING(Strings.setup_item_name_missing),
     ITEM_AMOUNT_INVALID(Strings.setup_amount_invalid),
     RATE_INVALID(Strings.setup_rate_invalid),
+    ;
+
+    /**
+     * Whether nothing has been answered yet, rather than what is there being
+     * wrong. The two deserve different timing: a step should not open by
+     * telling someone off for not having typed, but a figure that is already
+     * wrong needs saying whenever it is on screen — including when the user
+     * comes back to the step later.
+     */
+    val isUnanswered: Boolean get() = this == INCOME_MISSING || this == EXPENSE_MISSING
 }
 
 /** One row of a list the user is filling in — a debt, an investment, an obligation. */
@@ -126,7 +136,12 @@ object SetupWizard {
     fun total(items: List<ItemDraft>, fractionDigits: Int = 2, debt: Boolean = false): String? {
         val amounts = items.filter { itemBlock(it, fractionDigits, debt) == null }.map { it.amount }
         if (amounts.isEmpty()) return null
-        return amounts.fold("0") { running, amount -> Money.add(running, amount, fractionDigits) }
+        return amounts.fold("0") { running, amount ->
+            // Every amount here passed itemBlock at this scale, so this cannot
+            // refuse today; it returns null rather than a wrong figure if that
+            // ever stops being true.
+            Money.add(running, amount, fractionDigits) ?: return null
+        }
     }
 
     /** A percentage the server will take: 0 to 100, at most two decimal places. */

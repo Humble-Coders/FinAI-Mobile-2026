@@ -42,8 +42,11 @@ class SetupViewModel : ViewModel() {
     private var repository: FinancialSetupRepository? = null
     private var capabilities: CapabilitiesRepository? = null
 
+    /** Whose wizard this is holding. Null until the first bind. */
+    private var boundTo: String? = null
+
     /**
-     * Binds once, and stays bound for as long as the wizard does.
+     * Binds to [userId], and stays bound while that user is the one signed in.
      *
      * A `ViewModel` rather than something remembered by the screen, so that a
      * rotation recreates the composition and finds this again — with the figure
@@ -51,17 +54,39 @@ class SetupViewModel : ViewModel() {
      * configuration change). The guard matters for exactly that reason: the
      * second call comes from the recreated screen, and reloading there would
      * overwrite what the user had typed with what the server last stored.
+     *
+     * That longevity is why the id is checked, rather than merely whether a
+     * repository exists. This model outlives a sign-out, so binding without
+     * asking who wants it would hand the next person to sign in the previous
+     * one's draft — and write their figures to the new account on the first
+     * Continue (kmp-arch-v2 → `bind`).
      */
-    fun bind(logging: Boolean) {
-        if (repository != null) return
+    fun bind(userId: String, logging: Boolean) {
+        if (userId.isBlank() || !rebindNeeded(userId)) return
         val client = Supabase.clientOrNull() ?: return
+        releaseForNewUser(userId)
         val tokens = SupabaseTokenSource(client)
         repository = KtorFinancialSetupRepository(ApiConfig.BASE_URL, tokens, logging)
         capabilities = KtorCapabilitiesRepository(ApiConfig.BASE_URL, tokens, logging)
         load()
     }
 
-    override fun onCleared() {
+    /** Whether [userId] is someone other than whoever this is already bound to. */
+    internal fun rebindNeeded(userId: String): Boolean = userId != boundTo
+
+    /**
+     * Drops the clients that carried the last user's token, and everything they
+     * typed, so nothing crosses from one account into the next.
+     */
+    internal fun releaseForNewUser(userId: String) {
+        closeClients()
+        boundTo = userId
+        _uiState.value = SetupUiState()
+    }
+
+    override fun onCleared() = closeClients()
+
+    private fun closeClients() {
         repository?.close()
         repository = null
         capabilities?.close()
