@@ -26,6 +26,11 @@ struct RootView: View {
                 content
             }
         }
+        .overlay {
+            // One loader for the whole app: mounted here, it survives every
+            // step change instead of being rebuilt with each screen.
+            LoadingCoin(visible: model.busy || model.showLoadingCard)
+        }
         .onAppear { model.bind() }
         .onDisappear { model.unbind() }
         .sheet(isPresented: $changingRegion) {

@@ -400,12 +400,14 @@ struct HeroWash: View {
 struct CoinBadge: View {
     static let size: CGFloat = 88
 
+    var size: CGFloat = CoinBadge.size
+
     var body: some View {
         LottieView(animation: .named("coin_3d"))
             .looping()
             // Half its own speed: a slow turn rather than a spin.
             .animationSpeed(0.5)
-            .frame(width: Self.size, height: Self.size)
+            .frame(width: size, height: size)
             .accessibilityHidden(true)
     }
 }
@@ -426,10 +428,8 @@ struct AuthCard<Content: View>: View {
     var busy = false
     @ViewBuilder var content: () -> Content
 
-    /// Measured, not guessed: the card is as tall as its content, and its centre
-    /// is only known once that has been laid out.
+    /// Measured, not guessed: the card is only as tall as its content.
     @State private var contentHeight: CGFloat = 0
-    @State private var cardHeight: CGFloat = 0
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -447,14 +447,15 @@ struct AuthCard<Content: View>: View {
                     .ignoresSafeArea(edges: .bottom)
             }
             .padding(.top, CoinBadge.size / 2)
-            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { cardHeight = $0 }
             // Behind the coin, and only while it is working.
             .blur(radius: busy ? 6 : 0)
-            .animation(.easeInOut(duration: 0.42), value: busy)
+            .animation(.easeInOut(duration: 0.3), value: busy)
 
+            // The edge badge steps aside for the loader, which is centred on
+            // the screen.
             CoinBadge()
-                .offset(y: busy ? max(0, cardHeight / 2 - CoinBadge.size / 2) : 0)
-                .animation(.easeInOut(duration: 0.42), value: busy)
+                .opacity(busy ? 0 : 1)
+                .animation(.easeInOut(duration: 0.2), value: busy)
         }
         .onChange(of: busy) { _, working in
             // Typing is over for now, and a keyboard would cover the coin.
@@ -507,18 +508,32 @@ struct CardScreen<Content: View>: View {
 }
 
 
-/// What a step's hand-over looks like: the card, with the coin in the middle.
+/// The loader: the coin, centred on the screen, for as long as something runs.
+///
+/// It lives at the root rather than inside a screen, so moving from one step to
+/// the next cannot tear it down and rebuild it — which is what made it stutter
+/// on the way from the email code to the phone step.
+struct LoadingCoin: View {
+    let visible: Bool
+
+    var body: some View {
+        CoinBadge(size: 112)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .opacity(visible ? 1 : 0)
+            .animation(.easeInOut(duration: 0.2), value: visible)
+            .allowsHitTesting(false)
+    }
+}
+
+/// What a step's hand-over looks like: the wash, with the loader over it.
 ///
 /// Shown while the session is signed in but `/me` has not arrived — after
 /// verifying an email code, say, on the way to the phone step. The brand splash
 /// belongs to launch; between steps it reads as the app restarting.
 struct LoadingCard: View {
     var body: some View {
-        CardScreen(busy: true) {
-            Text(L.t(Strings.shared.loading_body))
-                .font(.subheadline)
-                .foregroundColor(Brand.textMuted)
-                .multilineTextAlignment(.center)
-        }
+        // No card and no copy: the coin at the root says everything, and
+        // mounting a card for a moment is what the hand-over is trying to avoid.
+        HeroWash().ignoresSafeArea()
     }
 }

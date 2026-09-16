@@ -18,7 +18,11 @@ import com.humblesolutions.finai.i18n.Strings
 import com.humblesolutions.finai.model.OnboardingStep
 import com.humblesolutions.finai.model.ResetStage
 import com.humblesolutions.finai.model.SocialProvider
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.Modifier
 import com.humblesolutions.finai.ui.components.LoadingCard
+import com.humblesolutions.finai.ui.components.LoadingCoin
 import com.humblesolutions.finai.ui.home.HomeScreen
 import com.humblesolutions.finai.ui.onboarding.CodeScreen
 import com.humblesolutions.finai.ui.onboarding.ConsentScreen
@@ -46,6 +50,18 @@ import kotlinx.coroutines.launch
  */
 @Composable
 fun AppNavigation(viewModel: OnboardingViewModel) {
+    val state by viewModel.uiState.collectAsStateWithLifecycle()
+
+    Box(Modifier.fillMaxSize()) {
+        AppContent(viewModel)
+        // One loader for the whole app: mounted here, it survives every step
+        // change instead of being rebuilt with each screen.
+        LoadingCoin(visible = state.busy || state.showLoadingCard)
+    }
+}
+
+@Composable
+private fun AppContent(viewModel: OnboardingViewModel) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()

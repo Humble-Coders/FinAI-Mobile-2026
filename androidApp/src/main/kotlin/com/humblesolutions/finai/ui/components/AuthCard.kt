@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,7 +15,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -22,7 +22,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -32,9 +31,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.geometry.Offset
@@ -47,8 +45,6 @@ import com.airbnb.lottie.compose.LottieConstants
 import com.airbnb.lottie.compose.animateLottieCompositionAsState
 import com.airbnb.lottie.compose.rememberLottieComposition
 import com.humblesolutions.finai.R
-import com.humblesolutions.finai.i18n.LocalizationRegistry
-import com.humblesolutions.finai.i18n.Strings
 import com.humblesolutions.finai.ui.theme.FinAiPalette
 
 /** The coin that sits on the card's top edge. */
@@ -76,7 +72,7 @@ fun HeroBackground(modifier: Modifier = Modifier) {
 
 /** The spinning coin, drawn from the same Lottie file iOS plays. */
 @Composable
-fun CoinBadge(modifier: Modifier = Modifier) {
+fun CoinBadge(modifier: Modifier = Modifier, size: Dp = CoinBadgeSize) {
     val composition by rememberLottieComposition(LottieCompositionSpec.RawRes(R.raw.coin_3d))
     val progress by animateLottieCompositionAsState(
         composition = composition,
@@ -86,7 +82,7 @@ fun CoinBadge(modifier: Modifier = Modifier) {
     LottieAnimation(
         composition = composition,
         progress = { progress },
-        modifier = modifier.size(CoinBadgeSize),
+        modifier = modifier.size(size),
     )
 }
 
@@ -109,21 +105,18 @@ fun AuthCard(
     busy: Boolean = false,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    // Measured, not guessed: the card is as tall as its content, so the centre
-    // is only known once it has been laid out.
-    var cardHeight by remember { mutableStateOf(0.dp) }
-    val density = LocalDensity.current
-    val coinDrop by animateDpAsState(
-        targetValue = if (busy) (cardHeight / 2) - (CoinBadgeSize / 2) else 0.dp,
-        animationSpec = tween(durationMillis = 420),
-        label = "coin",
-    )
     // Behind the coin, and only while it is working. Blur needs API 31; below
     // that the card simply stays sharp.
     val cardBlur by animateDpAsState(
         targetValue = if (busy) 6.dp else 0.dp,
-        animationSpec = tween(durationMillis = 420),
+        animationSpec = tween(durationMillis = 300),
         label = "cardBlur",
+    )
+    // The edge badge steps aside for the loader, which is centred on the screen.
+    val badgeAlpha by animateFloatAsState(
+        targetValue = if (busy) 0f else 1f,
+        animationSpec = tween(durationMillis = 200),
+        label = "badge",
     )
 
     val keyboard = LocalSoftwareKeyboardController.current
@@ -140,7 +133,6 @@ fun AuthCard(
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
-                .onSizeChanged { cardHeight = with(density) { it.height.toDp() } }
                 .blur(cardBlur),
             shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
             color = MaterialTheme.colorScheme.surface,
@@ -167,7 +159,7 @@ fun AuthCard(
             }
         }
 
-        CoinBadge(Modifier.align(Alignment.TopCenter).offset(y = coinDrop))
+        CoinBadge(Modifier.align(Alignment.TopCenter).alpha(badgeAlpha))
     }
 }
 
@@ -200,7 +192,29 @@ fun CardScreen(
 
 
 /**
- * What a step's hand-over looks like: the card, with the coin in the middle.
+ * The loader: the coin, centred on the screen, for as long as something runs.
+ *
+ * It lives at the navigation root rather than inside a screen, so moving from
+ * one step to the next cannot unmount and rebuild it — which is what made it
+ * stutter on the way from the email code to the phone step.
+ */
+@Composable
+fun LoadingCoin(visible: Boolean) {
+    val alpha by animateFloatAsState(
+        targetValue = if (visible) 1f else 0f,
+        animationSpec = tween(durationMillis = 200),
+        label = "loader",
+    )
+    if (alpha == 0f) return
+    Box(Modifier.fillMaxSize().alpha(alpha), contentAlignment = Alignment.Center) {
+        CoinBadge(size = LoadingCoinSize)
+    }
+}
+
+private val LoadingCoinSize = 112.dp
+
+/**
+ * What a step's hand-over looks like: the wash, with the loader over it.
  *
  * Shown while the session is signed in but `/me` has not arrived — after
  * verifying an email code, say, on the way to the phone step. The brand splash
@@ -208,11 +222,7 @@ fun CardScreen(
  */
 @Composable
 fun LoadingCard() {
-    CardScreen(busy = true) {
-        Text(
-            text = LocalizationRegistry.get(Strings.loading_body),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    }
+    // No card and no copy: the coin at the root says everything, and mounting
+    // a card for a moment is what the hand-over is trying to avoid.
+    HeroBackground()
 }
