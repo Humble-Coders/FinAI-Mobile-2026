@@ -79,6 +79,13 @@ class MoneyTest {
     }
 
     @Test
+    fun `the symbol beside a field follows the currency`() {
+        assertEquals("$", Money.symbol("CAD"))
+        assertEquals("₹", Money.symbol("inr"))
+        assertEquals("ZZZ", Money.symbol("ZZZ"))
+    }
+
+    @Test
     fun `an amount that is not money formats to nothing rather than guessing`() {
         assertEquals("", Money.format("abc", "CAD"))
     }

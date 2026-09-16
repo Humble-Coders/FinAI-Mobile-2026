@@ -144,6 +144,8 @@ object Strings {
     const val setup_add_item = "setup_add_item" // "Add"
     const val setup_remove_item = "setup_remove_item" // "Remove"
     const val setup_none_yet = "setup_none_yet" // "Nothing added yet."
+    const val setup_items_added = "setup_items_added" // "{0} added"
+    const val action_save = "action_save" // "Save"
     const val setup_income_missing = "setup_income_missing" // "Enter your monthly income to continue."
     const val setup_expense_missing = "setup_expense_missing" // "Enter your monthly expenses to continue."
     const val setup_amount_invalid = "setup_amount_invalid" // "That doesn't look like an amount."
@@ -152,8 +154,6 @@ object Strings {
     const val error_invalid_amount = "error_invalid_amount" // "The server wouldn't accept that amount. Check it and try again."
 
     // The financial setup step, until 2.4 builds the wizard behind it.
-    const val setup_pending_title = "setup_pending_title" // "One more step"
-    const val setup_pending_body = "setup_pending_body" // "We need a couple of figures before your dashboard can say anything useful. This step arrives in the next update."
 
     // A provider sign-in that failed for a reason of its own.
     const val error_provider_failed = "error_provider_failed" // "That sign-in didn't complete. Try again, or use your email."

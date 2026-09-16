@@ -216,33 +216,3 @@ fun NotConfiguredScreen(problem: ConfigurationProblem) {
     }
 }
 
-/**
- * The `financial_setup` step, until 2.4 (FinAI-Mobile-2026#17) builds the
- * wizard behind it.
- *
- * A deliberate seam rather than a gap: the step must still block home, because
- * the server refuses everything else until the figures exist
- * (Finance-backend#29). Sign out is the only way off it until then.
- */
-@Composable
-fun SetupPendingScreen(onSignOut: () -> Unit) {
-    ScreenScaffold(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
-    ) {
-        Text(
-            text = strings(Strings.setup_pending_title),
-            style = MaterialTheme.typography.headlineSmall,
-            textAlign = TextAlign.Center,
-        )
-        Spacer(Modifier.height(12.dp))
-        Text(
-            text = strings(Strings.setup_pending_body),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.Center,
-        )
-        Spacer(Modifier.height(24.dp))
-        TextButton(onClick = onSignOut) { Text(strings(Strings.action_sign_out)) }
-    }
-}

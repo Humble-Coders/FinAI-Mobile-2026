@@ -74,6 +74,7 @@ import com.humblesolutions.finai.i18n.Strings
 import com.humblesolutions.finai.model.WelcomeMode
 import com.humblesolutions.finai.ui.components.AuthCard
 import com.humblesolutions.finai.ui.components.ErrorText
+import com.humblesolutions.finai.ui.components.GradientButton
 import com.humblesolutions.finai.ui.components.HeroBackground
 import com.humblesolutions.finai.ui.components.Wordmark
 import com.humblesolutions.finai.ui.strings
@@ -372,51 +373,6 @@ private fun AuthSheet(
             },
         ) {
             Text(strings(if (creating) Strings.welcome_have_account else Strings.welcome_need_account))
-        }
-    }
-}
-
-/** The one accented control on a screen, in the design's green gradient. */
-@Composable
-private fun GradientButton(
-    text: String,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    enabled: Boolean = true,
-    busy: Boolean = false,
-) {
-    Button(
-        onClick = onClick,
-        // Kept enabled while busy so the label stays legible; the click is what
-        // is suppressed. A disabled button on a slow network reads as broken.
-        enabled = enabled && !busy,
-        modifier = modifier.fillMaxWidth().heightIn(min = 56.dp),
-        shape = RoundedCornerShape(16.dp),
-        contentPadding = PaddingValues(),
-        colors = ButtonDefaults.buttonColors(
-            containerColor = Color.Transparent,
-            disabledContainerColor = Color.Transparent,
-        ),
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .alpha(if (enabled) 1f else 0.5f)
-                .background(
-                    Brush.horizontalGradient(listOf(FinAiPalette.Green, FinAiPalette.GreenDeep)),
-                    RoundedCornerShape(16.dp),
-                ),
-            contentAlignment = Alignment.Center,
-        ) {
-            if (busy) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(20.dp),
-                    strokeWidth = 2.dp,
-                    color = FinAiPalette.OnGreen,
-                )
-            } else {
-                Text(text, style = MaterialTheme.typography.titleSmall, color = FinAiPalette.OnGreen)
-            }
         }
     }
 }

@@ -115,6 +115,12 @@ object Money {
         }
     }
 
+    /**
+     * What to draw beside an amount field, e.g. `"$"`. Currencies the table
+     * does not know show their code, which is honest and never wrong.
+     */
+    fun symbol(currency: String): String = SYMBOLS[currency.uppercase()] ?: currency.uppercase()
+
     private val SYMBOLS = mapOf(
         "CAD" to "$", "USD" to "$", "EUR" to "€", "GBP" to "£", "INR" to "₹",
         "AUD" to "$", "NZD" to "$", "JPY" to "¥",
