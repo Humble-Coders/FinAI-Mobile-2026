@@ -48,6 +48,9 @@ dependencies {
     // with a plain constructor and no Android at all (kmp-arch-v2).
     testImplementation(libs.kotlin.testJunit)
     testImplementation(libs.junit)
+    // Replaces the main dispatcher, so a view model's own coroutines run in a
+    // plain JVM test.
+    testImplementation(libs.kotlinx.coroutines.test)
 }
 
 android {

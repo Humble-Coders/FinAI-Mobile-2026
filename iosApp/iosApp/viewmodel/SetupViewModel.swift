@@ -44,6 +44,10 @@ final class SetupViewModel: ObservableObject {
 
     private var repository: FinancialSetupRepository?
     private var capabilities: CapabilitiesRepository?
+    /// Bumped on every unbind. A request records the value it set out under
+    /// and applies its reply only if that is still the value, so a slow answer
+    /// for the last session cannot land in the next one (kmp-arch-v2).
+    private var generation = 0
 
     #if DEBUG
     private let logging = true
@@ -136,6 +140,8 @@ final class SetupViewModel: ObservableObject {
         repository = nil
         capabilities?.close()
         capabilities = nil
+        // Any reply still on its way belongs to the session being left.
+        generation += 1
         // Nothing of this user survives into the next one's session. The model
         // itself outlives a sign-out, so leaving the draft here would show one
         // person's figures to whoever signs in next if their load failed.
@@ -154,6 +160,8 @@ final class SetupViewModel: ObservableObject {
     /// What is already saved decides where the wizard opens.
     func load() {
         guard let repository else { return }
+        let capabilities = self.capabilities
+        let started = generation
         loading = true
         errorKey = nil
         Task { [weak self] in
@@ -164,7 +172,8 @@ final class SetupViewModel: ObservableObject {
                 // from capabilities (ticket #17). The setup response names a
                 // currency too, which stands in when capabilities cannot be
                 // had: what this screen must not do is guess from the device.
-                let payload = await self.capabilitiesOrNil()
+                let payload = await Self.capabilitiesOrNil(capabilities)
+                guard started == self.generation else { return }
                 self.currency = payload.map { $0.currency.isEmpty ? saved.currency : $0.currency }
                     ?? saved.currency
                 self.locale = payload?.locale ?? ""
@@ -174,6 +183,7 @@ final class SetupViewModel: ObservableObject {
                 self.reached = resume
                 self.touched = false
             } catch {
+                guard started == self.generation else { return }
                 self.errorKey = Self.messageKey(error)
             }
             self.loading = false
@@ -182,7 +192,7 @@ final class SetupViewModel: ObservableObject {
 
     /// How the wizard asks for capabilities: it decorates the screen, so a
     /// failure to fetch it is not a failure of the screen.
-    private func capabilitiesOrNil() async -> Capabilities? {
+    private static func capabilitiesOrNil(_ capabilities: CapabilitiesRepository?) async -> Capabilities? {
         guard let capabilities else { return nil }
         return try? await capabilities.fetch()
     }
@@ -316,21 +326,26 @@ final class SetupViewModel: ObservableObject {
         let payload = SetupWizard.shared.payload(
             draft: draft, currency: currency, fractionDigits: fractionDigits
         )
+        let started = generation
         busy = true
         errorKey = nil
         Task { [weak self] in
             do {
                 let saved = try await repository.save(setup: payload)
+                // Someone else's wizard now: neither their figures nor a step
+                // forward belong on it.
+                guard let self, started == self.generation else { return }
                 // What came back is what is stored, so the screens show the
                 // server's version rather than what was typed at it.
-                self?.currency = saved.currency
-                self?.draft = SetupWizard.shared.draftFrom(setup: saved)
-                self?.busy = false
+                self.currency = saved.currency
+                self.draft = SetupWizard.shared.draftFrom(setup: saved)
+                self.busy = false
                 onSaved()
             } catch {
+                guard let self, started == self.generation else { return }
                 // The draft is untouched: a failed save must never lose figures.
-                self?.busy = false
-                self?.errorKey = Self.messageKey(error)
+                self.busy = false
+                self.errorKey = Self.messageKey(error)
             }
         }
     }

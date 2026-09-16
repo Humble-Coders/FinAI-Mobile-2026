@@ -34,12 +34,22 @@ support, is corrected in **Acceptance criteria** below.
 worse bug than the one it fixed: scoped to the activity, the model outlived a
 sign-out, so the next account to sign in inherited the previous user's draft and
 would have written it to their own record on the first Continue. `bind` now takes
-the signed-in user's id and starts from an empty wizard when it changes, and
-`SetupViewModelTest` holds that shut. iOS clears the same state in `unbind`. Two
-smaller ones: the notice now says a figure that is *already wrong* straight away
-and waits only when the question is simply unanswered — so coming back to a bad
-figure explains itself; and `Money.add` returns null rather than reading what it
-cannot parse as zero, so a total can never come out quietly too small.
+the signed-in user's id and starts from an empty wizard when it changes. iOS
+clears the same state in `unbind`. Two smaller ones: the notice now says a figure
+that is *already wrong* straight away and waits only when the question is simply
+unanswered — so coming back to a bad figure explains itself; and `Money.add`
+returns null rather than reading what it cannot parse as zero, so a total can
+never come out quietly too small.
+
+**Revised a third time.** The reset alone left a gap: a request already on its
+way for the last user could answer after the reset and write their figures — or
+a step forward — into the next user's wizard. Both view models now stamp each
+request with the binding it set out under and drop any reply that no longer
+matches. A blank user id now shows an error instead of a loading coin that never
+stops. And the earlier version of `SetupViewModelTest` called the reset directly,
+never `bind` itself, so undoing the fix in `bind` would have left it green; it now
+drives `bind` with fake repositories, and removing the guards turns three of its
+six cases red (checked by doing exactly that).
 
 ## Files changed
 
@@ -73,9 +83,12 @@ cannot parse as zero, so a total can never come out quietly too small.
 - `ui/setup/SetupUiStateTest.kt` — **new**; the derived rules (`canContinue`,
   `canSkip`, `notice`, `totalOf`, `canKeepRows`) asserted with a plain
   constructor, no Android and no coroutines.
-- `ui/setup/SetupViewModelTest.kt` — **new**; that a different signed-in user
-  gets an empty wizard, and that the same one keeps what they typed.
-- `androidApp/build.gradle.kts` — the unit-test dependencies that source set needs.
+- `ui/setup/SetupViewModelTest.kt` — **new**; drives `bind` with fake
+  repositories: a different user gets an empty wizard and the last one's clients
+  are closed, the same user keeps what they typed, a late load or save for the
+  last user is dropped, and a blank id shows an error.
+- `androidApp/build.gradle.kts` — the unit-test dependencies that source set
+  needs, including `kotlinx-coroutines-test` for the view model's coroutines.
 - `navigation/AppNavigation.kt` — `financial_setup` routes to the wizard, which is
   now held as a `ViewModel()` rather than a remembered object.
 - `ui/components/FinAiComponents.kt` — `GradientButton` moved here from the
@@ -99,7 +112,7 @@ cannot parse as zero, so a total can never come out quietly too small.
 
 1. `./gradlew :androidApp:assembleDebug :androidApp:testDebugUnitTest :sharedLogic:testAndroidHostTest`
    — the shared module has no JVM target, so its host tests are
-   `testAndroidHostTest`, not `jvmTest`. Last run: **131 shared cases and 8
+   `testAndroidHostTest`, not `jvmTest`. Last run: **132 shared cases and 15
    Android cases, 0 failures**, `assembleDebug` succeeded.
    `:sharedLogic:allTests` also runs `iosSimulatorArm64Test`, which boots a
    simulator; it has **not** been run locally, and CI is what covers it.
@@ -115,6 +128,8 @@ cannot parse as zero, so a total can never come out quietly too small.
    - Step 3 offers Skip; take it and the app reaches home. Leave a half-finished
      debt row and take Skip anyway: it still goes through.
    - Rotate the phone mid-figure on Android: the figure is still there.
+   - Finish setup as account A and reach home, sign out **from home** (the wizard
+     has no sign-out), then create a new account B: B's wizard opens empty.
    - iOS, tap an amount field: the keyboard has a **Done** button.
    - Kill the app on step 2 and reopen: it resumes at step 2 with step 1's figure.
    - Turn off the network on a Continue: the error shows and the typed figure stays.
@@ -150,14 +165,15 @@ The ticket's wording, unedited.
       standards. — NOT VERIFIED.** Nothing has been run on a device or in dark
       mode. This is the one criterion the manager must close.
 - [x] `./gradlew …` passes and the iOS `xcodebuild` succeeds (**CI green on both
-      jobs**). — run 35096979555 on `480288f`: Android passed in 6m19s, iOS in
-      2m57s. That run is also what covers `iosSimulatorArm64Test`, which is not
-      run locally.
+      jobs**). — green on every head pushed so far; the last confirmed is run
+      35100377637 on `0c7869f` (Android 5m0s, iOS 2m39s). Each push starts a new
+      run, so check `gh pr checks 26` for the current head. CI is also what covers
+      `iosSimulatorArm64Test`, which is not run locally.
 - [x] No user-facing string literal in `androidApp` or `iosApp`. — the "1/3"
       counter was the last one; it is `setup_step_counter` now.
 - [x] *(Scope → Tests)* Money edge cases; blocking reasons per step; repository
       decoding and error mapping on a mock engine; **Android `UiState` derived
-      rules**. — the Android source set exists and runs 8 cases.
+      rules**. — the Android source set exists and runs 15 cases.
 
 ## Deviations / decisions
 

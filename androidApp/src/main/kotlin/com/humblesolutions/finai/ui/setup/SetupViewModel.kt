@@ -46,6 +46,14 @@ class SetupViewModel : ViewModel() {
     private var boundTo: String? = null
 
     /**
+     * Bumped every time the wizard is handed to someone new. A request records
+     * the value it set out under, and its reply is applied only if that is still
+     * the value — so a slow answer for the last user can never land in the next
+     * one's wizard (kmp-arch-v2 → guard async results against staleness).
+     */
+    private var generation = 0
+
+    /**
      * Binds to [userId], and stays bound while that user is the one signed in.
      *
      * A `ViewModel` rather than something remembered by the screen, so that a
@@ -61,27 +69,49 @@ class SetupViewModel : ViewModel() {
      * one's draft — and write their figures to the new account on the first
      * Continue (kmp-arch-v2 → `bind`).
      */
-    fun bind(userId: String, logging: Boolean) {
-        if (userId.isBlank() || !rebindNeeded(userId)) return
-        val client = Supabase.clientOrNull() ?: return
-        releaseForNewUser(userId)
-        val tokens = SupabaseTokenSource(client)
-        repository = KtorFinancialSetupRepository(ApiConfig.BASE_URL, tokens, logging)
-        capabilities = KtorCapabilitiesRepository(ApiConfig.BASE_URL, tokens, logging)
+    fun bind(userId: String, logging: Boolean) = bind(userId) {
+        Supabase.clientOrNull()?.let { client ->
+            val tokens = SupabaseTokenSource(client)
+            SetupRepositories(
+                setup = KtorFinancialSetupRepository(ApiConfig.BASE_URL, tokens, logging),
+                capabilities = KtorCapabilitiesRepository(ApiConfig.BASE_URL, tokens, logging),
+            )
+        }
+    }
+
+    /**
+     * The whole of [bind], with where the repositories come from left open, so
+     * a test drives exactly the path the app does rather than a piece of it.
+     */
+    internal fun bind(userId: String, build: () -> SetupRepositories?) {
+        if (userId.isBlank()) return refuseUnknownUser()
+        if (userId == boundTo) return
+        releaseTo(userId)
+        val built = build() ?: return
+        repository = built.setup
+        capabilities = built.capabilities
         load()
     }
 
-    /** Whether [userId] is someone other than whoever this is already bound to. */
-    internal fun rebindNeeded(userId: String): Boolean = userId != boundTo
-
     /**
      * Drops the clients that carried the last user's token, and everything they
-     * typed, so nothing crosses from one account into the next.
+     * typed, so nothing crosses from one account into the next — including any
+     * reply still on its way for them.
      */
-    internal fun releaseForNewUser(userId: String) {
+    private fun releaseTo(userId: String?) {
         closeClients()
         boundTo = userId
+        generation++
         _uiState.value = SetupUiState()
+    }
+
+    /**
+     * No id to bind to. Nothing of the last user may stay on screen, and a
+     * spinner that never stops is not an answer, so this says so instead.
+     */
+    private fun refuseUnknownUser() {
+        releaseTo(null)
+        _uiState.value = SetupUiState(loading = false, errorKey = Strings.error_unexpected)
     }
 
     override fun onCleared() = closeClients()
@@ -96,6 +126,8 @@ class SetupViewModel : ViewModel() {
     /** What is already saved decides where the wizard opens. */
     fun load() {
         val repository = repository ?: return
+        val capabilities = capabilities
+        val started = generation
         _uiState.update { it.copy(loading = true, errorKey = null) }
         viewModelScope.launch {
             try {
@@ -105,7 +137,8 @@ class SetupViewModel : ViewModel() {
                 // from capabilities (ticket #17). The setup response names a
                 // currency too, which stands in when capabilities cannot be
                 // had: what this screen must not do is guess from the device.
-                val payload = capabilitiesOrNull()
+                val payload = capabilitiesOrNull(capabilities)
+                if (started != generation) return@launch
                 _uiState.update {
                     it.copy(
                         loading = false,
@@ -120,6 +153,7 @@ class SetupViewModel : ViewModel() {
             } catch (e: CancellationException) {
                 throw e
             } catch (e: ApiException) {
+                if (started != generation) return@launch
                 _uiState.update { it.copy(loading = false, errorKey = e.messageKey) }
             }
         }
@@ -129,7 +163,7 @@ class SetupViewModel : ViewModel() {
      * How the wizard is asked for capabilities: it decorates the screen, so a
      * failure to fetch it is not a failure of the screen.
      */
-    private suspend fun capabilitiesOrNull(): Capabilities? = try {
+    private suspend fun capabilitiesOrNull(capabilities: CapabilitiesRepository?): Capabilities? = try {
         capabilities?.fetch()
     } catch (e: CancellationException) {
         throw e
@@ -238,12 +272,16 @@ class SetupViewModel : ViewModel() {
     private fun save(onSaved: () -> Unit) {
         val repository = repository ?: return
         val state = _uiState.value
+        val started = generation
         _uiState.update { it.copy(busy = true, errorKey = null) }
         viewModelScope.launch {
             try {
                 val saved = repository.save(
                     SetupWizard.payload(state.draft, state.currency, state.fractionDigits),
                 )
+                // Someone else's wizard now: neither their figures nor a step
+                // forward belong on it.
+                if (started != generation) return@launch
                 // What came back is what is stored, so the screens show the
                 // server's version rather than what was typed at it.
                 _uiState.update {
@@ -253,11 +291,19 @@ class SetupViewModel : ViewModel() {
             } catch (e: CancellationException) {
                 throw e
             } catch (e: ApiException) {
+                if (started != generation) return@launch
                 // The draft is untouched: a failed save must never lose figures.
                 _uiState.update { it.copy(busy = false, errorKey = e.messageKey) }
             } catch (e: Exception) {
+                if (started != generation) return@launch
                 _uiState.update { it.copy(busy = false, errorKey = Strings.error_unexpected) }
             }
         }
     }
 }
+
+/** The two clients the wizard needs, built together for one signed-in user. */
+internal class SetupRepositories(
+    val setup: FinancialSetupRepository,
+    val capabilities: CapabilitiesRepository,
+)
