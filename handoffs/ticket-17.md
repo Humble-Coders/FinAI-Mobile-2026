@@ -135,10 +135,10 @@ The ticket's wording, unedited.
 - [ ] **Matches the approved design in light and dark mode, and meets the UI
       standards. — NOT VERIFIED.** Nothing has been run on a device or in dark
       mode. This is the one criterion the manager must close.
-- [ ] `./gradlew …` passes and the iOS `xcodebuild` succeeds (**CI green on both
-      jobs**). — both pass locally (numbers above), but **CI has never run on this
-      PR**: `ci.yml` triggers only for pull requests targeting `main`, and #26
-      still targets `welcome-redesign`. Retarget it now that #25 is merged.
+- [x] `./gradlew …` passes and the iOS `xcodebuild` succeeds (**CI green on both
+      jobs**). — run 35096979555 on `480288f`: Android passed in 6m19s, iOS in
+      2m57s. That run is also what covers `iosSimulatorArm64Test`, which is not
+      run locally.
 - [x] No user-facing string literal in `androidApp` or `iosApp`. — the "1/3"
       counter was the last one; it is `setup_step_counter` now.
 - [x] *(Scope → Tests)* Money edge cases; blocking reasons per step; repository
@@ -179,8 +179,10 @@ The ticket's wording, unedited.
 - **The illustration is raster, not SVG.** It is painted, with soft gradients; a
   tracer produces a larger file with visible banding. WebP on Android and HEIC on
   iOS, 109 KB in total against a 972 KB source.
-- **Stacked on `welcome-redesign`** (PR #25, now merged). This PR still targets
-  that branch and must be retargeted to `main`, which is also what makes CI run.
+- **Stacked on `welcome-redesign`** (PR #25, now merged); this PR has been
+  retargeted to `main`. Retargeting alone does not start CI: `ci.yml` declares no
+  `types:`, so `pull_request` defaults to opened/synchronize/reopened, and a base
+  change fires `edited`. Closing and reopening the PR is what fired the run.
 
 ## Open questions / follow-ups
 
