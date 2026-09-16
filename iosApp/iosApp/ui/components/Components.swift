@@ -1,3 +1,4 @@
+import Lottie
 import SwiftUI
 import SharedLogic
 
@@ -220,35 +221,17 @@ struct ProviderCircleButton<Logo: View>: View {
     }
 }
 
-/// Google's "G", drawn to their colours.
+/// Google's "G".
 ///
-/// A stand-in for Google's own artwork: their branding rules ask for the
-/// supplied asset, so replace this with the official SVG before release.
+/// Drawn from the mark's own geometry into an image asset, as a stand-in:
+/// Google's branding rules ask for their supplied artwork, so replace
+/// GoogleG.imageset with the official file before release.
 struct GoogleMark: View {
     var body: some View {
-        ZStack {
-            Circle()
-                .trim(from: 0.0, to: 0.25)
-                .stroke(Color(red: 0.918, green: 0.263, blue: 0.208), lineWidth: 6)
-                .rotationEffect(.degrees(-135))
-            Circle()
-                .trim(from: 0.0, to: 0.25)
-                .stroke(Color(red: 0.984, green: 0.737, blue: 0.020), lineWidth: 6)
-                .rotationEffect(.degrees(135))
-            Circle()
-                .trim(from: 0.0, to: 0.25)
-                .stroke(Color(red: 0.204, green: 0.659, blue: 0.325), lineWidth: 6)
-                .rotationEffect(.degrees(45))
-            Circle()
-                .trim(from: 0.0, to: 0.30)
-                .stroke(Color(red: 0.259, green: 0.522, blue: 0.957), lineWidth: 6)
-                .rotationEffect(.degrees(-45))
-            Rectangle()
-                .fill(Color(red: 0.259, green: 0.522, blue: 0.957))
-                .frame(width: 11, height: 6)
-                .offset(x: 5.5, y: 0)
-        }
-        .frame(width: 26, height: 26)
+        Image("GoogleG")
+            .resizable()
+            .scaledToFit()
+            .frame(width: 26, height: 26)
     }
 }
 
@@ -378,5 +361,103 @@ struct PasswordField: View {
         .background(Brand.surface)
         .clipShape(RoundedRectangle(cornerRadius: 10))
         .overlay(RoundedRectangle(cornerRadius: 10).stroke(isError ? .red : .clear, lineWidth: 1))
+    }
+}
+
+
+/// The green wash behind every signed-out screen: a gradient with a few blurred
+/// shapes over it, from the design.
+struct HeroWash: View {
+    @Environment(\.colorScheme) private var scheme
+
+    var body: some View {
+        let dark = scheme == .dark
+        LinearGradient(
+            colors: dark
+                ? [Color(red: 0.05, green: 0.14, blue: 0.09), Brand.ground]
+                : [Color(red: 0.92, green: 0.97, blue: 0.94), Color(red: 0.83, green: 0.94, blue: 0.87)],
+            startPoint: .top,
+            endPoint: .bottom
+        )
+        .overlay {
+            GeometryReader { geometry in
+                let side = min(geometry.size.width, geometry.size.height)
+                Circle().fill(Brand.green.opacity(dark ? 0.14 : 0.22))
+                    .frame(width: side * 0.9)
+                    .position(x: geometry.size.width * 0.05, y: geometry.size.height * 0.16)
+                Circle().fill(Brand.green.opacity(dark ? 0.07 : 0.12))
+                    .frame(width: side * 1.1)
+                    .position(x: geometry.size.width * 1.02, y: geometry.size.height * 0.34)
+                Circle().fill(Brand.green.opacity(dark ? 0.07 : 0.12))
+                    .frame(width: side * 0.8)
+                    .position(x: geometry.size.width * 0.2, y: geometry.size.height * 0.92)
+            }
+            .blur(radius: 20)
+        }
+    }
+}
+
+/// The coin that sits on the card's top edge.
+struct CoinBadge: View {
+    static let size: CGFloat = 88
+
+    var body: some View {
+        LottieView(animation: .named("coin_3d"))
+            .looping()
+            // Half its own speed: a slow turn rather than a spin.
+            .animationSpeed(0.5)
+            .frame(width: Self.size, height: Self.size)
+            .accessibilityHidden(true)
+    }
+}
+
+/// The white card every signed-out screen sits in.
+///
+/// It is **as tall as its content**: `ViewThatFits` takes the plain stack when
+/// that fits and a scrolling one only when it does not, so a short form gets a
+/// short card. It runs to the bottom edge, carrying its colour past the safe
+/// area, and the coin straddles its top edge.
+struct AuthCard<Content: View>: View {
+    @ViewBuilder var content: () -> Content
+
+    var body: some View {
+        ZStack(alignment: .top) {
+            ViewThatFits(in: .vertical) {
+                stack
+                ScrollView { stack }.scrollBounceBehavior(.basedOnSize)
+            }
+            .background(Brand.sheet.ignoresSafeArea(edges: .bottom))
+            .clipShape(UnevenRoundedRectangle(topLeadingRadius: 28, topTrailingRadius: 28))
+            .ignoresSafeArea(edges: .bottom)
+            .padding(.top, CoinBadge.size / 2)
+
+            CoinBadge()
+        }
+    }
+
+    private var stack: some View {
+        VStack(spacing: 0) {
+            Capsule().fill(Brand.border).frame(width: 44, height: 4)
+                .padding(.top, 12)
+                .accessibilityHidden(true)
+            content()
+        }
+        .padding(.horizontal, 24)
+        .padding(.top, CoinBadge.size / 2 - 8)
+        .padding(.bottom, 40)
+        .frame(maxWidth: .infinity)
+    }
+}
+
+/// The wash plus the card: the frame the code and phone steps share with the
+/// welcome sheet.
+struct CardScreen<Content: View>: View {
+    @ViewBuilder var content: () -> Content
+
+    var body: some View {
+        ZStack(alignment: .bottom) {
+            HeroWash().ignoresSafeArea()
+            AuthCard { content() }
+        }
     }
 }

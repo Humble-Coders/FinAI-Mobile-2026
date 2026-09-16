@@ -14,7 +14,8 @@ struct PhoneView: View {
     @State private var pickerOpen = false
 
     var body: some View {
-        ScreenScaffold {
+        CardScreen {
+            VStack(alignment: .leading, spacing: 16) {
             Text(L.t(Strings.shared.phone_link_title)).font(.title2.weight(.semibold))
             Text(L.t(Strings.shared.phone_link_body))
                 .font(.subheadline)
@@ -62,6 +63,8 @@ struct PhoneView: View {
                 .foregroundColor(Brand.green)
                 .tappableRow()
                 .disabled(model.busy)
+            }
+            .padding(.top, 8)
         }
         .sheet(isPresented: $pickerOpen) {
             DialCodePicker { picked in

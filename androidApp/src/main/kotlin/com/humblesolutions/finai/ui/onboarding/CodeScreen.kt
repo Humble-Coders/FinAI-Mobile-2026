@@ -31,7 +31,7 @@ import androidx.compose.ui.unit.dp
 import com.humblesolutions.finai.i18n.Strings
 import com.humblesolutions.finai.ui.components.ErrorText
 import com.humblesolutions.finai.ui.components.PrimaryButton
-import com.humblesolutions.finai.ui.components.ScreenScaffold
+import com.humblesolutions.finai.ui.components.CardScreen
 import com.humblesolutions.finai.ui.strings
 
 /**
@@ -55,8 +55,8 @@ fun CodeScreen(
     onEdit: () -> Unit,
     hintKey: String? = null,
 ) {
-    ScreenScaffold(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Spacer(Modifier.height(24.dp))
+    CardScreen {
+        Spacer(Modifier.height(20.dp))
         Text(strings(Strings.code_title), style = MaterialTheme.typography.headlineSmall)
         Text(
             text = strings(Strings.code_sent_to, sentTo),

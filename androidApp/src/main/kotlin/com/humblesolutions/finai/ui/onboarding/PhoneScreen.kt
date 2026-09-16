@@ -37,7 +37,7 @@ import com.humblesolutions.finai.ui.components.ErrorText
 import com.humblesolutions.finai.ui.components.countryName
 import com.humblesolutions.finai.ui.components.FinAiTextField
 import com.humblesolutions.finai.ui.components.PrimaryButton
-import com.humblesolutions.finai.ui.components.ScreenScaffold
+import com.humblesolutions.finai.ui.components.CardScreen
 import com.humblesolutions.finai.ui.strings
 import com.humblesolutions.finai.util.DialCode
 import com.humblesolutions.finai.util.DialCodes
@@ -61,8 +61,8 @@ fun PhoneScreen(
 ) {
     var pickerOpen by remember { mutableStateOf(false) }
 
-    ScreenScaffold(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Spacer(Modifier.height(24.dp))
+    CardScreen {
+        Spacer(Modifier.height(20.dp))
         Text(strings(Strings.phone_link_title), style = MaterialTheme.typography.headlineSmall)
         Text(
             text = strings(Strings.phone_link_body),

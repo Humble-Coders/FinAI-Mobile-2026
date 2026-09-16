@@ -19,7 +19,8 @@ struct CodeView: View {
     @FocusState private var focused: Bool
 
     var body: some View {
-        ScreenScaffold {
+        CardScreen {
+            VStack(alignment: .leading, spacing: 16) {
             Text(L.t(Strings.shared.code_title)).font(.title2.weight(.semibold))
             Text(L.t(Strings.shared.code_sent_to, sentTo))
                 .font(.subheadline)
@@ -56,6 +57,8 @@ struct CodeView: View {
                 .font(.footnote)
                 .foregroundColor(Brand.textMuted)
                 .tappableRow()
+            }
+            .padding(.top, 8)
         }
         .onAppear { focused = true }
     }
