@@ -130,8 +130,13 @@ private struct AuthSheet: View {
     let onModeChange: (WelcomeMode) -> Void
 
     @FocusState private var focused: Field?
+    @Environment(\.colorScheme) private var scheme
 
     private enum Field { case email, password }
+
+    /// Apple's logo needs high contrast against its circle, in either theme.
+    private var appleBackground: Color { scheme == .dark ? .white : .black }
+    private var appleForeground: Color { scheme == .dark ? .black : .white }
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -216,13 +221,29 @@ private struct AuthSheet: View {
 
                 OrDivider(title: L.t(Strings.shared.welcome_or_continue)).padding(.top, 20)
 
-                ProviderButton(title: L.t(Strings.shared.welcome_google), enabled: !model.busy) {
-                    GoogleSignInLauncher.start(model: model)
+                HStack(spacing: 16) {
+                    ProviderCircleButton(
+                        label: L.t(Strings.shared.welcome_google),
+                        enabled: !model.busy,
+                        logo: { GoogleMark() }
+                    ) { GoogleSignInLauncher.start(model: model) }
+
+                    // Sign in with Apple is mandatory on iOS wherever another
+                    // provider is offered (App Store guideline 4.8). Logo-only
+                    // is allowed because every provider here is a circle.
+                    ProviderCircleButton(
+                        label: L.t(Strings.shared.welcome_apple),
+                        background: appleBackground,
+                        border: .clear,
+                        enabled: !model.busy,
+                        logo: {
+                            Image(systemName: "applelogo")
+                                .font(.system(size: 26))
+                                .foregroundColor(appleForeground)
+                        }
+                    ) { AppleSignIn.start(model: model) }
                 }
                 .padding(.top, 16)
-                // Sign in with Apple is mandatory on iOS wherever another
-                // provider is offered (App Store guideline 4.8).
-                AppleSignInButton(model: model).padding(.top, 12)
                 // Under the buttons they belong to, not under the form.
                 ErrorText(messageKey: model.providerErrorKey).padding(.top, 8)
 

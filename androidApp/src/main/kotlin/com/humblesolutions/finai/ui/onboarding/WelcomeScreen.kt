@@ -10,6 +10,7 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -30,6 +31,7 @@ import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -61,6 +63,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -336,17 +340,14 @@ private fun AuthSheet(
                 }
                 Spacer(Modifier.height(16.dp))
 
-                OutlinedButton(
+                // A circle, as the design shows the providers. Android offers
+                // only Google (2026-09-11), so the row holds one.
+                ProviderCircle(
+                    label = strings(Strings.welcome_google),
+                    icon = R.drawable.ic_google_g,
                     onClick = onGoogle,
                     enabled = !state.busy,
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(
-                        contentColor = MaterialTheme.colorScheme.onSurface,
-                    ),
-                ) {
-                    Text(strings(Strings.welcome_google), style = MaterialTheme.typography.titleSmall)
-                }
+                )
                 // Under the button it belongs to, not under the form: a provider
                 // failing says nothing about what the user typed.
                 ErrorText(state.providerErrorKey)
@@ -505,6 +506,28 @@ private fun PasswordSheetField(
             }
         },
     )
+}
+
+/** A provider as a circle, the way the design shows them. */
+@Composable
+private fun ProviderCircle(
+    label: String,
+    icon: Int,
+    onClick: () -> Unit,
+    enabled: Boolean,
+) {
+    Box(
+        modifier = Modifier
+            .size(60.dp)
+            .clip(CircleShape)
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .border(1.dp, MaterialTheme.colorScheme.outline, CircleShape)
+            .clickable(enabled = enabled, onClickLabel = label, onClick = onClick)
+            .semantics { contentDescription = label },
+        contentAlignment = Alignment.Center,
+    ) {
+        Image(painter = painterResource(icon), contentDescription = null, modifier = Modifier.size(26.dp))
+    }
 }
 
 private val CoinSize = 88.dp

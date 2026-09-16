@@ -186,6 +186,65 @@ struct SheetPasswordField: View {
     }
 }
 
+/// A provider as a circle, the way the design shows them.
+///
+/// Apple's branding rules allow a logo-only Sign in with Apple button when every
+/// provider is shown the same way, at the same size — which is why Google and
+/// Apple are the same circle here.
+struct ProviderCircleButton<Logo: View>: View {
+    let label: String
+    var background: Color = Brand.surface
+    var border: Color = Brand.border
+    var enabled = true
+    @ViewBuilder var logo: () -> Logo
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            logo()
+                .frame(width: 60, height: 60)
+                .background(background)
+                .clipShape(Circle())
+                .overlay(Circle().stroke(border, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .disabled(!enabled)
+        .accessibilityLabel(label)
+    }
+}
+
+/// Google's "G", drawn to their colours.
+///
+/// A stand-in for Google's own artwork: their branding rules ask for the
+/// supplied asset, so replace this with the official SVG before release.
+struct GoogleMark: View {
+    var body: some View {
+        ZStack {
+            Circle()
+                .trim(from: 0.0, to: 0.25)
+                .stroke(Color(red: 0.918, green: 0.263, blue: 0.208), lineWidth: 6)
+                .rotationEffect(.degrees(-135))
+            Circle()
+                .trim(from: 0.0, to: 0.25)
+                .stroke(Color(red: 0.984, green: 0.737, blue: 0.020), lineWidth: 6)
+                .rotationEffect(.degrees(135))
+            Circle()
+                .trim(from: 0.0, to: 0.25)
+                .stroke(Color(red: 0.204, green: 0.659, blue: 0.325), lineWidth: 6)
+                .rotationEffect(.degrees(45))
+            Circle()
+                .trim(from: 0.0, to: 0.30)
+                .stroke(Color(red: 0.259, green: 0.522, blue: 0.957), lineWidth: 6)
+                .rotationEffect(.degrees(-45))
+            Rectangle()
+                .fill(Color(red: 0.259, green: 0.522, blue: 0.957))
+                .frame(width: 11, height: 6)
+                .offset(x: 5.5, y: 0)
+        }
+        .frame(width: 26, height: 26)
+    }
+}
+
 /// A provider route. Outlined, never accented: the form's own button is primary.
 struct ProviderButton: View {
     let title: String
