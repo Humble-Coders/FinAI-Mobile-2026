@@ -55,6 +55,9 @@ data class SetupUiState(
 
     val symbol: String get() = Money.symbol(currency)
 
+    /** Zero, written at the currency's scale — the faint figure in an empty amount box. */
+    val amountPlaceholder: String get() = Money.normalize("0", fractionDigits).orEmpty()
+
     /** Why Continue on this step cannot go ahead, or null — shared with the notice. */
     val block: SetupBlock? get() = SetupWizard.blockingReason(step, draft, fractionDigits)
 

@@ -108,6 +108,7 @@ val EnglishStrings: Map<String, String> = mapOf(
     Strings.setup_complete to "Complete setup",
     Strings.setup_skip to "Skip for now",
     Strings.setup_saving to "Saving",
+    Strings.setup_per_month to "/ month",
     Strings.setup_required_title to "Setup is required",
     Strings.setup_required_body to "Your dashboard is built from your income and expenses, so it opens once setup is done. It takes about two minutes.",
     Strings.setup_required_action to "Go to step 1",

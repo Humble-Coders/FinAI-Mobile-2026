@@ -2,12 +2,17 @@ package com.humblesolutions.finai.ui.setup
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -31,6 +36,7 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
@@ -40,16 +46,16 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TextField
-import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.painterResource
@@ -57,6 +63,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
@@ -183,6 +190,17 @@ fun SetupScreen(
                 ErrorText(state.errorKey)
                 // The same rule the button reads, said out loud.
                 if (state.errorKey == null) ErrorText(state.notice?.messageKey)
+                // Skip sits above Continue, so the main action stays last and
+                // under the thumb.
+                if (state.showsSkip) {
+                    TextButton(
+                        onClick = onSkip,
+                        enabled = state.canSkip,
+                        modifier = Modifier.align(Alignment.CenterHorizontally),
+                    ) {
+                        Text(strings(Strings.setup_skip), fontWeight = FontWeight.Medium)
+                    }
+                }
                 GradientButton(
                     text = strings(
                         if (state.step.isLast) Strings.setup_complete else Strings.action_continue,
@@ -193,15 +211,6 @@ fun SetupScreen(
                     },
                     enabled = state.canContinue,
                 )
-                if (state.showsSkip) {
-                    TextButton(
-                        onClick = onSkip,
-                        enabled = state.canSkip,
-                        modifier = Modifier.align(Alignment.CenterHorizontally),
-                    ) {
-                        Text(strings(Strings.setup_skip))
-                    }
-                }
                 Spacer(Modifier.height(16.dp))
             }
         }
@@ -424,15 +433,16 @@ private fun StepTitle(step: SetupStep, titleKey: String, bodyKey: String) {
 @Composable
 private fun IncomeStep(onIncomeChange: (String) -> Unit, state: SetupUiState) {
     StepTitle(SetupStep.INCOME, Strings.setup_income_title, Strings.setup_income_body)
-    Card {
-        AmountField(
-            value = state.draft.income,
-            onValueChange = onIncomeChange,
-            label = strings(Strings.setup_income_label),
-            symbol = state.symbol,
-            imeAction = ImeAction.Done,
-        )
-    }
+    AmountField(
+        value = state.draft.income,
+        onValueChange = onIncomeChange,
+        label = strings(Strings.setup_income_label),
+        symbol = state.symbol,
+        placeholder = state.amountPlaceholder,
+        suffix = strings(Strings.setup_per_month),
+        isError = state.step == SetupStep.INCOME && state.notice?.step == SetupStep.INCOME,
+        imeAction = ImeAction.Done,
+    )
     Text(
         text = strings(Strings.setup_income_hint),
         style = MaterialTheme.typography.bodySmall,
@@ -447,18 +457,20 @@ private fun ExpensesStep(
     onOpenList: (ItemList) -> Unit,
 ) {
     StepTitle(SetupStep.EXPENSES, Strings.setup_expenses_title, Strings.setup_expenses_body)
-    Card {
-        AmountField(
-            value = state.draft.monthlyExpense,
-            onValueChange = onExpenseChange,
-            label = strings(Strings.setup_expense_label),
-            symbol = state.symbol,
-            imeAction = ImeAction.Done,
-        )
-    }
+    AmountField(
+        value = state.draft.monthlyExpense,
+        onValueChange = onExpenseChange,
+        label = strings(Strings.setup_expense_label),
+        symbol = state.symbol,
+        placeholder = state.amountPlaceholder,
+        suffix = strings(Strings.setup_per_month),
+        isError = state.step == SetupStep.EXPENSES && state.notice?.step == SetupStep.EXPENSES,
+        imeAction = ImeAction.Done,
+    )
     ListRow(
         label = strings(Strings.setup_obligations_label),
-        subtitle = state.totalOf(ItemList.OBLIGATIONS) ?: strings(Strings.setup_amount_hint),
+        total = state.totalOf(ItemList.OBLIGATIONS),
+        hint = strings(Strings.setup_amount_hint),
         onClick = { onOpenList(ItemList.OBLIGATIONS) },
     )
 }
@@ -468,39 +480,62 @@ private fun PortfolioStep(state: SetupUiState, onOpenList: (ItemList) -> Unit) {
     StepTitle(SetupStep.PORTFOLIO, Strings.setup_portfolio_title, Strings.setup_portfolio_body)
     ListRow(
         label = strings(Strings.setup_debts_label),
-        subtitle = state.totalOf(ItemList.DEBTS) ?: strings(Strings.setup_total_balance_hint),
+        total = state.totalOf(ItemList.DEBTS),
+        hint = strings(Strings.setup_total_balance_hint),
         onClick = { onOpenList(ItemList.DEBTS) },
     )
     ListRow(
         label = strings(Strings.setup_investments_label),
-        subtitle = state.totalOf(ItemList.INVESTMENTS) ?: strings(Strings.setup_total_amount_hint),
+        total = state.totalOf(ItemList.INVESTMENTS),
+        hint = strings(Strings.setup_total_amount_hint),
         onClick = { onOpenList(ItemList.INVESTMENTS) },
     )
 }
 
-/** A row that opens an itemised list, showing what is in it. */
+/**
+ * A row that opens an itemised list: the same box as the fields, the list's
+ * total in green once there is one, and a tinted chevron that says it opens.
+ */
 @Composable
-private fun ListRow(label: String, subtitle: String, onClick: () -> Unit) {
-    Surface(
-        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).clickable(onClick = onClick),
-        color = MaterialTheme.colorScheme.surfaceVariant,
+private fun ListRow(label: String, total: String?, hint: String, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 68.dp)
+            .fieldFrame(focused = false, isError = false)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(horizontal = 16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(Modifier.weight(1f)) {
-                Text(label, style = MaterialTheme.typography.titleSmall)
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(label, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+            if (total != null) {
                 Text(
-                    text = subtitle,
+                    text = total,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = FinAiPalette.Green,
+                )
+            } else {
+                Text(
+                    text = hint,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+        }
+        Box(
+            modifier = Modifier
+                .size(32.dp)
+                .clip(CircleShape)
+                .background(FinAiPalette.Green.copy(alpha = 0.12f)),
+            contentAlignment = Alignment.Center,
+        ) {
             Icon(
                 painter = painterResource(R.drawable.ic_chevron_right),
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                tint = FinAiPalette.Green,
+                modifier = Modifier.size(18.dp),
             )
         }
     }
@@ -563,6 +598,10 @@ private fun ItemListScreen(
                             if (debts) Strings.setup_debt_balance else Strings.setup_item_amount,
                         ),
                         symbol = state.symbol,
+                        placeholder = state.amountPlaceholder,
+                        // An obligation is a monthly payment; a balance or a holding is not.
+                        suffix = if (list == ItemList.OBLIGATIONS) strings(Strings.setup_per_month) else null,
+                        large = false,
                     )
                     if (debts) {
                         AmountField(
@@ -570,12 +609,16 @@ private fun ItemListScreen(
                             onValueChange = { onRowChange(index, row.copy(minimumPayment = it)) },
                             label = strings(Strings.setup_debt_minimum),
                             symbol = state.symbol,
+                            placeholder = state.amountPlaceholder,
+                            suffix = strings(Strings.setup_per_month),
+                            large = false,
                         )
                         WizardField(
                             value = row.interestRatePercent,
                             onValueChange = { onRowChange(index, row.copy(interestRatePercent = it)) },
                             label = strings(Strings.setup_debt_rate),
                             keyboardType = KeyboardType.Decimal,
+                            capitalization = KeyboardCapitalization.None,
                         )
                     }
                     state.rowBlock(index)?.let { ErrorText(it.messageKey) }
@@ -614,31 +657,101 @@ private fun Card(content: @Composable () -> Unit) {
     }
 }
 
-/** An amount, with the currency the server named beside it — never a hardcoded symbol. */
+private val FieldShape = RoundedCornerShape(16.dp)
+
+/**
+ * The box every field and list row sits in: the surface colour, a hairline
+ * border, green and thicker while typing, red while its figure will not do.
+ */
+@Composable
+private fun Modifier.fieldFrame(focused: Boolean, isError: Boolean): Modifier {
+    val colour by animateColorAsState(
+        targetValue = when {
+            isError -> MaterialTheme.colorScheme.error
+            focused -> FinAiPalette.Green
+            else -> MaterialTheme.colorScheme.outlineVariant
+        },
+        animationSpec = tween(150),
+        label = "fieldBorder",
+    )
+    val width by animateDpAsState(if (focused || isError) 2.dp else 1.dp, tween(150), label = "fieldBorderWidth")
+    return this
+        .clip(FieldShape)
+        .background(MaterialTheme.colorScheme.surface)
+        .border(width, colour, FieldShape)
+}
+
+/**
+ * An amount, the way finance apps take one: a label above, the figure large and
+ * bold beside the currency the server named — never a hardcoded symbol — a faint
+ * zero while it is empty, and what the figure is per, when it is per anything.
+ * The whole box is the text field, so tapping anywhere on it starts typing.
+ */
 @Composable
 private fun AmountField(
     value: String,
     onValueChange: (String) -> Unit,
     label: String,
     symbol: String,
+    placeholder: String,
+    suffix: String? = null,
+    isError: Boolean = false,
+    large: Boolean = true,
     imeAction: ImeAction = ImeAction.Next,
 ) {
-    WizardField(
-        value = value,
-        onValueChange = onValueChange,
-        label = label,
-        keyboardType = KeyboardType.Decimal,
-        imeAction = imeAction,
-        leading = {
-            Text(
-                text = symbol,
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        },
-    )
+    val interaction = remember { MutableInteractionSource() }
+    val focused by interaction.collectIsFocusedAsState()
+    val figure = if (large) MaterialTheme.typography.headlineSmall else MaterialTheme.typography.titleLarge
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
+
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        FieldLabel(label)
+        BasicTextField(
+            value = value,
+            onValueChange = onValueChange,
+            singleLine = true,
+            interactionSource = interaction,
+            textStyle = figure.copy(color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold),
+            cursorBrush = SolidColor(FinAiPalette.Green),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = imeAction),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(if (large) 68.dp else 56.dp)
+                .fieldFrame(focused, isError)
+                .semantics { contentDescription = label },
+            decorationBox = { inner ->
+                Row(
+                    modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = symbol,
+                        style = figure,
+                        fontWeight = FontWeight.Medium,
+                        color = muted,
+                        modifier = Modifier.padding(end = 8.dp),
+                    )
+                    Box(Modifier.weight(1f)) {
+                        if (value.isEmpty()) {
+                            Text(text = placeholder, style = figure, color = muted.copy(alpha = 0.4f))
+                        }
+                        inner()
+                    }
+                    if (suffix != null) {
+                        Text(
+                            text = suffix,
+                            style = MaterialTheme.typography.labelLarge,
+                            color = muted,
+                            modifier = Modifier.padding(start = 8.dp),
+                        )
+                    }
+                }
+            },
+        )
+    }
 }
 
+/** A plain text field in the same box as the amounts. */
 @Composable
 private fun WizardField(
     value: String,
@@ -646,22 +759,46 @@ private fun WizardField(
     label: String,
     keyboardType: KeyboardType = KeyboardType.Text,
     imeAction: ImeAction = ImeAction.Next,
-    leading: (@Composable () -> Unit)? = null,
+    capitalization: KeyboardCapitalization = KeyboardCapitalization.Words,
 ) {
-    TextField(
-        value = value,
-        onValueChange = onValueChange,
-        modifier = Modifier.fillMaxWidth(),
-        label = { Text(label) },
-        leadingIcon = leading,
-        singleLine = true,
-        keyboardOptions = KeyboardOptions(keyboardType = keyboardType, imeAction = imeAction),
-        shape = RoundedCornerShape(14.dp),
-        colors = TextFieldDefaults.colors(
-            focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
-            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
-            focusedIndicatorColor = Color.Transparent,
-            unfocusedIndicatorColor = Color.Transparent,
-        ),
+    val interaction = remember { MutableInteractionSource() }
+    val focused by interaction.collectIsFocusedAsState()
+
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        FieldLabel(label)
+        BasicTextField(
+            value = value,
+            onValueChange = onValueChange,
+            singleLine = true,
+            interactionSource = interaction,
+            textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
+            cursorBrush = SolidColor(FinAiPalette.Green),
+            keyboardOptions = KeyboardOptions(
+                capitalization = capitalization,
+                keyboardType = keyboardType,
+                imeAction = imeAction,
+            ),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(56.dp)
+                .fieldFrame(focused, isError = false)
+                .semantics { contentDescription = label },
+            decorationBox = { inner ->
+                Box(
+                    modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
+                    contentAlignment = Alignment.CenterStart,
+                ) { inner() }
+            },
+        )
+    }
+}
+
+@Composable
+private fun FieldLabel(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.labelLarge,
+        fontWeight = FontWeight.Medium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
 }

@@ -98,6 +98,17 @@ struct SetupView: View {
                 // The same rule the button reads, said out loud.
                 ErrorText(messageKey: model.notice?.messageKey)
             }
+            // Skip sits above Continue, so the main action stays last and under
+            // the thumb.
+            if model.showsSkip {
+                Button(L.t(Strings.shared.setup_skip)) { model.skip(onFinished: onFinished) }
+                    .font(.subheadline.weight(.medium))
+                    .foregroundColor(Brand.textMuted)
+                    .opacity(model.canSkip ? 1 : 0.4)
+                    .disabled(!model.canSkip)
+                    .tappableRow()
+            }
+
             GradientButton(
                 title: L.t(model.step.isLast
                            ? Strings.shared.setup_complete
@@ -106,15 +117,6 @@ struct SetupView: View {
             ) {
                 dismissKeyboard()
                 withAnimation(Self.slide) { model.continueStep(onFinished: onFinished) }
-            }
-
-            if model.showsSkip {
-                Button(L.t(Strings.shared.setup_skip)) { model.skip(onFinished: onFinished) }
-                    .font(.subheadline)
-                    .foregroundColor(Brand.textMuted)
-                    .opacity(model.canSkip ? 1 : 0.4)
-                    .disabled(!model.canSkip)
-                    .tappableRow()
             }
         }
         .padding(.horizontal, 24)
@@ -147,13 +149,14 @@ struct SetupView: View {
             StepTitle(step: .income,
                       titleKey: Strings.shared.setup_income_title,
                       bodyKey: Strings.shared.setup_income_body)
-            WizardCard {
-                AmountField(
-                    label: L.t(Strings.shared.setup_income_label),
-                    symbol: model.symbol,
-                    text: Binding(get: { model.draft.income }, set: { model.setIncome($0) })
-                )
-            }
+            AmountField(
+                label: L.t(Strings.shared.setup_income_label),
+                symbol: model.symbol,
+                placeholder: model.amountPlaceholder,
+                suffix: L.t(Strings.shared.setup_per_month),
+                isError: model.step == .income && model.notice?.step == .income,
+                text: Binding(get: { model.draft.income }, set: { model.setIncome($0) })
+            )
             Text(L.t(Strings.shared.setup_income_hint))
                 .font(.footnote)
                 .foregroundColor(Brand.textMuted)
@@ -165,16 +168,18 @@ struct SetupView: View {
             StepTitle(step: .expenses,
                       titleKey: Strings.shared.setup_expenses_title,
                       bodyKey: Strings.shared.setup_expenses_body)
-            WizardCard {
-                AmountField(
-                    label: L.t(Strings.shared.setup_expense_label),
-                    symbol: model.symbol,
-                    text: Binding(get: { model.draft.monthlyExpense }, set: { model.setExpense($0) })
-                )
-            }
+            AmountField(
+                label: L.t(Strings.shared.setup_expense_label),
+                symbol: model.symbol,
+                placeholder: model.amountPlaceholder,
+                suffix: L.t(Strings.shared.setup_per_month),
+                isError: model.step == .expenses && model.notice?.step == .expenses,
+                text: Binding(get: { model.draft.monthlyExpense }, set: { model.setExpense($0) })
+            )
             ListRow(
                 label: L.t(Strings.shared.setup_obligations_label),
-                subtitle: model.total(of: .obligations) ?? L.t(Strings.shared.setup_amount_hint)
+                total: model.total(of: .obligations),
+                hint: L.t(Strings.shared.setup_amount_hint)
             ) { model.openList(.obligations) }
         }
     }
@@ -186,11 +191,13 @@ struct SetupView: View {
                       bodyKey: Strings.shared.setup_portfolio_body)
             ListRow(
                 label: L.t(Strings.shared.setup_debts_label),
-                subtitle: model.total(of: .debts) ?? L.t(Strings.shared.setup_total_balance_hint)
+                total: model.total(of: .debts),
+                hint: L.t(Strings.shared.setup_total_balance_hint)
             ) { model.openList(.debts) }
             ListRow(
                 label: L.t(Strings.shared.setup_investments_label),
-                subtitle: model.total(of: .investments) ?? L.t(Strings.shared.setup_total_amount_hint)
+                total: model.total(of: .investments),
+                hint: L.t(Strings.shared.setup_total_amount_hint)
             ) { model.openList(.investments) }
         }
     }
@@ -351,30 +358,38 @@ private struct StepTitle: View {
     }
 }
 
-/// A row that opens an itemised list, showing what is in it.
+/// A row that opens an itemised list: the same box as the fields, the list's
+/// total in green once there is one, and a tinted chevron that says it opens.
 private struct ListRow: View {
     let label: String
-    let subtitle: String
+    let total: String?
+    let hint: String
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            HStack {
+            HStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(label).font(.headline).foregroundColor(.primary)
-                    Text(subtitle)
-                        .font(.footnote)
-                        .foregroundColor(Brand.textMuted)
+                    if let total {
+                        Text(total).font(.title3.weight(.semibold)).foregroundColor(Brand.green)
+                    } else {
+                        Text(hint).font(.footnote).foregroundColor(Brand.textMuted)
+                    }
                 }
                 Spacer()
-                Image(systemName: "chevron.right").foregroundColor(Brand.textMuted)
+                Image(systemName: "chevron.right")
+                    .font(.footnote.weight(.bold))
+                    .foregroundColor(Brand.green)
+                    .frame(width: 32, height: 32)
+                    .background(Brand.green.opacity(0.12), in: Circle())
             }
             .padding(.horizontal, 16)
-            .frame(minHeight: 64)
+            .padding(.vertical, 12)
+            .frame(minHeight: 68)
             .frame(maxWidth: .infinity)
-            .background(Brand.surfaceField)
-            .clipShape(RoundedRectangle(cornerRadius: 16))
-            .contentShape(RoundedRectangle(cornerRadius: 16))
+            .fieldFrame(focused: false, isError: false)
+            .contentShape(RoundedRectangle(cornerRadius: SetupView.fieldRadius))
         }
         .buttonStyle(.plain)
     }
@@ -424,6 +439,10 @@ private struct ItemListView: View {
                             AmountField(
                                 label: L.t(debts ? Strings.shared.setup_debt_balance : Strings.shared.setup_item_amount),
                                 symbol: model.symbol,
+                                placeholder: model.amountPlaceholder,
+                                // An obligation is a monthly payment; a balance or a holding is not.
+                                suffix: list == .obligations ? L.t(Strings.shared.setup_per_month) : nil,
+                                large: false,
                                 text: binding(index, \.amount) { row, value in
                                     ItemDraft(name: row.name, amount: value,
                                               minimumPayment: row.minimumPayment,
@@ -434,6 +453,9 @@ private struct ItemListView: View {
                                 AmountField(
                                     label: L.t(Strings.shared.setup_debt_minimum),
                                     symbol: model.symbol,
+                                    placeholder: model.amountPlaceholder,
+                                    suffix: L.t(Strings.shared.setup_per_month),
+                                    large: false,
                                     text: binding(index, \.minimumPayment) { row, value in
                                         ItemDraft(name: row.name, amount: row.amount,
                                                   minimumPayment: value,
@@ -509,42 +531,104 @@ private struct WizardCard<Content: View>: View {
     }
 }
 
-/// An amount, with the currency the server named beside it — never a hardcoded symbol.
-private struct AmountField: View {
-    let label: String
-    let symbol: String
-    @Binding var text: String
+extension SetupView {
+    /// The corner radius every field and list row shares.
+    static let fieldRadius: CGFloat = 16
+}
 
-    var body: some View {
-        WizardField(label: label, keyboard: .decimalPad, leading: symbol, text: $text)
+private extension View {
+    /// The box every field and list row sits in: the sheet colour, a hairline
+    /// border, green and thicker while typing, red while its figure will not do.
+    func fieldFrame(focused: Bool, isError: Bool) -> some View {
+        let shape = RoundedRectangle(cornerRadius: SetupView.fieldRadius)
+        return self
+            .background(Brand.sheet, in: shape)
+            .overlay(
+                shape.strokeBorder(
+                    isError ? Color.red : (focused ? Brand.green : Brand.border),
+                    lineWidth: focused || isError ? 2 : 1
+                )
+            )
+            .animation(.easeInOut(duration: 0.15), value: focused)
+            .animation(.easeInOut(duration: 0.15), value: isError)
     }
 }
 
+/// An amount, the way finance apps take one: a label above, the figure large and
+/// bold beside the currency the server named — never a hardcoded symbol — a faint
+/// zero while it is empty, and what the figure is per, when it is per anything.
+/// Tapping anywhere on the box starts typing.
+private struct AmountField: View {
+    let label: String
+    let symbol: String
+    var placeholder: String = ""
+    var suffix: String?
+    var isError = false
+    var large = true
+    @Binding var text: String
+    @FocusState private var focused: Bool
+
+    private var figure: Font { large ? .title2.weight(.semibold) : .title3.weight(.semibold) }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            FieldLabel(text: label)
+            HStack(spacing: 8) {
+                Text(symbol).font(figure).foregroundColor(Brand.textMuted)
+                TextField("", text: $text, prompt: Text(placeholder).foregroundColor(Brand.textMuted.opacity(0.4)))
+                    .font(figure)
+                    .keyboardType(.decimalPad)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+                    .focused($focused)
+                    .tint(Brand.green)
+                    .accessibilityLabel(label)
+                if let suffix {
+                    Text(suffix).font(.subheadline.weight(.medium)).foregroundColor(Brand.textMuted)
+                }
+            }
+            .padding(.horizontal, 16)
+            .frame(minHeight: large ? 68 : 56)
+            .fieldFrame(focused: focused, isError: isError)
+            .contentShape(RoundedRectangle(cornerRadius: SetupView.fieldRadius))
+            .onTapGesture { focused = true }
+        }
+    }
+}
+
+/// A plain text field in the same box as the amounts.
 private struct WizardField: View {
     let label: String
     var keyboard: UIKeyboardType = .default
-    var leading: String?
-    /// Amounts are the common case here, and a capitalised digit is nonsense —
-    /// the name field asks for words explicitly.
+    /// Names want words capitalised; a rate does not.
     var autocapitalization: TextInputAutocapitalization = .never
     @Binding var text: String
+    @FocusState private var focused: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(label).font(.caption).foregroundColor(Brand.textMuted)
-            HStack(spacing: 8) {
-                if let leading {
-                    Text(leading).font(.headline).foregroundColor(Brand.textMuted)
-                }
-                TextField("", text: $text)
-                    .keyboardType(keyboard)
-                    .textInputAutocapitalization(autocapitalization)
-                    .autocorrectionDisabled()
-            }
-            .frame(minHeight: 48)
-            .padding(.horizontal, 12)
-            .background(Brand.surfaceField)
-            .clipShape(RoundedRectangle(cornerRadius: 14))
+        VStack(alignment: .leading, spacing: 8) {
+            FieldLabel(text: label)
+            TextField("", text: $text)
+                .font(.body)
+                .keyboardType(keyboard)
+                .textInputAutocapitalization(autocapitalization)
+                .autocorrectionDisabled()
+                .focused($focused)
+                .tint(Brand.green)
+                .accessibilityLabel(label)
+                .padding(.horizontal, 16)
+                .frame(minHeight: 56)
+                .fieldFrame(focused: focused, isError: false)
+                .contentShape(RoundedRectangle(cornerRadius: SetupView.fieldRadius))
+                .onTapGesture { focused = true }
         }
+    }
+}
+
+private struct FieldLabel: View {
+    let text: String
+
+    var body: some View {
+        Text(text).font(.subheadline.weight(.medium)).foregroundColor(Brand.textMuted)
     }
 }

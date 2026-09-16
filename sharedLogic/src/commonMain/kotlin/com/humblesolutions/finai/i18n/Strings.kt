@@ -138,6 +138,7 @@ object Strings {
     const val setup_complete = "setup_complete" // "Complete setup"
     const val setup_skip = "setup_skip" // "Skip for now"
     const val setup_saving = "setup_saving" // "Saving"
+    const val setup_per_month = "setup_per_month" // "/ month"
     const val setup_required_title = "setup_required_title" // "Setup is required"
     const val setup_required_body = "setup_required_body" // "Your dashboard is built from your income and expenses, so it opens once setup is done. It takes about two minutes."
     const val setup_required_action = "setup_required_action" // "Go to step 1"

@@ -65,6 +65,11 @@ final class SetupViewModel: ObservableObject {
     var fractionDigits: Int32 { Money.shared.fractionDigits(currency: currency) }
     var symbol: String { Money.shared.symbol(currency: currency) }
 
+    /// Zero, written at the currency's scale — the faint figure in an empty amount box.
+    var amountPlaceholder: String {
+        Money.shared.normalize(raw: "0", fractionDigits: fractionDigits) ?? ""
+    }
+
     /// Why Continue on this step cannot go ahead, or nil — shared with the notice.
     var block: SetupBlock? {
         SetupWizard.shared.blockingReason(step: step, draft: draft, fractionDigits: fractionDigits)
