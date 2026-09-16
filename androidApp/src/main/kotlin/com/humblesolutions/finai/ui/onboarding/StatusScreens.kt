@@ -78,12 +78,14 @@ fun SplashScreen(slow: Boolean, animate: Boolean = false, onIntroFinished: () ->
     LaunchedEffect(animate) {
         if (!animate) return@LaunchedEffect
         if (play) {
+            // With the first letter, not after the last: by the time the name
+            // is spelled the tagline is already there.
+            taglineShown = true
             for (next in SplashIntro.frames) {
                 frame = next
                 delay(next.holdMs)
             }
-            taglineShown = true
-            delay(SplashIntro.TAGLINE_FADE_MS)
+            delay(SplashIntro.HOLD_AFTER_MS)
         }
         onIntroFinished()
     }

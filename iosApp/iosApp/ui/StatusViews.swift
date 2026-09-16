@@ -80,13 +80,16 @@ struct SplashView: View {
             frame = SplashIntro.shared.finalFrame
             taglineShown = true
         } else {
+            // With the first letter, not after the last: by the time the name
+            // is spelled the tagline is already there.
+            withAnimation(.easeIn(duration: fade)) { taglineShown = true }
             for next in SplashIntro.shared.frames {
                 frame = next
                 try? await Task.sleep(nanoseconds: UInt64(next.holdMs) * 1_000_000)
                 if Task.isCancelled { return }
             }
-            withAnimation(.easeIn(duration: fade)) { taglineShown = true }
-            try? await Task.sleep(nanoseconds: UInt64(fade * 1_000_000_000))
+            // A beat on the finished name, so the splash does not snap away.
+            try? await Task.sleep(nanoseconds: UInt64(SplashIntro.shared.HOLD_AFTER_MS) * 1_000_000)
             if Task.isCancelled { return }
         }
         onIntroFinished()

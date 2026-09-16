@@ -15,7 +15,9 @@ data class WordmarkFrame(
  * same timeline to the millisecond.
  *
  * "Finance" is typed, its last four letters are deleted back to "Fin", then
- * "AI" is typed in green. The tagline fades in once the last frame shows.
+ * "AI" is typed in green. The tagline fades in from the first letter, so it is
+ * already there by the time the name is spelled, and the splash holds briefly
+ * on the finished wordmark before routing takes over.
  *
  * These are the product's name, not copy, so they are not translated and live
  * here rather than in i18n. Every other wordmark in the app renders
@@ -27,7 +29,11 @@ object SplashIntro {
     const val DELETE_MS = 60L
     const val PAUSE_AFTER_WORD_MS = 450L
     const val PAUSE_BEFORE_AI_MS = 150L
+    /** The tagline's fade, which starts with the first letter. */
     const val TAGLINE_FADE_MS = 450L
+
+    /** A beat on the finished name, so the splash does not snap away. */
+    const val HOLD_AFTER_MS = 300L
 
     private const val WORD = "Finance"
     private const val STEM = "Fin"
@@ -54,6 +60,6 @@ object SplashIntro {
      */
     val finalFrame: WordmarkFrame get() = frames.last()
 
-    /** From the first letter to the tagline fully shown. */
-    val totalMs: Long get() = frames.sumOf { it.holdMs } + TAGLINE_FADE_MS
+    /** From the first letter to the splash handing over. */
+    val totalMs: Long get() = frames.sumOf { it.holdMs } + HOLD_AFTER_MS
 }
