@@ -395,6 +395,8 @@ private fun Coin(modifier: Modifier = Modifier, size: Dp? = null) {
     val progress by animateLottieCompositionAsState(
         composition = composition,
         iterations = LottieConstants.IterateForever,
+        // Half speed: the loop is ambience behind the brand, not a demo.
+        speed = ANIMATION_SPEED,
     )
     LottieAnimation(
         composition = composition,
@@ -553,3 +555,4 @@ private fun ProviderCircle(
 }
 
 private val CoinSize = 88.dp
+private const val ANIMATION_SPEED = 0.5f

@@ -83,6 +83,7 @@ struct PrimaryButton: View {
                 }
             }
             .frame(maxWidth: .infinity, minHeight: 52)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .background(enabled && !busy ? Brand.green : Brand.green.opacity(0.4))
@@ -109,6 +110,9 @@ struct GradientButton: View {
                 }
             }
             .frame(maxWidth: .infinity, minHeight: 56)
+            // Without this the label is only tappable where the text is: the
+            // gradient behind it belongs to the Button, not to the label.
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .background(
@@ -208,6 +212,7 @@ struct ProviderCircleButton<Logo: View>: View {
                 .background(background)
                 .clipShape(Circle())
                 .overlay(Circle().stroke(border, lineWidth: 1))
+                .contentShape(Circle())
         }
         .buttonStyle(.plain)
         .disabled(!enabled)
@@ -258,6 +263,7 @@ struct ProviderButton: View {
             Text(title)
                 .font(.headline)
                 .frame(maxWidth: .infinity, minHeight: 52)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .foregroundColor(.primary)

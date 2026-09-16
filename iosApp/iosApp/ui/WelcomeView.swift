@@ -14,6 +14,8 @@ struct WelcomeView: View {
     @Environment(\.colorScheme) private var scheme
 
     private static let coinSize: CGFloat = 88
+    /// Half speed: the loop is ambience behind the brand, not a demo.
+    static let animationSpeed = 0.5
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -25,6 +27,7 @@ struct WelcomeView: View {
                 // design's illustration occupies.
                 LottieView(animation: .named("coin_animation"))
                     .looping()
+                    .animationSpeed(Self.animationSpeed)
                     .frame(maxWidth: 360, maxHeight: 300)
                     .accessibilityHidden(true)
                 Spacer(minLength: 12)
@@ -159,6 +162,7 @@ private struct AuthSheet: View {
             card.padding(.top, coinSize / 2)
             LottieView(animation: .named("coin_animation"))
                 .looping()
+                .animationSpeed(WelcomeView.animationSpeed)
                 .frame(width: coinSize, height: coinSize)
                 .accessibilityHidden(true)
         }
@@ -275,11 +279,14 @@ private struct AuthSheet: View {
                 .padding(.top, 16)
             }
             .padding(.horizontal, 24)
-            .padding(.bottom, 24)
+            .padding(.bottom, 48)
         }
         .scrollBounceBehavior(.basedOnSize)
         .background(Brand.sheet)
         .clipShape(UnevenRoundedRectangle(topLeadingRadius: 28, topTrailingRadius: 28))
-        .frame(maxHeight: 640)
+        .frame(maxHeight: 680)
+        // The card runs to the screen's edge, as a sheet should; the content's
+        // own bottom padding keeps it clear of the home indicator.
+        .ignoresSafeArea(edges: .bottom)
     }
 }
