@@ -61,7 +61,7 @@ fun PhoneScreen(
 ) {
     var pickerOpen by remember { mutableStateOf(false) }
 
-    CardScreen {
+    CardScreen(busy = state.busy) {
         Spacer(Modifier.height(20.dp))
         Text(strings(Strings.phone_link_title), style = MaterialTheme.typography.headlineSmall)
         Text(
@@ -96,8 +96,8 @@ fun PhoneScreen(
         PrimaryButton(
             text = strings(Strings.action_continue),
             onClick = onContinue,
-            enabled = state.canSendCode,
-            busy = state.busy,
+            // No spinner here: the coin on the card's edge is the indicator.
+            enabled = state.canSendCode && !state.busy,
         )
         Text(
             text = strings(Strings.welcome_code_notice),

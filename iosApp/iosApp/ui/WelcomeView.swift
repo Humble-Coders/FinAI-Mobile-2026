@@ -166,7 +166,7 @@ private struct AuthSheet: View {
     private var appleForeground: Color { scheme == .dark ? .black : .white }
 
     var body: some View {
-        AuthCard {
+        AuthCard(busy: model.busy) {
             Text(L.t(model.creatingAccount
                      ? Strings.shared.welcome_create_title
                      : Strings.shared.welcome_sign_in_title))
@@ -227,8 +227,8 @@ private struct AuthSheet: View {
                 title: L.t(model.creatingAccount
                            ? Strings.shared.welcome_create_action
                            : Strings.shared.welcome_sign_in_action),
-                enabled: model.canSubmitCredentials,
-                busy: model.busy
+                // No spinner here: the coin on the card's edge is the indicator.
+                enabled: model.canSubmitCredentials && !model.busy
             ) { model.submitCredentials() }
             .padding(.top, 16)
 

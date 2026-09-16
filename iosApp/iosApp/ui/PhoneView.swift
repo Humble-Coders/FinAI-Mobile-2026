@@ -14,7 +14,7 @@ struct PhoneView: View {
     @State private var pickerOpen = false
 
     var body: some View {
-        CardScreen {
+        CardScreen(busy: model.busy) {
             VStack(alignment: .leading, spacing: 16) {
             Text(L.t(Strings.shared.phone_link_title)).font(.title2.weight(.semibold))
             Text(L.t(Strings.shared.phone_link_body))
@@ -49,8 +49,8 @@ struct PhoneView: View {
 
             PrimaryButton(
                 title: L.t(Strings.shared.action_continue),
-                enabled: model.canSendCode,
-                busy: model.busy
+                // No spinner here: the coin on the card's edge is the indicator.
+                enabled: model.canSendCode && !model.busy
             ) { model.sendCode() }
 
             Text(L.t(Strings.shared.welcome_code_notice))

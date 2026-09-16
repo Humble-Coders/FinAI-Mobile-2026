@@ -55,7 +55,7 @@ fun CodeScreen(
     onEdit: () -> Unit,
     hintKey: String? = null,
 ) {
-    CardScreen {
+    CardScreen(busy = state.busy) {
         Spacer(Modifier.height(20.dp))
         Text(strings(Strings.code_title), style = MaterialTheme.typography.headlineSmall)
         Text(
@@ -78,8 +78,8 @@ fun CodeScreen(
         PrimaryButton(
             text = strings(Strings.code_verify),
             onClick = onVerify,
-            enabled = state.canVerify,
-            busy = state.busy,
+            // No spinner here: the coin on the card's edge is the indicator.
+            enabled = state.canVerify && !state.busy,
         )
 
         if (state.canResend) {

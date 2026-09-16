@@ -269,7 +269,7 @@ private fun AuthSheet(
 ) {
     val creating = state.creatingAccount
 
-    AuthCard(spacing = 12.dp) {
+    AuthCard(spacing = 12.dp, busy = state.busy) {
         Text(
             text = strings(if (creating) Strings.welcome_create_title else Strings.welcome_sign_in_title),
             style = MaterialTheme.typography.headlineSmall,
@@ -322,8 +322,8 @@ private fun AuthSheet(
         GradientButton(
             text = strings(if (creating) Strings.welcome_create_action else Strings.welcome_sign_in_action),
             onClick = onSubmit,
-            enabled = state.canSubmitCredentials,
-            busy = state.busy,
+            // No spinner here: the coin on the card's edge is the indicator.
+            enabled = state.canSubmitCredentials && !state.busy,
         )
 
         Row(verticalAlignment = Alignment.CenterVertically) {

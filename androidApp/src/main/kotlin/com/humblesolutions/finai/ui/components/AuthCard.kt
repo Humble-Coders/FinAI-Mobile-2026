@@ -4,6 +4,8 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -12,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -21,9 +24,14 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.unit.Dp
@@ -78,6 +86,10 @@ fun CoinBadge(modifier: Modifier = Modifier) {
 /**
  * The white card every signed-out screen sits in.
  *
+ * While [busy], the coin leaves its place on the edge and settles in the middle
+ * of the card: it is the loading indicator, so the screens it frames show no
+ * spinner of their own. It returns to the edge when the work ends.
+ *
  * It is **as tall as its content**: the column wraps what it holds and scrolls
  * only when that outgrows the screen, so a short form gets a short card. It
  * runs to the bottom edge, and the coin straddles its top edge.
@@ -86,11 +98,24 @@ fun CoinBadge(modifier: Modifier = Modifier) {
 fun AuthCard(
     modifier: Modifier = Modifier,
     spacing: Dp = 16.dp,
+    busy: Boolean = false,
     content: @Composable ColumnScope.() -> Unit,
 ) {
+    // Measured, not guessed: the card is as tall as its content, so the centre
+    // is only known once it has been laid out.
+    var cardHeight by remember { mutableStateOf(0.dp) }
+    val density = LocalDensity.current
+    val coinDrop by animateDpAsState(
+        targetValue = if (busy) (cardHeight / 2) - (CoinBadgeSize / 2) else 0.dp,
+        animationSpec = tween(durationMillis = 420),
+        label = "coin",
+    )
+
     Box(modifier.fillMaxWidth().padding(top = CoinBadgeSize / 2)) {
         Surface(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .onSizeChanged { cardHeight = with(density) { it.height.toDp() } },
             shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
             color = MaterialTheme.colorScheme.surface,
             tonalElevation = 2.dp,
@@ -116,7 +141,7 @@ fun AuthCard(
             }
         }
 
-        CoinBadge(Modifier.align(Alignment.TopCenter))
+        CoinBadge(Modifier.align(Alignment.TopCenter).offset(y = coinDrop))
     }
 }
 
@@ -125,9 +150,18 @@ fun AuthCard(
  * welcome sheet.
  */
 @Composable
-fun CardScreen(spacing: Dp = 16.dp, content: @Composable ColumnScope.() -> Unit) {
+fun CardScreen(
+    spacing: Dp = 16.dp,
+    busy: Boolean = false,
+    content: @Composable ColumnScope.() -> Unit,
+) {
     Box(Modifier.fillMaxSize()) {
         HeroBackground()
-        AuthCard(Modifier.align(Alignment.BottomCenter), spacing = spacing, content = content)
+        AuthCard(
+            Modifier.align(Alignment.BottomCenter),
+            spacing = spacing,
+            busy = busy,
+            content = content,
+        )
     }
 }

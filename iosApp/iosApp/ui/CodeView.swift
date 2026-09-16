@@ -19,7 +19,7 @@ struct CodeView: View {
     @FocusState private var focused: Bool
 
     var body: some View {
-        CardScreen {
+        CardScreen(busy: model.busy) {
             VStack(alignment: .leading, spacing: 16) {
             Text(L.t(Strings.shared.code_title)).font(.title2.weight(.semibold))
             Text(L.t(Strings.shared.code_sent_to, sentTo))
@@ -39,8 +39,8 @@ struct CodeView: View {
 
             PrimaryButton(
                 title: L.t(Strings.shared.code_verify),
-                enabled: model.canVerify,
-                busy: model.busy
+                // No spinner here: the coin on the card's edge is the indicator.
+                enabled: model.canVerify && !model.busy
             ) { onVerify() }
 
             if model.canResend {

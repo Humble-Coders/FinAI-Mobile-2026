@@ -412,12 +412,21 @@ struct CoinBadge: View {
 
 /// The white card every signed-out screen sits in.
 ///
+/// While `busy`, the coin leaves its place on the edge and settles in the middle
+/// of the card: it is the loading indicator, so the screens it frames show no
+/// spinner of their own. It returns to the edge when the work ends.
+///
 /// It is **as tall as its content**: `ViewThatFits` takes the plain stack when
 /// that fits and a scrolling one only when it does not, so a short form gets a
 /// short card. It runs to the bottom edge, carrying its colour past the safe
 /// area, and the coin straddles its top edge.
 struct AuthCard<Content: View>: View {
+    var busy = false
     @ViewBuilder var content: () -> Content
+
+    /// Measured, not guessed: the card is as tall as its content, so its centre
+    /// is only known once it has been laid out.
+    @State private var cardHeight: CGFloat = 0
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -429,8 +438,11 @@ struct AuthCard<Content: View>: View {
             .clipShape(UnevenRoundedRectangle(topLeadingRadius: 28, topTrailingRadius: 28))
             .ignoresSafeArea(edges: .bottom)
             .padding(.top, CoinBadge.size / 2)
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { cardHeight = $0 }
 
             CoinBadge()
+                .offset(y: busy ? max(0, cardHeight / 2 - CoinBadge.size / 2) : 0)
+                .animation(.easeInOut(duration: 0.42), value: busy)
         }
     }
 
@@ -451,12 +463,13 @@ struct AuthCard<Content: View>: View {
 /// The wash plus the card: the frame the code and phone steps share with the
 /// welcome sheet.
 struct CardScreen<Content: View>: View {
+    var busy = false
     @ViewBuilder var content: () -> Content
 
     var body: some View {
         ZStack(alignment: .bottom) {
             HeroWash().ignoresSafeArea()
-            AuthCard { content() }
+            AuthCard(busy: busy) { content() }
         }
     }
 }
