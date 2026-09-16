@@ -18,7 +18,18 @@ struct WelcomeView: View {
     var body: some View {
         ZStack(alignment: .bottom) {
             hero.ignoresSafeArea()
-            brand
+            VStack(spacing: 0) {
+                brand
+                Spacer(minLength: 12)
+                // The same animation the sheet carries, filling the space the
+                // design's illustration occupies.
+                LottieView(animation: .named("coin_animation"))
+                    .looping()
+                    .frame(maxWidth: 360, maxHeight: 300)
+                    .accessibilityHidden(true)
+                Spacer(minLength: 12)
+            }
+            .padding(.bottom, 180)
             if !sheetOpen { entryButtons }
             if sheetOpen {
                 Color.black.opacity(0.35)
@@ -83,8 +94,12 @@ struct WelcomeView: View {
                 .padding(.top, 8)
         }
         .padding(.horizontal, 32)
-        .frame(maxHeight: .infinity, alignment: .top)
         .padding(.top, 48)
+    }
+
+    /// Dark enough to read as a control against the pale wash.
+    private var logInBorder: Color {
+        scheme == .dark ? Color.white.opacity(0.55) : Brand.greenDeep
     }
 
     /// The two ways in, where the design's page dots were.
@@ -95,10 +110,11 @@ struct WelcomeView: View {
                 Text(L.t(Strings.shared.welcome_log_in))
                     .font(.headline)
                     .frame(maxWidth: .infinity, minHeight: 56)
+                    .contentShape(RoundedRectangle(cornerRadius: 16))
             }
             .buttonStyle(.plain)
             .foregroundColor(.primary)
-            .overlay(RoundedRectangle(cornerRadius: 16).stroke(Brand.border, lineWidth: 1))
+            .overlay(RoundedRectangle(cornerRadius: 16).stroke(logInBorder, lineWidth: 1.5))
         }
         .frame(maxWidth: 480)
         .padding(.horizontal, 24)
@@ -204,6 +220,7 @@ private struct AuthSheet: View {
                     Button(L.t(Strings.shared.welcome_forgot_password)) { model.startReset() }
                         .font(.subheadline.weight(.semibold))
                         .foregroundColor(Brand.green)
+                        .tappableArea(minWidth: 140)
                         .frame(maxWidth: .infinity, alignment: .trailing)
                         .padding(.top, 8)
                 }
@@ -254,6 +271,7 @@ private struct AuthSheet: View {
                 }
                 .font(.subheadline)
                 .foregroundColor(Brand.green)
+                .tappableRow()
                 .padding(.top, 16)
             }
             .padding(.horizontal, 24)

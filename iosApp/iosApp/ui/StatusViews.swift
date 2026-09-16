@@ -118,6 +118,7 @@ private struct MessageView: View {
             if let secondaryTitle, let secondaryAction {
                 Button(secondaryTitle, action: secondaryAction)
                     .foregroundColor(Brand.green)
+                    .tappableRow()
             }
         }
     }

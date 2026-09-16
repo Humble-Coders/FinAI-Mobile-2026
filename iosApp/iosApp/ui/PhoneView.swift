@@ -60,6 +60,7 @@ struct PhoneView: View {
             // account is held here with no route back to the welcome screen.
             Button(L.t(Strings.shared.action_sign_out)) { model.signOut() }
                 .foregroundColor(Brand.green)
+                .tappableRow()
                 .disabled(model.busy)
         }
         .sheet(isPresented: $pickerOpen) {

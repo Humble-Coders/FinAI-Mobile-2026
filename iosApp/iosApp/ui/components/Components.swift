@@ -174,7 +174,9 @@ struct SheetPasswordField: View {
             Button {
                 visible.toggle()
             } label: {
-                Image(systemName: visible ? "eye.slash" : "eye").foregroundColor(Brand.textMuted)
+                Image(systemName: visible ? "eye.slash" : "eye")
+                    .foregroundColor(Brand.textMuted)
+                    .tappableArea()
             }
             .accessibilityLabel(L.t(visible ? Strings.shared.action_hide : Strings.shared.action_show))
         }
@@ -279,6 +281,22 @@ struct OrDivider: View {
     }
 }
 
+extension View {
+    /// The whole row taps, not just the letters.
+    ///
+    /// A SwiftUI `Button` whose label is plain text is only tappable where the
+    /// glyphs are, which reads as a dead control. `contentShape` makes the
+    /// padded frame the target, and 44pt is Apple's minimum.
+    func tappableRow(minHeight: CGFloat = 44) -> some View {
+        frame(maxWidth: .infinity, minHeight: minHeight).contentShape(Rectangle())
+    }
+
+    /// The same, for a control that must not stretch across its row.
+    func tappableArea(minWidth: CGFloat = 44, minHeight: CGFloat = 44) -> some View {
+        frame(minWidth: minWidth, minHeight: minHeight).contentShape(Rectangle())
+    }
+}
+
 /// An inline failure, under the control that caused it.
 struct ErrorText: View {
     let messageKey: String?
@@ -347,6 +365,7 @@ struct PasswordField: View {
             }
             .font(.footnote.weight(.semibold))
             .foregroundColor(Brand.green)
+            .tappableArea(minWidth: 56)
         }
         .frame(minHeight: 52)
         .padding(.horizontal, 14)

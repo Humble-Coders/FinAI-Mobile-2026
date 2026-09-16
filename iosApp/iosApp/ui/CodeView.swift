@@ -45,6 +45,7 @@ struct CodeView: View {
             if model.canResend {
                 Button(L.t(Strings.shared.code_resend)) { onResend() }
                     .foregroundColor(Brand.green)
+                    .tappableRow()
             } else {
                 Text(L.t(Strings.shared.code_resend_in, model.resendCountdown))
                     .font(.footnote)
@@ -54,6 +55,7 @@ struct CodeView: View {
             Button(L.t(editKey)) { onEdit() }
                 .font(.footnote)
                 .foregroundColor(Brand.textMuted)
+                .tappableRow()
         }
         .onAppear { focused = true }
     }

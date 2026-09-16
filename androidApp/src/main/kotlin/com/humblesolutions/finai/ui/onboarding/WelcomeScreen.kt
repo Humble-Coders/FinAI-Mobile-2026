@@ -9,6 +9,7 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -30,6 +31,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
+
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -70,6 +72,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.airbnb.lottie.compose.LottieAnimation
 import com.airbnb.lottie.compose.LottieCompositionSpec
@@ -120,10 +123,9 @@ fun WelcomeScreen(
 
         Column(
             modifier = Modifier
-                .align(Alignment.TopCenter)
+                .fillMaxSize()
                 .safeDrawingPadding()
-                .padding(horizontal = 32.dp, vertical = 48.dp)
-                .fillMaxWidth(),
+                .padding(horizontal = 32.dp, vertical = 48.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Image(
@@ -147,6 +149,18 @@ fun WelcomeScreen(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
             )
+
+            Spacer(Modifier.height(12.dp))
+            // The same animation the sheet carries, filling the space the
+            // design's illustration occupies.
+            Coin(
+                Modifier
+                    .weight(1f, fill = false)
+                    .heightIn(max = 300.dp)
+                    .widthIn(max = 360.dp),
+            )
+            // Room for the buttons, which sit in their own layer below.
+            Spacer(Modifier.height(148.dp))
         }
 
         // The two ways in, where the design's page dots were.
@@ -166,6 +180,14 @@ fun WelcomeScreen(
                 onClick = { open(WelcomeMode.SIGN_IN) },
                 modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
                 shape = RoundedCornerShape(16.dp),
+                border = BorderStroke(
+                    width = 1.5.dp,
+                    color = if (isSystemInDarkTheme()) {
+                        MaterialTheme.colorScheme.onBackground.copy(alpha = 0.55f)
+                    } else {
+                        FinAiPalette.GreenDeep
+                    },
+                ),
                 colors = ButtonDefaults.outlinedButtonColors(
                     contentColor = MaterialTheme.colorScheme.onBackground,
                 ),
@@ -362,13 +384,13 @@ private fun AuthSheet(
             }
         }
 
-        Coin(Modifier.align(Alignment.TopCenter))
+        Coin(Modifier.align(Alignment.TopCenter), size = CoinSize)
     }
 }
 
 /** The coin, looping on the sheet's top edge. The same Lottie file iOS plays. */
 @Composable
-private fun Coin(modifier: Modifier = Modifier) {
+private fun Coin(modifier: Modifier = Modifier, size: Dp? = null) {
     val composition by rememberLottieComposition(LottieCompositionSpec.RawRes(R.raw.coin_animation))
     val progress by animateLottieCompositionAsState(
         composition = composition,
@@ -377,7 +399,7 @@ private fun Coin(modifier: Modifier = Modifier) {
     LottieAnimation(
         composition = composition,
         progress = { progress },
-        modifier = modifier.size(CoinSize),
+        modifier = if (size != null) modifier.size(size) else modifier.fillMaxWidth(),
     )
 }
 
