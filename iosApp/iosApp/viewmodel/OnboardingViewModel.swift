@@ -220,8 +220,8 @@ final class OnboardingViewModel: ObservableObject {
                 }
             } onSuccess: { [weak self] in
                 if taken {
+                    // The password stays: Sign in is one tap away and can use it.
                     self?.emailTaken = true
-                    self?.password = ""
                 } else {
                     self?.showEmailCode(for: address)
                 }

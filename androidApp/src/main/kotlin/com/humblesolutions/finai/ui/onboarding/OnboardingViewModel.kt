@@ -145,7 +145,8 @@ class OnboardingViewModel : ViewModel() {
                 }
             }) {
                 if (taken) {
-                    it.copy(emailTaken = true, password = "")
+                    // The password stays: Sign in is one tap away and can use it.
+                    it.copy(emailTaken = true)
                 } else {
                     startResendCountdown()
                     it.copy(emailCodeFor = email, code = "", password = "")
