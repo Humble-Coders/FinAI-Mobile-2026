@@ -419,8 +419,9 @@ struct CoinBadge: View {
 /// the content stays clear of the home indicator.
 ///
 /// While `busy`, the coin leaves its place on the edge and settles in the middle
-/// of the card: it is the loading indicator, so the screens it frames show no
-/// spinner of their own. It returns to the edge when the work ends.
+/// of the card, everything behind it blurs, and the keyboard goes away: the coin
+/// is the loading indicator, so the screens it frames show no spinner of their
+/// own. It all returns when the work ends.
 struct AuthCard<Content: View>: View {
     var busy = false
     @ViewBuilder var content: () -> Content
@@ -447,10 +448,17 @@ struct AuthCard<Content: View>: View {
             }
             .padding(.top, CoinBadge.size / 2)
             .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { cardHeight = $0 }
+            // Behind the coin, and only while it is working.
+            .blur(radius: busy ? 6 : 0)
+            .animation(.easeInOut(duration: 0.42), value: busy)
 
             CoinBadge()
                 .offset(y: busy ? max(0, cardHeight / 2 - CoinBadge.size / 2) : 0)
                 .animation(.easeInOut(duration: 0.42), value: busy)
+        }
+        .onChange(of: busy) { _, working in
+            // Typing is over for now, and a keyboard would cover the coin.
+            if working { dismissKeyboard() }
         }
         .toolbar {
             // Number pads have no return key, so without this there is no way
@@ -489,7 +497,10 @@ struct CardScreen<Content: View>: View {
 
     var body: some View {
         ZStack(alignment: .bottom) {
-            HeroWash().ignoresSafeArea()
+            HeroWash()
+                .blur(radius: busy ? 18 : 0)
+                .animation(.easeInOut(duration: 0.42), value: busy)
+                .ignoresSafeArea()
             AuthCard(busy: busy) { content() }
         }
     }

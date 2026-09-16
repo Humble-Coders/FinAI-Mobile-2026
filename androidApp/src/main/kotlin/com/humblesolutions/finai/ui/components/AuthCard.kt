@@ -23,15 +23,19 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.unit.Dp
@@ -87,8 +91,9 @@ fun CoinBadge(modifier: Modifier = Modifier) {
  * The white card every signed-out screen sits in.
  *
  * While [busy], the coin leaves its place on the edge and settles in the middle
- * of the card: it is the loading indicator, so the screens it frames show no
- * spinner of their own. It returns to the edge when the work ends.
+ * of the card, everything behind it blurs, and the keyboard goes away: the coin
+ * is the loading indicator, so the screens it frames show no spinner of their
+ * own. It all returns when the work ends.
  *
  * It is **as tall as its content**: the column wraps what it holds and scrolls
  * only when that outgrows the screen, so a short form gets a short card. It
@@ -110,12 +115,30 @@ fun AuthCard(
         animationSpec = tween(durationMillis = 420),
         label = "coin",
     )
+    // Behind the coin, and only while it is working. Blur needs API 31; below
+    // that the card simply stays sharp.
+    val cardBlur by animateDpAsState(
+        targetValue = if (busy) 6.dp else 0.dp,
+        animationSpec = tween(durationMillis = 420),
+        label = "cardBlur",
+    )
+
+    val keyboard = LocalSoftwareKeyboardController.current
+    val focus = LocalFocusManager.current
+    LaunchedEffect(busy) {
+        // Typing is over for now, and a keyboard would cover the coin.
+        if (busy) {
+            keyboard?.hide()
+            focus.clearFocus()
+        }
+    }
 
     Box(modifier.fillMaxWidth().padding(top = CoinBadgeSize / 2)) {
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
-                .onSizeChanged { cardHeight = with(density) { it.height.toDp() } },
+                .onSizeChanged { cardHeight = with(density) { it.height.toDp() } }
+                .blur(cardBlur),
             shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
             color = MaterialTheme.colorScheme.surface,
             tonalElevation = 2.dp,
@@ -155,8 +178,14 @@ fun CardScreen(
     busy: Boolean = false,
     content: @Composable ColumnScope.() -> Unit,
 ) {
+    val washBlur by animateDpAsState(
+        targetValue = if (busy) 18.dp else 0.dp,
+        animationSpec = tween(durationMillis = 420),
+        label = "washBlur",
+    )
+
     Box(Modifier.fillMaxSize()) {
-        HeroBackground()
+        HeroBackground(Modifier.blur(washBlur))
         AuthCard(
             Modifier.align(Alignment.BottomCenter),
             spacing = spacing,
