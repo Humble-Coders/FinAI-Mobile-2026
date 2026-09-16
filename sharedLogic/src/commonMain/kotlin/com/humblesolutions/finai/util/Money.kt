@@ -73,6 +73,49 @@ object Money {
     /** Whether [raw] is something this app may send as an amount. */
     fun isMoney(raw: String, fractionDigits: Int = 2): Boolean = normalize(raw, fractionDigits) != null
 
+    /**
+     * `a + b`, both as decimal strings and the answer as one — the only
+     * arithmetic this app does on money.
+     *
+     * Digit-by-digit on the normalized strings, because that is the one way
+     * this cannot drift: `0.1 + 0.2` in binary floating point is not `0.3`, and
+     * a financial app that shows `0.30000000000000004` has lost the user.
+     * Anything that is not money reads as `"0"`, so a half-typed row adds
+     * nothing rather than breaking the total.
+     *
+     * For display only. A sum wider than [MAX_WHOLE_DIGITS] is beyond what the
+     * server stores, and no sum of real balances reaches it.
+     */
+    fun add(a: String, b: String, fractionDigits: Int = 2): String {
+        val left = normalize(a, fractionDigits) ?: zero(fractionDigits)
+        val right = normalize(b, fractionDigits) ?: zero(fractionDigits)
+        // Both are normalized to the same scale, so dropping the point leaves
+        // two integers of the same units that can simply be added.
+        val sum = addDigits(left.filter { it.isDigit() }, right.filter { it.isDigit() })
+        if (fractionDigits == 0) return sum
+        val padded = sum.padStart(fractionDigits + 1, '0')
+        return padded.dropLast(fractionDigits) + "." + padded.takeLast(fractionDigits)
+    }
+
+    private fun zero(fractionDigits: Int): String =
+        if (fractionDigits == 0) "0" else "0." + "0".repeat(fractionDigits)
+
+    /** Schoolbook addition of two digit strings, right to left. */
+    private fun addDigits(a: String, b: String): String {
+        val width = maxOf(a.length, b.length)
+        val left = a.padStart(width, '0')
+        val right = b.padStart(width, '0')
+        val digits = StringBuilder()
+        var carry = 0
+        for (index in width - 1 downTo 0) {
+            val sum = (left[index] - '0') + (right[index] - '0') + carry
+            digits.append(('0' + sum % 10))
+            carry = sum / 10
+        }
+        if (carry > 0) digits.append(('0' + carry))
+        return digits.reverse().toString().trimStart('0').ifEmpty { "0" }
+    }
+
     /** Negative on a < b, zero on equal, positive on a > b. Normalized first, so `"7"` equals `"7.00"`. */
     fun compare(a: String, b: String, fractionDigits: Int = 2): Int {
         val left = normalize(a, fractionDigits) ?: "0"

@@ -164,8 +164,9 @@ fun SetupScreen(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 ErrorText(state.errorKey)
-                state.block?.let { block ->
-                    // The same rule the button reads, said out loud.
+                state.notice?.let { block ->
+                    // The same rule the button reads, said out loud — once the
+                    // user has typed something for it to be about.
                     if (state.errorKey == null) ErrorText(block.messageKey)
                 }
                 GradientButton(
@@ -236,7 +237,11 @@ private fun StepHeader(step: SetupStep, onBack: () -> Unit, modifier: Modifier =
                 )
             }
             Text(
-                text = "${step.number}/${SetupStep.COUNT}",
+                text = strings(
+                    Strings.setup_step_counter,
+                    step.number.toString(),
+                    SetupStep.COUNT.toString(),
+                ),
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(start = 8.dp, end = 16.dp),
@@ -328,7 +333,7 @@ private fun ExpensesStep(
     }
     ListRow(
         label = strings(Strings.setup_obligations_label),
-        count = state.draft.obligations.size,
+        subtitle = state.totalOf(ItemList.OBLIGATIONS) ?: strings(Strings.setup_amount_hint),
         onClick = { onOpenList(ItemList.OBLIGATIONS) },
     )
 }
@@ -338,19 +343,19 @@ private fun PortfolioStep(state: SetupUiState, onOpenList: (ItemList) -> Unit) {
     StepTitle(state.step, Strings.setup_portfolio_title, Strings.setup_portfolio_body)
     ListRow(
         label = strings(Strings.setup_debts_label),
-        count = state.draft.debts.size,
+        subtitle = state.totalOf(ItemList.DEBTS) ?: strings(Strings.setup_total_balance_hint),
         onClick = { onOpenList(ItemList.DEBTS) },
     )
     ListRow(
         label = strings(Strings.setup_investments_label),
-        count = state.draft.investments.size,
+        subtitle = state.totalOf(ItemList.INVESTMENTS) ?: strings(Strings.setup_total_amount_hint),
         onClick = { onOpenList(ItemList.INVESTMENTS) },
     )
 }
 
-/** A row that opens an itemised list, showing how much is in it. */
+/** A row that opens an itemised list, showing what is in it. */
 @Composable
-private fun ListRow(label: String, count: Int, onClick: () -> Unit) {
+private fun ListRow(label: String, subtitle: String, onClick: () -> Unit) {
     Surface(
         modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).clickable(onClick = onClick),
         color = MaterialTheme.colorScheme.surfaceVariant,
@@ -362,11 +367,7 @@ private fun ListRow(label: String, count: Int, onClick: () -> Unit) {
             Column(Modifier.weight(1f)) {
                 Text(label, style = MaterialTheme.typography.titleSmall)
                 Text(
-                    text = if (count == 0) {
-                        strings(Strings.setup_none_yet)
-                    } else {
-                        strings(Strings.setup_items_added, count.toString())
-                    },
+                    text = subtitle,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

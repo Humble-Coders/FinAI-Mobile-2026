@@ -5,17 +5,16 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.humblesolutions.finai.BuildConfig
 import com.humblesolutions.finai.auth.GoogleSignIn
 import com.humblesolutions.finai.auth.GoogleSignInCancelled
@@ -193,17 +192,18 @@ private fun AppContent(viewModel: OnboardingViewModel) {
 
 /**
  * The financial setup wizard, with its own view model: it owns a repository and
- * a draft that nothing else needs, and it is built and closed with the screen.
+ * a draft that nothing else needs.
+ *
+ * A real `ViewModel`, not something remembered by the composition: a rotation
+ * tears the composition down, and a wizard that lost the figure being typed
+ * every time the phone turned would fail the standard it is held to. It is
+ * cleared with the activity, which closes the clients it opened.
  */
 @Composable
 private fun SetupRoute(onFinished: () -> Unit) {
-    val scope = rememberCoroutineScope()
-    val model = remember { SetupViewModel(scope) }
+    val model: SetupViewModel = viewModel()
     val state by model.uiState.collectAsStateWithLifecycle()
-    DisposableEffect(Unit) {
-        model.bind(logging = BuildConfig.DEBUG)
-        onDispose { model.close() }
-    }
+    LaunchedEffect(Unit) { model.bind(logging = BuildConfig.DEBUG) }
 
     SetupScreen(
         state = state,

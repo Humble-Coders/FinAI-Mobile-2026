@@ -26,6 +26,18 @@ struct SetupView: View {
 
             LoadingCoin(visible: model.busy)
         }
+        .toolbar {
+            // Number pads have no return key, so without this there is no way
+            // off the keyboard but tapping the little that stays visible.
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button(L.t(Strings.shared.action_done)) { dismissKeyboard() }
+            }
+        }
+        .onChange(of: model.busy) { _, working in
+            // Typing is over for now, and a keyboard would cover the coin.
+            if working { dismissKeyboard() }
+        }
     }
 
     private var steps: some View {
@@ -52,8 +64,9 @@ struct SetupView: View {
 
                 VStack(spacing: 8) {
                     ErrorText(messageKey: model.errorKey)
-                    if model.errorKey == nil, let block = model.block {
-                        // The same rule the button reads, said out loud.
+                    if model.errorKey == nil, let block = model.notice {
+                        // The same rule the button reads, said out loud — once
+                        // the user has typed something for it to be about.
                         ErrorText(messageKey: block.messageKey)
                     }
                     GradientButton(
@@ -127,8 +140,10 @@ struct SetupView: View {
                     text: Binding(get: { model.draft.monthlyExpense }, set: { model.setExpense($0) })
                 )
             }
-            ListRow(label: L.t(Strings.shared.setup_obligations_label),
-                    count: model.draft.obligations.count) { model.openList(.obligations) }
+            ListRow(
+                label: L.t(Strings.shared.setup_obligations_label),
+                subtitle: model.total(of: .obligations) ?? L.t(Strings.shared.setup_amount_hint)
+            ) { model.openList(.obligations) }
         }
     }
 
@@ -137,10 +152,14 @@ struct SetupView: View {
             StepTitle(step: model.step,
                       titleKey: Strings.shared.setup_portfolio_title,
                       bodyKey: Strings.shared.setup_portfolio_body)
-            ListRow(label: L.t(Strings.shared.setup_debts_label),
-                    count: model.draft.debts.count) { model.openList(.debts) }
-            ListRow(label: L.t(Strings.shared.setup_investments_label),
-                    count: model.draft.investments.count) { model.openList(.investments) }
+            ListRow(
+                label: L.t(Strings.shared.setup_debts_label),
+                subtitle: model.total(of: .debts) ?? L.t(Strings.shared.setup_total_balance_hint)
+            ) { model.openList(.debts) }
+            ListRow(
+                label: L.t(Strings.shared.setup_investments_label),
+                subtitle: model.total(of: .investments) ?? L.t(Strings.shared.setup_total_amount_hint)
+            ) { model.openList(.investments) }
         }
     }
 }
@@ -170,7 +189,11 @@ private struct StepHeader: View {
                         .fill(index <= Int(step.ordinal) ? Brand.green : Brand.border)
                         .frame(width: index == Int(step.ordinal) ? 20 : 8, height: 8)
                 }
-                Text("\(step.number)/\(SetupStep.companion.COUNT)")
+                Text(L.t(
+                    Strings.shared.setup_step_counter,
+                    "\(step.number)",
+                    "\(SetupStep.companion.COUNT)"
+                ))
                     .font(.subheadline)
                     .foregroundColor(Brand.textMuted)
                     .padding(.leading, 8)
@@ -223,10 +246,10 @@ private struct StepTitle: View {
     }
 }
 
-/// A row that opens an itemised list, showing how much is in it.
+/// A row that opens an itemised list, showing what is in it.
 private struct ListRow: View {
     let label: String
-    let count: Int
+    let subtitle: String
     let action: () -> Void
 
     var body: some View {
@@ -234,9 +257,7 @@ private struct ListRow: View {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(label).font(.headline).foregroundColor(.primary)
-                    Text(count == 0
-                         ? L.t(Strings.shared.setup_none_yet)
-                         : L.t(Strings.shared.setup_items_added, "\(count)"))
+                    Text(subtitle)
                         .font(.footnote)
                         .foregroundColor(Brand.textMuted)
                 }
@@ -288,6 +309,7 @@ private struct ItemListView: View {
                         VStack(alignment: .leading, spacing: 8) {
                             WizardField(
                                 label: L.t(Strings.shared.setup_item_name),
+                                autocapitalization: .words,
                                 text: binding(index, \.name) { row, value in
                                     ItemDraft(name: value, amount: row.amount,
                                               minimumPayment: row.minimumPayment,
@@ -351,6 +373,7 @@ private struct ItemListView: View {
             .padding(.bottom, 24)
         }
         .scrollBounceBehavior(.basedOnSize)
+        .scrollDismissesKeyboard(.interactively)
     }
 
     /// SKIE gives Swift no `copy()`, so every edit rebuilds the row.
@@ -396,6 +419,9 @@ private struct WizardField: View {
     let label: String
     var keyboard: UIKeyboardType = .default
     var leading: String?
+    /// Amounts are the common case here, and a capitalised digit is nonsense —
+    /// the name field asks for words explicitly.
+    var autocapitalization: TextInputAutocapitalization = .never
     @Binding var text: String
 
     var body: some View {
@@ -407,7 +433,8 @@ private struct WizardField: View {
                 }
                 TextField("", text: $text)
                     .keyboardType(keyboard)
-                    .textInputAutocapitalization(.words)
+                    .textInputAutocapitalization(autocapitalization)
+                    .autocorrectionDisabled()
             }
             .frame(minHeight: 48)
             .padding(.horizontal, 12)

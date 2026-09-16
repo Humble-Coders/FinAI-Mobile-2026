@@ -8,7 +8,7 @@ import kotlin.test.assertTrue
 
 /**
  * The money contract, tested hard: every amount in the app passes through here,
- * and a wrong answer is a wrong figure in someone's финances — so the edge
+ * and a wrong answer is a wrong figure in someone's finances — so the edge
  * cases matter more than the happy path.
  */
 class MoneyTest {
@@ -88,5 +88,22 @@ class MoneyTest {
     @Test
     fun `an amount that is not money formats to nothing rather than guessing`() {
         assertEquals("", Money.format("abc", "CAD"))
+    }
+
+    @Test
+    fun `amounts add as decimals rather than as floating point`() {
+        // The case that gives binary floating point away: 0.1 + 0.2 there is
+        // 0.30000000000000004, which is not a figure to show anyone.
+        assertEquals("0.30", Money.add("0.10", "0.20"))
+        assertEquals("2200.50", Money.add("1,500", "700.50"))
+        assertEquals("1000.00", Money.add("999.99", "0.01"))
+        assertEquals("2400", Money.add("1200", "1200", fractionDigits = 0))
+    }
+
+    @Test
+    fun `adding something that is not money adds nothing`() {
+        assertEquals("1200.00", Money.add("1200", ""))
+        assertEquals("1200.00", Money.add("1200", "abc"))
+        assertEquals("0.00", Money.add("", ""))
     }
 }

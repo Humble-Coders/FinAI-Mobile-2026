@@ -42,6 +42,12 @@ dependencies {
 
     implementation(libs.compose.uiToolingPreview)
     debugImplementation(libs.compose.uiTooling)
+
+    // The screens' derived rules — which button is enabled, which control is
+    // drawn at all — are computed on the UiState data classes, so they test
+    // with a plain constructor and no Android at all (kmp-arch-v2).
+    testImplementation(libs.kotlin.testJunit)
+    testImplementation(libs.junit)
 }
 
 android {

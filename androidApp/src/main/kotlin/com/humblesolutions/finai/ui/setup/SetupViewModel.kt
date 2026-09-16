@@ -1,17 +1,21 @@
 package com.humblesolutions.finai.ui.setup
 
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import com.humblesolutions.finai.config.ApiConfig
 import com.humblesolutions.finai.config.Supabase
+import com.humblesolutions.finai.data.KtorCapabilitiesRepository
 import com.humblesolutions.finai.data.KtorFinancialSetupRepository
 import com.humblesolutions.finai.data.SupabaseTokenSource
 import com.humblesolutions.finai.i18n.Strings
 import com.humblesolutions.finai.model.ApiException
+import com.humblesolutions.finai.model.Capabilities
+import com.humblesolutions.finai.repository.CapabilitiesRepository
 import com.humblesolutions.finai.repository.FinancialSetupRepository
 import com.humblesolutions.finai.usecase.ItemDraft
 import com.humblesolutions.finai.usecase.SetupDraft
 import com.humblesolutions.finai.usecase.SetupStep
 import com.humblesolutions.finai.usecase.SetupWizard
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -30,44 +34,62 @@ import kotlin.coroutines.cancellation.CancellationException
  * carries the whole draft; closing the app mid-way then resumes where it left
  * off, and a failed save keeps what was typed.
  */
-class SetupViewModel(private val scope: CoroutineScope) {
+class SetupViewModel : ViewModel() {
 
     private val _uiState = MutableStateFlow(SetupUiState())
     val uiState: StateFlow<SetupUiState> = _uiState.asStateFlow()
 
     private var repository: FinancialSetupRepository? = null
+    private var capabilities: CapabilitiesRepository? = null
 
+    /**
+     * Binds once, and stays bound for as long as the wizard does.
+     *
+     * A `ViewModel` rather than something remembered by the screen, so that a
+     * rotation recreates the composition and finds this again — with the figure
+     * that was being typed still in it (UI standards → preserve state across a
+     * configuration change). The guard matters for exactly that reason: the
+     * second call comes from the recreated screen, and reloading there would
+     * overwrite what the user had typed with what the server last stored.
+     */
     fun bind(logging: Boolean) {
         if (repository != null) return
         val client = Supabase.clientOrNull() ?: return
-        repository = KtorFinancialSetupRepository(
-            baseUrl = ApiConfig.BASE_URL,
-            tokens = SupabaseTokenSource(client),
-            logging = logging,
-        )
+        val tokens = SupabaseTokenSource(client)
+        repository = KtorFinancialSetupRepository(ApiConfig.BASE_URL, tokens, logging)
+        capabilities = KtorCapabilitiesRepository(ApiConfig.BASE_URL, tokens, logging)
         load()
     }
 
-    fun close() {
+    override fun onCleared() {
         repository?.close()
         repository = null
+        capabilities?.close()
+        capabilities = null
     }
 
     /** What is already saved decides where the wizard opens. */
     fun load() {
         val repository = repository ?: return
         _uiState.update { it.copy(loading = true, errorKey = null) }
-        scope.launch {
+        viewModelScope.launch {
             try {
                 val saved = repository.get()
                 val resume = SetupWizard.resumeAt(saved)
+                // The currency and the language figures are written in come
+                // from capabilities (ticket #17). The setup response names a
+                // currency too, which stands in when capabilities cannot be
+                // had: what this screen must not do is guess from the device.
+                val payload = capabilitiesOrNull()
                 _uiState.update {
                     it.copy(
                         loading = false,
-                        currency = saved.currency,
+                        currency = payload?.currency?.ifBlank { null } ?: saved.currency,
+                        locale = payload?.locale.orEmpty(),
                         draft = SetupWizard.draftFrom(saved),
                         step = resume,
                         reached = resume,
+                        touched = false,
                     )
                 }
             } catch (e: CancellationException) {
@@ -78,20 +100,32 @@ class SetupViewModel(private val scope: CoroutineScope) {
         }
     }
 
+    /**
+     * How the wizard is asked for capabilities: it decorates the screen, so a
+     * failure to fetch it is not a failure of the screen.
+     */
+    private suspend fun capabilitiesOrNull(): Capabilities? = try {
+        capabilities?.fetch()
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: ApiException) {
+        null
+    }
+
     fun onIncomeChange(value: String) = _uiState.update {
-        it.copy(draft = it.draft.copy(income = value), errorKey = null)
+        it.copy(draft = it.draft.copy(income = value), errorKey = null, touched = true)
     }
 
     fun onExpenseChange(value: String) = _uiState.update {
-        it.copy(draft = it.draft.copy(monthlyExpense = value), errorKey = null)
+        it.copy(draft = it.draft.copy(monthlyExpense = value), errorKey = null, touched = true)
     }
 
     /** Back a step, or nothing to do on the first one. */
     fun back() = _uiState.update {
         when (it.step) {
             SetupStep.INCOME -> it
-            SetupStep.EXPENSES -> it.copy(step = SetupStep.INCOME, errorKey = null)
-            SetupStep.PORTFOLIO -> it.copy(step = SetupStep.EXPENSES, errorKey = null)
+            SetupStep.EXPENSES -> it.copy(step = SetupStep.INCOME, errorKey = null, touched = false)
+            SetupStep.PORTFOLIO -> it.copy(step = SetupStep.EXPENSES, errorKey = null, touched = false)
         }
     }
 
@@ -105,19 +139,23 @@ class SetupViewModel(private val scope: CoroutineScope) {
         save(onSaved = { advance(onFinished) })
     }
 
-    /** Past the optional part without filling it in: an empty list is the record (#29). */
+    /**
+     * Past the last step without filling it in: an empty list is the record (#29).
+     *
+     * Only a step that is optional in full offers this, so there is nothing
+     * left here that could refuse — dropping the lists drops the only thing on
+     * the step that can block. A Skip the user can see always goes through.
+     */
     fun skip(onFinished: () -> Unit) {
         val state = _uiState.value
         if (!state.canSkip) return
         val cleared = when (state.step) {
-            SetupStep.INCOME -> state.draft
-            SetupStep.EXPENSES -> state.draft.copy(obligations = emptyList())
             SetupStep.PORTFOLIO -> state.draft.copy(debts = emptyList(), investments = emptyList())
+            // Mandatory: [SetupUiState.canSkip] never lets one of these here.
+            SetupStep.INCOME, SetupStep.EXPENSES -> return
         }
-        _uiState.update { it.copy(draft = cleared) }
-        // The mandatory pair is still required, so a skip only saves when the
-        // step's own figure is answered; otherwise it just drops the extras.
-        if (_uiState.value.block == null) save(onSaved = { advance(onFinished) })
+        _uiState.update { it.copy(draft = cleared, touched = false) }
+        save(onSaved = { advance(onFinished) })
     }
 
     private fun advance(onFinished: () -> Unit) {
@@ -126,7 +164,7 @@ class SetupViewModel(private val scope: CoroutineScope) {
             SetupStep.EXPENSES -> SetupStep.PORTFOLIO
             SetupStep.PORTFOLIO -> return onFinished()
         }
-        _uiState.update { it.copy(step = next, reached = maxOf(it.reached, next)) }
+        _uiState.update { it.copy(step = next, reached = maxOf(it.reached, next), touched = false) }
     }
 
     /**
@@ -134,7 +172,7 @@ class SetupViewModel(private val scope: CoroutineScope) {
      * figure is still missing is not reachable by sliding past it.
      */
     fun goTo(step: SetupStep) = _uiState.update {
-        if (step.ordinal > it.reached.ordinal) it else it.copy(step = step, errorKey = null)
+        if (step.ordinal > it.reached.ordinal) it else it.copy(step = step, errorKey = null, touched = false)
     }
 
     // ── The itemised lists ──────────────────────────────────────────────
@@ -176,7 +214,7 @@ class SetupViewModel(private val scope: CoroutineScope) {
         val repository = repository ?: return
         val state = _uiState.value
         _uiState.update { it.copy(busy = true, errorKey = null) }
-        scope.launch {
+        viewModelScope.launch {
             try {
                 val saved = repository.save(
                     SetupWizard.payload(state.draft, state.currency, state.fractionDigits),

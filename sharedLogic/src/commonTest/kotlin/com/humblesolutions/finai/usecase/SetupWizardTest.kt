@@ -6,7 +6,9 @@ import com.humblesolutions.finai.model.Investment
 import com.humblesolutions.finai.model.Obligation
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 /**
  * The wizard's gates and its payload. Both platforms read these, so a wrong
@@ -47,6 +49,27 @@ class SetupWizardTest {
     @Test
     fun `the last step holds nobody up with lists they never opened`() {
         assertNull(SetupWizard.blockingReason(SetupStep.PORTFOLIO, complete))
+    }
+
+    @Test
+    fun `only the last step may be skipped in full`() {
+        // The two figures are the gate the API reports `financial_setup` for,
+        // so no Skip is ever drawn on them (ticket #17).
+        assertFalse(SetupStep.INCOME.isOptional)
+        assertFalse(SetupStep.EXPENSES.isOptional)
+        assertTrue(SetupStep.PORTFOLIO.isOptional)
+    }
+
+    @Test
+    fun `a list totals the rows that are finished`() {
+        assertNull(SetupWizard.total(emptyList()))
+        val items = listOf(
+            ItemDraft(name = "Card", amount = "1,500"),
+            ItemDraft(name = "Loan", amount = "700.50"),
+            // Half-finished: out of the save, so out of the total too.
+            ItemDraft(name = "", amount = "900"),
+        )
+        assertEquals("2200.50", SetupWizard.total(items))
     }
 
     @Test

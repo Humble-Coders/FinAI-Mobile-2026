@@ -24,14 +24,26 @@ final class SetupViewModel: ObservableObject {
     @Published private(set) var reached: SetupStep = .income
     @Published private(set) var draft = SetupDraft(income: "", monthlyExpense: "", obligations: [], debts: [], investments: [])
     @Published private(set) var currency = ""
+    /// The language figures are formatted in, from capabilities — never the
+    /// device's, so two people in one household read the same figures the same
+    /// way. Blank until it has loaded, which formats as English.
+    @Published private(set) var locale = ""
     @Published private(set) var loading = true
     @Published private(set) var busy = false
     @Published private(set) var errorKey: String?
     @Published private(set) var editing: ItemList?
     /// The rows being edited, kept apart until they are kept or dropped.
     @Published var rows: [ItemDraft] = []
+    /// Whether this step's figure has been edited since the step was shown.
+    ///
+    /// The notice waits for it. A step that opens with "Enter your monthly
+    /// income to continue." in red, before the user has typed anything, reads
+    /// as a mistake they have already made; the disabled button says the same
+    /// thing without the accusation.
+    @Published private(set) var touched = false
 
     private var repository: FinancialSetupRepository?
+    private var capabilities: CapabilitiesRepository?
 
     #if DEBUG
     private let logging = true
@@ -51,9 +63,31 @@ final class SetupViewModel: ObservableObject {
     }
 
     var canContinue: Bool { !busy && block == nil }
-    /// The optional lists can be left empty, so they always offer a way past.
-    var canSkip: Bool { !busy && step != .income }
+
+    /// What the notice renders: the block, once there is something for it to be about.
+    var notice: SetupBlock? { touched ? block : nil }
+
+    /// Only a step that is optional in full offers a Skip (ticket #17).
+    ///
+    /// The mandatory figures cannot be skipped, so no control claims they can —
+    /// and because the step this leaves has nothing that can refuse, a Skip that
+    /// is drawn can never turn out to do nothing when it is pressed.
+    var canSkip: Bool { !busy && step.isOptional }
     var canKeepRows: Bool { !busy && rows.indices.allSatisfy { rowBlock(at: $0) == nil } }
+
+    /// What a list adds up to, written for reading, or nil while it is empty.
+    ///
+    /// The row shows the figure rather than how many rows are behind it: the
+    /// total is what the user came to check.
+    func total(of list: ItemList) -> String? {
+        guard let sum = SetupWizard.shared.total(
+            items: items(of: list),
+            fractionDigits: fractionDigits,
+            debt: list == .debts
+        ) else { return nil }
+        let written = Money.shared.format(amount: sum, currency: currency, locale: locale)
+        return written.isEmpty ? nil : written
+    }
 
     func rowBlock(at index: Int) -> SetupBlock? {
         guard index < rows.count else { return nil }
@@ -76,9 +110,15 @@ final class SetupViewModel: ObservableObject {
 
     func bind() {
         guard repository == nil, let client = Supabase.shared.clientOrNull() else { return }
+        let tokens = SupabaseTokenSource(client: client)
         repository = KtorFinancialSetupRepository(
             baseUrl: ApiConfig.shared.BASE_URL,
-            tokens: SupabaseTokenSource(client: client),
+            tokens: tokens,
+            logging: logging
+        )
+        capabilities = KtorCapabilitiesRepository(
+            baseUrl: ApiConfig.shared.BASE_URL,
+            tokens: tokens,
             logging: logging
         )
         load()
@@ -87,6 +127,8 @@ final class SetupViewModel: ObservableObject {
     func unbind() {
         repository?.close()
         repository = nil
+        capabilities?.close()
+        capabilities = nil
     }
 
     /// What is already saved decides where the wizard opens.
@@ -95,18 +137,34 @@ final class SetupViewModel: ObservableObject {
         loading = true
         errorKey = nil
         Task { [weak self] in
+            guard let self else { return }
             do {
                 let saved = try await repository.get()
-                self?.currency = saved.currency
-                self?.draft = SetupWizard.shared.draftFrom(setup: saved)
+                // The currency and the language figures are written in come
+                // from capabilities (ticket #17). The setup response names a
+                // currency too, which stands in when capabilities cannot be
+                // had: what this screen must not do is guess from the device.
+                let payload = await self.capabilitiesOrNil()
+                self.currency = payload.map { $0.currency.isEmpty ? saved.currency : $0.currency }
+                    ?? saved.currency
+                self.locale = payload?.locale ?? ""
+                self.draft = SetupWizard.shared.draftFrom(setup: saved)
                 let resume = SetupWizard.shared.resumeAt(setup: saved)
-                self?.step = resume
-                self?.reached = resume
+                self.step = resume
+                self.reached = resume
+                self.touched = false
             } catch {
-                self?.errorKey = Self.messageKey(error)
+                self.errorKey = Self.messageKey(error)
             }
-            self?.loading = false
+            self.loading = false
         }
+    }
+
+    /// How the wizard asks for capabilities: it decorates the screen, so a
+    /// failure to fetch it is not a failure of the screen.
+    private func capabilitiesOrNil() async -> Capabilities? {
+        guard let capabilities else { return nil }
+        return try? await capabilities.fetch()
     }
 
     // MARK: - The figures
@@ -117,6 +175,7 @@ final class SetupViewModel: ObservableObject {
             obligations: draft.obligations, debts: draft.debts, investments: draft.investments
         )
         errorKey = nil
+        touched = true
     }
 
     func setExpense(_ value: String) {
@@ -125,10 +184,12 @@ final class SetupViewModel: ObservableObject {
             obligations: draft.obligations, debts: draft.debts, investments: draft.investments
         )
         errorKey = nil
+        touched = true
     }
 
     func back() {
         errorKey = nil
+        touched = false
         switch step {
         case .expenses: step = .income
         case .portfolio: step = .expenses
@@ -143,25 +204,19 @@ final class SetupViewModel: ObservableObject {
         save { [weak self] in self?.advance(onFinished) }
     }
 
-    /// Past the optional part without filling it in: an empty list is the record (#29).
+    /// Past the last step without filling it in: an empty list is the record (#29).
+    ///
+    /// Only a step that is optional in full offers this, so there is nothing
+    /// left here that could refuse — dropping the lists drops the only thing on
+    /// the step that can block. A Skip the user can see always goes through.
     func skip(onFinished: @escaping () -> Void) {
-        guard canSkip else { return }
-        switch step {
-        case .expenses:
-            draft = draft.doCopy(
-                income: draft.income, monthlyExpense: draft.monthlyExpense,
-                obligations: [], debts: draft.debts, investments: draft.investments
-            )
-        case .portfolio:
-            draft = draft.doCopy(
-                income: draft.income, monthlyExpense: draft.monthlyExpense,
-                obligations: draft.obligations, debts: [], investments: []
-            )
-        default: break
-        }
-        // The mandatory pair is still required, so a skip only saves when the
-        // step's own figure is answered; otherwise it just drops the extras.
-        if block == nil { save { [weak self] in self?.advance(onFinished) } }
+        guard canSkip, step == .portfolio else { return }
+        draft = draft.doCopy(
+            income: draft.income, monthlyExpense: draft.monthlyExpense,
+            obligations: draft.obligations, debts: [], investments: []
+        )
+        touched = false
+        save { [weak self] in self?.advance(onFinished) }
     }
 
     private func advance(_ onFinished: () -> Void) {
@@ -170,6 +225,7 @@ final class SetupViewModel: ObservableObject {
         case .expenses: step = .portfolio
         default: return onFinished()
         }
+        touched = false
         if step.ordinal > reached.ordinal { reached = step }
     }
 
@@ -179,6 +235,7 @@ final class SetupViewModel: ObservableObject {
         guard destination.ordinal <= reached.ordinal else { return }
         step = destination
         errorKey = nil
+        touched = false
     }
 
     // MARK: - The itemised lists

@@ -119,6 +119,7 @@ object Strings {
 
     // The financial setup wizard (2.4).
     const val setup_step_label = "setup_step_label" // "Step {0}"
+    const val setup_step_counter = "setup_step_counter" // "{0}/{1}"
     const val setup_income_title = "setup_income_title" // "Your monthly income"
     const val setup_income_body = "setup_income_body" // "Let's start with your take-home income after taxes."
     const val setup_income_label = "setup_income_label" // "Monthly income (after tax)"
@@ -143,8 +144,6 @@ object Strings {
     const val setup_debt_rate = "setup_debt_rate" // "Interest rate % (optional)"
     const val setup_add_item = "setup_add_item" // "Add"
     const val setup_remove_item = "setup_remove_item" // "Remove"
-    const val setup_none_yet = "setup_none_yet" // "Nothing added yet."
-    const val setup_items_added = "setup_items_added" // "{0} added"
     const val action_save = "action_save" // "Save"
     const val setup_income_missing = "setup_income_missing" // "Enter your monthly income to continue."
     const val setup_expense_missing = "setup_expense_missing" // "Enter your monthly expenses to continue."
@@ -152,8 +151,6 @@ object Strings {
     const val setup_item_name_missing = "setup_item_name_missing" // "Give this a name."
     const val setup_rate_invalid = "setup_rate_invalid" // "Enter a rate between 0 and 100."
     const val error_invalid_amount = "error_invalid_amount" // "The server wouldn't accept that amount. Check it and try again."
-
-    // The financial setup step, until 2.4 builds the wizard behind it.
 
     // A provider sign-in that failed for a reason of its own.
     const val error_provider_failed = "error_provider_failed" // "That sign-in didn't complete. Try again, or use your email."

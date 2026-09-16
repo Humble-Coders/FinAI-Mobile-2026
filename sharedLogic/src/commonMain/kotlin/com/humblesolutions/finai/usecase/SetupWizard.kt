@@ -24,6 +24,17 @@ enum class SetupStep {
 
     val isLast: Boolean get() = this == PORTFOLIO
 
+    /**
+     * Whether the whole step may be passed without answering it, which decides
+     * whether a Skip control is drawn at all (ticket #17).
+     *
+     * Only the last one is: income and the monthly expense are the gate the API
+     * keeps reporting `financial_setup` for, so a Skip on either would be a
+     * control that cannot do what it says. The optional lists on the expense
+     * step are skipped by leaving them empty, not by skipping the step.
+     */
+    val isOptional: Boolean get() = this == PORTFOLIO
+
     companion object {
         const val COUNT = 3
     }
@@ -102,6 +113,20 @@ object SetupWizard {
             }
         }
         return null
+    }
+
+    /**
+     * What a list adds up to, or null when it holds nothing worth totalling.
+     *
+     * The row behind a list shows this rather than how many rows there are: a
+     * count answers a question nobody asked, and the figure is what the user
+     * came to check. Half-finished rows are left out, exactly as [payload]
+     * leaves them out of the save.
+     */
+    fun total(items: List<ItemDraft>, fractionDigits: Int = 2, debt: Boolean = false): String? {
+        val amounts = items.filter { itemBlock(it, fractionDigits, debt) == null }.map { it.amount }
+        if (amounts.isEmpty()) return null
+        return amounts.fold("0") { running, amount -> Money.add(running, amount, fractionDigits) }
     }
 
     /** A percentage the server will take: 0 to 100, at most two decimal places. */
