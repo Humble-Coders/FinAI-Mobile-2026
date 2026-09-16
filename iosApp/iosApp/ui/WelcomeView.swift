@@ -235,11 +235,14 @@ private struct AuthSheet: View {
             OrDivider(title: L.t(Strings.shared.welcome_or_continue)).padding(.top, 20)
 
             HStack(spacing: 16) {
-                ProviderCircleButton(
-                    label: L.t(Strings.shared.welcome_google),
-                    enabled: !model.busy,
-                    logo: { GoogleMark() }
-                ) { GoogleSignInLauncher.start(model: model) }
+                Button { GoogleSignInLauncher.start(model: model) } label: {
+                    GoogleSignInMark()
+                        .frame(width: 60, height: 60)
+                        .contentShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .disabled(model.busy)
+                .accessibilityLabel(L.t(Strings.shared.welcome_google))
 
                 // Sign in with Apple is mandatory on iOS wherever another
                 // provider is offered (App Store guideline 4.8). Logo-only is

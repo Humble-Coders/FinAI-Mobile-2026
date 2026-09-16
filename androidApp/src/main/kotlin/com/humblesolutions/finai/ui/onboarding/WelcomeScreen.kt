@@ -11,7 +11,6 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -59,8 +58,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -340,13 +337,20 @@ private fun AuthSheet(
             HorizontalDivider(Modifier.weight(1f), color = MaterialTheme.colorScheme.outline)
         }
 
-        // A circle, as the design shows the providers. Android offers only
+        // Google's own button asset: the circle, border and mark are the image,
+        // which is what their branding rules require. Android offers only
         // Google (2026-09-11), so the row holds one.
-        ProviderCircle(
-            label = strings(Strings.welcome_google),
-            icon = R.drawable.ic_google_g,
-            onClick = onGoogle,
-            enabled = !state.busy,
+        Image(
+            painter = painterResource(R.drawable.google_signin_button),
+            contentDescription = strings(Strings.welcome_google),
+            modifier = Modifier
+                .size(60.dp)
+                .clip(CircleShape)
+                .clickable(
+                    enabled = !state.busy,
+                    onClickLabel = strings(Strings.welcome_google),
+                    onClick = onGoogle,
+                ),
         )
         // Under the button it belongs to, not under the form: a provider
         // failing says nothing about what the user typed.
@@ -359,28 +363,6 @@ private fun AuthSheet(
         ) {
             Text(strings(if (creating) Strings.welcome_have_account else Strings.welcome_need_account))
         }
-    }
-}
-
-/** A provider as a circle, the way the design shows them. */
-@Composable
-private fun ProviderCircle(
-    label: String,
-    icon: Int,
-    onClick: () -> Unit,
-    enabled: Boolean,
-) {
-    Box(
-        modifier = Modifier
-            .size(60.dp)
-            .clip(CircleShape)
-            .background(MaterialTheme.colorScheme.surfaceVariant)
-            .border(1.dp, MaterialTheme.colorScheme.outline, CircleShape)
-            .clickable(enabled = enabled, onClickLabel = label, onClick = onClick)
-            .semantics { contentDescription = label },
-        contentAlignment = Alignment.Center,
-    ) {
-        Image(painter = painterResource(icon), contentDescription = null, modifier = Modifier.size(26.dp))
     }
 }
 

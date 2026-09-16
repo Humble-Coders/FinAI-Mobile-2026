@@ -221,36 +221,16 @@ struct ProviderCircleButton<Logo: View>: View {
     }
 }
 
-/// Google's "G", drawn to their colours.
+/// Google's sign-in button, from their own asset pack.
 ///
-/// A stand-in, and knowingly not exact: Google's branding rules ask for their
-/// supplied artwork, and attempts to reproduce the mark by hand do not match
-/// it. Replace this with the official asset before release.
-struct GoogleMark: View {
+/// The image carries the circle, the border and the mark, and has a dark
+/// variant in the asset catalogue, so nothing here draws chrome behind it.
+/// Their branding rules require this artwork rather than a redrawn mark.
+struct GoogleSignInMark: View {
     var body: some View {
-        ZStack {
-            Circle()
-                .trim(from: 0.0, to: 0.25)
-                .stroke(Color(red: 0.918, green: 0.263, blue: 0.208), lineWidth: 6)
-                .rotationEffect(.degrees(-135))
-            Circle()
-                .trim(from: 0.0, to: 0.25)
-                .stroke(Color(red: 0.984, green: 0.737, blue: 0.020), lineWidth: 6)
-                .rotationEffect(.degrees(135))
-            Circle()
-                .trim(from: 0.0, to: 0.25)
-                .stroke(Color(red: 0.204, green: 0.659, blue: 0.325), lineWidth: 6)
-                .rotationEffect(.degrees(45))
-            Circle()
-                .trim(from: 0.0, to: 0.30)
-                .stroke(Color(red: 0.259, green: 0.522, blue: 0.957), lineWidth: 6)
-                .rotationEffect(.degrees(-45))
-            Rectangle()
-                .fill(Color(red: 0.259, green: 0.522, blue: 0.957))
-                .frame(width: 11, height: 6)
-                .offset(x: 5.5, y: 0)
-        }
-        .frame(width: 26, height: 26)
+        Image("GoogleButton")
+            .resizable()
+            .scaledToFit()
     }
 }
 
