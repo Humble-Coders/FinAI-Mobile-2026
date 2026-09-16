@@ -44,9 +44,31 @@ class SetupUiStateTest {
     @Test
     fun `only the optional step offers a skip`() {
         val state = SetupUiState(loading = false, draft = answered)
-        assertFalse(state.copy(step = SetupStep.INCOME).canSkip)
-        assertFalse(state.copy(step = SetupStep.EXPENSES).canSkip)
+        assertFalse(state.copy(step = SetupStep.INCOME).showsSkip)
+        assertFalse(state.copy(step = SetupStep.EXPENSES).showsSkip)
+        assertTrue(state.copy(step = SetupStep.PORTFOLIO).showsSkip)
         assertTrue(state.copy(step = SetupStep.PORTFOLIO).canSkip)
+    }
+
+    @Test
+    fun `swiping ahead does not get past a missing figure`() {
+        // Any step can be looked at, but Continue on step 2 or 3 still waits
+        // for the income, and says so without waiting to be touched.
+        val ahead = SetupUiState(loading = false, step = SetupStep.EXPENSES, draft = SetupDraft(monthlyExpense = "2500"))
+        assertFalse(ahead.canContinue)
+        assertEquals(SetupBlock.INCOME_MISSING, ahead.notice)
+
+        val last = SetupUiState(loading = false, step = SetupStep.PORTFOLIO, draft = SetupDraft(income = "4000"))
+        assertFalse(last.canContinue)
+        assertTrue(last.showsSkip)
+        assertFalse(last.canSkip)
+    }
+
+    @Test
+    fun `the small loader shows for a save and for a finish`() {
+        assertFalse(SetupUiState(loading = false).showsSaving)
+        assertTrue(SetupUiState(loading = false, syncing = true).showsSaving)
+        assertTrue(SetupUiState(loading = false, busy = true).showsSaving)
     }
 
     @Test

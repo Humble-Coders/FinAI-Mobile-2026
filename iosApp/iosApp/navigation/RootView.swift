@@ -11,9 +11,13 @@ struct RootView: View {
     /// The wizard owns a repository and a draft nothing else needs, so it has
     /// its own model, built and closed with the screen.
     @StateObject private var setupModel = SetupViewModel()
+    /// One coin loader for the whole app: centred, everything behind it blurred,
+    /// for at least two seconds.
+    @StateObject private var loader = AppLoader()
     @State private var changingRegion = false
 
     var body: some View {
+        LoaderHost(active: loaderActive, loader: loader) {
         Group {
             if let problemKey = model.configurationProblemKey {
                 NotConfiguredView(messageKey: problemKey)
@@ -29,12 +33,6 @@ struct RootView: View {
                 content
             }
         }
-        .overlay {
-            // One loader for the whole app: mounted here, it survives every
-            // step change instead of being rebuilt with each screen.
-            // Only between steps: while a card is up, its own coin travels to
-            // the middle rather than a second one appearing there.
-            LoadingCoin(visible: model.showLoadingCard)
         }
         .onAppear { model.bind() }
         .onDisappear { model.unbind() }
@@ -45,7 +43,22 @@ struct RootView: View {
                 model.setRegion(region)
                 changingRegion = false
             }
+            .environment(\.appLoader, loader)
         }
+    }
+
+    /// Signing in or up, the hand-over between steps, and the wizard's first
+    /// load. Continue inside the wizard is not here: it never waits on the coin.
+    private var loaderActive: Bool {
+        model.busy || model.showLoadingCard || (showingSetup && setupModel.loading)
+    }
+
+    private var showingSetup: Bool {
+        model.configurationProblemKey == nil
+            && model.introFinished
+            && !model.showLoadingCard
+            && model.reset == nil
+            && model.destination.screen == .financialSetup
     }
 
     @ViewBuilder

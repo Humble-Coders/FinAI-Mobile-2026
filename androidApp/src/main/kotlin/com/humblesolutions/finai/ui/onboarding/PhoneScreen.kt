@@ -58,7 +58,7 @@ fun PhoneScreen(
     onContinue: () -> Unit,
     onSignOut: () -> Unit,
 ) {
-    CardScreen(busy = state.busy) {
+    CardScreen {
         Spacer(Modifier.height(20.dp))
         Text(
             text = strings(Strings.phone_link_title),

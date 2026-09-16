@@ -52,6 +52,46 @@ class SetupWizardTest {
     }
 
     @Test
+    fun `a later step still waits for an earlier mandatory figure`() {
+        // The steps can be swiped through freely, so Continue on step 2 or 3
+        // must not carry an unanswered income forward.
+        assertEquals(SetupBlock.INCOME_MISSING, SetupWizard.blockingReason(SetupStep.EXPENSES, SetupDraft()))
+        assertEquals(
+            SetupBlock.EXPENSE_MISSING,
+            SetupWizard.blockingReason(SetupStep.PORTFOLIO, SetupDraft(income = "4000")),
+        )
+        assertEquals(SetupBlock.EXPENSE_MISSING, SetupWizard.mandatoryBlock(SetupDraft(income = "4000")))
+        assertNull(SetupWizard.mandatoryBlock(complete))
+    }
+
+    @Test
+    fun `the notice waits only for this step's own unanswered figure`() {
+        // Untouched and simply unanswered here: nothing said yet.
+        assertNull(SetupWizard.notice(SetupStep.INCOME, SetupDraft()))
+        // Touched: now it is said.
+        assertEquals(SetupBlock.INCOME_MISSING, SetupWizard.notice(SetupStep.INCOME, SetupDraft(), touched = true))
+        // Already wrong: said straight away.
+        assertEquals(
+            SetupBlock.INCOME_NOT_MONEY,
+            SetupWizard.notice(SetupStep.INCOME, SetupDraft(income = "abc")),
+        )
+        // Missing from an earlier step: said straight away, because this step
+        // cannot fix it and Continue is disabled for it.
+        assertEquals(SetupBlock.INCOME_MISSING, SetupWizard.notice(SetupStep.EXPENSES, SetupDraft()))
+        assertNull(SetupWizard.notice(SetupStep.EXPENSES, complete))
+    }
+
+    @Test
+    fun `skip goes through only on the optional step with both figures in`() {
+        assertTrue(SetupWizard.canSkip(SetupStep.PORTFOLIO, complete))
+        assertFalse(SetupWizard.canSkip(SetupStep.PORTFOLIO, SetupDraft(income = "4000")))
+        assertFalse(SetupWizard.canSkip(SetupStep.EXPENSES, complete))
+        // A half-finished row does not stop it: Skip drops the lists.
+        val started = complete.copy(debts = listOf(ItemDraft(name = "Card", amount = "")))
+        assertTrue(SetupWizard.canSkip(SetupStep.PORTFOLIO, started))
+    }
+
+    @Test
     fun `only the last step may be skipped in full`() {
         // The two figures are the gate the API reports `financial_setup` for,
         // so no Skip is ever drawn on them (ticket #17).

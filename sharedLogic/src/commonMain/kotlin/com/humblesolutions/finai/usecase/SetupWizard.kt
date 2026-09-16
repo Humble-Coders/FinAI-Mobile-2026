@@ -59,6 +59,14 @@ enum class SetupBlock(val messageKey: String) {
      * comes back to the step later.
      */
     val isUnanswered: Boolean get() = this == INCOME_MISSING || this == EXPENSE_MISSING
+
+    /** The step whose figure this is about, or null for a row in a list. */
+    val step: SetupStep?
+        get() = when (this) {
+            INCOME_MISSING, INCOME_NOT_MONEY -> SetupStep.INCOME
+            EXPENSE_MISSING, EXPENSE_NOT_MONEY -> SetupStep.EXPENSES
+            ITEM_NAME_MISSING, ITEM_AMOUNT_INVALID, RATE_INVALID -> null
+        }
 }
 
 /** One row of a list the user is filling in — a debt, an investment, an obligation. */
@@ -94,21 +102,62 @@ object SetupWizard {
     const val MAX_RATE_PERCENT = 100
 
     /**
-     * Why [step] cannot be left, or null when it can.
+     * Why Continue on [step] cannot go ahead, or null when it can.
      *
-     * The mandatory pair must be money. The lists are optional, but a row that
-     * exists must be complete: a name and an amount. Nobody is held up by a
-     * list they never opened.
+     * The steps can be swiped through freely, so a step is not "reached" by
+     * answering the one before it. Continue therefore waits for every mandatory
+     * figure **up to and including** its step: on the expense step a missing
+     * income still holds it, because moving on would carry an unanswered gate
+     * forward. The lists are optional, but a row that exists must be complete —
+     * a name and an amount. Nobody is held up by a list they never opened.
      */
-    fun blockingReason(step: SetupStep, draft: SetupDraft, fractionDigits: Int = 2): SetupBlock? = when (step) {
-        SetupStep.INCOME -> amountBlock(draft.income, fractionDigits, SetupBlock.INCOME_MISSING, SetupBlock.INCOME_NOT_MONEY)
-        SetupStep.EXPENSES ->
-            amountBlock(draft.monthlyExpense, fractionDigits, SetupBlock.EXPENSE_MISSING, SetupBlock.EXPENSE_NOT_MONEY)
+    fun blockingReason(step: SetupStep, draft: SetupDraft, fractionDigits: Int = 2): SetupBlock? {
+        val income = incomeBlock(draft, fractionDigits)
+        return when (step) {
+            SetupStep.INCOME -> income
+            SetupStep.EXPENSES -> income
+                ?: expenseBlock(draft, fractionDigits)
                 ?: draft.obligations.firstNotNullOfOrNull { itemBlock(it, fractionDigits) }
-        SetupStep.PORTFOLIO ->
-            draft.debts.firstNotNullOfOrNull { itemBlock(it, fractionDigits, debt = true) }
+            SetupStep.PORTFOLIO -> income
+                ?: expenseBlock(draft, fractionDigits)
+                ?: draft.debts.firstNotNullOfOrNull { itemBlock(it, fractionDigits, debt = true) }
                 ?: draft.investments.firstNotNullOfOrNull { itemBlock(it, fractionDigits) }
+        }
     }
+
+    /** Why the gate cannot clear yet — the two mandatory figures only — or null. */
+    fun mandatoryBlock(draft: SetupDraft, fractionDigits: Int = 2): SetupBlock? =
+        incomeBlock(draft, fractionDigits) ?: expenseBlock(draft, fractionDigits)
+
+    /**
+     * What the notice under Continue should say on [step], or null.
+     *
+     * The same reason Continue is disabled for, with one exception about timing:
+     * a figure simply not answered yet *on this step* waits until the user has
+     * [touched] it, so a step never opens by telling someone off for not having
+     * started. Anything already wrong, and anything missing from an earlier
+     * step, is said straight away — the user cannot fix it here without being
+     * told where.
+     */
+    fun notice(step: SetupStep, draft: SetupDraft, fractionDigits: Int = 2, touched: Boolean = false): SetupBlock? {
+        val block = blockingReason(step, draft, fractionDigits) ?: return null
+        return block.takeIf { touched || !it.isUnanswered || it.step != step }
+    }
+
+    /**
+     * Whether Skip on [step] can go through: only on a step that is optional in
+     * full, and only once both mandatory figures are in. Skip drops that step's
+     * lists and finishes the wizard, so a missing figure would finish it with
+     * the gate still outstanding.
+     */
+    fun canSkip(step: SetupStep, draft: SetupDraft, fractionDigits: Int = 2): Boolean =
+        step.isOptional && mandatoryBlock(draft, fractionDigits) == null
+
+    private fun incomeBlock(draft: SetupDraft, fractionDigits: Int): SetupBlock? =
+        amountBlock(draft.income, fractionDigits, SetupBlock.INCOME_MISSING, SetupBlock.INCOME_NOT_MONEY)
+
+    private fun expenseBlock(draft: SetupDraft, fractionDigits: Int): SetupBlock? =
+        amountBlock(draft.monthlyExpense, fractionDigits, SetupBlock.EXPENSE_MISSING, SetupBlock.EXPENSE_NOT_MONEY)
 
     /** Why a single row cannot be kept, or null. Used by the row's own editor. */
     fun itemBlock(item: ItemDraft, fractionDigits: Int = 2, debt: Boolean = false): SetupBlock? {

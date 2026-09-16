@@ -4,10 +4,10 @@ import SharedLogic
 /// The financial setup wizard: income, then expenses and obligations, then
 /// debts and investments (PRD F1, ticket #17).
 ///
-/// The first two figures are mandatory — the server keeps reporting
-/// `financial_setup` until both are stored — and everything itemised is
-/// optional, so every list offers a way past. Each step saves, so closing the
-/// app resumes where it left off.
+/// The steps can be swiped through freely; Continue is what waits for the
+/// mandatory figures. Continue slides straight to the next step and saves behind
+/// the move, with a small loader only while a request is in flight — the coin
+/// loader is for the first load alone, and lives at the app's root.
 struct SetupView: View {
     @ObservedObject var model: SetupViewModel
     let onFinished: () -> Void
@@ -17,14 +17,15 @@ struct SetupView: View {
             Color(.systemBackground).ignoresSafeArea()
 
             if model.loading {
-                LoadingCoin(visible: true)
+                // The app's coin loader covers the first load; underneath, ground.
+                Color.clear
+            } else if model.cancelled {
+                SetupRequiredView { model.resume() }
             } else if let list = model.editing {
                 ItemListView(model: model, list: list)
             } else {
                 steps
             }
-
-            LoadingCoin(visible: model.busy)
         }
         .toolbar {
             // Number pads have no return key, so without this there is no way
@@ -34,62 +35,78 @@ struct SetupView: View {
                 Button(L.t(Strings.shared.action_done)) { dismissKeyboard() }
             }
         }
-        .onChange(of: model.busy) { _, working in
-            // Typing is over for now, and a keyboard would cover the coin.
-            if working { dismissKeyboard() }
-        }
     }
 
     private var steps: some View {
-        ZStack(alignment: .top) {
-            // Drawn from the very top of the screen, under the status bar and
-            // the notch, and moving with the page so the path runs on.
-            PathBand(step: model.step)
-                .ignoresSafeArea(edges: .top)
+        GeometryReader { geometry in
+            ZStack(alignment: .top) {
+                // Starts below the notch; the notch itself is plain ground
+                // fading into the art.
+                PathBand(step: model.step, top: geometry.safeAreaInsets.top)
+                    .ignoresSafeArea(edges: .top)
 
-            VStack(spacing: 0) {
-                Spacer().frame(height: Self.bandHeight)
+                VStack(spacing: 0) {
+                    Spacer().frame(height: Self.bandHeight)
 
-                TabView(selection: Binding(get: { model.step }, set: { model.goTo($0) })) {
-                    ForEach(SetupView.allSteps, id: \.self) { step in
-                        ScrollView {
-                            page(for: step).padding(.horizontal, 24).padding(.top, 8)
+                    TabView(selection: Binding(
+                        get: { model.step },
+                        set: { step in withAnimation(Self.slide) { model.goTo(step) } }
+                    )) {
+                        ForEach(SetupView.allSteps, id: \.self) { step in
+                            ScrollView {
+                                page(for: step).padding(.horizontal, 24).padding(.top, 8)
+                            }
+                            .scrollBounceBehavior(.basedOnSize)
+                            .scrollDismissesKeyboard(.interactively)
+                            .tag(step)
                         }
-                        .scrollBounceBehavior(.basedOnSize)
-                        .tag(step)
                     }
-                }
-                .tabViewStyle(.page(indexDisplayMode: .never))
-                .animation(.easeInOut(duration: 0.3), value: model.step)
+                    .tabViewStyle(.page(indexDisplayMode: .never))
+                    .disabled(model.busy)
 
-                VStack(spacing: 8) {
-                    ErrorText(messageKey: model.errorKey)
-                    if model.errorKey == nil, let block = model.notice {
-                        // The same rule the button reads, said out loud — once
-                        // the user has typed something for it to be about.
-                        ErrorText(messageKey: block.messageKey)
-                    }
-                    GradientButton(
-                        title: L.t(model.step.isLast
-                                   ? Strings.shared.setup_complete
-                                   : Strings.shared.action_continue),
-                        enabled: model.canContinue
-                    ) { model.continueStep(onFinished: onFinished) }
-
-                    if model.canSkip {
-                        Button(L.t(Strings.shared.setup_skip)) { model.skip(onFinished: onFinished) }
-                            .font(.subheadline)
-                            .foregroundColor(Brand.textMuted)
-                            .tappableRow()
-                    }
+                    controls
                 }
-                .padding(.horizontal, 24)
-                .padding(.bottom, 16)
+
+                StepHeader(
+                    step: model.step,
+                    onBack: { withAnimation(Self.slide) { model.back() } },
+                    onCancel: { model.cancel() }
+                )
+
+                SavingIndicator(visible: model.showsSaving)
+                    .padding(.top, StepHeader.height + 4)
+            }
+        }
+    }
+
+    private var controls: some View {
+        VStack(spacing: 8) {
+            ErrorText(messageKey: model.errorKey)
+            if model.errorKey == nil {
+                // The same rule the button reads, said out loud.
+                ErrorText(messageKey: model.notice?.messageKey)
+            }
+            GradientButton(
+                title: L.t(model.step.isLast
+                           ? Strings.shared.setup_complete
+                           : Strings.shared.action_continue),
+                enabled: model.canContinue
+            ) {
+                dismissKeyboard()
+                withAnimation(Self.slide) { model.continueStep(onFinished: onFinished) }
             }
 
-            // Over the art, clear of the notch.
-            StepHeader(step: model.step) { model.back() }
+            if model.showsSkip {
+                Button(L.t(Strings.shared.setup_skip)) { model.skip(onFinished: onFinished) }
+                    .font(.subheadline)
+                    .foregroundColor(Brand.textMuted)
+                    .opacity(model.canSkip ? 1 : 0.4)
+                    .disabled(!model.canSkip)
+                    .tappableRow()
+            }
         }
+        .padding(.horizontal, 24)
+        .padding(.bottom, 16)
     }
 
     @ViewBuilder
@@ -105,14 +122,17 @@ struct SetupView: View {
     /// bridged enum, whose `entries` is a class property on the Kotlin side.
     static let allSteps: [SetupStep] = [.income, .expenses, .portfolio]
 
-    /// How far down the art reaches: to the top of the fields, as in the design.
+    /// How far the art reaches below the notch: to the top of the fields.
     static let bandHeight: CGFloat = 300
+
+    /// One step to the next: a plain slide, no loader in the way.
+    static let slide = Animation.easeInOut(duration: 0.38)
 
     // MARK: - Steps
 
     private var incomeStep: some View {
         VStack(alignment: .leading, spacing: 16) {
-            StepTitle(step: model.step,
+            StepTitle(step: .income,
                       titleKey: Strings.shared.setup_income_title,
                       bodyKey: Strings.shared.setup_income_body)
             WizardCard {
@@ -130,7 +150,7 @@ struct SetupView: View {
 
     private var expensesStep: some View {
         VStack(alignment: .leading, spacing: 16) {
-            StepTitle(step: model.step,
+            StepTitle(step: .expenses,
                       titleKey: Strings.shared.setup_expenses_title,
                       bodyKey: Strings.shared.setup_expenses_body)
             WizardCard {
@@ -149,7 +169,7 @@ struct SetupView: View {
 
     private var portfolioStep: some View {
         VStack(alignment: .leading, spacing: 16) {
-            StepTitle(step: model.step,
+            StepTitle(step: .portfolio,
                       titleKey: Strings.shared.setup_portfolio_title,
                       bodyKey: Strings.shared.setup_portfolio_body)
             ListRow(
@@ -164,25 +184,16 @@ struct SetupView: View {
     }
 }
 
-/// The back arrow and the progress dots.
+/// The back arrow, the progress dots and Cancel.
 private struct StepHeader: View {
+    static let height: CGFloat = 44
+
     let step: SetupStep
     let onBack: () -> Void
+    let onCancel: () -> Void
 
     var body: some View {
-        HStack {
-            if step != .income {
-                Button(action: onBack) {
-                    Image(systemName: "chevron.left")
-                        .font(.title3.weight(.semibold))
-                        .foregroundColor(.primary)
-                        .tappableArea()
-                }
-                .accessibilityLabel(L.t(Strings.shared.action_back))
-            } else {
-                Color.clear.frame(width: 44, height: 44)
-            }
-            Spacer()
+        ZStack {
             HStack(spacing: 6) {
                 ForEach(0 ..< Int(SetupStep.companion.COUNT), id: \.self) { index in
                     Capsule()
@@ -198,19 +209,43 @@ private struct StepHeader: View {
                     .foregroundColor(Brand.textMuted)
                     .padding(.leading, 8)
             }
+
+            HStack {
+                if step != .income {
+                    Button(action: onBack) {
+                        Image(systemName: "chevron.left")
+                            .font(.title3.weight(.semibold))
+                            .foregroundColor(.primary)
+                            .tappableArea()
+                    }
+                    .accessibilityLabel(L.t(Strings.shared.action_back))
+                }
+                Spacer()
+                Button(L.t(Strings.shared.action_cancel), action: onCancel)
+                    .font(.body.weight(.medium))
+                    .foregroundColor(.primary)
+                    .frame(minHeight: 44)
+            }
         }
+        .frame(height: Self.height)
         .padding(.horizontal, 16)
     }
 }
 
 /// The path, running on from step to step.
 ///
-/// One wide illustration, each step showing its own third, so the route the
-/// user is walking is literally continuous between screens.
+/// One wide illustration, each step showing its own third, starting below the
+/// notch. The notch area is plain ground fading into the art, and the art fades
+/// back into ground above the fields.
 private struct PathBand: View {
     let step: SetupStep
+    let top: CGFloat
+
+    private static let topFade: CGFloat = 60
+    private static let bottomFade: CGFloat = 72
 
     var body: some View {
+        let ground = Color(.systemBackground)
         GeometryReader { geometry in
             Image("SetupPath")
                 .resizable()
@@ -219,12 +254,75 @@ private struct PathBand: View {
                     width: geometry.size.width * CGFloat(SetupStep.companion.COUNT),
                     height: SetupView.bandHeight
                 )
-                .offset(x: -geometry.size.width * CGFloat(step.ordinal))
-                .animation(.easeInOut(duration: 0.3), value: step)
+                .offset(x: -geometry.size.width * CGFloat(step.ordinal), y: top)
+                .animation(SetupView.slide, value: step)
         }
-        .frame(height: SetupView.bandHeight)
+        .frame(height: top + SetupView.bandHeight)
         .clipped()
+        .overlay(alignment: .top) {
+            LinearGradient(
+                stops: [
+                    .init(color: ground, location: 0),
+                    .init(color: ground.opacity(0.85), location: top / max(top + Self.topFade, 1)),
+                    .init(color: ground.opacity(0), location: 1),
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .frame(height: top + Self.topFade)
+        }
+        .overlay(alignment: .bottom) {
+            LinearGradient(colors: [ground.opacity(0), ground], startPoint: .top, endPoint: .bottom)
+                .frame(height: Self.bottomFade)
+        }
+        .allowsHitTesting(false)
         .accessibilityHidden(true)
+    }
+}
+
+/// The small loader for a save behind the steps: a frosted pill, never the coin.
+private struct SavingIndicator: View {
+    let visible: Bool
+
+    var body: some View {
+        ProgressView()
+            .controlSize(.small)
+            .tint(Brand.green)
+            .padding(9)
+            .background(.ultraThinMaterial, in: Capsule())
+            .shadow(color: .black.opacity(0.08), radius: 6, y: 2)
+            .opacity(visible ? 1 : 0)
+            .animation(.easeInOut(duration: 0.18), value: visible)
+            .allowsHitTesting(false)
+            .accessibilityElement()
+            .accessibilityLabel(L.t(Strings.shared.setup_saving))
+            .accessibilityHidden(!visible)
+    }
+}
+
+/// What Cancel leads to: setup is required, and the way back to step 1.
+private struct SetupRequiredView: View {
+    let onResume: () -> Void
+
+    var body: some View {
+        VStack(spacing: 12) {
+            Text(L.t(Strings.shared.setup_required_title))
+                .font(.title2.weight(.bold))
+                .multilineTextAlignment(.center)
+            Text(L.t(Strings.shared.setup_required_body))
+                .font(.subheadline)
+                .foregroundColor(Brand.textMuted)
+                .multilineTextAlignment(.center)
+            Button(action: onResume) {
+                Text(L.t(Strings.shared.setup_required_action))
+                    .font(.body.weight(.semibold))
+                    .underline()
+                    .foregroundColor(Brand.green)
+            }
+            .tappableRow()
+        }
+        .frame(maxWidth: 420)
+        .padding(.horizontal, 32)
     }
 }
 

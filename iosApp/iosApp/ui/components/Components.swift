@@ -420,19 +420,15 @@ struct CoinBadge: View {
 /// bottom of the screen: the rounded background ignores the safe area, while
 /// the content stays clear of the home indicator.
 ///
-/// While `busy`, the coin leaves its place on the edge and settles in the middle
-/// of the card, everything behind it blurs, and the keyboard goes away: the coin
-/// is the loading indicator, so the screens it frames show no spinner of their
-/// own. It all returns when the work ends.
+/// The coin on its edge is the app's loading indicator: while something runs,
+/// the app's one loader (`LoaderHost`) takes it to the middle of the screen and
+/// blurs everything behind it, so the screens a card frames show no spinner of
+/// their own.
 struct AuthCard<Content: View>: View {
-    var busy = false
     @ViewBuilder var content: () -> Content
 
     /// Measured, not guessed: the card is only as tall as its content.
     @State private var contentHeight: CGFloat = 0
-    /// Where the coin rests, read only while it is resting, so its journey to
-    /// the middle cannot chase its own tail.
-    @State private var restingFrame: CGRect = .zero
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -450,23 +446,8 @@ struct AuthCard<Content: View>: View {
                     .ignoresSafeArea(edges: .bottom)
             }
             .padding(.top, CoinBadge.size / 2)
-            // Behind the coin, and only while it is working.
-            .blur(radius: busy ? 6 : 0)
-            .animation(.easeInOut(duration: 0.3), value: busy)
 
-            // The coin travels from wherever it rests to the middle of the
-            // screen and back, rather than one coin fading out while another
-            // fades in somewhere else.
-            CoinBadge()
-                .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame in
-                    if !busy { restingFrame = frame }
-                }
-                .offset(travel)
-                .animation(.easeInOut(duration: 0.42), value: busy)
-        }
-        .onChange(of: busy) { _, working in
-            // Typing is over for now, and a keyboard would cover the coin.
-            if working { dismissKeyboard() }
+            CardCoin()
         }
         .toolbar {
             // Number pads have no return key, so without this there is no way
@@ -476,18 +457,6 @@ struct AuthCard<Content: View>: View {
                 Button(L.t(Strings.shared.action_done)) { dismissKeyboard() }
             }
         }
-    }
-
-    /// From the coin's resting place to the middle of the screen.
-    private var travel: CGSize {
-        guard busy, restingFrame != .zero else { return .zero }
-        let screen = UIApplication.shared.connectedScenes
-            .compactMap { $0 as? UIWindowScene }
-            .first?.screen.bounds ?? UIScreen.main.bounds
-        return CGSize(
-            width: screen.midX - restingFrame.midX,
-            height: screen.midY - restingFrame.midY
-        )
     }
 
     private var stack: some View {
@@ -512,35 +481,13 @@ func dismissKeyboard() {
 /// The wash plus the card: the frame the code and phone steps share with the
 /// welcome sheet.
 struct CardScreen<Content: View>: View {
-    var busy = false
     @ViewBuilder var content: () -> Content
 
     var body: some View {
         ZStack(alignment: .bottom) {
-            HeroWash()
-                .blur(radius: busy ? 18 : 0)
-                .animation(.easeInOut(duration: 0.42), value: busy)
-                .ignoresSafeArea()
-            AuthCard(busy: busy) { content() }
+            HeroWash().ignoresSafeArea()
+            AuthCard { content() }
         }
-    }
-}
-
-
-/// The loader: the coin, centred on the screen, for as long as something runs.
-///
-/// It lives at the root rather than inside a screen, so moving from one step to
-/// the next cannot tear it down and rebuild it — which is what made it stutter
-/// on the way from the email code to the phone step.
-struct LoadingCoin: View {
-    let visible: Bool
-
-    var body: some View {
-        CoinBadge(size: 112)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .opacity(visible ? 1 : 0)
-            .animation(.easeInOut(duration: 0.2), value: visible)
-            .allowsHitTesting(false)
     }
 }
 
