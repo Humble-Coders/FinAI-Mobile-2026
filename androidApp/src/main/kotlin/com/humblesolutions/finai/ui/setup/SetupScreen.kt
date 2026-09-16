@@ -10,7 +10,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -22,14 +21,11 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
@@ -232,6 +228,9 @@ private val HeaderHeight = 56.dp
 /** The top fade runs from the notch through the header, so both sit on plain ground. */
 private val TopFade = 72.dp
 private val BottomFade = 72.dp
+
+/** The path art, one third per step, in step order. */
+private val PathThirds = listOf(R.drawable.setup_path_1, R.drawable.setup_path_2, R.drawable.setup_path_3)
 private const val SLIDE_MS = 380
 
 @Composable
@@ -300,25 +299,22 @@ private fun StepHeader(
 @Composable
 private fun PathBand(page: Int, top: Dp) {
     val ground = MaterialTheme.colorScheme.background
-    BoxWithConstraints(
+    Box(
         Modifier
             .fillMaxWidth()
             .height(top + BandHeight)
             .clipToBounds(),
     ) {
-        val screen = maxWidth
+        // A vector third per page (tools/make_setup_path_vectors.py), so a page
+        // renders one screen of art, sharp at any density, with a night version.
         Image(
-            painter = painterResource(R.drawable.setup_path),
+            painter = painterResource(PathThirds[page]),
             contentDescription = null,
             contentScale = ContentScale.Crop,
             modifier = Modifier
                 .padding(top = top)
-                // Three screens wide, anchored at the left. `width` alone would
-                // be clamped to the screen by the incoming constraints.
-                .wrapContentWidth(Alignment.Start, unbounded = true)
-                .requiredWidth(screen * SetupStep.COUNT)
-                .height(BandHeight)
-                .offset(x = -screen * page),
+                .fillMaxWidth()
+                .height(BandHeight),
         )
         Box(
             Modifier

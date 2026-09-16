@@ -259,19 +259,14 @@ private struct PathBand: View {
 
     var body: some View {
         let ground = Color(.systemBackground)
-        GeometryReader { geometry in
-            Image("SetupPath")
-                .resizable()
-                .scaledToFill()
-                .frame(
-                    width: geometry.size.width * CGFloat(SetupStep.companion.COUNT),
-                    height: SetupView.bandHeight
-                )
-                .offset(x: -geometry.size.width * CGFloat(index), y: top)
-        }
-        .frame(height: top + SetupView.bandHeight)
-        .clipped()
-        .overlay(alignment: .top) {
+        // A vector third per page (tools/make_setup_path_vectors.py), with a dark
+        // appearance, so a page renders one screen of art, sharp at any scale.
+        Color.clear
+            .frame(height: SetupView.bandHeight)
+            .overlay { Image("SetupPath\(index + 1)").resizable().scaledToFill() }
+            .clipped()
+            .padding(.top, top)
+            .overlay(alignment: .top) {
             LinearGradient(
                 stops: [
                     .init(color: ground, location: 0),
