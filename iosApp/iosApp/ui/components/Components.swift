@@ -430,6 +430,9 @@ struct AuthCard<Content: View>: View {
 
     /// Measured, not guessed: the card is only as tall as its content.
     @State private var contentHeight: CGFloat = 0
+    /// Where the coin rests, read only while it is resting, so its journey to
+    /// the middle cannot chase its own tail.
+    @State private var restingFrame: CGRect = .zero
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -451,11 +454,15 @@ struct AuthCard<Content: View>: View {
             .blur(radius: busy ? 6 : 0)
             .animation(.easeInOut(duration: 0.3), value: busy)
 
-            // The edge badge steps aside for the loader, which is centred on
-            // the screen.
+            // The coin travels from wherever it rests to the middle of the
+            // screen and back, rather than one coin fading out while another
+            // fades in somewhere else.
             CoinBadge()
-                .opacity(busy ? 0 : 1)
-                .animation(.easeInOut(duration: 0.2), value: busy)
+                .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame in
+                    if !busy { restingFrame = frame }
+                }
+                .offset(travel)
+                .animation(.easeInOut(duration: 0.42), value: busy)
         }
         .onChange(of: busy) { _, working in
             // Typing is over for now, and a keyboard would cover the coin.
@@ -469,6 +476,18 @@ struct AuthCard<Content: View>: View {
                 Button(L.t(Strings.shared.action_done)) { dismissKeyboard() }
             }
         }
+    }
+
+    /// From the coin's resting place to the middle of the screen.
+    private var travel: CGSize {
+        guard busy, restingFrame != .zero else { return .zero }
+        let screen = UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .first?.screen.bounds ?? UIScreen.main.bounds
+        return CGSize(
+            width: screen.midX - restingFrame.midX,
+            height: screen.midY - restingFrame.midY
+        )
     }
 
     private var stack: some View {

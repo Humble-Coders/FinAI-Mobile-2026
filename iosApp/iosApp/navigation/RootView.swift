@@ -29,7 +29,9 @@ struct RootView: View {
         .overlay {
             // One loader for the whole app: mounted here, it survives every
             // step change instead of being rebuilt with each screen.
-            LoadingCoin(visible: model.busy || model.showLoadingCard)
+            // Only between steps: while a card is up, its own coin travels to
+            // the middle rather than a second one appearing there.
+            LoadingCoin(visible: model.showLoadingCard)
         }
         .onAppear { model.bind() }
         .onDisappear { model.unbind() }

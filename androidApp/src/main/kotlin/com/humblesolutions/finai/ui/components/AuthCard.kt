@@ -1,12 +1,13 @@
 package com.humblesolutions.finai.ui.components
 
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.animateOffsetAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -15,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -30,15 +32,20 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.round
 import com.airbnb.lottie.compose.LottieAnimation
 import com.airbnb.lottie.compose.LottieCompositionSpec
 import com.airbnb.lottie.compose.LottieConstants
@@ -112,11 +119,20 @@ fun AuthCard(
         animationSpec = tween(durationMillis = 300),
         label = "cardBlur",
     )
-    // The edge badge steps aside for the loader, which is centred on the screen.
-    val badgeAlpha by animateFloatAsState(
-        targetValue = if (busy) 0f else 1f,
-        animationSpec = tween(durationMillis = 200),
-        label = "badge",
+    // The coin travels from wherever it rests to the middle of the screen and
+    // back, rather than one coin fading out while another fades in somewhere
+    // else. Its resting place is only read while it is at rest, so the journey
+    // cannot chase its own tail.
+    var restingCentre by remember { mutableStateOf(Offset.Zero) }
+    val configuration = LocalConfiguration.current
+    val density = LocalDensity.current
+    val screenCentre = with(density) {
+        Offset(configuration.screenWidthDp.dp.toPx() / 2f, configuration.screenHeightDp.dp.toPx() / 2f)
+    }
+    val travel by animateOffsetAsState(
+        targetValue = if (busy && restingCentre != Offset.Zero) screenCentre - restingCentre else Offset.Zero,
+        animationSpec = tween(durationMillis = 420),
+        label = "coinTravel",
     )
 
     val keyboard = LocalSoftwareKeyboardController.current
@@ -159,7 +175,12 @@ fun AuthCard(
             }
         }
 
-        CoinBadge(Modifier.align(Alignment.TopCenter).alpha(badgeAlpha))
+        CoinBadge(
+            Modifier
+                .align(Alignment.TopCenter)
+                .onGloballyPositioned { if (!busy) restingCentre = it.boundsInWindow().center }
+                .offset { travel.round() },
+        )
     }
 }
 
