@@ -144,17 +144,12 @@ fun SetupScreen(
     val statusTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
 
     Box(Modifier.fillMaxSize().background(ground)) {
-        // Tracks the drag itself, so the path runs on as the steps slide.
-        PathBand(offset = pager.currentPage + pager.currentPageOffsetFraction, top = statusTop)
-
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .navigationBarsPadding()
                 .imePadding(),
         ) {
-            Spacer(Modifier.height(statusTop + BandHeight))
-
             HorizontalPager(
                 state = pager,
                 modifier = Modifier.weight(1f),
@@ -162,17 +157,25 @@ fun SetupScreen(
                 // The neighbours stay composed, so a swipe never waits on them.
                 beyondViewportPageCount = 1,
             ) { page ->
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .verticalScroll(rememberScrollState())
-                        .padding(horizontal = 24.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
-                ) {
-                    when (SetupStep.entries[page]) {
-                        SetupStep.INCOME -> IncomeStep(onIncomeChange, state)
-                        SetupStep.EXPENSES -> ExpensesStep(state, onExpenseChange, onOpenList)
-                        SetupStep.PORTFOLIO -> PortfolioStep(state, onOpenList)
+                // The art is part of the page, not a layer behind the pager:
+                // each page carries its own third of the path, so the picture and
+                // the step are one piece and move together frame for frame,
+                // however far or fast they are dragged.
+                Column(Modifier.fillMaxSize()) {
+                    PathBand(page = page, top = statusTop)
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f)
+                            .verticalScroll(rememberScrollState())
+                            .padding(horizontal = 24.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                    ) {
+                        when (SetupStep.entries[page]) {
+                            SetupStep.INCOME -> IncomeStep(onIncomeChange, state)
+                            SetupStep.EXPENSES -> ExpensesStep(state, onExpenseChange, onOpenList)
+                            SetupStep.PORTFOLIO -> PortfolioStep(state, onOpenList)
+                        }
                     }
                 }
             }
@@ -289,13 +292,13 @@ private fun StepHeader(
 /**
  * The path, running on from step to step.
  *
- * One wide illustration, each step showing its own third, starting below the
- * notch. The notch area is plain ground fading into the art, and the art fades
- * back into ground above the fields. [offset] is the pager's position rather
- * than the settled page, so the path slides with the finger.
+ * One wide illustration, and [page] shows its own third, starting below the
+ * notch. The pages sit edge to edge in the pager, so their thirds join into
+ * the one continuous path. The notch area is plain ground fading into the art,
+ * and the art fades back into ground above the fields.
  */
 @Composable
-private fun PathBand(offset: Float, top: Dp) {
+private fun PathBand(page: Int, top: Dp) {
     val ground = MaterialTheme.colorScheme.background
     BoxWithConstraints(
         Modifier
@@ -315,7 +318,7 @@ private fun PathBand(offset: Float, top: Dp) {
                 .wrapContentWidth(Alignment.Start, unbounded = true)
                 .requiredWidth(screen * SetupStep.COUNT)
                 .height(BandHeight)
-                .offset(x = -screen * offset),
+                .offset(x = -screen * page),
         )
         Box(
             Modifier

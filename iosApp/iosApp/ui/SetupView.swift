@@ -39,30 +39,42 @@ struct SetupView: View {
 
     private var steps: some View {
         GeometryReader { geometry in
+            let top = geometry.safeAreaInsets.top
             ZStack(alignment: .top) {
-                // Starts below the notch; the notch itself is plain ground
-                // fading into the art.
-                PathBand(step: model.step, top: geometry.safeAreaInsets.top)
-                    .ignoresSafeArea(edges: .top)
-
                 VStack(spacing: 0) {
-                    Spacer().frame(height: Self.bandHeight)
-
-                    TabView(selection: Binding(
-                        get: { model.step },
-                        set: { step in withAnimation(Self.slide) { model.goTo(step) } }
-                    )) {
-                        ForEach(SetupView.allSteps, id: \.self) { step in
-                            ScrollView {
-                                page(for: step).padding(.horizontal, 24).padding(.top, 8)
+                    // A paging scroll view rather than a paged TabView: the art
+                    // is part of each page, so the picture and the step are one
+                    // piece and move together frame for frame under the finger.
+                    // (A TabView reports no drag offset, so art drawn behind it
+                    // could only catch up after the swipe settled.)
+                    ScrollView(.horizontal) {
+                        HStack(spacing: 0) {
+                            ForEach(SetupView.allSteps, id: \.self) { step in
+                                VStack(spacing: 0) {
+                                    PathBand(index: Int(step.ordinal), top: top)
+                                    ScrollView {
+                                        page(for: step).padding(.horizontal, 24).padding(.top, 8)
+                                    }
+                                    .scrollBounceBehavior(.basedOnSize)
+                                    .scrollDismissesKeyboard(.interactively)
+                                }
+                                .frame(maxHeight: .infinity, alignment: .top)
+                                .containerRelativeFrame(.horizontal)
+                                .id(step)
                             }
-                            .scrollBounceBehavior(.basedOnSize)
-                            .scrollDismissesKeyboard(.interactively)
-                            .tag(step)
                         }
+                        .scrollTargetLayout()
                     }
-                    .tabViewStyle(.page(indexDisplayMode: .never))
-                    .disabled(model.busy)
+                    .scrollTargetBehavior(.paging)
+                    .scrollIndicators(.hidden)
+                    .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
+                    .scrollPosition(id: Binding(
+                        get: { Optional(model.step) },
+                        set: { step in if let step { model.goTo(step) } }
+                    ))
+                    .scrollDisabled(model.busy)
+                    // Under the notch: the band starts there and fades in.
+                    .ignoresSafeArea(edges: .top)
 
                     controls
                 }
@@ -234,11 +246,12 @@ private struct StepHeader: View {
 
 /// The path, running on from step to step.
 ///
-/// One wide illustration, each step showing its own third, starting below the
-/// notch. The notch area is plain ground fading into the art, and the art fades
-/// back into ground above the fields.
+/// One wide illustration, and page `index` shows its own third, starting below
+/// the notch. The pages sit edge to edge, so their thirds join into the one
+/// continuous path. The notch area is plain ground fading into the art, and the
+/// art fades back into ground above the fields.
 private struct PathBand: View {
-    let step: SetupStep
+    let index: Int
     let top: CGFloat
 
     private static let topFade: CGFloat = 60
@@ -254,8 +267,7 @@ private struct PathBand: View {
                     width: geometry.size.width * CGFloat(SetupStep.companion.COUNT),
                     height: SetupView.bandHeight
                 )
-                .offset(x: -geometry.size.width * CGFloat(step.ordinal), y: top)
-                .animation(SetupView.slide, value: step)
+                .offset(x: -geometry.size.width * CGFloat(index), y: top)
         }
         .frame(height: top + SetupView.bandHeight)
         .clipped()
