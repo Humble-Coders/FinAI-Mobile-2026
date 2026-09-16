@@ -22,7 +22,11 @@ final class OnboardingViewModel: ObservableObject {
 
     // Welcome.
     @Published var welcomeMode: WelcomeMode = .createAccount {
-        didSet { errorKey = nil; providerErrorKey = nil }
+        didSet {
+            errorKey = nil
+            providerErrorKey = nil
+            emailTaken = false
+        }
     }
     @Published var email = ""
     /// Cleared as soon as it has been sent; never kept once it is no longer needed.
@@ -30,6 +34,10 @@ final class OnboardingViewModel: ObservableObject {
     /// A signup code was emailed to this address; the code screen replaces the form.
     @Published private(set) var emailCodeFor: String?
     @Published private(set) var reset: ResetStage?
+    /// The address typed at signup already has an account. Its own flag, not an
+    /// error message, because the way out is a link to sign in rather than
+    /// something to fix in the form.
+    @Published private(set) var emailTaken = false
 
     // The phone step.
     @Published var dialCode: DialCode = DialCodes.shared.fallback
@@ -201,10 +209,22 @@ final class OnboardingViewModel: ObservableObject {
         let secret = password
 
         if creatingAccount {
+            var taken = false
             perform {
-                try await auth.signUpWithEmail(email: address, password: secret)
+                do {
+                    try await auth.signUpWithEmail(email: address, password: secret)
+                } catch {
+                    // Not an error to fix in the form: the card offers the way on.
+                    guard Self.apiException(error) is ApiException.EmailAlreadyRegistered else { throw error }
+                    taken = true
+                }
             } onSuccess: { [weak self] in
-                self?.showEmailCode(for: address)
+                if taken {
+                    self?.emailTaken = true
+                    self?.password = ""
+                } else {
+                    self?.showEmailCode(for: address)
+                }
             }
             return
         }
@@ -237,6 +257,7 @@ final class OnboardingViewModel: ObservableObject {
     /// Typing again clears a failure about what was typed.
     func clearFormError() {
         if errorKey != nil { errorKey = nil }
+        if emailTaken { emailTaken = false }
     }
 
     private func showEmailCode(for address: String) {

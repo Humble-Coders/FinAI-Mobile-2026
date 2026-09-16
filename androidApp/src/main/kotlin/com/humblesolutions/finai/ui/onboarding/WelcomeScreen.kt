@@ -317,6 +317,16 @@ private fun AuthSheet(
             }
         }
 
+        if (state.emailTaken) {
+            Text(
+                text = strings(Strings.error_email_taken),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.error,
+            )
+            TextButton(onClick = { onModeChange(WelcomeMode.SIGN_IN) }) {
+                Text(strings(Strings.welcome_sign_in_action))
+            }
+        }
         ErrorText(state.errorKey)
 
         GradientButton(

@@ -55,6 +55,13 @@ data class OnboardingUiState(
     val code: String = "",
     val resendSeconds: Int = 0,
 
+    /**
+     * The address typed at signup already has an account. Its own flag, not an
+     * error message, because the way out is a link to sign in rather than
+     * something to fix in the form.
+     */
+    val emailTaken: Boolean = false,
+
     val terms: Terms? = null,
     val busy: Boolean = false,
     val errorKey: String? = null,

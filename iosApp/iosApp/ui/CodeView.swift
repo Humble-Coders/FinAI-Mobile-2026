@@ -20,8 +20,10 @@ struct CodeView: View {
 
     var body: some View {
         CardScreen(busy: model.busy) {
-            VStack(alignment: .leading, spacing: 16) {
-            Text(L.t(Strings.shared.code_title)).font(.title2.weight(.semibold))
+            VStack(spacing: 16) {
+            Text(L.t(Strings.shared.code_title))
+                .font(.title2.weight(.semibold))
+                .multilineTextAlignment(.center)
             Text(L.t(Strings.shared.code_sent_to, sentTo))
                 .font(.subheadline)
                 .foregroundColor(Brand.textMuted)

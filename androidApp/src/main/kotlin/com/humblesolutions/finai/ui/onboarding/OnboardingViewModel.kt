@@ -117,9 +117,12 @@ class OnboardingViewModel : ViewModel() {
     // ── Welcome: email and password ─────────────────────────────────────
 
     fun onWelcomeModeChange(mode: WelcomeMode) =
-        _uiState.update { it.copy(welcomeMode = mode, errorKey = null, providerErrorKey = null) }
+        _uiState.update {
+            it.copy(welcomeMode = mode, errorKey = null, providerErrorKey = null, emailTaken = false)
+        }
 
-    fun onEmailChange(value: String) = _uiState.update { it.copy(email = value, errorKey = null) }
+    fun onEmailChange(value: String) =
+        _uiState.update { it.copy(email = value, errorKey = null, emailTaken = false) }
 
     fun onPasswordChange(value: String) = _uiState.update { it.copy(password = value, errorKey = null) }
 
@@ -132,9 +135,21 @@ class OnboardingViewModel : ViewModel() {
         val password = state.password
 
         if (state.creatingAccount) {
-            perform({ auth.signUpWithEmail(email, password) }) {
-                startResendCountdown()
-                it.copy(emailCodeFor = email, code = "", password = "")
+            var taken = false
+            perform({
+                try {
+                    auth.signUpWithEmail(email, password)
+                } catch (e: ApiException.EmailAlreadyRegistered) {
+                    // Not an error to fix in the form: the card offers the way on.
+                    taken = true
+                }
+            }) {
+                if (taken) {
+                    it.copy(emailTaken = true, password = "")
+                } else {
+                    startResendCountdown()
+                    it.copy(emailCodeFor = email, code = "", password = "")
+                }
             }
             return
         }

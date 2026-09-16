@@ -28,6 +28,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.humblesolutions.finai.i18n.Strings
 import com.humblesolutions.finai.ui.components.CardScreen
@@ -59,7 +60,11 @@ fun PhoneScreen(
 ) {
     CardScreen(busy = state.busy) {
         Spacer(Modifier.height(20.dp))
-        Text(strings(Strings.phone_link_title), style = MaterialTheme.typography.headlineSmall)
+        Text(
+            text = strings(Strings.phone_link_title),
+            style = MaterialTheme.typography.headlineSmall,
+            textAlign = TextAlign.Center,
+        )
         Text(
             text = strings(Strings.phone_link_body),
             style = MaterialTheme.typography.bodyMedium,

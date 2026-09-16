@@ -221,6 +221,16 @@ private struct AuthSheet: View {
                     .padding(.top, 8)
             }
 
+            if model.emailTaken {
+                Text(L.t(Strings.shared.error_email_taken))
+                    .font(.subheadline)
+                    .foregroundColor(.red)
+                    .padding(.top, 8)
+                Button(L.t(Strings.shared.welcome_sign_in_action)) { onModeChange(.signIn) }
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundColor(Brand.green)
+                    .tappableRow()
+            }
             ErrorText(messageKey: model.errorKey).padding(.top, 8)
 
             GradientButton(

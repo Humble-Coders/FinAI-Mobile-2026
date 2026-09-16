@@ -15,8 +15,10 @@ struct PhoneView: View {
 
     var body: some View {
         CardScreen(busy: model.busy) {
-            VStack(alignment: .leading, spacing: 16) {
-            Text(L.t(Strings.shared.phone_link_title)).font(.title2.weight(.semibold))
+            VStack(spacing: 16) {
+            Text(L.t(Strings.shared.phone_link_title))
+                .font(.title2.weight(.semibold))
+                .multilineTextAlignment(.center)
             Text(L.t(Strings.shared.phone_link_body))
                 .font(.subheadline)
                 .foregroundColor(Brand.textMuted)
