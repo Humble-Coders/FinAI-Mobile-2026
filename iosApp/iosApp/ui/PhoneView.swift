@@ -75,7 +75,7 @@ struct PhoneView: View {
         // screen: it is one small choice, and the number stays in view.
         .popover(isPresented: $pickerOpen) {
             DialCodePicker { picked in
-                model.dialCode = picked
+                model.chooseDialCode(picked)
                 pickerOpen = false
             }
             .frame(width: 320, height: 380)

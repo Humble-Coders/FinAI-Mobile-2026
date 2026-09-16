@@ -41,6 +41,7 @@ class OnboardingViewModel : ViewModel() {
     private var auth: AuthRepository? = null
     private var bound = false
     private var resendTicker: Job? = null
+    private var regionApplied = false
 
     /**
      * @param deviceRegion the platform's region, for pre-selecting a dialling
@@ -105,7 +106,11 @@ class OnboardingViewModel : ViewModel() {
             try {
                 val me = auth.me()
                 _uiState.update { it.copy(me = me, meFailure = null) }
-                if (me.onboardingRequired.firstOrNull() == OnboardingStep.CONSENT) loadTerms()
+                when (me.onboardingRequired.firstOrNull()) {
+                    OnboardingStep.CONSENT -> loadTerms()
+                    OnboardingStep.REGION -> applyChosenRegion()
+                    else -> Unit
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: ApiException) {
@@ -255,7 +260,8 @@ class OnboardingViewModel : ViewModel() {
 
     // ── The phone step ──────────────────────────────────────────────────
 
-    fun onDialCodeSelected(dialCode: DialCode) = _uiState.update { it.copy(dialCode = dialCode) }
+    fun onDialCodeSelected(dialCode: DialCode) =
+        _uiState.update { it.copy(dialCode = dialCode, dialCodePicked = true) }
 
     fun onPhoneChange(value: String) =
         _uiState.update { it.copy(phoneDigits = value, errorKey = null) }
@@ -370,6 +376,22 @@ class OnboardingViewModel : ViewModel() {
             val me = auth.acceptTerms(version)
             _uiState.update { it.copy(me = me) }
         }) { it }
+    }
+
+    /**
+     * The server could not place the number, but the user already named their
+     * country in the dial-code dropdown — so answer with that rather than
+     * asking the same question twice. Someone who never opened the dropdown
+     * has chosen nothing, and still sees the picker.
+     *
+     * Once per session: a refusal leaves the step standing, and the picker is
+     * the way through.
+     */
+    private fun applyChosenRegion() {
+        val state = _uiState.value
+        if (!state.dialCodePicked || regionApplied) return
+        regionApplied = true
+        setRegion(state.dialCode.region)
     }
 
     fun setRegion(countryCode: String) {
