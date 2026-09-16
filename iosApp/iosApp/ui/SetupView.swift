@@ -29,21 +29,28 @@ struct SetupView: View {
     }
 
     private var steps: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                StepHeader(step: model.step) { model.back() }
-                PathBand(step: model.step)
+        ZStack(alignment: .top) {
+            // Drawn from the very top of the screen, under the status bar and
+            // the notch, and moving with the page so the path runs on.
+            PathBand(step: model.step)
+                .ignoresSafeArea(edges: .top)
 
-                Group {
-                    switch model.step {
-                    case .expenses: expensesStep
-                    case .portfolio: portfolioStep
-                    default: incomeStep
+            VStack(spacing: 0) {
+                Spacer().frame(height: Self.bandHeight)
+
+                TabView(selection: Binding(get: { model.step }, set: { model.goTo($0) })) {
+                    ForEach(SetupView.allSteps, id: \.self) { step in
+                        ScrollView {
+                            page(for: step).padding(.horizontal, 24).padding(.top, 8)
+                        }
+                        .scrollBounceBehavior(.basedOnSize)
+                        .tag(step)
                     }
                 }
-                .padding(.horizontal, 24)
+                .tabViewStyle(.page(indexDisplayMode: .never))
+                .animation(.easeInOut(duration: 0.3), value: model.step)
 
-                VStack(spacing: 12) {
+                VStack(spacing: 8) {
                     ErrorText(messageKey: model.errorKey)
                     if model.errorKey == nil, let block = model.block {
                         // The same rule the button reads, said out loud.
@@ -64,12 +71,29 @@ struct SetupView: View {
                     }
                 }
                 .padding(.horizontal, 24)
-                .padding(.top, 8)
-                .padding(.bottom, 24)
+                .padding(.bottom, 16)
             }
+
+            // Over the art, clear of the notch.
+            StepHeader(step: model.step) { model.back() }
         }
-        .scrollBounceBehavior(.basedOnSize)
     }
+
+    @ViewBuilder
+    private func page(for step: SetupStep) -> some View {
+        switch step {
+        case .expenses: expensesStep
+        case .portfolio: portfolioStep
+        default: incomeStep
+        }
+    }
+
+    /// The wizard's steps, in order. Written out rather than read off the
+    /// bridged enum, whose `entries` is a class property on the Kotlin side.
+    static let allSteps: [SetupStep] = [.income, .expenses, .portfolio]
+
+    /// How far down the art reaches: to the top of the fields, as in the design.
+    static let bandHeight: CGFloat = 300
 
     // MARK: - Steps
 
@@ -168,10 +192,14 @@ private struct PathBand: View {
             Image("SetupPath")
                 .resizable()
                 .scaledToFill()
-                .frame(width: geometry.size.width * CGFloat(SetupStep.companion.COUNT), height: 150)
+                .frame(
+                    width: geometry.size.width * CGFloat(SetupStep.companion.COUNT),
+                    height: SetupView.bandHeight
+                )
                 .offset(x: -geometry.size.width * CGFloat(step.ordinal))
+                .animation(.easeInOut(duration: 0.3), value: step)
         }
-        .frame(height: 150)
+        .frame(height: SetupView.bandHeight)
         .clipped()
         .accessibilityHidden(true)
     }

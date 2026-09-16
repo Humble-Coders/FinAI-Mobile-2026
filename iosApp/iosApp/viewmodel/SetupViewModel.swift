@@ -18,6 +18,10 @@ final class SetupViewModel: ObservableObject {
     enum ItemList { case obligations, debts, investments }
 
     @Published private(set) var step: SetupStep = .income
+    /// The furthest step reached. Swiping back over answered steps is free;
+    /// swiping forward past one that is not answered is not, so the gate the
+    /// Continue button enforces cannot be slid around.
+    @Published private(set) var reached: SetupStep = .income
     @Published private(set) var draft = SetupDraft(income: "", monthlyExpense: "", obligations: [], debts: [], investments: [])
     @Published private(set) var currency = ""
     @Published private(set) var loading = true
@@ -95,7 +99,9 @@ final class SetupViewModel: ObservableObject {
                 let saved = try await repository.get()
                 self?.currency = saved.currency
                 self?.draft = SetupWizard.shared.draftFrom(setup: saved)
-                self?.step = SetupWizard.shared.resumeAt(setup: saved)
+                let resume = SetupWizard.shared.resumeAt(setup: saved)
+                self?.step = resume
+                self?.reached = resume
             } catch {
                 self?.errorKey = Self.messageKey(error)
             }
@@ -162,8 +168,17 @@ final class SetupViewModel: ObservableObject {
         switch step {
         case .income: step = .expenses
         case .expenses: step = .portfolio
-        default: onFinished()
+        default: return onFinished()
         }
+        if step.ordinal > reached.ordinal { reached = step }
+    }
+
+    /// The user swiped. Only as far as the wizard has already been: a step whose
+    /// figure is still missing is not reachable by sliding past it.
+    func goTo(_ destination: SetupStep) {
+        guard destination.ordinal <= reached.ordinal else { return }
+        step = destination
+        errorKey = nil
     }
 
     // MARK: - The itemised lists

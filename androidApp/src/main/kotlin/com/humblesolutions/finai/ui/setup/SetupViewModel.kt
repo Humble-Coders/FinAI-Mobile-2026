@@ -60,12 +60,14 @@ class SetupViewModel(private val scope: CoroutineScope) {
         scope.launch {
             try {
                 val saved = repository.get()
+                val resume = SetupWizard.resumeAt(saved)
                 _uiState.update {
                     it.copy(
                         loading = false,
                         currency = saved.currency,
                         draft = SetupWizard.draftFrom(saved),
-                        step = SetupWizard.resumeAt(saved),
+                        step = resume,
+                        reached = resume,
                     )
                 }
             } catch (e: CancellationException) {
@@ -119,12 +121,20 @@ class SetupViewModel(private val scope: CoroutineScope) {
     }
 
     private fun advance(onFinished: () -> Unit) {
-        val state = _uiState.value
-        when (state.step) {
-            SetupStep.INCOME -> _uiState.update { it.copy(step = SetupStep.EXPENSES) }
-            SetupStep.EXPENSES -> _uiState.update { it.copy(step = SetupStep.PORTFOLIO) }
-            SetupStep.PORTFOLIO -> onFinished()
+        val next = when (_uiState.value.step) {
+            SetupStep.INCOME -> SetupStep.EXPENSES
+            SetupStep.EXPENSES -> SetupStep.PORTFOLIO
+            SetupStep.PORTFOLIO -> return onFinished()
         }
+        _uiState.update { it.copy(step = next, reached = maxOf(it.reached, next)) }
+    }
+
+    /**
+     * The user swiped. Only as far as the wizard has already been: a step whose
+     * figure is still missing is not reachable by sliding past it.
+     */
+    fun goTo(step: SetupStep) = _uiState.update {
+        if (step.ordinal > it.reached.ordinal) it else it.copy(step = step, errorKey = null)
     }
 
     // ── The itemised lists ──────────────────────────────────────────────

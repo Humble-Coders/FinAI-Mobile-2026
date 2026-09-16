@@ -23,6 +23,12 @@ enum class ItemList {
  */
 data class SetupUiState(
     val step: SetupStep = SetupStep.INCOME,
+    /**
+     * The furthest step reached. Swiping back over answered steps is free;
+     * swiping forward past one that is not answered is not, so the gate the
+     * Continue button enforces cannot be slid around.
+     */
+    val reached: SetupStep = SetupStep.INCOME,
     val draft: SetupDraft = SetupDraft(),
     /** What the amounts are denominated in; the server decides it. */
     val currency: String = "",

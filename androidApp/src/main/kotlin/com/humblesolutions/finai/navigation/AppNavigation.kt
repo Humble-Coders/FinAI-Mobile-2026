@@ -213,6 +213,7 @@ private fun SetupRoute(onFinished: () -> Unit) {
         onOpenList = model::openList,
         onContinue = { model.continueStep(onFinished) },
         onSkip = { model.skip(onFinished) },
+        onGoTo = model::goTo,
         onRowChange = model::onRowChange,
         onAddRow = model::addRow,
         onRemoveRow = model::removeRow,

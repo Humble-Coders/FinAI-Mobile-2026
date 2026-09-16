@@ -15,12 +15,16 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -35,6 +39,8 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -74,6 +80,7 @@ fun SetupScreen(
     onOpenList: (ItemList) -> Unit,
     onContinue: () -> Unit,
     onSkip: () -> Unit,
+    onGoTo: (SetupStep) -> Unit,
     onRowChange: (Int, ItemDraft) -> Unit,
     onAddRow: () -> Unit,
     onRemoveRow: (Int) -> Unit,
@@ -97,42 +104,70 @@ fun SetupScreen(
     // Back within the wizard, never out of it: the step is still outstanding.
     BackHandler(enabled = state.step != SetupStep.INCOME) { onBack() }
 
+    val pager = rememberPagerState(initialPage = state.step.ordinal) { SetupStep.COUNT }
+    // The two follow each other: a swipe moves the wizard, and Continue moves
+    // the pager, so the visible page and the step being gated never disagree.
+    LaunchedEffect(state.step) {
+        if (pager.currentPage != state.step.ordinal) pager.animateScrollToPage(state.step.ordinal)
+    }
+    LaunchedEffect(pager.settledPage) {
+        val settled = SetupStep.entries[pager.settledPage]
+        if (settled != state.step) {
+            onGoTo(settled)
+            // Refused because the step ahead is unanswered: slide back to where
+            // the wizard actually is.
+            if (settled.ordinal > state.reached.ordinal) pager.animateScrollToPage(state.step.ordinal)
+        }
+    }
+
     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         if (state.loading) {
             LoadingCoin(visible = true)
             return@Box
         }
 
+        // Drawn from the very top of the screen, under the status bar and the
+        // notch, and tracking the drag so the path runs on as the steps slide.
+        PathBand(offset = pager.currentPage + pager.currentPageOffsetFraction)
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .safeDrawingPadding()
-                .verticalScroll(rememberScrollState())
+                .navigationBarsPadding()
                 .imePadding(),
         ) {
-            StepHeader(state.step, onBack)
-            PathBand(state.step)
+            Spacer(Modifier.height(BandHeight))
+
+            HorizontalPager(
+                state = pager,
+                modifier = Modifier.weight(1f),
+                // Forward is earned by answering; back is always allowed.
+                userScrollEnabled = !state.busy,
+            ) { page ->
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = 24.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    when (SetupStep.entries[page]) {
+                        SetupStep.INCOME -> IncomeStep(state, onIncomeChange)
+                        SetupStep.EXPENSES -> ExpensesStep(state, onExpenseChange, onOpenList)
+                        SetupStep.PORTFOLIO -> PortfolioStep(state, onOpenList)
+                    }
+                }
+            }
 
             Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .widthIn(max = 480.dp)
-                    .padding(horizontal = 24.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                when (state.step) {
-                    SetupStep.INCOME -> IncomeStep(state, onIncomeChange)
-                    SetupStep.EXPENSES -> ExpensesStep(state, onExpenseChange, onOpenList)
-                    SetupStep.PORTFOLIO -> PortfolioStep(state, onOpenList)
-                }
-
                 ErrorText(state.errorKey)
                 state.block?.let { block ->
                     // The same rule the button reads, said out loud.
                     if (state.errorKey == null) ErrorText(block.messageKey)
                 }
-
-                Spacer(Modifier.height(8.dp))
                 GradientButton(
                     text = strings(
                         if (state.step.isLast) Strings.setup_complete else Strings.action_continue,
@@ -148,18 +183,28 @@ fun SetupScreen(
                         Text(strings(Strings.setup_skip))
                     }
                 }
-                Spacer(Modifier.height(24.dp))
+                Spacer(Modifier.height(16.dp))
             }
         }
+
+        // Over the art, clear of the notch.
+        StepHeader(
+            step = state.step,
+            onBack = onBack,
+            modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding(),
+        )
 
         LoadingCoin(visible = state.busy)
     }
 }
 
+/** How far down the art reaches: to the top of the fields, as in the design. */
+private val BandHeight = 300.dp
+
 @Composable
-private fun StepHeader(step: SetupStep, onBack: () -> Unit) {
+private fun StepHeader(step: SetupStep, onBack: () -> Unit, modifier: Modifier = Modifier) {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
+        modifier = modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (step != SetupStep.INCOME) {
@@ -203,26 +248,27 @@ private fun StepHeader(step: SetupStep, onBack: () -> Unit) {
 /**
  * The path, running on from step to step.
  *
- * One wide illustration, each step showing its own third, so the route the user
- * is walking is literally continuous between screens.
+ * One wide illustration, each step showing its own third. [offset] is the
+ * pager's position rather than the settled page, so the path slides with the
+ * finger and the continuity is visible while dragging, not only afterwards.
  */
 @Composable
-private fun PathBand(step: SetupStep) {
+private fun PathBand(offset: Float) {
     BoxWithConstraints(
         Modifier
             .fillMaxWidth()
-            .height(150.dp)
+            .height(BandHeight)
             .clipToBounds(),
     ) {
         val screen = maxWidth
         Image(
             painter = painterResource(R.drawable.setup_path),
             contentDescription = null,
-            contentScale = ContentScale.FillBounds,
+            contentScale = ContentScale.Crop,
             modifier = Modifier
                 .width(screen * SetupStep.COUNT)
-                .height(150.dp)
-                .offset(x = -screen * step.ordinal),
+                .height(BandHeight)
+                .offset(x = -screen * offset),
         )
     }
 }
