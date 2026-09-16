@@ -31,6 +31,12 @@ data class OnboardingUiState(
     /** True once the splash has been up long enough to deserve a progress indicator. */
     val startIsSlow: Boolean = false,
 
+    /**
+     * The launch intro has played. Once per process: it is held in the view
+     * model, so a rotation or a sign-out never replays it.
+     */
+    val introFinished: Boolean = false,
+
     // Welcome.
     val welcomeMode: WelcomeMode = WelcomeMode.CREATE_ACCOUNT,
     val email: String = "",
@@ -42,12 +48,25 @@ data class OnboardingUiState(
 
     // The phone step.
     val dialCode: DialCode = DialCodes.fallback,
+    /**
+     * The user chose this country themselves, rather than it being pre-filled
+     * from the phone's locale. That choice answers the region question, so the
+     * region step is not asked again.
+     */
+    val dialCodePicked: Boolean = false,
     val phoneDigits: String = "",
 
     /** A code has been sent for [e164]; the code screen replaces phone entry. */
     val codeSent: Boolean = false,
     val code: String = "",
     val resendSeconds: Int = 0,
+
+    /**
+     * The address typed at signup already has an account. Its own flag, not an
+     * error message, because the way out is a link to sign in rather than
+     * something to fix in the form.
+     */
+    val emailTaken: Boolean = false,
 
     val terms: Terms? = null,
     val busy: Boolean = false,
@@ -62,6 +81,16 @@ data class OnboardingUiState(
      */
     val providerErrorKey: String? = null,
 ) {
+
+    /**
+     * Signed in, with `/me` still on its way — the gap between two steps.
+     *
+     * The router calls this Splash, which is right at launch and wrong
+     * afterwards: mid-flow the brand screen reads as the app restarting, so the
+     * navigation shows the card with its coin instead.
+     */
+    val showLoadingCard: Boolean
+        get() = introFinished && session == SessionState.SIGNED_IN && me == null && meFailure == null
 
     /**
      * Where the app should be — from the one shared rule, never decided here.

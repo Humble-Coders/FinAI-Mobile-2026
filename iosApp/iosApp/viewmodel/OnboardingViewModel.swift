@@ -17,10 +17,16 @@ final class OnboardingViewModel: ObservableObject {
     @Published private(set) var me: Me?
     @Published private(set) var meFailure: ApiException?
     @Published private(set) var startIsSlow = false
+    /// The launch intro has played. Once per process, so a sign-out never replays it.
+    @Published private(set) var introFinished = false
 
     // Welcome.
     @Published var welcomeMode: WelcomeMode = .createAccount {
-        didSet { errorKey = nil; providerErrorKey = nil }
+        didSet {
+            errorKey = nil
+            providerErrorKey = nil
+            emailTaken = false
+        }
     }
     @Published var email = ""
     /// Cleared as soon as it has been sent; never kept once it is no longer needed.
@@ -28,9 +34,17 @@ final class OnboardingViewModel: ObservableObject {
     /// A signup code was emailed to this address; the code screen replaces the form.
     @Published private(set) var emailCodeFor: String?
     @Published private(set) var reset: ResetStage?
+    /// The address typed at signup already has an account. Its own flag, not an
+    /// error message, because the way out is a link to sign in rather than
+    /// something to fix in the form.
+    @Published private(set) var emailTaken = false
 
     // The phone step.
-    @Published var dialCode: DialCode = DialCodes.shared.fallback
+    @Published private(set) var dialCode: DialCode = DialCodes.shared.fallback
+    /// The user chose this country themselves, rather than it being pre-filled
+    /// from the phone's locale. That choice answers the region question, so the
+    /// region step is not asked again.
+    @Published private(set) var dialCodePicked = false
     @Published var phoneDigits = ""
     @Published private(set) var codeSent = false
     /// Digits only, at most `codeLength` of them.
@@ -70,6 +84,7 @@ final class OnboardingViewModel: ObservableObject {
     private var auth: AuthRepository?
     private var sessionTask: Task<Void, Never>?
     private var resendTask: Task<Void, Never>?
+    private var regionApplied = false
 
     #if DEBUG
     private let logging = true
@@ -78,6 +93,15 @@ final class OnboardingViewModel: ObservableObject {
     #endif
 
     // MARK: - Derived
+
+    /// Signed in, with `/me` still on its way - the gap between two steps.
+    ///
+    /// The router calls this splash, which is right at launch and wrong
+    /// afterwards: mid-flow the brand screen reads as the app restarting, so
+    /// the root shows the card with its coin instead.
+    var showLoadingCard: Bool {
+        introFinished && session == .signedIn && me == nil && meFailure == nil
+    }
 
     var destination: Destination {
         OnboardingRouter.shared.destinationFor(session: session, me: me, failure: meFailure)
@@ -111,6 +135,7 @@ final class OnboardingViewModel: ObservableObject {
     func bind() {
         guard auth == nil, configurationProblemKey == nil else { return }
 
+        // Pre-filled, not chosen: dialCodePicked stays false.
         dialCode = DialCodes.shared.defaultFor(
             // For pre-selecting a dialling code only. The REGION comes from the
             // server reading the verified number (PRD §4.6).
@@ -167,6 +192,11 @@ final class OnboardingViewModel: ObservableObject {
         startIsSlow = true
     }
 
+    /// The launch splash finished its intro; routing may take over.
+    func finishIntro() {
+        introFinished = true
+    }
+
     func unbind() {
         sessionTask?.cancel()
         resendTask?.cancel()
@@ -185,10 +215,22 @@ final class OnboardingViewModel: ObservableObject {
         let secret = password
 
         if creatingAccount {
+            var taken = false
             perform {
-                try await auth.signUpWithEmail(email: address, password: secret)
+                do {
+                    try await auth.signUpWithEmail(email: address, password: secret)
+                } catch {
+                    // Not an error to fix in the form: the card offers the way on.
+                    guard Self.apiException(error) is ApiException.EmailAlreadyRegistered else { throw error }
+                    taken = true
+                }
             } onSuccess: { [weak self] in
-                self?.showEmailCode(for: address)
+                if taken {
+                    // The password stays: Sign in is one tap away and can use it.
+                    self?.emailTaken = true
+                } else {
+                    self?.showEmailCode(for: address)
+                }
             }
             return
         }
@@ -221,6 +263,7 @@ final class OnboardingViewModel: ObservableObject {
     /// Typing again clears a failure about what was typed.
     func clearFormError() {
         if errorKey != nil { errorKey = nil }
+        if emailTaken { emailTaken = false }
     }
 
     private func showEmailCode(for address: String) {
@@ -412,7 +455,11 @@ final class OnboardingViewModel: ObservableObject {
                 let loaded = try await auth.me()
                 self?.me = loaded
                 self?.meFailure = nil
-                if loaded.onboardingRequired.first == .consent { self?.loadTerms() }
+                switch loaded.onboardingRequired.first {
+                case .consent: self?.loadTerms()
+                case .region: self?.applyChosenRegion()
+                default: break
+                }
             } catch {
                 self?.meFailure = Self.apiException(error)
             }
@@ -436,6 +483,26 @@ final class OnboardingViewModel: ObservableObject {
             let updated = try await auth.acceptTerms(version: version)
             await MainActor.run { self.me = updated }
         } onSuccess: {}
+    }
+
+    /// Picked from the dial-code dropdown, which is not the same as the value
+    /// the locale pre-filled.
+    func chooseDialCode(_ code: DialCode) {
+        dialCode = code
+        dialCodePicked = true
+    }
+
+    /// The server could not place the number, but the user already named their
+    /// country in the dial-code dropdown - so answer with that rather than
+    /// asking the same question twice. Someone who never opened the dropdown
+    /// has chosen nothing, and still sees the picker.
+    ///
+    /// Once per session: a refusal leaves the step standing, and the picker is
+    /// the way through.
+    private func applyChosenRegion() {
+        guard dialCodePicked, !regionApplied else { return }
+        regionApplied = true
+        setRegion(dialCode.region)
     }
 
     func setRegion(_ countryCode: String) {

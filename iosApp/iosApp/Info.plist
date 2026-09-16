@@ -39,6 +39,9 @@
 	<dict>
 		<key>UIColorName</key>
 		<string>Ground</string>
+		<!-- Deliberately no UIImageName: a launch image is always centred on the
+		     screen, while SplashView centres logo, wordmark and tagline together,
+		     so the logo would visibly jump up at the hand-over. -->
 	</dict>
 </dict>
 </plist>

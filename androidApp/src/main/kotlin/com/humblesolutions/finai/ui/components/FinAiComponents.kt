@@ -31,6 +31,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -41,6 +42,8 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import com.humblesolutions.finai.i18n.Strings
 import com.humblesolutions.finai.ui.strings
+import com.humblesolutions.finai.usecase.SplashIntro
+import com.humblesolutions.finai.usecase.WordmarkFrame
 
 /** The width past which a form stops stretching. Phones ignore it; tablets and foldables need it. */
 private val ContentMaxWidth = 480.dp
@@ -85,16 +88,27 @@ fun ScreenScaffold(
     }
 }
 
-/** `FinAI`, with the AI in the accent — the wordmark from the splash design. */
+/**
+ * `FinAI`, with the AI in the accent — the wordmark from the logo.
+ *
+ * Spelled by the shared [SplashIntro], never here: [frame] is the finished
+ * name everywhere except the splash, which animates through the others.
+ */
 @Composable
-fun Wordmark(modifier: Modifier = Modifier) {
+fun Wordmark(
+    modifier: Modifier = Modifier,
+    frame: WordmarkFrame = SplashIntro.finalFrame,
+    style: TextStyle = MaterialTheme.typography.headlineMedium,
+) {
     val accent = MaterialTheme.colorScheme.primary
     Text(
         modifier = modifier,
-        style = MaterialTheme.typography.headlineMedium,
+        style = style,
+        color = MaterialTheme.colorScheme.onBackground,
+        maxLines = 1,
         text = buildAnnotatedString {
-            append("Fin")
-            withStyle(SpanStyle(color = accent, fontWeight = FontWeight.Bold)) { append("AI") }
+            append(frame.plain)
+            withStyle(SpanStyle(color = accent, fontWeight = FontWeight.Bold)) { append(frame.accent) }
         },
     )
 }

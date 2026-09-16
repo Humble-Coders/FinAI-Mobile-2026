@@ -27,7 +27,7 @@ object Strings {
     const val error_too_many_attempts = "error_too_many_attempts" // "Too many attempts. Wait a minute before trying again."
     const val error_phone_already_linked = "error_phone_already_linked" // "This number is already registered. Use another number."
     const val error_terms_changed = "error_terms_changed" // "The terms have been updated. Please read them again."
-    const val error_email_taken = "error_email_taken" // "An account with this email already exists. Sign in instead."
+    const val error_email_taken = "error_email_taken" // "This email already has an account."
     const val error_email_not_confirmed = "error_email_not_confirmed" // "Confirm your email first. We've sent you a new code."
     const val error_wrong_credentials = "error_wrong_credentials" // "That email and password don't match."
     const val error_weak_password = "error_weak_password" // "Choose a stronger password: at least 8 characters, and not one that's been leaked or used here before."
@@ -43,6 +43,7 @@ object Strings {
     // Splash and launch.
     const val app_tagline = "app_tagline" // "AI-Powered Personal Finance"
     const val splash_slow = "splash_slow" // "Still working — the server may be waking up."
+    const val loading_body = "loading_body" // "Getting things ready…"
 
     // Phone entry, and what is shared with the welcome screen.
     const val welcome_phone_label = "welcome_phone_label" // "Phone number"
@@ -67,6 +68,15 @@ object Strings {
     const val welcome_have_account = "welcome_have_account" // "Already have an account? Sign in"
     const val welcome_need_account = "welcome_need_account" // "New to FinAI? Create an account"
     const val welcome_forgot_password = "welcome_forgot_password" // "Forgot password?"
+    const val welcome_hero_line = "welcome_hero_line" // "Your finances in one place"
+    const val welcome_sign_up = "welcome_sign_up" // "Sign up"
+    const val welcome_log_in = "welcome_log_in" // "Log in"
+    const val welcome_create_subtitle = "welcome_create_subtitle" // "A few details and you're in."
+    const val welcome_sign_in_subtitle = "welcome_sign_in_subtitle" // "Pick up where you left off."
+    const val welcome_or_continue = "welcome_or_continue" // "Or continue with"
+    const val welcome_apple = "welcome_apple" // "Continue with Apple"
+    const val action_close = "action_close" // "Close"
+    const val action_done = "action_done" // "Done"
     const val email_code_hint = "email_code_hint" // "Can't find it? Check your spam folder. If this email already has an account, go back and sign in instead."
     const val code_wrong_email = "code_wrong_email" // "Wrong email? Go back and edit it."
     const val reset_title = "reset_title" // "Reset your password"

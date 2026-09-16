@@ -14,9 +14,24 @@ struct RootView: View {
         Group {
             if let problemKey = model.configurationProblemKey {
                 NotConfiguredView(messageKey: problemKey)
+            } else if !model.introFinished {
+                // The launch intro plays in full before anything routes, so a
+                // signed-in user's fast start still sees it. It hands over to
+                // the static splash if routing is still deciding.
+                SplashView(slow: false, animate: true) { model.finishIntro() }
+            } else if model.showLoadingCard {
+                // Between steps, not at launch: the coin carries the wait.
+                LoadingCard()
             } else {
                 content
             }
+        }
+        .overlay {
+            // One loader for the whole app: mounted here, it survives every
+            // step change instead of being rebuilt with each screen.
+            // Only between steps: while a card is up, its own coin travels to
+            // the middle rather than a second one appearing there.
+            LoadingCoin(visible: model.showLoadingCard)
         }
         .onAppear { model.bind() }
         .onDisappear { model.unbind() }

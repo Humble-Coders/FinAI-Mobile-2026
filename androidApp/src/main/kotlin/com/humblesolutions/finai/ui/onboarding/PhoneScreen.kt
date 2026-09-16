@@ -10,17 +10,14 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -31,16 +28,18 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.humblesolutions.finai.i18n.Strings
+import com.humblesolutions.finai.ui.components.CardScreen
 import com.humblesolutions.finai.ui.components.ErrorText
-import com.humblesolutions.finai.ui.components.countryName
 import com.humblesolutions.finai.ui.components.FinAiTextField
 import com.humblesolutions.finai.ui.components.PrimaryButton
-import com.humblesolutions.finai.ui.components.ScreenScaffold
+import com.humblesolutions.finai.ui.components.countryName
 import com.humblesolutions.finai.ui.strings
 import com.humblesolutions.finai.util.DialCode
 import com.humblesolutions.finai.util.DialCodes
+import com.humblesolutions.finai.util.flagEmoji
 
 /**
  * The phone step: once per account, after whichever sign-in created it
@@ -59,11 +58,13 @@ fun PhoneScreen(
     onContinue: () -> Unit,
     onSignOut: () -> Unit,
 ) {
-    var pickerOpen by remember { mutableStateOf(false) }
-
-    ScreenScaffold(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Spacer(Modifier.height(24.dp))
-        Text(strings(Strings.phone_link_title), style = MaterialTheme.typography.headlineSmall)
+    CardScreen(busy = state.busy) {
+        Spacer(Modifier.height(20.dp))
+        Text(
+            text = strings(Strings.phone_link_title),
+            style = MaterialTheme.typography.headlineSmall,
+            textAlign = TextAlign.Center,
+        )
         Text(
             text = strings(Strings.phone_link_body),
             style = MaterialTheme.typography.bodyMedium,
@@ -76,7 +77,7 @@ fun PhoneScreen(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            DialCodeField(state.dialCode) { pickerOpen = true }
+            DialCodeField(state.dialCode, enabled = !state.busy, onPick = onDialCodeSelected)
             FinAiTextField(
                 value = state.phoneDigits,
                 onValueChange = onPhoneChange,
@@ -96,8 +97,8 @@ fun PhoneScreen(
         PrimaryButton(
             text = strings(Strings.action_continue),
             onClick = onContinue,
-            enabled = state.canSendCode,
-            busy = state.busy,
+            // No spinner here: the coin on the card's edge is the indicator.
+            enabled = state.canSendCode && !state.busy,
         )
         Text(
             text = strings(Strings.welcome_code_notice),
@@ -110,70 +111,78 @@ fun PhoneScreen(
         TextButton(onClick = onSignOut, enabled = !state.busy) { Text(strings(Strings.action_sign_out)) }
     }
 
-    if (pickerOpen) {
-        DialCodeSheet(
-            onDismiss = { pickerOpen = false },
-            onPick = {
-                onDialCodeSelected(it)
-                pickerOpen = false
-            },
-        )
-    }
 }
 
-/** The dialling prefix, and only that — never the user's region. */
+/**
+ * The dialling prefix and its flag — never the user's region (PRD §4.6).
+ *
+ * A dropdown anchored to the field rather than a sheet over the whole screen:
+ * it is one small choice, and the number being typed stays in view.
+ */
 @Composable
-private fun DialCodeField(dialCode: DialCode, onClick: () -> Unit) {
-    // Needs to read as a control, not a label: it was bare text with a
-    // clickable modifier, so nothing suggested it could be tapped — and iOS
-    // gave the same picker a filled background, so the two disagreed.
-    Row(
-        modifier = Modifier
-            .heightIn(min = 56.dp)
-            .clip(RoundedCornerShape(8.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(dialCode.display, style = MaterialTheme.typography.titleMedium)
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun DialCodeSheet(onDismiss: () -> Unit, onPick: (DialCode) -> Unit) {
+private fun DialCodeField(dialCode: DialCode, enabled: Boolean, onPick: (DialCode) -> Unit) {
+    var open by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf("") }
     val entries = remember(query) { search(query) }
 
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState()) {
-        OutlinedTextField(
-            value = query,
-            onValueChange = { query = it },
-            label = { Text(strings(Strings.welcome_dial_code_label)) },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
-        )
-        LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp)) {
-            items(entries, key = { it.region }) { entry ->
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { onPick(entry) }
-                        .padding(horizontal = 24.dp, vertical = 14.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                ) {
-                    Text(countryName(entry.region), style = MaterialTheme.typography.bodyLarge)
-                    Text(
-                        text = entry.display,
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
+    fun close() {
+        open = false
+        query = ""
+    }
+
+    Box {
+        Row(
+            modifier = Modifier
+                .heightIn(min = 56.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+                .clickable(enabled = enabled) { open = true }
+                .padding(horizontal = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Text(flagEmoji(dialCode.region), style = MaterialTheme.typography.titleMedium)
+            Text(dialCode.display, style = MaterialTheme.typography.titleMedium)
+        }
+
+        DropdownMenu(
+            expanded = open,
+            onDismissRequest = { close() },
+            modifier = Modifier.heightIn(max = 360.dp),
+        ) {
+            FinAiTextField(
+                value = query,
+                onValueChange = { query = it },
+                label = strings(Strings.welcome_dial_code_label),
+                modifier = Modifier.width(264.dp).padding(horizontal = 12.dp),
+            )
+            // Capped rather than endless: the search field is the way to the
+            // rest, and a menu holding every region scrolls forever.
+            entries.take(MAX_VISIBLE_REGIONS).forEach { entry ->
+                DropdownMenuItem(
+                    text = {
+                        Row(
+                            modifier = Modifier.width(240.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            Text(
+                                text = flagEmoji(entry.region) + "  " + countryName(entry.region),
+                                maxLines = 1,
+                            )
+                            Text(entry.display, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    },
+                    onClick = {
+                        onPick(entry)
+                        close()
+                    },
+                )
             }
         }
     }
 }
+
+private const val MAX_VISIBLE_REGIONS = 40
 
 private fun search(query: String): List<DialCode> {
     val trimmed = query.trim()

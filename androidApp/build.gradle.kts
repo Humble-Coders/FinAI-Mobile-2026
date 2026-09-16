@@ -20,6 +20,10 @@ dependencies {
     // to hold that window open while the session restores.
     implementation(libs.androidx.core.splashscreen)
 
+    // The coin animation on the auth sheet: a Lottie vector composition, the
+    // same file iOS plays, so the two cannot drift.
+    implementation(libs.lottie.compose)
+
     // Google sign-in. Credential Manager is the supported path; the older
     // GoogleSignInClient is deprecated. A native SDK, so it stays per platform
     // and only the ID token crosses into shared code (kmp-arch-v2).

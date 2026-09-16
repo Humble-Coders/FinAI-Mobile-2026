@@ -1,89 +1,287 @@
+import Lottie
 import SwiftUI
 import SharedLogic
 
-/// Signed out: create an account or sign in, with email and password, Google,
-/// or Apple.
+/// Signed out: the brand, then a sheet that slides up for signing in or
+/// creating an account with email and password, Google, or Apple.
 ///
-/// One screen with a mode rather than two screens. Google and Apple need no
-/// such distinction, and a person who picks the wrong mode is one tap from the other.
+/// One sheet with a mode rather than two screens. The providers need no such
+/// distinction, and a person who opened the wrong one is a tap from the other.
 struct WelcomeView: View {
     @ObservedObject var model: OnboardingViewModel
 
+    @State private var sheetOpen = false
+    @Environment(\.colorScheme) private var scheme
+
+    private static let coinSize: CGFloat = 88
+    /// Half speed: the loop is ambience behind the brand, not a demo.
+    static let animationSpeed = 0.5
+
     var body: some View {
-        ScreenScaffold {
-            Wordmark()
+        ZStack(alignment: .bottom) {
+            // Blurred behind the sheet, so the card reads as the near layer.
+            hero.blur(radius: sheetOpen ? 24 : 0).ignoresSafeArea()
+
+            if !sheetOpen {
+                VStack(spacing: 0) {
+                    brand
+                    Spacer(minLength: 12)
+                    // The same animation the sheet carries, filling the space
+                    // the design's illustration occupies.
+                    LottieView(animation: .named("coin_animation"))
+                        .looping()
+                        .animationSpeed(Self.animationSpeed)
+                        .frame(maxWidth: 360, maxHeight: 300)
+                        .accessibilityHidden(true)
+                    Spacer(minLength: 12)
+                }
+                .padding(.bottom, 180)
+                // Away as the card rises, back as it falls: the brand must not
+                // show through or behind the card.
+                .transition(.move(edge: .top).combined(with: .opacity))
+
+                entryButtons
+            }
+
+            if sheetOpen {
+                Color.black.opacity(0.25)
+                    .ignoresSafeArea()
+                    .onTapGesture { close() }
+                    .accessibilityLabel(L.t(Strings.shared.action_close))
+                    .accessibilityAddTraits(.isButton)
+                sheet.transition(.move(edge: .bottom))
+            }
+        }
+        .animation(.spring(response: 0.45, dampingFraction: 0.9), value: sheetOpen)
+    }
+
+    // MARK: - Pieces
+
+    /// The design's soft green wash: a gradient with a few blurred shapes over it.
+    private var hero: some View {
+        let dark = scheme == .dark
+        return LinearGradient(
+            colors: dark
+                ? [Color(red: 0.05, green: 0.14, blue: 0.09), Brand.ground]
+                : [Color(red: 0.92, green: 0.97, blue: 0.94), Color(red: 0.83, green: 0.94, blue: 0.87)],
+            startPoint: .top,
+            endPoint: .bottom
+        )
+        .overlay {
+            GeometryReader { geometry in
+                let side = min(geometry.size.width, geometry.size.height)
+                Circle().fill(Brand.green.opacity(dark ? 0.14 : 0.22))
+                    .frame(width: side * 0.9)
+                    .position(x: geometry.size.width * 0.05, y: geometry.size.height * 0.16)
+                Circle().fill(Brand.green.opacity(dark ? 0.07 : 0.12))
+                    .frame(width: side * 1.1)
+                    .position(x: geometry.size.width * 1.02, y: geometry.size.height * 0.34)
+                Circle().fill(Brand.green.opacity(dark ? 0.07 : 0.12))
+                    .frame(width: side * 0.8)
+                    .position(x: geometry.size.width * 0.2, y: geometry.size.height * 0.92)
+            }
+            .blur(radius: 20)
+        }
+    }
+
+    private var brand: some View {
+        VStack(spacing: 0) {
+            Image("LogoMark")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 104, height: 104)
+                .accessibilityHidden(true)
+            Wordmark(font: .system(size: 40, weight: .bold))
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(L.t(Strings.shared.app_name))
+                .padding(.top, 20)
+            Text(L.t(Strings.shared.welcome_hero_line))
+                .font(.title3.weight(.semibold))
+                .multilineTextAlignment(.center)
+                .padding(.top, 12)
             Text(L.t(Strings.shared.app_tagline))
                 .font(.subheadline)
                 .foregroundColor(Brand.textMuted)
+                .multilineTextAlignment(.center)
+                .padding(.top, 8)
+        }
+        .padding(.horizontal, 32)
+        .padding(.top, 48)
+    }
 
+    /// Dark enough to read as a control against the pale wash.
+    private var logInBorder: Color {
+        scheme == .dark ? Color.white.opacity(0.55) : Brand.greenDeep
+    }
+
+    /// The two ways in, where the design's page dots were.
+    private var entryButtons: some View {
+        VStack(spacing: 12) {
+            GradientButton(title: L.t(Strings.shared.welcome_sign_up)) { open(.createAccount) }
+            Button { open(.signIn) } label: {
+                Text(L.t(Strings.shared.welcome_log_in))
+                    .font(.headline)
+                    .frame(maxWidth: .infinity, minHeight: 56)
+                    .contentShape(RoundedRectangle(cornerRadius: 16))
+            }
+            .buttonStyle(.plain)
+            .foregroundColor(.primary)
+            .overlay(RoundedRectangle(cornerRadius: 16).stroke(logInBorder, lineWidth: 1.5))
+        }
+        .frame(maxWidth: 480)
+        .padding(.horizontal, 24)
+        .padding(.bottom, 32)
+        .transition(.opacity)
+    }
+
+    private var sheet: some View {
+        AuthSheet(model: model, onModeChange: { model.welcomeMode = $0 })
+    }
+
+    // MARK: - Actions
+
+    private func open(_ mode: WelcomeMode) {
+        model.welcomeMode = mode
+        sheetOpen = true
+    }
+
+    private func close() {
+        sheetOpen = false
+    }
+}
+
+/// The sheet's content. The card, the coin on its edge and the wash behind it
+/// are `AuthCard` and `HeroWash`, shared with the code and phone steps.
+private struct AuthSheet: View {
+    @ObservedObject var model: OnboardingViewModel
+    let onModeChange: (WelcomeMode) -> Void
+
+    @FocusState private var focused: Field?
+    @Environment(\.colorScheme) private var scheme
+
+    private enum Field { case email, password }
+
+    /// Apple's logo needs high contrast against its circle, in either theme.
+    private var appleBackground: Color { scheme == .dark ? .white : .black }
+    private var appleForeground: Color { scheme == .dark ? .black : .white }
+
+    var body: some View {
+        AuthCard(busy: model.busy) {
             Text(L.t(model.creatingAccount
                      ? Strings.shared.welcome_create_title
                      : Strings.shared.welcome_sign_in_title))
-                .font(.title2.weight(.semibold))
+                .font(.title2.weight(.bold))
+                .padding(.top, 20)
+            Text(L.t(model.creatingAccount
+                     ? Strings.shared.welcome_create_subtitle
+                     : Strings.shared.welcome_sign_in_subtitle))
+                .font(.subheadline)
+                .foregroundColor(Brand.textMuted)
+                .multilineTextAlignment(.center)
                 .padding(.top, 8)
 
-            FormField(
+            SheetField(
                 placeholder: L.t(Strings.shared.welcome_email_hint),
+                systemImage: "envelope",
                 text: $model.email,
                 keyboard: .emailAddress,
                 content: .username,
                 isError: model.errorKey != nil
             )
+            .focused($focused, equals: .email)
+            .submitLabel(.next)
+            .onSubmit { focused = .password }
             .onChange(of: model.email) { model.clearFormError() }
             .accessibilityLabel(L.t(Strings.shared.welcome_email_label))
+            .padding(.top, 24)
 
-            PasswordField(
-                placeholder: L.t(Strings.shared.welcome_password_label),
+            SheetPasswordField(
                 text: $model.password,
                 content: model.creatingAccount ? .newPassword : .password,
                 isError: model.errorKey != nil
             ) { model.submitCredentials() }
+            .focused($focused, equals: .password)
             .onChange(of: model.password) { model.clearFormError() }
+            .padding(.top, 12)
 
             if model.creatingAccount {
                 Text(L.t(Strings.shared.welcome_password_rule))
                     .font(.footnote)
                     .foregroundColor(Brand.textMuted)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.top, 8)
             } else {
                 // Prominent on purpose: with email as a way in, a forgotten
                 // password is the commonest reason someone cannot get back.
-                HStack {
-                    Spacer()
-                    Button(L.t(Strings.shared.welcome_forgot_password)) { model.startReset() }
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundColor(Brand.green)
-                }
+                Button(L.t(Strings.shared.welcome_forgot_password)) { model.startReset() }
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundColor(Brand.green)
+                    .tappableArea(minWidth: 140)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+                    .padding(.top, 8)
             }
 
-            ErrorText(messageKey: model.errorKey)
+            if model.emailTaken {
+                Text(L.t(Strings.shared.error_email_taken))
+                    .font(.subheadline)
+                    .foregroundColor(.red)
+                    .padding(.top, 8)
+                Button(L.t(Strings.shared.welcome_sign_in_action)) { onModeChange(.signIn) }
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundColor(Brand.green)
+                    .tappableRow()
+            }
+            ErrorText(messageKey: model.errorKey).padding(.top, 8)
 
-            PrimaryButton(
+            GradientButton(
                 title: L.t(model.creatingAccount
                            ? Strings.shared.welcome_create_action
                            : Strings.shared.welcome_sign_in_action),
-                enabled: model.canSubmitCredentials,
-                busy: model.busy
+                // No spinner here: the coin on the card's edge is the indicator.
+                enabled: model.canSubmitCredentials && !model.busy
             ) { model.submitCredentials() }
+            .padding(.top, 16)
+
+            OrDivider(title: L.t(Strings.shared.welcome_or_continue)).padding(.top, 20)
+
+            HStack(spacing: 16) {
+                Button { GoogleSignInLauncher.start(model: model) } label: {
+                    GoogleSignInMark()
+                        .frame(width: 60, height: 60)
+                        .contentShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .disabled(model.busy)
+                .accessibilityLabel(L.t(Strings.shared.welcome_google))
+
+                // Sign in with Apple is mandatory on iOS wherever another
+                // provider is offered (App Store guideline 4.8). Logo-only is
+                // allowed because every provider here is a circle.
+                ProviderCircleButton(
+                    label: L.t(Strings.shared.welcome_apple),
+                    background: appleBackground,
+                    border: .clear,
+                    enabled: !model.busy,
+                    logo: {
+                        Image(systemName: "applelogo")
+                            .font(.system(size: 26))
+                            .foregroundColor(appleForeground)
+                    }
+                ) { AppleSignIn.start(model: model) }
+            }
+            .padding(.top, 16)
+            // Under the buttons they belong to, not under the form.
+            ErrorText(messageKey: model.providerErrorKey).padding(.top, 8)
 
             Button(L.t(model.creatingAccount
                        ? Strings.shared.welcome_have_account
                        : Strings.shared.welcome_need_account)) {
-                model.welcomeMode = model.creatingAccount ? .signIn : .createAccount
+                onModeChange(model.creatingAccount ? .signIn : .createAccount)
             }
             .font(.subheadline)
             .foregroundColor(Brand.green)
-            .frame(maxWidth: .infinity)
-
-            OrDivider().padding(.vertical, 8)
-            ProviderButton(title: L.t(Strings.shared.welcome_google), enabled: !model.busy) {
-                GoogleSignInLauncher.start(model: model)
-            }
-            // Sign in with Apple is mandatory on iOS wherever another provider
-            // is offered (App Store guideline 4.8).
-            AppleSignInButton(model: model)
-            // Under the buttons it belongs to, not under the form: a provider
-            // failing says nothing about what the user typed.
-            ErrorText(messageKey: model.providerErrorKey)
+            .tappableRow()
+            .padding(.top, 16)
         }
     }
 }

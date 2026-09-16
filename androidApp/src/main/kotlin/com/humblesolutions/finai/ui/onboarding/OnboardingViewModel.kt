@@ -41,6 +41,7 @@ class OnboardingViewModel : ViewModel() {
     private var auth: AuthRepository? = null
     private var bound = false
     private var resendTicker: Job? = null
+    private var regionApplied = false
 
     /**
      * @param deviceRegion the platform's region, for pre-selecting a dialling
@@ -96,13 +97,20 @@ class OnboardingViewModel : ViewModel() {
         _uiState.update { it.copy(startIsSlow = true) }
     }
 
+    /** The launch splash finished its intro; routing may take over. */
+    fun onIntroFinished() = _uiState.update { it.copy(introFinished = true) }
+
     fun loadMe() {
         val auth = auth ?: return
         viewModelScope.launch {
             try {
                 val me = auth.me()
                 _uiState.update { it.copy(me = me, meFailure = null) }
-                if (me.onboardingRequired.firstOrNull() == OnboardingStep.CONSENT) loadTerms()
+                when (me.onboardingRequired.firstOrNull()) {
+                    OnboardingStep.CONSENT -> loadTerms()
+                    OnboardingStep.REGION -> applyChosenRegion()
+                    else -> Unit
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: ApiException) {
@@ -114,9 +122,12 @@ class OnboardingViewModel : ViewModel() {
     // ── Welcome: email and password ─────────────────────────────────────
 
     fun onWelcomeModeChange(mode: WelcomeMode) =
-        _uiState.update { it.copy(welcomeMode = mode, errorKey = null, providerErrorKey = null) }
+        _uiState.update {
+            it.copy(welcomeMode = mode, errorKey = null, providerErrorKey = null, emailTaken = false)
+        }
 
-    fun onEmailChange(value: String) = _uiState.update { it.copy(email = value, errorKey = null) }
+    fun onEmailChange(value: String) =
+        _uiState.update { it.copy(email = value, errorKey = null, emailTaken = false) }
 
     fun onPasswordChange(value: String) = _uiState.update { it.copy(password = value, errorKey = null) }
 
@@ -129,9 +140,22 @@ class OnboardingViewModel : ViewModel() {
         val password = state.password
 
         if (state.creatingAccount) {
-            perform({ auth.signUpWithEmail(email, password) }) {
-                startResendCountdown()
-                it.copy(emailCodeFor = email, code = "", password = "")
+            var taken = false
+            perform({
+                try {
+                    auth.signUpWithEmail(email, password)
+                } catch (e: ApiException.EmailAlreadyRegistered) {
+                    // Not an error to fix in the form: the card offers the way on.
+                    taken = true
+                }
+            }) {
+                if (taken) {
+                    // The password stays: Sign in is one tap away and can use it.
+                    it.copy(emailTaken = true)
+                } else {
+                    startResendCountdown()
+                    it.copy(emailCodeFor = email, code = "", password = "")
+                }
             }
             return
         }
@@ -236,7 +260,8 @@ class OnboardingViewModel : ViewModel() {
 
     // ── The phone step ──────────────────────────────────────────────────
 
-    fun onDialCodeSelected(dialCode: DialCode) = _uiState.update { it.copy(dialCode = dialCode) }
+    fun onDialCodeSelected(dialCode: DialCode) =
+        _uiState.update { it.copy(dialCode = dialCode, dialCodePicked = true) }
 
     fun onPhoneChange(value: String) =
         _uiState.update { it.copy(phoneDigits = value, errorKey = null) }
@@ -351,6 +376,22 @@ class OnboardingViewModel : ViewModel() {
             val me = auth.acceptTerms(version)
             _uiState.update { it.copy(me = me) }
         }) { it }
+    }
+
+    /**
+     * The server could not place the number, but the user already named their
+     * country in the dial-code dropdown — so answer with that rather than
+     * asking the same question twice. Someone who never opened the dropdown
+     * has chosen nothing, and still sees the picker.
+     *
+     * Once per session: a refusal leaves the step standing, and the picker is
+     * the way through.
+     */
+    private fun applyChosenRegion() {
+        val state = _uiState.value
+        if (!state.dialCodePicked || regionApplied) return
+        regionApplied = true
+        setRegion(state.dialCode.region)
     }
 
     fun setRegion(countryCode: String) {

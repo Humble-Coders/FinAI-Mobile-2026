@@ -15,7 +15,11 @@
     <!-- The launch theme. Handed to the system, not to Compose. -->
     <style name="Theme.FinAISplash" parent="Theme.SplashScreen">
         <item name="windowSplashScreenBackground">@color/splash_background</item>
-        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_splash_logo</item>
+        <!-- Deliberately no icon. The system always centres it on the window,
+             while the in-app splash centres logo, wordmark and tagline together,
+             so a system icon would visibly jump up at the hand-over. Transparent
+             rather than unset: unset, Android falls back to the launcher icon. -->
+        <item name="windowSplashScreenAnimatedIcon">@android:color/transparent</item>
         <item name="postSplashScreenTheme">@style/Theme.FinAI</item>
     </style>
 

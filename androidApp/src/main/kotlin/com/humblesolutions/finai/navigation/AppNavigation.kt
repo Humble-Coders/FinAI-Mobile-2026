@@ -18,6 +18,11 @@ import com.humblesolutions.finai.i18n.Strings
 import com.humblesolutions.finai.model.OnboardingStep
 import com.humblesolutions.finai.model.ResetStage
 import com.humblesolutions.finai.model.SocialProvider
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.Modifier
+import com.humblesolutions.finai.ui.components.LoadingCard
+import com.humblesolutions.finai.ui.components.LoadingCoin
 import com.humblesolutions.finai.ui.home.HomeScreen
 import com.humblesolutions.finai.ui.onboarding.CodeScreen
 import com.humblesolutions.finai.ui.onboarding.ConsentScreen
@@ -46,12 +51,34 @@ import kotlinx.coroutines.launch
 @Composable
 fun AppNavigation(viewModel: OnboardingViewModel) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+
+    Box(Modifier.fillMaxSize()) {
+        AppContent(viewModel)
+        // One loader for the whole app: mounted here, it survives every step
+        // change instead of being rebuilt with each screen.
+        // Only between steps: while a card is up, its own coin travels to the
+        // middle rather than a second one appearing there.
+        LoadingCoin(visible = state.showLoadingCard)
+    }
+}
+
+@Composable
+private fun AppContent(viewModel: OnboardingViewModel) {
+    val state by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val onGoogle = { launchGoogle(context, scope, viewModel) }
 
     state.configurationProblem?.let { problem ->
         NotConfiguredScreen(problem)
+        return
+    }
+
+    // The launch intro plays in full before anything routes, so a signed-in
+    // user's fast start still sees it. It hands over to the static splash below
+    // if routing is still deciding, which looks identical minus the motion.
+    if (!state.introFinished) {
+        SplashScreen(slow = false, animate = true, onIntroFinished = viewModel::onIntroFinished)
         return
     }
 
@@ -94,6 +121,13 @@ fun AppNavigation(viewModel: OnboardingViewModel) {
             return
         }
         null -> Unit
+    }
+
+    // Between steps, not at launch: the coin carries the wait rather than the
+    // brand screen, which would read as the app starting over.
+    if (state.showLoadingCard) {
+        LoadingCard()
+        return
     }
 
     when (val destination = state.destination) {

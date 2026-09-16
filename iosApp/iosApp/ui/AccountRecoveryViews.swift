@@ -27,6 +27,7 @@ struct ResetRequestView: View {
             ) { model.requestResetCode() }
             Button(L.t(Strings.shared.action_cancel)) { model.cancelReset() }
                 .foregroundColor(Brand.textMuted)
+                .tappableRow()
         }
     }
 }
@@ -56,6 +57,7 @@ struct NewPasswordView: View {
             ) { model.saveNewPassword() }
             Button(L.t(Strings.shared.action_cancel)) { model.cancelReset() }
                 .foregroundColor(Brand.textMuted)
+                .tappableRow()
         }
     }
 }

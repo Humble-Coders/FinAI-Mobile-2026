@@ -31,7 +31,7 @@ import androidx.compose.ui.unit.dp
 import com.humblesolutions.finai.i18n.Strings
 import com.humblesolutions.finai.ui.components.ErrorText
 import com.humblesolutions.finai.ui.components.PrimaryButton
-import com.humblesolutions.finai.ui.components.ScreenScaffold
+import com.humblesolutions.finai.ui.components.CardScreen
 import com.humblesolutions.finai.ui.strings
 
 /**
@@ -55,9 +55,13 @@ fun CodeScreen(
     onEdit: () -> Unit,
     hintKey: String? = null,
 ) {
-    ScreenScaffold(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Spacer(Modifier.height(24.dp))
-        Text(strings(Strings.code_title), style = MaterialTheme.typography.headlineSmall)
+    CardScreen(busy = state.busy) {
+        Spacer(Modifier.height(20.dp))
+        Text(
+            text = strings(Strings.code_title),
+            style = MaterialTheme.typography.headlineSmall,
+            textAlign = TextAlign.Center,
+        )
         Text(
             text = strings(Strings.code_sent_to, sentTo),
             style = MaterialTheme.typography.bodyMedium,
@@ -78,8 +82,8 @@ fun CodeScreen(
         PrimaryButton(
             text = strings(Strings.code_verify),
             onClick = onVerify,
-            enabled = state.canVerify,
-            busy = state.busy,
+            // No spinner here: the coin on the card's edge is the indicator.
+            enabled = state.canVerify && !state.busy,
         )
 
         if (state.canResend) {

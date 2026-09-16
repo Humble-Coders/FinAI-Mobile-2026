@@ -56,12 +56,18 @@ class SupabaseAuthRepository internal constructor(
     override suspend fun signUpWithEmail(email: String, password: String) {
         val address = email
         val secret = password
-        callSupabase(SupabaseCall.EMAIL) {
+        val user = callSupabase(SupabaseCall.EMAIL) {
             auth.signUpWith(Email) {
                 this.email = address
                 this.password = secret
             }
         }
+        // An address that already has an account comes back looking like a new
+        // one, with no identities on it and no email sent, so the endpoint
+        // cannot be used to discover who is registered. Left alone it strands
+        // the person on a code screen waiting for mail that will never arrive,
+        // so the empty list is read for what it is.
+        if (user?.identities?.isEmpty() == true) throw ApiException.EmailAlreadyRegistered()
     }
 
     @Throws(ApiException::class, CancellationException::class)

@@ -1,29 +1,98 @@
 import SwiftUI
 import SharedLogic
 
-/// The in-app splash, continuing the launch screen.
+/// The in-app splash.
 ///
-/// No timer: it lasts exactly as long as the session restore and the first
-/// `/me`. If that turns out to be slow it says so, because a motionless logo is
-/// indistinguishable from a hang.
+/// Logo, wordmark and tagline are centred together as one group, so they sit in
+/// the middle third of the screen. The launch screen shows only the ground
+/// colour (Info.plist -> `UILaunchScreen`): its image is always centred on the
+/// screen, and would jump up to meet this group. The slow-start notice sits in
+/// the bottom third, so appearing never moves the group.
+///
+/// With `animate`, the launch intro plays once (shared `SplashIntro`) and then
+/// calls `onIntroFinished`. Every later splash shows the finished wordmark at
+/// once, and so does the launch splash with Reduce Motion on.
 struct SplashView: View {
     let slow: Bool
+    var animate = false
+    var onIntroFinished: () -> Void = {}
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var frame: WordmarkFrame
+    @State private var taglineShown: Bool
+
+    /// LogoMark.imageset is drawn for this size.
+    private static let logoSize: CGFloat = 120
+
+    init(slow: Bool, animate: Bool = false, onIntroFinished: @escaping () -> Void = {}) {
+        self.slow = slow
+        self.animate = animate
+        self.onIntroFinished = onIntroFinished
+        _frame = State(initialValue: animate ? SplashIntro.shared.frames.first! : SplashIntro.shared.finalFrame)
+        _taglineShown = State(initialValue: !animate)
+    }
 
     var body: some View {
-        ScreenScaffold(alignment: .center, centred: true) {
-            Wordmark()
-            Text(L.t(Strings.shared.app_tagline))
-                .font(.subheadline)
-                .foregroundColor(Brand.textMuted)
-                .multilineTextAlignment(.center)
-            if slow {
-                ProgressView().padding(.top, 24)
-                Text(L.t(Strings.shared.splash_slow))
-                    .font(.footnote)
+        ZStack {
+            Brand.ground.ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                Image("LogoMark")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: Self.logoSize, height: Self.logoSize)
+                    .accessibilityHidden(true)
+                Wordmark(frame: frame, font: .system(size: 40, weight: .bold))
+                    // Read once as the name, never letter by letter.
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(L.t(Strings.shared.app_name))
+                    .padding(.top, 24)
+                Text(L.t(Strings.shared.app_tagline))
+                    .font(.subheadline)
                     .foregroundColor(Brand.textMuted)
                     .multilineTextAlignment(.center)
+                    // Faded rather than added, so nothing above it moves.
+                    .opacity(taglineShown ? 1 : 0)
+                    .padding(.top, 8)
+            }
+            .padding(.horizontal, 24)
+
+            if slow {
+                VStack(spacing: 12) {
+                    ProgressView()
+                    Text(L.t(Strings.shared.splash_slow))
+                        .font(.footnote)
+                        .foregroundColor(Brand.textMuted)
+                        .multilineTextAlignment(.center)
+                }
+                .padding(.horizontal, 24)
+                .padding(.bottom, 48)
+                .frame(maxHeight: .infinity, alignment: .bottom)
             }
         }
+        .task { await playIntro() }
+    }
+
+    private func playIntro() async {
+        guard animate else { return }
+        let fade = Double(SplashIntro.shared.TAGLINE_FADE_MS) / 1000
+        if reduceMotion {
+            frame = SplashIntro.shared.finalFrame
+            taglineShown = true
+        } else {
+            // With the first letter, not after the last: by the time the name
+            // is spelled the tagline is already there.
+            withAnimation(.easeIn(duration: fade)) { taglineShown = true }
+            for next in SplashIntro.shared.frames {
+                frame = next
+                try? await Task.sleep(nanoseconds: UInt64(next.holdMs) * 1_000_000)
+                if Task.isCancelled { return }
+            }
+            // A beat on the finished name, so the splash does not snap away.
+            try? await Task.sleep(nanoseconds: UInt64(SplashIntro.shared.HOLD_AFTER_MS) * 1_000_000)
+            if Task.isCancelled { return }
+        }
+        onIntroFinished()
     }
 }
 
@@ -52,6 +121,7 @@ private struct MessageView: View {
             if let secondaryTitle, let secondaryAction {
                 Button(secondaryTitle, action: secondaryAction)
                     .foregroundColor(Brand.green)
+                    .tappableRow()
             }
         }
     }

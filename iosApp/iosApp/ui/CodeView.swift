@@ -19,8 +19,11 @@ struct CodeView: View {
     @FocusState private var focused: Bool
 
     var body: some View {
-        ScreenScaffold {
-            Text(L.t(Strings.shared.code_title)).font(.title2.weight(.semibold))
+        CardScreen(busy: model.busy) {
+            VStack(spacing: 16) {
+            Text(L.t(Strings.shared.code_title))
+                .font(.title2.weight(.semibold))
+                .multilineTextAlignment(.center)
             Text(L.t(Strings.shared.code_sent_to, sentTo))
                 .font(.subheadline)
                 .foregroundColor(Brand.textMuted)
@@ -38,13 +41,14 @@ struct CodeView: View {
 
             PrimaryButton(
                 title: L.t(Strings.shared.code_verify),
-                enabled: model.canVerify,
-                busy: model.busy
+                // No spinner here: the coin on the card's edge is the indicator.
+                enabled: model.canVerify && !model.busy
             ) { onVerify() }
 
             if model.canResend {
                 Button(L.t(Strings.shared.code_resend)) { onResend() }
                     .foregroundColor(Brand.green)
+                    .tappableRow()
             } else {
                 Text(L.t(Strings.shared.code_resend_in, model.resendCountdown))
                     .font(.footnote)
@@ -54,6 +58,9 @@ struct CodeView: View {
             Button(L.t(editKey)) { onEdit() }
                 .font(.footnote)
                 .foregroundColor(Brand.textMuted)
+                .tappableRow()
+            }
+            .padding(.top, 8)
         }
         .onAppear { focused = true }
     }
