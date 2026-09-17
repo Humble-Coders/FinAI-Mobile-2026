@@ -166,7 +166,7 @@ private struct AuthSheet: View {
     private var appleForeground: Color { scheme == .dark ? .black : .white }
 
     var body: some View {
-        AuthCard(busy: model.busy) {
+        AuthCard {
             Text(L.t(model.creatingAccount
                      ? Strings.shared.welcome_create_title
                      : Strings.shared.welcome_sign_in_title))

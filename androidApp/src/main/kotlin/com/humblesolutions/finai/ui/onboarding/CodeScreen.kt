@@ -55,7 +55,7 @@ fun CodeScreen(
     onEdit: () -> Unit,
     hintKey: String? = null,
 ) {
-    CardScreen(busy = state.busy) {
+    CardScreen {
         Spacer(Modifier.height(20.dp))
         Text(
             text = strings(Strings.code_title),

@@ -8,6 +8,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -23,8 +24,10 @@ import com.humblesolutions.finai.i18n.Strings
 import com.humblesolutions.finai.model.OnboardingStep
 import com.humblesolutions.finai.model.ResetStage
 import com.humblesolutions.finai.model.SocialProvider
+import com.humblesolutions.finai.ui.components.AppLoader
+import com.humblesolutions.finai.ui.components.LoaderHost
+import com.humblesolutions.finai.ui.components.LoaderSignal
 import com.humblesolutions.finai.ui.components.LoadingCard
-import com.humblesolutions.finai.ui.components.LoadingCoin
 import com.humblesolutions.finai.ui.home.HomeScreen
 import com.humblesolutions.finai.ui.onboarding.CodeScreen
 import com.humblesolutions.finai.ui.onboarding.ConsentScreen
@@ -54,14 +57,17 @@ import kotlinx.coroutines.launch
 @Composable
 fun AppNavigation(viewModel: OnboardingViewModel) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val loader = remember { AppLoader() }
 
-    Box(Modifier.fillMaxSize()) {
-        AppContent(viewModel)
-        // One loader for the whole app: mounted here, it survives every step
-        // change instead of being rebuilt with each screen.
-        // Only between steps: while a card is up, its own coin travels to the
-        // middle rather than a second one appearing there.
-        LoadingCoin(visible = state.showLoadingCard)
+    // One coin loader for the whole app, mounted here so it survives every step
+    // change: centred, with everything behind it blurred, for at least two
+    // seconds. Signing in or up, the hand-over between steps, and the wizard's
+    // first load all use it.
+    LoaderHost(
+        active = state.busy || state.showLoadingCard || loader.requested,
+        loader = loader,
+    ) {
+        Box(Modifier.fillMaxSize()) { AppContent(viewModel) }
     }
 }
 
@@ -210,10 +216,14 @@ private fun SetupRoute(userId: String, onFinished: () -> Unit) {
     val model: SetupViewModel = viewModel()
     val state by model.uiState.collectAsStateWithLifecycle()
     LaunchedEffect(userId) { model.bind(userId, logging = BuildConfig.DEBUG) }
+    // The first load is the only wait here that uses the coin; Continue does not.
+    LoaderSignal(key = "setup", active = state.loading)
 
     SetupScreen(
         state = state,
         onBack = model::back,
+        onCancel = model::cancel,
+        onResume = model::resume,
         onIncomeChange = model::onIncomeChange,
         onExpenseChange = model::onExpenseChange,
         onOpenList = model::openList,

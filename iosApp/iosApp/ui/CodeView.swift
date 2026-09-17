@@ -19,7 +19,7 @@ struct CodeView: View {
     @FocusState private var focused: Bool
 
     var body: some View {
-        CardScreen(busy: model.busy) {
+        CardScreen {
             VStack(spacing: 16) {
             Text(L.t(Strings.shared.code_title))
                 .font(.title2.weight(.semibold))

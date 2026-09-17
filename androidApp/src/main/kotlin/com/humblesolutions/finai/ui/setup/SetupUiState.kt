@@ -1,6 +1,5 @@
 package com.humblesolutions.finai.ui.setup
 
-import com.humblesolutions.finai.model.ApiException
 import com.humblesolutions.finai.usecase.ItemDraft
 import com.humblesolutions.finai.usecase.SetupBlock
 import com.humblesolutions.finai.usecase.SetupDraft
@@ -22,13 +21,8 @@ enum class ItemList {
  * composable, so they can be asserted with a plain constructor (kmp-arch-v2).
  */
 data class SetupUiState(
+    /** The step on screen. Any step can be swiped to; Continue is what is gated. */
     val step: SetupStep = SetupStep.INCOME,
-    /**
-     * The furthest step reached. Swiping back over answered steps is free;
-     * swiping forward past one that is not answered is not, so the gate the
-     * Continue button enforces cannot be slid around.
-     */
-    val reached: SetupStep = SetupStep.INCOME,
     val draft: SetupDraft = SetupDraft(),
     /** What the amounts are denominated in; capabilities says, the server decides. */
     val currency: String = "",
@@ -38,51 +32,49 @@ data class SetupUiState(
      * way. Blank until it has loaded, which formats as English.
      */
     val locale: String = "",
-    /** The first load, before which there is nothing to show. */
+    /** The first load, while the app's coin loader covers the screen. */
     val loading: Boolean = true,
+    /**
+     * Finishing: the save the gate clears on is under way, so nothing else may
+     * start. Continue on earlier steps never sets this — it does not wait.
+     */
     val busy: Boolean = false,
+    /** A save running behind the steps. Only the small loader says so. */
+    val syncing: Boolean = false,
     val errorKey: String? = null,
     /** The list the user opened, shown instead of the step. */
     val editing: ItemList? = null,
     /** The rows being edited, kept apart until they are kept or dropped. */
     val rows: List<ItemDraft> = emptyList(),
-    /**
-     * Whether this step's figure has been edited since the step was shown.
-     *
-     * The notice waits for it. A step that opens with "Enter your monthly
-     * income to continue." in red, before the user has typed anything, reads as
-     * a mistake they have already made; the disabled button says the same thing
-     * without the accusation.
-     */
+    /** Whether this step's figure has been edited since the step was shown. */
     val touched: Boolean = false,
+    /** The user cancelled setup: the wizard says it is required instead of showing a step. */
+    val cancelled: Boolean = false,
 ) {
     val fractionDigits: Int get() = Money.fractionDigits(currency)
 
     val symbol: String get() = Money.symbol(currency)
 
-    /** Why this step cannot be left, or null — the one rule the button and the notice share. */
+    /** Zero, written at the currency's scale — the faint figure in an empty amount box. */
+    val amountPlaceholder: String get() = Money.normalize("0", fractionDigits).orEmpty()
+
+    /** Why Continue on this step cannot go ahead, or null — shared with the notice. */
     val block: SetupBlock? get() = SetupWizard.blockingReason(step, draft, fractionDigits)
 
+    /** Continue waits for every mandatory figure up to this step, and for a finish in flight. */
     val canContinue: Boolean get() = !busy && block == null
 
-    /**
-     * What the notice renders.
-     *
-     * A figure that is already wrong is said whenever it is on screen — coming
-     * back to a step later included. A question merely unanswered waits until
-     * the user has typed, so a step never opens by telling them off for not
-     * having started.
-     */
-    val notice: SetupBlock? get() = block?.takeIf { touched || !it.isUnanswered }
+    /** What the notice under Continue says — the same reason, with the shared timing. */
+    val notice: SetupBlock? get() = SetupWizard.notice(step, draft, fractionDigits, touched)
 
-    /**
-     * Only a step that is optional in full offers a Skip (ticket #17).
-     *
-     * The mandatory figures cannot be skipped, so no control claims they can —
-     * and because the step this leaves has nothing that can refuse, Skip can
-     * never be a button that does nothing when pressed.
-     */
-    val canSkip: Boolean get() = !busy && step.isOptional
+    /** Skip is drawn only on the step that is optional in full. */
+    val showsSkip: Boolean get() = step.isOptional
+
+    /** ...and goes through only once both mandatory figures are in. */
+    val canSkip: Boolean get() = !busy && SetupWizard.canSkip(step, draft, fractionDigits)
+
+    /** The small loader: a save under way. Never the coin. */
+    val showsSaving: Boolean get() = syncing || busy
 
     fun itemsOf(list: ItemList): List<ItemDraft> = when (list) {
         ItemList.OBLIGATIONS -> draft.obligations

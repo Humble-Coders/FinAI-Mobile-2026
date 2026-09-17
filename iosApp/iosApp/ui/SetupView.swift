@@ -4,10 +4,10 @@ import SharedLogic
 /// The financial setup wizard: income, then expenses and obligations, then
 /// debts and investments (PRD F1, ticket #17).
 ///
-/// The first two figures are mandatory — the server keeps reporting
-/// `financial_setup` until both are stored — and everything itemised is
-/// optional, so every list offers a way past. Each step saves, so closing the
-/// app resumes where it left off.
+/// The steps can be swiped through freely; Continue is what waits for the
+/// mandatory figures. Continue slides straight to the next step and saves behind
+/// the move, with a small loader only while a request is in flight — the coin
+/// loader is for the first load alone, and lives at the app's root.
 struct SetupView: View {
     @ObservedObject var model: SetupViewModel
     let onFinished: () -> Void
@@ -17,14 +17,15 @@ struct SetupView: View {
             Color(.systemBackground).ignoresSafeArea()
 
             if model.loading {
-                LoadingCoin(visible: true)
+                // The app's coin loader covers the first load; underneath, ground.
+                Color.clear
+            } else if model.cancelled {
+                SetupRequiredView { model.resume() }
             } else if let list = model.editing {
                 ItemListView(model: model, list: list)
             } else {
                 steps
             }
-
-            LoadingCoin(visible: model.busy)
         }
         .toolbar {
             // Number pads have no return key, so without this there is no way
@@ -34,62 +35,92 @@ struct SetupView: View {
                 Button(L.t(Strings.shared.action_done)) { dismissKeyboard() }
             }
         }
-        .onChange(of: model.busy) { _, working in
-            // Typing is over for now, and a keyboard would cover the coin.
-            if working { dismissKeyboard() }
-        }
     }
 
     private var steps: some View {
-        ZStack(alignment: .top) {
-            // Drawn from the very top of the screen, under the status bar and
-            // the notch, and moving with the page so the path runs on.
-            PathBand(step: model.step)
-                .ignoresSafeArea(edges: .top)
-
-            VStack(spacing: 0) {
-                Spacer().frame(height: Self.bandHeight)
-
-                TabView(selection: Binding(get: { model.step }, set: { model.goTo($0) })) {
-                    ForEach(SetupView.allSteps, id: \.self) { step in
-                        ScrollView {
-                            page(for: step).padding(.horizontal, 24).padding(.top, 8)
+        GeometryReader { geometry in
+            let top = geometry.safeAreaInsets.top
+            ZStack(alignment: .top) {
+                VStack(spacing: 0) {
+                    // A paging scroll view rather than a paged TabView: the art
+                    // is part of each page, so the picture and the step are one
+                    // piece and move together frame for frame under the finger.
+                    // (A TabView reports no drag offset, so art drawn behind it
+                    // could only catch up after the swipe settled.)
+                    ScrollView(.horizontal) {
+                        HStack(spacing: 0) {
+                            ForEach(SetupView.allSteps, id: \.self) { step in
+                                VStack(spacing: 0) {
+                                    PathBand(index: Int(step.ordinal), top: top)
+                                    ScrollView {
+                                        page(for: step).padding(.horizontal, 24).padding(.top, 8)
+                                    }
+                                    .scrollBounceBehavior(.basedOnSize)
+                                    .scrollDismissesKeyboard(.interactively)
+                                }
+                                .frame(maxHeight: .infinity, alignment: .top)
+                                .containerRelativeFrame(.horizontal)
+                                .id(step)
+                            }
                         }
-                        .scrollBounceBehavior(.basedOnSize)
-                        .tag(step)
+                        .scrollTargetLayout()
                     }
-                }
-                .tabViewStyle(.page(indexDisplayMode: .never))
-                .animation(.easeInOut(duration: 0.3), value: model.step)
+                    .scrollTargetBehavior(.paging)
+                    .scrollIndicators(.hidden)
+                    .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
+                    .scrollPosition(id: Binding(
+                        get: { Optional(model.step) },
+                        set: { step in if let step { model.goTo(step) } }
+                    ))
+                    .scrollDisabled(model.busy)
+                    // Under the notch: the band starts there and fades in.
+                    .ignoresSafeArea(edges: .top)
 
-                VStack(spacing: 8) {
-                    ErrorText(messageKey: model.errorKey)
-                    if model.errorKey == nil, let block = model.notice {
-                        // The same rule the button reads, said out loud — once
-                        // the user has typed something for it to be about.
-                        ErrorText(messageKey: block.messageKey)
-                    }
-                    GradientButton(
-                        title: L.t(model.step.isLast
-                                   ? Strings.shared.setup_complete
-                                   : Strings.shared.action_continue),
-                        enabled: model.canContinue
-                    ) { model.continueStep(onFinished: onFinished) }
-
-                    if model.canSkip {
-                        Button(L.t(Strings.shared.setup_skip)) { model.skip(onFinished: onFinished) }
-                            .font(.subheadline)
-                            .foregroundColor(Brand.textMuted)
-                            .tappableRow()
-                    }
+                    controls
                 }
-                .padding(.horizontal, 24)
-                .padding(.bottom, 16)
+
+                StepHeader(
+                    step: model.step,
+                    onBack: { withAnimation(Self.slide) { model.back() } },
+                    onCancel: { model.cancel() }
+                )
+
+                SavingIndicator(visible: model.showsSaving)
+                    .padding(.top, StepHeader.height + 4)
+            }
+        }
+    }
+
+    private var controls: some View {
+        VStack(spacing: 8) {
+            ErrorText(messageKey: model.errorKey)
+            if model.errorKey == nil {
+                // The same rule the button reads, said out loud.
+                ErrorText(messageKey: model.notice?.messageKey)
+            }
+            // Skip sits above Continue, so the main action stays last and under
+            // the thumb.
+            if model.showsSkip {
+                Button(L.t(Strings.shared.setup_skip)) { model.skip(onFinished: onFinished) }
+                    .font(.subheadline.weight(.medium))
+                    .foregroundColor(Brand.textMuted)
+                    .opacity(model.canSkip ? 1 : 0.4)
+                    .disabled(!model.canSkip)
+                    .tappableRow()
             }
 
-            // Over the art, clear of the notch.
-            StepHeader(step: model.step) { model.back() }
+            GradientButton(
+                title: L.t(model.step.isLast
+                           ? Strings.shared.setup_complete
+                           : Strings.shared.action_continue),
+                enabled: model.canContinue
+            ) {
+                dismissKeyboard()
+                withAnimation(Self.slide) { model.continueStep(onFinished: onFinished) }
+            }
         }
+        .padding(.horizontal, 24)
+        .padding(.bottom, 16)
     }
 
     @ViewBuilder
@@ -105,23 +136,27 @@ struct SetupView: View {
     /// bridged enum, whose `entries` is a class property on the Kotlin side.
     static let allSteps: [SetupStep] = [.income, .expenses, .portfolio]
 
-    /// How far down the art reaches: to the top of the fields, as in the design.
+    /// How far the art reaches below the notch: to the top of the fields.
     static let bandHeight: CGFloat = 300
+
+    /// One step to the next: a plain slide, no loader in the way.
+    static let slide = Animation.easeInOut(duration: 0.38)
 
     // MARK: - Steps
 
     private var incomeStep: some View {
         VStack(alignment: .leading, spacing: 16) {
-            StepTitle(step: model.step,
+            StepTitle(step: .income,
                       titleKey: Strings.shared.setup_income_title,
                       bodyKey: Strings.shared.setup_income_body)
-            WizardCard {
-                AmountField(
-                    label: L.t(Strings.shared.setup_income_label),
-                    symbol: model.symbol,
-                    text: Binding(get: { model.draft.income }, set: { model.setIncome($0) })
-                )
-            }
+            AmountField(
+                label: L.t(Strings.shared.setup_income_label),
+                symbol: model.symbol,
+                placeholder: model.amountPlaceholder,
+                suffix: L.t(Strings.shared.setup_per_month),
+                isError: model.step == .income && model.notice?.step == .income,
+                text: Binding(get: { model.draft.income }, set: { model.setIncome($0) })
+            )
             Text(L.t(Strings.shared.setup_income_hint))
                 .font(.footnote)
                 .foregroundColor(Brand.textMuted)
@@ -130,59 +165,54 @@ struct SetupView: View {
 
     private var expensesStep: some View {
         VStack(alignment: .leading, spacing: 16) {
-            StepTitle(step: model.step,
+            StepTitle(step: .expenses,
                       titleKey: Strings.shared.setup_expenses_title,
                       bodyKey: Strings.shared.setup_expenses_body)
-            WizardCard {
-                AmountField(
-                    label: L.t(Strings.shared.setup_expense_label),
-                    symbol: model.symbol,
-                    text: Binding(get: { model.draft.monthlyExpense }, set: { model.setExpense($0) })
-                )
-            }
+            AmountField(
+                label: L.t(Strings.shared.setup_expense_label),
+                symbol: model.symbol,
+                placeholder: model.amountPlaceholder,
+                suffix: L.t(Strings.shared.setup_per_month),
+                isError: model.step == .expenses && model.notice?.step == .expenses,
+                text: Binding(get: { model.draft.monthlyExpense }, set: { model.setExpense($0) })
+            )
             ListRow(
                 label: L.t(Strings.shared.setup_obligations_label),
-                subtitle: model.total(of: .obligations) ?? L.t(Strings.shared.setup_amount_hint)
+                total: model.total(of: .obligations),
+                hint: L.t(Strings.shared.setup_amount_hint)
             ) { model.openList(.obligations) }
         }
     }
 
     private var portfolioStep: some View {
         VStack(alignment: .leading, spacing: 16) {
-            StepTitle(step: model.step,
+            StepTitle(step: .portfolio,
                       titleKey: Strings.shared.setup_portfolio_title,
                       bodyKey: Strings.shared.setup_portfolio_body)
             ListRow(
                 label: L.t(Strings.shared.setup_debts_label),
-                subtitle: model.total(of: .debts) ?? L.t(Strings.shared.setup_total_balance_hint)
+                total: model.total(of: .debts),
+                hint: L.t(Strings.shared.setup_total_balance_hint)
             ) { model.openList(.debts) }
             ListRow(
                 label: L.t(Strings.shared.setup_investments_label),
-                subtitle: model.total(of: .investments) ?? L.t(Strings.shared.setup_total_amount_hint)
+                total: model.total(of: .investments),
+                hint: L.t(Strings.shared.setup_total_amount_hint)
             ) { model.openList(.investments) }
         }
     }
 }
 
-/// The back arrow and the progress dots.
+/// The back arrow, the progress dots and Cancel.
 private struct StepHeader: View {
+    static let height: CGFloat = 44
+
     let step: SetupStep
     let onBack: () -> Void
+    let onCancel: () -> Void
 
     var body: some View {
-        HStack {
-            if step != .income {
-                Button(action: onBack) {
-                    Image(systemName: "chevron.left")
-                        .font(.title3.weight(.semibold))
-                        .foregroundColor(.primary)
-                        .tappableArea()
-                }
-                .accessibilityLabel(L.t(Strings.shared.action_back))
-            } else {
-                Color.clear.frame(width: 44, height: 44)
-            }
-            Spacer()
+        ZStack {
             HStack(spacing: 6) {
                 ForEach(0 ..< Int(SetupStep.companion.COUNT), id: \.self) { index in
                     Capsule()
@@ -198,33 +228,115 @@ private struct StepHeader: View {
                     .foregroundColor(Brand.textMuted)
                     .padding(.leading, 8)
             }
+
+            HStack {
+                if step != .income {
+                    Button(action: onBack) {
+                        Image(systemName: "chevron.left")
+                            .font(.title3.weight(.semibold))
+                            .foregroundColor(.primary)
+                            .tappableArea()
+                    }
+                    .accessibilityLabel(L.t(Strings.shared.action_back))
+                }
+                Spacer()
+                Button(L.t(Strings.shared.action_cancel), action: onCancel)
+                    .font(.body.weight(.medium))
+                    .foregroundColor(.primary)
+                    .frame(minHeight: 44)
+            }
         }
+        .frame(height: Self.height)
         .padding(.horizontal, 16)
     }
 }
 
 /// The path, running on from step to step.
 ///
-/// One wide illustration, each step showing its own third, so the route the
-/// user is walking is literally continuous between screens.
+/// One wide illustration, and page `index` shows its own third, starting below
+/// the notch. The pages sit edge to edge, so their thirds join into the one
+/// continuous path. The notch area is plain ground fading into the art, and the
+/// art fades back into ground above the fields.
 private struct PathBand: View {
-    let step: SetupStep
+    let index: Int
+    let top: CGFloat
+
+    private static let topFade: CGFloat = 60
+    private static let bottomFade: CGFloat = 72
 
     var body: some View {
-        GeometryReader { geometry in
-            Image("SetupPath")
-                .resizable()
-                .scaledToFill()
-                .frame(
-                    width: geometry.size.width * CGFloat(SetupStep.companion.COUNT),
-                    height: SetupView.bandHeight
-                )
-                .offset(x: -geometry.size.width * CGFloat(step.ordinal))
-                .animation(.easeInOut(duration: 0.3), value: step)
+        let ground = Color(.systemBackground)
+        // A vector third per page (tools/make_setup_path_vectors.py), with a dark
+        // appearance, so a page renders one screen of art, sharp at any scale.
+        Color.clear
+            .frame(height: SetupView.bandHeight)
+            .overlay { Image("SetupPath\(index + 1)").resizable().scaledToFill() }
+            .clipped()
+            .padding(.top, top)
+            .overlay(alignment: .top) {
+            LinearGradient(
+                stops: [
+                    .init(color: ground, location: 0),
+                    .init(color: ground.opacity(0.85), location: top / max(top + Self.topFade, 1)),
+                    .init(color: ground.opacity(0), location: 1),
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .frame(height: top + Self.topFade)
         }
-        .frame(height: SetupView.bandHeight)
-        .clipped()
+        .overlay(alignment: .bottom) {
+            LinearGradient(colors: [ground.opacity(0), ground], startPoint: .top, endPoint: .bottom)
+                .frame(height: Self.bottomFade)
+        }
+        .allowsHitTesting(false)
         .accessibilityHidden(true)
+    }
+}
+
+/// The small loader for a save behind the steps: a frosted pill, never the coin.
+private struct SavingIndicator: View {
+    let visible: Bool
+
+    var body: some View {
+        ProgressView()
+            .controlSize(.small)
+            .tint(Brand.green)
+            .padding(9)
+            .background(.ultraThinMaterial, in: Capsule())
+            .shadow(color: .black.opacity(0.08), radius: 6, y: 2)
+            .opacity(visible ? 1 : 0)
+            .animation(.easeInOut(duration: 0.18), value: visible)
+            .allowsHitTesting(false)
+            .accessibilityElement()
+            .accessibilityLabel(L.t(Strings.shared.setup_saving))
+            .accessibilityHidden(!visible)
+    }
+}
+
+/// What Cancel leads to: setup is required, and the way back to step 1.
+private struct SetupRequiredView: View {
+    let onResume: () -> Void
+
+    var body: some View {
+        VStack(spacing: 12) {
+            Text(L.t(Strings.shared.setup_required_title))
+                .font(.title2.weight(.bold))
+                .multilineTextAlignment(.center)
+            Text(L.t(Strings.shared.setup_required_body))
+                .font(.subheadline)
+                .foregroundColor(Brand.textMuted)
+                .multilineTextAlignment(.center)
+            Button(action: onResume) {
+                Text(L.t(Strings.shared.setup_required_action))
+                    .font(.body.weight(.semibold))
+                    .underline()
+                    .foregroundColor(Brand.green)
+            }
+            .tappableRow()
+        }
+        .frame(maxWidth: 420)
+        .padding(.horizontal, 32)
     }
 }
 
@@ -246,30 +358,38 @@ private struct StepTitle: View {
     }
 }
 
-/// A row that opens an itemised list, showing what is in it.
+/// A row that opens an itemised list: the same box as the fields, the list's
+/// total in green once there is one, and a tinted chevron that says it opens.
 private struct ListRow: View {
     let label: String
-    let subtitle: String
+    let total: String?
+    let hint: String
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            HStack {
+            HStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(label).font(.headline).foregroundColor(.primary)
-                    Text(subtitle)
-                        .font(.footnote)
-                        .foregroundColor(Brand.textMuted)
+                    if let total {
+                        Text(total).font(.title3.weight(.semibold)).foregroundColor(Brand.green)
+                    } else {
+                        Text(hint).font(.footnote).foregroundColor(Brand.textMuted)
+                    }
                 }
                 Spacer()
-                Image(systemName: "chevron.right").foregroundColor(Brand.textMuted)
+                Image(systemName: "chevron.right")
+                    .font(.footnote.weight(.bold))
+                    .foregroundColor(Brand.green)
+                    .frame(width: 32, height: 32)
+                    .background(Brand.green.opacity(0.12), in: Circle())
             }
             .padding(.horizontal, 16)
-            .frame(minHeight: 64)
+            .padding(.vertical, 12)
+            .frame(minHeight: 68)
             .frame(maxWidth: .infinity)
-            .background(Brand.surfaceField)
-            .clipShape(RoundedRectangle(cornerRadius: 16))
-            .contentShape(RoundedRectangle(cornerRadius: 16))
+            .fieldFrame(focused: false, isError: false)
+            .contentShape(RoundedRectangle(cornerRadius: SetupView.fieldRadius))
         }
         .buttonStyle(.plain)
     }
@@ -319,6 +439,10 @@ private struct ItemListView: View {
                             AmountField(
                                 label: L.t(debts ? Strings.shared.setup_debt_balance : Strings.shared.setup_item_amount),
                                 symbol: model.symbol,
+                                placeholder: model.amountPlaceholder,
+                                // An obligation is a monthly payment; a balance or a holding is not.
+                                suffix: list == .obligations ? L.t(Strings.shared.setup_per_month) : nil,
+                                large: false,
                                 text: binding(index, \.amount) { row, value in
                                     ItemDraft(name: row.name, amount: value,
                                               minimumPayment: row.minimumPayment,
@@ -329,6 +453,9 @@ private struct ItemListView: View {
                                 AmountField(
                                     label: L.t(Strings.shared.setup_debt_minimum),
                                     symbol: model.symbol,
+                                    placeholder: model.amountPlaceholder,
+                                    suffix: L.t(Strings.shared.setup_per_month),
+                                    large: false,
                                     text: binding(index, \.minimumPayment) { row, value in
                                         ItemDraft(name: row.name, amount: row.amount,
                                                   minimumPayment: value,
@@ -404,42 +531,104 @@ private struct WizardCard<Content: View>: View {
     }
 }
 
-/// An amount, with the currency the server named beside it — never a hardcoded symbol.
-private struct AmountField: View {
-    let label: String
-    let symbol: String
-    @Binding var text: String
+extension SetupView {
+    /// The corner radius every field and list row shares.
+    static let fieldRadius: CGFloat = 16
+}
 
-    var body: some View {
-        WizardField(label: label, keyboard: .decimalPad, leading: symbol, text: $text)
+private extension View {
+    /// The box every field and list row sits in: the sheet colour, a hairline
+    /// border, green and thicker while typing, red while its figure will not do.
+    func fieldFrame(focused: Bool, isError: Bool) -> some View {
+        let shape = RoundedRectangle(cornerRadius: SetupView.fieldRadius)
+        return self
+            .background(Brand.sheet, in: shape)
+            .overlay(
+                shape.strokeBorder(
+                    isError ? Color.red : (focused ? Brand.green : Brand.border),
+                    lineWidth: focused || isError ? 2 : 1
+                )
+            )
+            .animation(.easeInOut(duration: 0.15), value: focused)
+            .animation(.easeInOut(duration: 0.15), value: isError)
     }
 }
 
+/// An amount, the way finance apps take one: a label above, the figure large and
+/// bold beside the currency the server named — never a hardcoded symbol — a faint
+/// zero while it is empty, and what the figure is per, when it is per anything.
+/// Tapping anywhere on the box starts typing.
+private struct AmountField: View {
+    let label: String
+    let symbol: String
+    var placeholder: String = ""
+    var suffix: String?
+    var isError = false
+    var large = true
+    @Binding var text: String
+    @FocusState private var focused: Bool
+
+    private var figure: Font { large ? .title2.weight(.semibold) : .title3.weight(.semibold) }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            FieldLabel(text: label)
+            HStack(spacing: 8) {
+                Text(symbol).font(figure).foregroundColor(Brand.textMuted)
+                TextField("", text: $text, prompt: Text(placeholder).foregroundColor(Brand.textMuted.opacity(0.4)))
+                    .font(figure)
+                    .keyboardType(.decimalPad)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+                    .focused($focused)
+                    .tint(Brand.green)
+                    .accessibilityLabel(label)
+                if let suffix {
+                    Text(suffix).font(.subheadline.weight(.medium)).foregroundColor(Brand.textMuted)
+                }
+            }
+            .padding(.horizontal, 16)
+            .frame(minHeight: large ? 68 : 56)
+            .fieldFrame(focused: focused, isError: isError)
+            .contentShape(RoundedRectangle(cornerRadius: SetupView.fieldRadius))
+            .onTapGesture { focused = true }
+        }
+    }
+}
+
+/// A plain text field in the same box as the amounts.
 private struct WizardField: View {
     let label: String
     var keyboard: UIKeyboardType = .default
-    var leading: String?
-    /// Amounts are the common case here, and a capitalised digit is nonsense —
-    /// the name field asks for words explicitly.
+    /// Names want words capitalised; a rate does not.
     var autocapitalization: TextInputAutocapitalization = .never
     @Binding var text: String
+    @FocusState private var focused: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(label).font(.caption).foregroundColor(Brand.textMuted)
-            HStack(spacing: 8) {
-                if let leading {
-                    Text(leading).font(.headline).foregroundColor(Brand.textMuted)
-                }
-                TextField("", text: $text)
-                    .keyboardType(keyboard)
-                    .textInputAutocapitalization(autocapitalization)
-                    .autocorrectionDisabled()
-            }
-            .frame(minHeight: 48)
-            .padding(.horizontal, 12)
-            .background(Brand.surfaceField)
-            .clipShape(RoundedRectangle(cornerRadius: 14))
+        VStack(alignment: .leading, spacing: 8) {
+            FieldLabel(text: label)
+            TextField("", text: $text)
+                .font(.body)
+                .keyboardType(keyboard)
+                .textInputAutocapitalization(autocapitalization)
+                .autocorrectionDisabled()
+                .focused($focused)
+                .tint(Brand.green)
+                .accessibilityLabel(label)
+                .padding(.horizontal, 16)
+                .frame(minHeight: 56)
+                .fieldFrame(focused: focused, isError: false)
+                .contentShape(RoundedRectangle(cornerRadius: SetupView.fieldRadius))
+                .onTapGesture { focused = true }
         }
+    }
+}
+
+private struct FieldLabel: View {
+    let text: String
+
+    var body: some View {
+        Text(text).font(.subheadline.weight(.medium)).foregroundColor(Brand.textMuted)
     }
 }

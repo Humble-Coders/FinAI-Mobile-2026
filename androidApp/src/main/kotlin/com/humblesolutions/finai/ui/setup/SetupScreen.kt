@@ -1,62 +1,78 @@
 package com.humblesolutions.finai.ui.setup
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TextField
-import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.humblesolutions.finai.R
 import com.humblesolutions.finai.i18n.Strings
 import com.humblesolutions.finai.ui.components.ErrorText
 import com.humblesolutions.finai.ui.components.GradientButton
-import com.humblesolutions.finai.ui.components.LoadingCoin
 import com.humblesolutions.finai.ui.strings
 import com.humblesolutions.finai.ui.theme.FinAiPalette
 import com.humblesolutions.finai.usecase.ItemDraft
@@ -66,15 +82,17 @@ import com.humblesolutions.finai.usecase.SetupStep
  * The financial setup wizard: income, then expenses and obligations, then debts
  * and investments (PRD F1, ticket #17).
  *
- * The first two figures are mandatory — the server keeps reporting
- * `financial_setup` until both are stored — and everything itemised is
- * optional, so every list offers a way past. Each step saves, so closing the
- * app resumes where it left off.
+ * The steps can be swiped through freely; Continue is what waits for the
+ * mandatory figures. Continue slides straight to the next step and saves behind
+ * the move, with a small loader only while a request is in flight — the coin
+ * loader is for the first load alone, and lives at the app's root.
  */
 @Composable
 fun SetupScreen(
     state: SetupUiState,
     onBack: () -> Unit,
+    onCancel: () -> Unit,
+    onResume: () -> Unit,
     onIncomeChange: (String) -> Unit,
     onExpenseChange: (String) -> Unit,
     onOpenList: (ItemList) -> Unit,
@@ -87,6 +105,17 @@ fun SetupScreen(
     onKeepRows: () -> Unit,
     onDiscardRows: () -> Unit,
 ) {
+    val ground = MaterialTheme.colorScheme.background
+
+    // The app's coin loader covers the first load; underneath it, just ground.
+    if (state.loading) {
+        Box(Modifier.fillMaxSize().background(ground))
+        return
+    }
+    if (state.cancelled) {
+        SetupRequiredScreen(onResume)
+        return
+    }
     if (state.editing != null) {
         BackHandler { onDiscardRows() }
         ItemListScreen(
@@ -101,60 +130,55 @@ fun SetupScreen(
         return
     }
 
-    // Back within the wizard, never out of it: the step is still outstanding.
-    BackHandler(enabled = state.step != SetupStep.INCOME) { onBack() }
+    // Back steps back; on the first step it is Cancel, never a way out of the gate.
+    BackHandler { if (state.step == SetupStep.INCOME) onCancel() else onBack() }
 
+    val focus = LocalFocusManager.current
     val pager = rememberPagerState(initialPage = state.step.ordinal) { SetupStep.COUNT }
     // The two follow each other: a swipe moves the wizard, and Continue moves
-    // the pager, so the visible page and the step being gated never disagree.
+    // the pager, so the page on screen and the step being gated never disagree.
     LaunchedEffect(state.step) {
-        if (pager.currentPage != state.step.ordinal) pager.animateScrollToPage(state.step.ordinal)
-    }
-    LaunchedEffect(pager.settledPage) {
-        val settled = SetupStep.entries[pager.settledPage]
-        if (settled != state.step) {
-            onGoTo(settled)
-            // Refused because the step ahead is unanswered: slide back to where
-            // the wizard actually is.
-            if (settled.ordinal > state.reached.ordinal) pager.animateScrollToPage(state.step.ordinal)
+        if (pager.currentPage != state.step.ordinal) {
+            pager.animateScrollToPage(state.step.ordinal, animationSpec = tween(SLIDE_MS))
         }
     }
+    LaunchedEffect(pager.settledPage) { onGoTo(SetupStep.entries[pager.settledPage]) }
 
-    Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-        if (state.loading) {
-            LoadingCoin(visible = true)
-            return@Box
-        }
+    val statusTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
 
-        // Drawn from the very top of the screen, under the status bar and the
-        // notch, and tracking the drag so the path runs on as the steps slide.
-        PathBand(offset = pager.currentPage + pager.currentPageOffsetFraction)
-
+    Box(Modifier.fillMaxSize().background(ground)) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .navigationBarsPadding()
                 .imePadding(),
         ) {
-            Spacer(Modifier.height(BandHeight))
-
             HorizontalPager(
                 state = pager,
                 modifier = Modifier.weight(1f),
-                // Forward is earned by answering; back is always allowed.
                 userScrollEnabled = !state.busy,
+                // The neighbours stay composed, so a swipe never waits on them.
+                beyondViewportPageCount = 1,
             ) { page ->
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .verticalScroll(rememberScrollState())
-                        .padding(horizontal = 24.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
-                ) {
-                    when (SetupStep.entries[page]) {
-                        SetupStep.INCOME -> IncomeStep(state, onIncomeChange)
-                        SetupStep.EXPENSES -> ExpensesStep(state, onExpenseChange, onOpenList)
-                        SetupStep.PORTFOLIO -> PortfolioStep(state, onOpenList)
+                // The art is part of the page, not a layer behind the pager:
+                // each page carries its own third of the path, so the picture and
+                // the step are one piece and move together frame for frame,
+                // however far or fast they are dragged.
+                Column(Modifier.fillMaxSize()) {
+                    PathBand(page = page, top = statusTop)
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f)
+                            .verticalScroll(rememberScrollState())
+                            .padding(horizontal = 24.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                    ) {
+                        when (SetupStep.entries[page]) {
+                            SetupStep.INCOME -> IncomeStep(onIncomeChange, state)
+                            SetupStep.EXPENSES -> ExpensesStep(state, onExpenseChange, onOpenList)
+                            SetupStep.PORTFOLIO -> PortfolioStep(state, onOpenList)
+                        }
                     }
                 }
             }
@@ -164,63 +188,79 @@ fun SetupScreen(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 ErrorText(state.errorKey)
-                state.notice?.let { block ->
-                    // The same rule the button reads, said out loud — once the
-                    // user has typed something for it to be about.
-                    if (state.errorKey == null) ErrorText(block.messageKey)
+                // The same rule the button reads, said out loud.
+                if (state.errorKey == null) ErrorText(state.notice?.messageKey)
+                // Skip sits above Continue, so the main action stays last and
+                // under the thumb.
+                if (state.showsSkip) {
+                    TextButton(
+                        onClick = onSkip,
+                        enabled = state.canSkip,
+                        modifier = Modifier.align(Alignment.CenterHorizontally),
+                    ) {
+                        Text(strings(Strings.setup_skip), fontWeight = FontWeight.Medium)
+                    }
                 }
                 GradientButton(
                     text = strings(
                         if (state.step.isLast) Strings.setup_complete else Strings.action_continue,
                     ),
-                    onClick = onContinue,
+                    onClick = {
+                        focus.clearFocus()
+                        onContinue()
+                    },
                     enabled = state.canContinue,
                 )
-                if (state.canSkip) {
-                    TextButton(
-                        onClick = onSkip,
-                        modifier = Modifier.align(Alignment.CenterHorizontally),
-                    ) {
-                        Text(strings(Strings.setup_skip))
-                    }
-                }
                 Spacer(Modifier.height(16.dp))
             }
         }
 
-        // Over the art, clear of the notch.
+        // Below the notch, over the faded top of the art.
         StepHeader(
             step = state.step,
             onBack = onBack,
-            modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding(),
+            onCancel = onCancel,
+            modifier = Modifier.align(Alignment.TopCenter).padding(top = statusTop),
         )
 
-        LoadingCoin(visible = state.busy)
+        SavingIndicator(
+            visible = state.showsSaving,
+            modifier = Modifier.align(Alignment.TopCenter).padding(top = statusTop + HeaderHeight + 4.dp),
+        )
     }
 }
 
-/** How far down the art reaches: to the top of the fields, as in the design. */
+/** How far the art reaches below the notch: to the top of the fields, as in the design. */
 private val BandHeight = 300.dp
+private val HeaderHeight = 56.dp
+
+/** The top fade runs from the notch through the header, so both sit on plain ground. */
+private val TopFade = 72.dp
+private val BottomFade = 72.dp
+
+/** The path art, one third per step, in step order. */
+private val PathThirds = listOf(R.drawable.setup_path_1, R.drawable.setup_path_2, R.drawable.setup_path_3)
+private const val SLIDE_MS = 380
 
 @Composable
-private fun StepHeader(step: SetupStep, onBack: () -> Unit, modifier: Modifier = Modifier) {
-    Row(
-        modifier = modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
+private fun StepHeader(
+    step: SetupStep,
+    onBack: () -> Unit,
+    onCancel: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Box(modifier.fillMaxWidth().height(HeaderHeight).padding(horizontal = 8.dp)) {
         if (step != SetupStep.INCOME) {
-            IconButton(onClick = onBack) {
+            IconButton(onClick = onBack, modifier = Modifier.align(Alignment.CenterStart)) {
                 Icon(
                     painter = painterResource(R.drawable.ic_back),
                     contentDescription = strings(Strings.action_back),
                     tint = MaterialTheme.colorScheme.onBackground,
                 )
             }
-        } else {
-            Spacer(Modifier.size(48.dp))
         }
-        Spacer(Modifier.weight(1f))
         Row(
+            modifier = Modifier.align(Alignment.Center),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
@@ -244,7 +284,14 @@ private fun StepHeader(step: SetupStep, onBack: () -> Unit, modifier: Modifier =
                 ),
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(start = 8.dp, end = 16.dp),
+                modifier = Modifier.padding(start = 8.dp),
+            )
+        }
+        TextButton(onClick = onCancel, modifier = Modifier.align(Alignment.CenterEnd)) {
+            Text(
+                text = strings(Strings.action_cancel),
+                color = MaterialTheme.colorScheme.onBackground,
+                fontWeight = FontWeight.Medium,
             )
         }
     }
@@ -253,28 +300,115 @@ private fun StepHeader(step: SetupStep, onBack: () -> Unit, modifier: Modifier =
 /**
  * The path, running on from step to step.
  *
- * One wide illustration, each step showing its own third. [offset] is the
- * pager's position rather than the settled page, so the path slides with the
- * finger and the continuity is visible while dragging, not only afterwards.
+ * One wide illustration, and [page] shows its own third, starting below the
+ * notch. The pages sit edge to edge in the pager, so their thirds join into
+ * the one continuous path. The notch area is plain ground fading into the art,
+ * and the art fades back into ground above the fields.
  */
 @Composable
-private fun PathBand(offset: Float) {
-    BoxWithConstraints(
+private fun PathBand(page: Int, top: Dp) {
+    val ground = MaterialTheme.colorScheme.background
+    Box(
         Modifier
             .fillMaxWidth()
-            .height(BandHeight)
+            .height(top + BandHeight)
             .clipToBounds(),
     ) {
-        val screen = maxWidth
+        // A vector third per page (tools/make_setup_path_vectors.py), so a page
+        // renders one screen of art, sharp at any density, with a night version.
         Image(
-            painter = painterResource(R.drawable.setup_path),
+            painter = painterResource(PathThirds[page]),
             contentDescription = null,
             contentScale = ContentScale.Crop,
             modifier = Modifier
-                .width(screen * SetupStep.COUNT)
-                .height(BandHeight)
-                .offset(x = -screen * offset),
+                .padding(top = top)
+                .fillMaxWidth()
+                .height(BandHeight),
         )
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(top + TopFade)
+                .background(
+                    Brush.verticalGradient(
+                        0f to ground,
+                        (top / (top + TopFade)) to ground.copy(alpha = 0.85f),
+                        1f to ground.copy(alpha = 0f),
+                    ),
+                ),
+        )
+        Box(
+            Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .height(BottomFade)
+                .background(Brush.verticalGradient(listOf(ground.copy(alpha = 0f), ground))),
+        )
+    }
+}
+
+/** The small loader for a save behind the steps: a frosted pill, never the coin. */
+@Composable
+private fun SavingIndicator(visible: Boolean, modifier: Modifier = Modifier) {
+    val label = strings(Strings.setup_saving)
+    AnimatedVisibility(
+        visible = visible,
+        modifier = modifier,
+        enter = fadeIn(tween(180)),
+        exit = fadeOut(tween(180)),
+    ) {
+        Surface(
+            shape = CircleShape,
+            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
+            shadowElevation = 3.dp,
+            modifier = Modifier.semantics { contentDescription = label },
+        ) {
+            CircularProgressIndicator(
+                modifier = Modifier.padding(7.dp).size(14.dp),
+                strokeWidth = 2.dp,
+                color = FinAiPalette.Green,
+            )
+        }
+    }
+}
+
+/** What Cancel leads to: setup is required, and the way back to step 1. */
+@Composable
+private fun SetupRequiredScreen(onResume: () -> Unit) {
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+            .safeDrawingPadding()
+            .padding(horizontal = 32.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(
+            modifier = Modifier.widthIn(max = 420.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(
+                text = strings(Strings.setup_required_title),
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center,
+            )
+            Text(
+                text = strings(Strings.setup_required_body),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+            )
+            TextButton(onClick = onResume) {
+                Text(
+                    text = strings(Strings.setup_required_action),
+                    color = FinAiPalette.Green,
+                    fontWeight = FontWeight.SemiBold,
+                    textDecoration = TextDecoration.Underline,
+                )
+            }
+        }
     }
 }
 
@@ -297,17 +431,18 @@ private fun StepTitle(step: SetupStep, titleKey: String, bodyKey: String) {
 }
 
 @Composable
-private fun IncomeStep(state: SetupUiState, onIncomeChange: (String) -> Unit) {
-    StepTitle(state.step, Strings.setup_income_title, Strings.setup_income_body)
-    Card {
-        AmountField(
-            value = state.draft.income,
-            onValueChange = onIncomeChange,
-            label = strings(Strings.setup_income_label),
-            symbol = state.symbol,
-            imeAction = ImeAction.Done,
-        )
-    }
+private fun IncomeStep(onIncomeChange: (String) -> Unit, state: SetupUiState) {
+    StepTitle(SetupStep.INCOME, Strings.setup_income_title, Strings.setup_income_body)
+    AmountField(
+        value = state.draft.income,
+        onValueChange = onIncomeChange,
+        label = strings(Strings.setup_income_label),
+        symbol = state.symbol,
+        placeholder = state.amountPlaceholder,
+        suffix = strings(Strings.setup_per_month),
+        isError = state.step == SetupStep.INCOME && state.notice?.step == SetupStep.INCOME,
+        imeAction = ImeAction.Done,
+    )
     Text(
         text = strings(Strings.setup_income_hint),
         style = MaterialTheme.typography.bodySmall,
@@ -321,61 +456,86 @@ private fun ExpensesStep(
     onExpenseChange: (String) -> Unit,
     onOpenList: (ItemList) -> Unit,
 ) {
-    StepTitle(state.step, Strings.setup_expenses_title, Strings.setup_expenses_body)
-    Card {
-        AmountField(
-            value = state.draft.monthlyExpense,
-            onValueChange = onExpenseChange,
-            label = strings(Strings.setup_expense_label),
-            symbol = state.symbol,
-            imeAction = ImeAction.Done,
-        )
-    }
+    StepTitle(SetupStep.EXPENSES, Strings.setup_expenses_title, Strings.setup_expenses_body)
+    AmountField(
+        value = state.draft.monthlyExpense,
+        onValueChange = onExpenseChange,
+        label = strings(Strings.setup_expense_label),
+        symbol = state.symbol,
+        placeholder = state.amountPlaceholder,
+        suffix = strings(Strings.setup_per_month),
+        isError = state.step == SetupStep.EXPENSES && state.notice?.step == SetupStep.EXPENSES,
+        imeAction = ImeAction.Done,
+    )
     ListRow(
         label = strings(Strings.setup_obligations_label),
-        subtitle = state.totalOf(ItemList.OBLIGATIONS) ?: strings(Strings.setup_amount_hint),
+        total = state.totalOf(ItemList.OBLIGATIONS),
+        hint = strings(Strings.setup_amount_hint),
         onClick = { onOpenList(ItemList.OBLIGATIONS) },
     )
 }
 
 @Composable
 private fun PortfolioStep(state: SetupUiState, onOpenList: (ItemList) -> Unit) {
-    StepTitle(state.step, Strings.setup_portfolio_title, Strings.setup_portfolio_body)
+    StepTitle(SetupStep.PORTFOLIO, Strings.setup_portfolio_title, Strings.setup_portfolio_body)
     ListRow(
         label = strings(Strings.setup_debts_label),
-        subtitle = state.totalOf(ItemList.DEBTS) ?: strings(Strings.setup_total_balance_hint),
+        total = state.totalOf(ItemList.DEBTS),
+        hint = strings(Strings.setup_total_balance_hint),
         onClick = { onOpenList(ItemList.DEBTS) },
     )
     ListRow(
         label = strings(Strings.setup_investments_label),
-        subtitle = state.totalOf(ItemList.INVESTMENTS) ?: strings(Strings.setup_total_amount_hint),
+        total = state.totalOf(ItemList.INVESTMENTS),
+        hint = strings(Strings.setup_total_amount_hint),
         onClick = { onOpenList(ItemList.INVESTMENTS) },
     )
 }
 
-/** A row that opens an itemised list, showing what is in it. */
+/**
+ * A row that opens an itemised list: the same box as the fields, the list's
+ * total in green once there is one, and a tinted chevron that says it opens.
+ */
 @Composable
-private fun ListRow(label: String, subtitle: String, onClick: () -> Unit) {
-    Surface(
-        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).clickable(onClick = onClick),
-        color = MaterialTheme.colorScheme.surfaceVariant,
+private fun ListRow(label: String, total: String?, hint: String, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 68.dp)
+            .fieldFrame(focused = false, isError = false)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(horizontal = 16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(Modifier.weight(1f)) {
-                Text(label, style = MaterialTheme.typography.titleSmall)
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(label, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+            if (total != null) {
                 Text(
-                    text = subtitle,
+                    text = total,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = FinAiPalette.Green,
+                )
+            } else {
+                Text(
+                    text = hint,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+        }
+        Box(
+            modifier = Modifier
+                .size(32.dp)
+                .clip(CircleShape)
+                .background(FinAiPalette.Green.copy(alpha = 0.12f)),
+            contentAlignment = Alignment.Center,
+        ) {
             Icon(
                 painter = painterResource(R.drawable.ic_chevron_right),
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                tint = FinAiPalette.Green,
+                modifier = Modifier.size(18.dp),
             )
         }
     }
@@ -393,90 +553,95 @@ private fun ItemListScreen(
     onDiscard: () -> Unit,
 ) {
     val debts = list == ItemList.DEBTS
-    Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .safeDrawingPadding()
-                .verticalScroll(rememberScrollState())
-                .imePadding()
-                .padding(horizontal = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onDiscard) {
-                    Icon(
-                        painter = painterResource(R.drawable.ic_back),
-                        contentDescription = strings(Strings.action_back),
-                        tint = MaterialTheme.colorScheme.onBackground,
-                    )
-                }
-                Text(
-                    text = strings(
-                        when (list) {
-                            ItemList.OBLIGATIONS -> Strings.setup_obligations_label
-                            ItemList.DEBTS -> Strings.setup_debts_label
-                            ItemList.INVESTMENTS -> Strings.setup_investments_label
-                        },
-                    ),
-                    style = MaterialTheme.typography.headlineSmall,
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+            .safeDrawingPadding()
+            .verticalScroll(rememberScrollState())
+            .imePadding()
+            .padding(horizontal = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = onDiscard) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_back),
+                    contentDescription = strings(Strings.action_back),
+                    tint = MaterialTheme.colorScheme.onBackground,
                 )
             }
+            Text(
+                text = strings(
+                    when (list) {
+                        ItemList.OBLIGATIONS -> Strings.setup_obligations_label
+                        ItemList.DEBTS -> Strings.setup_debts_label
+                        ItemList.INVESTMENTS -> Strings.setup_investments_label
+                    },
+                ),
+                style = MaterialTheme.typography.headlineSmall,
+            )
+        }
 
-            state.rows.forEachIndexed { index, row ->
-                Card {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        WizardField(
-                            value = row.name,
-                            onValueChange = { onRowChange(index, row.copy(name = it)) },
-                            label = strings(Strings.setup_item_name),
-                        )
+        state.rows.forEachIndexed { index, row ->
+            Card {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    WizardField(
+                        value = row.name,
+                        onValueChange = { onRowChange(index, row.copy(name = it)) },
+                        label = strings(Strings.setup_item_name),
+                    )
+                    AmountField(
+                        value = row.amount,
+                        onValueChange = { onRowChange(index, row.copy(amount = it)) },
+                        label = strings(
+                            if (debts) Strings.setup_debt_balance else Strings.setup_item_amount,
+                        ),
+                        symbol = state.symbol,
+                        placeholder = state.amountPlaceholder,
+                        // An obligation is a monthly payment; a balance or a holding is not.
+                        suffix = if (list == ItemList.OBLIGATIONS) strings(Strings.setup_per_month) else null,
+                        large = false,
+                    )
+                    if (debts) {
                         AmountField(
-                            value = row.amount,
-                            onValueChange = { onRowChange(index, row.copy(amount = it)) },
-                            label = strings(
-                                if (debts) Strings.setup_debt_balance else Strings.setup_item_amount,
-                            ),
+                            value = row.minimumPayment,
+                            onValueChange = { onRowChange(index, row.copy(minimumPayment = it)) },
+                            label = strings(Strings.setup_debt_minimum),
                             symbol = state.symbol,
+                            placeholder = state.amountPlaceholder,
+                            suffix = strings(Strings.setup_per_month),
+                            large = false,
                         )
-                        if (debts) {
-                            AmountField(
-                                value = row.minimumPayment,
-                                onValueChange = { onRowChange(index, row.copy(minimumPayment = it)) },
-                                label = strings(Strings.setup_debt_minimum),
-                                symbol = state.symbol,
-                            )
-                            WizardField(
-                                value = row.interestRatePercent,
-                                onValueChange = { onRowChange(index, row.copy(interestRatePercent = it)) },
-                                label = strings(Strings.setup_debt_rate),
-                                keyboardType = KeyboardType.Decimal,
-                            )
-                        }
-                        state.rowBlock(index)?.let { ErrorText(it.messageKey) }
-                        TextButton(onClick = { onRemoveRow(index) }) {
-                            Text(strings(Strings.setup_remove_item))
-                        }
+                        WizardField(
+                            value = row.interestRatePercent,
+                            onValueChange = { onRowChange(index, row.copy(interestRatePercent = it)) },
+                            label = strings(Strings.setup_debt_rate),
+                            keyboardType = KeyboardType.Decimal,
+                            capitalization = KeyboardCapitalization.None,
+                        )
+                    }
+                    state.rowBlock(index)?.let { ErrorText(it.messageKey) }
+                    TextButton(onClick = { onRemoveRow(index) }) {
+                        Text(strings(Strings.setup_remove_item))
                     }
                 }
             }
-
-            TextButton(onClick = onAddRow) { Text(strings(Strings.setup_add_item)) }
-            GradientButton(
-                text = strings(Strings.action_save),
-                onClick = onKeep,
-                enabled = state.canKeepRows,
-            )
-            TextButton(
-                onClick = onDiscard,
-                modifier = Modifier.align(Alignment.CenterHorizontally),
-            ) {
-                Text(strings(Strings.action_cancel))
-            }
-            Spacer(Modifier.height(24.dp))
         }
 
-        LoadingCoin(visible = state.busy)
+        TextButton(onClick = onAddRow) { Text(strings(Strings.setup_add_item)) }
+        GradientButton(
+            text = strings(Strings.action_save),
+            onClick = onKeep,
+            enabled = state.canKeepRows,
+        )
+        TextButton(
+            onClick = onDiscard,
+            modifier = Modifier.align(Alignment.CenterHorizontally),
+        ) {
+            Text(strings(Strings.action_cancel))
+        }
+        Spacer(Modifier.height(24.dp))
     }
 }
 
@@ -492,31 +657,101 @@ private fun Card(content: @Composable () -> Unit) {
     }
 }
 
-/** An amount, with the currency the server named beside it — never a hardcoded symbol. */
+private val FieldShape = RoundedCornerShape(16.dp)
+
+/**
+ * The box every field and list row sits in: the surface colour, a hairline
+ * border, green and thicker while typing, red while its figure will not do.
+ */
+@Composable
+private fun Modifier.fieldFrame(focused: Boolean, isError: Boolean): Modifier {
+    val colour by animateColorAsState(
+        targetValue = when {
+            isError -> MaterialTheme.colorScheme.error
+            focused -> FinAiPalette.Green
+            else -> MaterialTheme.colorScheme.outlineVariant
+        },
+        animationSpec = tween(150),
+        label = "fieldBorder",
+    )
+    val width by animateDpAsState(if (focused || isError) 2.dp else 1.dp, tween(150), label = "fieldBorderWidth")
+    return this
+        .clip(FieldShape)
+        .background(MaterialTheme.colorScheme.surface)
+        .border(width, colour, FieldShape)
+}
+
+/**
+ * An amount, the way finance apps take one: a label above, the figure large and
+ * bold beside the currency the server named — never a hardcoded symbol — a faint
+ * zero while it is empty, and what the figure is per, when it is per anything.
+ * The whole box is the text field, so tapping anywhere on it starts typing.
+ */
 @Composable
 private fun AmountField(
     value: String,
     onValueChange: (String) -> Unit,
     label: String,
     symbol: String,
+    placeholder: String,
+    suffix: String? = null,
+    isError: Boolean = false,
+    large: Boolean = true,
     imeAction: ImeAction = ImeAction.Next,
 ) {
-    WizardField(
-        value = value,
-        onValueChange = onValueChange,
-        label = label,
-        keyboardType = KeyboardType.Decimal,
-        imeAction = imeAction,
-        leading = {
-            Text(
-                text = symbol,
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        },
-    )
+    val interaction = remember { MutableInteractionSource() }
+    val focused by interaction.collectIsFocusedAsState()
+    val figure = if (large) MaterialTheme.typography.headlineSmall else MaterialTheme.typography.titleLarge
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
+
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        FieldLabel(label)
+        BasicTextField(
+            value = value,
+            onValueChange = onValueChange,
+            singleLine = true,
+            interactionSource = interaction,
+            textStyle = figure.copy(color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold),
+            cursorBrush = SolidColor(FinAiPalette.Green),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = imeAction),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(if (large) 68.dp else 56.dp)
+                .fieldFrame(focused, isError)
+                .semantics { contentDescription = label },
+            decorationBox = { inner ->
+                Row(
+                    modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = symbol,
+                        style = figure,
+                        fontWeight = FontWeight.Medium,
+                        color = muted,
+                        modifier = Modifier.padding(end = 8.dp),
+                    )
+                    Box(Modifier.weight(1f)) {
+                        if (value.isEmpty()) {
+                            Text(text = placeholder, style = figure, color = muted.copy(alpha = 0.4f))
+                        }
+                        inner()
+                    }
+                    if (suffix != null) {
+                        Text(
+                            text = suffix,
+                            style = MaterialTheme.typography.labelLarge,
+                            color = muted,
+                            modifier = Modifier.padding(start = 8.dp),
+                        )
+                    }
+                }
+            },
+        )
+    }
 }
 
+/** A plain text field in the same box as the amounts. */
 @Composable
 private fun WizardField(
     value: String,
@@ -524,22 +759,46 @@ private fun WizardField(
     label: String,
     keyboardType: KeyboardType = KeyboardType.Text,
     imeAction: ImeAction = ImeAction.Next,
-    leading: (@Composable () -> Unit)? = null,
+    capitalization: KeyboardCapitalization = KeyboardCapitalization.Words,
 ) {
-    TextField(
-        value = value,
-        onValueChange = onValueChange,
-        modifier = Modifier.fillMaxWidth(),
-        label = { Text(label) },
-        leadingIcon = leading,
-        singleLine = true,
-        keyboardOptions = KeyboardOptions(keyboardType = keyboardType, imeAction = imeAction),
-        shape = RoundedCornerShape(14.dp),
-        colors = TextFieldDefaults.colors(
-            focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
-            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
-            focusedIndicatorColor = Color.Transparent,
-            unfocusedIndicatorColor = Color.Transparent,
-        ),
+    val interaction = remember { MutableInteractionSource() }
+    val focused by interaction.collectIsFocusedAsState()
+
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        FieldLabel(label)
+        BasicTextField(
+            value = value,
+            onValueChange = onValueChange,
+            singleLine = true,
+            interactionSource = interaction,
+            textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
+            cursorBrush = SolidColor(FinAiPalette.Green),
+            keyboardOptions = KeyboardOptions(
+                capitalization = capitalization,
+                keyboardType = keyboardType,
+                imeAction = imeAction,
+            ),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(56.dp)
+                .fieldFrame(focused, isError = false)
+                .semantics { contentDescription = label },
+            decorationBox = { inner ->
+                Box(
+                    modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
+                    contentAlignment = Alignment.CenterStart,
+                ) { inner() }
+            },
+        )
+    }
+}
+
+@Composable
+private fun FieldLabel(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.labelLarge,
+        fontWeight = FontWeight.Medium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
 }

@@ -270,7 +270,7 @@ private fun AuthSheet(
 ) {
     val creating = state.creatingAccount
 
-    AuthCard(spacing = 12.dp, busy = state.busy) {
+    AuthCard(spacing = 12.dp) {
         Text(
             text = strings(if (creating) Strings.welcome_create_title else Strings.welcome_sign_in_title),
             style = MaterialTheme.typography.headlineSmall,

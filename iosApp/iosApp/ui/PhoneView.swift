@@ -14,7 +14,7 @@ struct PhoneView: View {
     @State private var pickerOpen = false
 
     var body: some View {
-        CardScreen(busy: model.busy) {
+        CardScreen {
             VStack(spacing: 16) {
             Text(L.t(Strings.shared.phone_link_title))
                 .font(.title2.weight(.semibold))
