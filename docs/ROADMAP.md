@@ -131,6 +131,7 @@ M1 follow-ups with no roadmap ticket: [Finance-backend#23](https://github.com/Hu
 Not tied to a milestone — each must be done before real users sign up.
 
 - **SMS provider.** Development signs in with Supabase test phone numbers, and the provider credentials are placeholders. Connect a real provider **and** remove or expire every test number — a test number with a fixed code is a sign-in path for anyone who knows it. *(mobile `handoffs/ticket-6.md`)*
+- **LLM tier.** Development runs on a **free-tier API key** (manager decision, 2026-09-21), whose terms generally permit the provider to train on the inputs — which Appendix A.3 forbids for this data. The free key may only ever see synthetic fixtures. **Before a single real user's statement is parsed, swap to a paid, no-training API tier** and re-read that provider's terms. The client reads provider and model from settings, so the swap is configuration, not a release.
 - **Staging.** Migrations run straight against production; there is no staging database. That has been safe only because there is no user data yet. *(backend `handoffs/ticket-10.md`, `ticket-15.md`)*
 - **Branch protection.** CI is advisory in both repos until `main` requires its checks: backend `test` + `database` (free — the repo is public); mobile `Android` + `iOS` (needs the repo public or a paid plan). *(mobile `handoffs/ticket-8.md`, backend `handoffs/ticket-15.md`)*
 
