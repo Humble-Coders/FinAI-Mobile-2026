@@ -56,13 +56,15 @@ The long-term vision (client's words): a full money-management ecosystem — bud
 |---|---|
 | PostgreSQL (system of record), migrations, `pgvector` embedding index | Supabase |
 | Auth — signup, JWT issuance, phone/OTP | Supabase Auth |
-| Object storage for uploaded documents (pre-deletion) | Supabase Storage |
-| Job queue (`pgmq` / Supabase Queues) — lives beside the data | Supabase |
-| API service (modular monolith) | Render web service |
-| Extraction & AI background workers | Render background worker service(s) |
+| ~~Object storage for uploaded documents~~ — **not used for statements** (2026-09-21: the document never leaves the device) | Supabase Storage |
+| Job queue (`pgmq` / Supabase Queues) — lives beside the data. **Not used by extraction** since 2026-09-21; kept for later long-running work | Supabase |
+| API service (modular monolith) — **including statement parsing**, which runs inside the request | Render web service |
+| ~~Extraction & AI background workers~~ — **none in v1** (2026-09-21) | Render background worker service(s) |
 | Scheduled work (weekly plans, subscription scans, notification batches) | Render cron jobs |
 
-**Why this split:** the extraction pipeline is long-running, multi-step, retry-heavy work (document extraction → redaction → LLM normalization → dedup → categorization → recompute). Serverless functions cap out on wall clock and would leave partially-imported statements in users' financial records on failure. Render background workers have no such limit, give us cron and normal observability, and leave the backend language open. Supabase remains the data platform because the product's architecture depends on Postgres (see §4.5: SQL-grounded chatbot, relational financial integrity, `pgvector`).
+**Why this split:** Supabase is the data platform because the product's architecture depends on Postgres (see §4.5: SQL-grounded chatbot, relational financial integrity, `pgvector`), and Render runs the application because it gives us cron and normal observability with the backend language left open.
+
+**Amended 2026-09-21 — the worker argument no longer applies to extraction.** It read: the pipeline is long-running and retry-heavy, serverless wall-clock limits would leave partially-imported statements in users' financial records, so extraction belongs on a background worker. Extraction now happens on the user's device (F2) and the API receives only redacted text, which it finishes inside the request. The failure mode that justified the worker is gone with it: the source file stays on the phone, so a failed import is a retry, not a half-imported statement. Cron and workers remain available for later work that genuinely needs them.
 
 **Rules this imposes on the build:**
 - **Clients never talk to the database directly.** All reads and writes go through the Render API so authorization, entitlement gating, and audit logging live in one place.
@@ -107,31 +109,24 @@ Canadian data residency was considered and rejected as unnecessary: PIPEDA impos
 ```mermaid
 flowchart LR
     A[Android app\nKotlin/Compose] --> API
+    A --> EXT[On-device extraction\nPDF text / OCR + redaction]
+    EXT -.redacted text.-> API
     W[React web app] --> API
     A -.auth.-> AUTH
     W -.auth.-> AUTH
     subgraph Render
-      API[API service\nmodular monolith]
-      WRK[Background workers\nextraction, AI]
+      API[API service\nmodular monolith\n+ statement parsing]
       CRON[Cron jobs\nweekly plans, scans]
     end
     subgraph Supabase
       DB[(PostgreSQL\nhousehold-scoped)]
       AUTH[Supabase Auth]
-      ST[(Storage\nuploaded docs)]
-      Q[Queue - pgmq]
       EMB[(pgvector\nmerchant embeddings)]
     end
     API --> DB
-    API --> ST
-    API --> Q
     API --> EMB
-    Q --> WRK
     CRON --> DB
-    WRK --> DB
-    WRK --> DOC[Document AI\ntable extraction]
-    WRK --> LLM[LLM API provider]
-    API --> LLM
+    API --> LLM[LLM API provider]
 ```
 
 ### 4.4 Data model principles (locked)
@@ -144,7 +139,7 @@ flowchart LR
 
 ### 4.5 AI stack (locked)
 - **LLM APIs only; no custom ML training.**
-- **Extraction:** structured document-AI table extraction first, redaction, then LLM only for ambiguous rows and categorization (full pipeline in F2). LLM vision is a logged fallback, not the default path. Confidence flags on each row; low-confidence rows go to the user review queue.
+- **Extraction (amended 2026-09-21):** text is pulled from the statement **on the device** — the PDF's own text layer where there is one, on-device OCR otherwise — redacted there, and only then sent to the API, where the LLM turns it into structured rows and categorizes them (full pipeline in F2). No document-AI vendor, and no LLM vision fallback: sending the image is what this design exists to avoid. Confidence flags on each row; low-confidence rows go to the user review queue.
 - **Categorization:** LLM classification into system + user categories. **Per-user "learning" = stored correction rules and few-shot examples injected into prompts** — not model training.
 - **Chatbot:** LLM with **tool-calling over SQL**. All figures come from database query results, never model recall. This is the backbone pattern for every user-facing number.
 - **Thin RAG layer:** embedding index over merchant names/categories for fuzzy queries ("how much on coffee?"). No heavyweight document RAG until the education hub phase.
@@ -271,46 +266,52 @@ Features are grouped by phase. Phase 1 = v1/MVP. Each feature notes acceptance-l
   - The mandatory set is enforced **server-side**, as an onboarding step alongside phone, region and consent — a client-side gate is not a gate (§4.6).
 - Wizard output seeds the initial dashboard. (Client to confirm the 30s claim covers signup only — §8 Q10.)
 
-#### F2. Document upload & transaction extraction
+#### F2. Statement import & transaction extraction
 
-**Design principle: the source document is minimized, redacted, and destroyed. The LLM sees the least data that still does the job.**
+**Design principle (amended 2026-09-21): the document never leaves the device.** What reaches our servers is redacted text; what we keep is the transactions. This replaces the earlier principle of minimizing, redacting and destroying an uploaded document — there is now nothing to destroy.
 
-Accepts screenshots (PNG/JPG), PDFs, bank statements, and transaction reports. Upload returns immediately (`status: queued`); all processing is asynchronous on a Render worker pulling from the Supabase queue. The client polls or subscribes to `document_upload.status` and notifies the user on completion.
+Accepts screenshots (PNG/JPG), PDFs, bank statements and transaction reports, from the file picker, share sheet or camera. Extraction runs **on the device**: the file is never uploaded, never stored by us, and never sent to a third-party OCR service.
 
 **Pipeline stages:**
 
 ```mermaid
 flowchart TD
-    U[Upload] --> S[(Supabase Storage\nencrypted)]
-    S --> E[1. Structured extraction\nDocument AI table extraction]
-    E --> R[2. Redaction\nstrip identifiers]
-    R --> N[3. LLM normalization\nonly ambiguous rows]
-    N --> D[4. Dedup\nagainst existing transactions]
-    D --> C[5. Categorization\nmerchant + amount only]
-    C --> Q[6. Review queue\nlow-confidence rows]
+    F[File picked on device] --> T{Has a text layer?}
+    T -- yes --> P[1a. PDF text + coordinates\nPDFKit / PdfBox-Android]
+    T -- no --> O[1b. On-device OCR\nVision / ML Kit bundled]
+    P --> R[2. Redaction, on device\nshared KMP redactor]
+    O --> R
+    R --> S[3. POST redacted text\nfew KB, no file]
+    S --> N[4. LLM row structuring\ndate, description, amount]
+    N --> D[5. Dedup\nDB constraint + fuzzy]
+    D --> C[6. Categorization\nmerchant + amount only]
+    C --> Q[7. Review queue\nlow-confidence rows]
     Q --> V[User confirms]
-    V --> X[7. Source document deleted]
-    E -.fallback: unparseable.-> LV[LLM vision\nlogged + consented]
-    LV --> R
 ```
 
-1. **Structured extraction (not LLM-first).** A document-AI table-extraction service (AWS Textract / Google Document AI) pulls tabular rows structurally. Bank statements are tables — this is that class of service's best case, and it is not an LLM, so the document never reaches a general-purpose model on the default path.
-2. **Redaction, before anything leaves the pipeline.** Full account numbers reduced to last-4; name/address blocks dropped; running balances dropped unless used. Redaction happens *before* any LLM call, not after.
-3. **LLM normalization — only for rows the extractor returned ambiguous.** Input is redacted text, never the document image.
-4. **Dedup.** Overlapping statements must not double-count; enforced by a database unique constraint on `(account, date, amount, normalized_description)` plus a fuzzy near-match check, not by application logic alone.
-5. **Categorization.** The LLM receives **only `(merchant_string, amount)` pairs** — no name, email, phone, account number, or balance. This is the minimum viable payload and is near-anonymous.
-6. **Review queue.** Every row carries a confidence flag; low-confidence rows surface to the user for confirmation (feeds F3's correction learning).
-7. **Source deletion.** The document is deleted **once the user confirms the extracted transactions, or after a fixed 72-hour window, whichever comes first.** Not on extraction success — if extraction misreads a row, the user must still be able to check it against the original and we must be able to re-run.
+1. **On-device text extraction.** Most statements people download from their bank are digitally generated PDFs carrying an embedded text layer; PDFKit (iOS) and PdfBox-Android read it with per-glyph coordinates, which is both more accurate than OCR-ing a rendered page and deterministic. Screenshots, photos and scanned PDFs fall back to on-device OCR — Apple Vision and ML Kit Text Recognition v2 (**bundled** model, so no Play Services dependency and no network). Both floors (iOS 13, API 21) sit far below the apps' minimums, so coverage is every supported device.
+2. **Redaction on the device, before anything is sent.** Name and address blocks dropped, account numbers reduced to last-4, running balances dropped unless used. The redactor lives in `sharedLogic` so both platforms behave identically and it is tested once. This is the *only* redaction step there is — there is no server-side copy to clean up afterwards.
+3. **Text is posted, not documents.** A few KB of redacted text. No object storage, no queue, no background worker; the API finishes the job inside the request, chunked for long statements.
+4. **LLM row structuring.** The model turns redacted text into structured rows — date, description, amount, direction — each carrying a confidence. Neither a PDF text layer nor OCR carries table semantics, so this replaces both the document-AI table extractor *and* the per-bank parsers that would otherwise be needed. It also keeps a misparse fixable by a prompt change we deploy, rather than an app release users must install.
+5. **Dedup.** Unchanged: a database unique constraint on `(account, date, amount, normalized_description)` plus a fuzzy near-match check, not application logic alone. `normalized_description` is produced deterministically, server-side.
+6. **Categorization.** The LLM receives **only `(merchant_string, amount)` pairs** — no name, email, phone, account number or balance.
+7. **Review queue.** Every row carries a confidence flag; low-confidence rows surface for confirmation (feeds F3's correction learning). With no vision fallback, this queue is also where anything the model could not resolve lands, so its volume is the quality signal for the whole feature.
 
-**Fallback path.** For documents the structured extractor cannot parse (photographs of statements, unusual layouts), fall back to LLM vision on the image. This is an **explicit, logged, separately-consented** path — never the silent default.
+**What the LLM sees, stated plainly.** Under the previous design the model received only rows the extractor flagged ambiguous, plus `(merchant, amount)` pairs. It now receives a statement's worth of redacted transaction text. That is a deliberate widening, accepted in exchange for the document never being transferred at all (§9, 2026-09-21). It remains API-tier, no-training, no-retention processing under Appendix A.3, and redaction still happens before any model call — just on the device instead of on a worker.
 
-**Log hygiene (non-negotiable):** no document bytes, no raw statement text, and no unredacted account numbers may appear in application logs, error traces, queue payloads, or worker temp files. "We delete your documents" is a claim regulators and the FTC will hold us to literally (§Appendix A).
+**No source-document retention, because there is no source document.** The delete-on-confirmation-or-72-hours rule and its scheduled job are withdrawn; "we delete your statements" has become "we never receive them", which is the one version of that promise nobody can get wrong. The user keeps the original on their own device and can re-import it if a row looks wrong. The accepted cost: we cannot re-run an improved parse against a past import, and support cannot reproduce a complaint from the original.
+
+**Documents we cannot read.** Bad photographs and unusual layouts will fail. The user re-shoots, picks the PDF instead, or enters the transaction by hand. There is deliberately **no LLM-vision fallback on the image** — sending the image is precisely what this design exists to avoid. If the real-world failure rate proves high, an explicit, separately-consented image path can be reconsidered as its own decision; it is not built now.
+
+**Log hygiene (non-negotiable):** no document bytes, no raw statement text and no unredacted account numbers in logs, error traces or temp files — **on the device as well as on the server**. "We never receive your statements" is a claim regulators and the FTC will hold us to literally (§Appendix A).
 
 **Other rules:**
 - User can also add transactions manually.
-- Free tier: 1 upload/month. Paid: generous limit (fair-use cap, TBD in pricing).
-- V1 targets **Canadian bank statement formats** first; extraction tuned per major CA banks.
-- Consent screen before the first upload (§Appendix A) — express consent to AI processing of financial documents.
+- Free tier: 1 import/month, enforced **server-side at the parse endpoint**. Paid: generous limit (fair-use cap, TBD in pricing).
+- V1 targets **Canadian bank statement formats** first; the prompt and row rules are tuned per major CA banks.
+- Consent screen before the first import (§Appendix A) — express consent to AI processing of financial data.
+- Password-protected statements are common. The password is entered and used **on the device**; it is never transmitted.
+- **LLM API keys never ship in a client.** The apps extract and redact locally and then call our API; the model is called only from the backend.
 
 #### F3. Categorization & correction learning
 - System category taxonomy (groceries, rent, dining, transport, subscriptions, …) + user-defined categories.
@@ -392,12 +393,12 @@ flowchart TD
 ## 6. Non-Functional Requirements
 
 - **Correctness of money math:** all financial calculations in deterministic, unit-tested code, server-side; amounts stored as integer minor units and transported as decimal strings (§4.4); the LLM never produces a number that isn't from the DB or the math engine.
-- **Security & privacy (baseline assumed; client to ratify — §8 Q7):** TLS everywhere; encryption at rest; uploaded documents deleted after successful extraction (only structured transactions retained) *pending client preference*; account data export and full deletion; user data used only for that household's personalization — never cross-user model training.
+- **Security & privacy (baseline assumed; client to ratify — §8 Q7):** TLS everywhere; encryption at rest; **statements are never uploaded** — extraction and redaction happen on the device (F2), so only structured transactions are ever transferred; account data export and full deletion; user data used only for that household's personalization — never cross-user model training.
 - **Compliance posture:** **build to GDPR standard, comply locally** — GDPR is a superset of PIPEDA, Quebec Law 25 and CCPA, so we engineer once and vary only disclosures per country pack. PIPEDA + Law 25 are the operative regimes at launch. Not a regulated financial-advice product (see §1). Full analysis and the resulting build requirements: **Appendix A**.
 - **AI cost control:** per-plan quotas on uploads and chat; async batch processing; caching of computed snapshots (dashboard/insights) so the LLM isn't called on every page view. Unit economics reviewed against pricing before launch.
 - **Freshness honesty:** every data-derived view shows "data as of {last upload/sync}".
-- **Availability/scale:** standard managed-platform SLOs; nothing exotic for v1. Job queue isolates heavy AI work from API latency.
-- **Secrets & config:** the Supabase `service_role` key, LLM API keys, and document-AI credentials live only in Render environment variables and Supabase secrets — never in the repo, never in the Android app or React bundle.
+- **Availability/scale:** standard managed-platform SLOs; nothing exotic for v1. Statement parsing runs inside the request and is chunked so one long statement cannot monopolize a connection; the job queue stays available for later work that genuinely needs it.
+- **Secrets & config:** the Supabase `service_role` key and LLM API keys live only in Render environment variables and Supabase secrets — never in the repo, never in the mobile apps, never in the React bundle. **This is what keeps the model call on the server even though extraction is on the device (F2):** a key shipped in a mobile binary is a key anyone can extract and spend.
 - **Accessibility & i18n:** English-only v1; strings externalized; currency/locale formatting centralized.
 
 ## 7. Open Decisions
@@ -417,7 +418,7 @@ flowchart TD
 4. **Positioning:** confirm "guidance, not regulated advice"; "Taxes Evasion" renamed to "Tax Optimization."
 5. **Pricing:** Personal and Family price points; trial policy.
 6. **Timeline & budget** for v1.
-7. **Privacy:** delete uploaded statements after extraction, or retain for re-viewing/re-extraction? Confirm export/delete rights and no cross-user training.
+7. **Privacy:** ~~delete uploaded statements after extraction, or retain for re-viewing/re-extraction?~~ **Largely settled 2026-09-21** — statements are never uploaded (F2), so there is nothing to retain and no archive to offer without re-architecting. Still to confirm: export/delete rights and no cross-user training.
 8. **Market data:** are 15-min delayed quotes acceptable for investment tracking (real-time feeds are expensive)?
 9. **Family Plan details:** partner visibility/privacy (see everything vs per-account privacy), pooled vs linked finances, shared vs separate chat context, admin/breakup handling.
 10. **Onboarding:** confirm "30 seconds" = signup only. Financial setup is a follow-on wizard whose **core figures (income, monthly expense) are mandatory** and whose detail (debts, investments, itemised obligations) is optional and editable later (2026-09-12 decision, §9) — confirm the mandatory set, since it is what stands between a new account and the app.
@@ -457,8 +458,8 @@ flowchart TD
 | 2026-08-27 | Clients never recompute server-authoritative figures (health score, budgets, projections, debt schedules); shared KMP logic owns validation, blocking reasons, projections-to-screen-state, filtering, formatting | Keeps "no business logic in clients" and "share every decision" both true, with an explicit boundary |
 | 2026-08-27 | Platform locked: **Supabase** (Postgres, Auth, Storage, Queues, pgvector) + **Render** (API service, background workers, cron) | AI pipeline is long-running retry-heavy work unsuited to serverless wall-clock limits; Postgres is required by the SQL-grounded chatbot and relational financial integrity |
 | 2026-08-27 | Supabase chosen over Firebase | Chatbot grounding is tool-calling over SQL (no `GROUP BY` in Firestore); relational integrity, aggregation-heavy dashboards, `pgvector`, portability, and predictable cost. FCM can still be added for Phase-2 push |
-| 2026-08-27 | Extraction pipeline reordered: structured document-AI table extraction → redaction → LLM only for ambiguous rows and categorization (`merchant, amount` only); LLM vision demoted to a logged, separately-consented fallback | Data minimization by design; the LLM never sees the source document on the default path |
-| 2026-08-27 | Source documents deleted on user confirmation of extracted rows, or after 72 hours, whichever comes first — not on extraction success | Users and support need the original to verify a misread row; still satisfies "retained only as long as necessary" |
+| 2026-08-27 | ~~Extraction pipeline reordered: structured document-AI table extraction → redaction → LLM only for ambiguous rows and categorization (`merchant, amount` only); LLM vision demoted to a logged, separately-consented fallback~~ — **superseded 2026-09-21** | Data minimization by design; the LLM never sees the source document on the default path |
+| 2026-08-27 | ~~Source documents deleted on user confirmation of extracted rows, or after 72 hours, whichever comes first~~ — **superseded 2026-09-21: no source document is ever received** | Users and support need the original to verify a misread row; still satisfies "retained only as long as necessary" |
 | 2026-08-27 | Compliance: **build to GDPR standard, comply locally** (Appendix A) | GDPR is a superset of PIPEDA/Law 25/CCPA; engineer once, vary disclosures per country pack |
 | 2026-08-27 | LLM processing permitted only via business **API tier** with no-training terms, under signed DPAs, disclosed and consented | The API-vs-consumer-product distinction carries most of the legal weight |
 | 2026-08-27 | Regionalization: server-driven capability payload + Postgres country packs; one resolver composing plan + region + rollout flags; no per-country branches in client code | Mobile apps can't be hot-fixed for compliance changes; adding a country must be a data operation, not a deploy |
@@ -471,6 +472,7 @@ flowchart TD
 | 2026-09-12 | **Financial setup is part mandatory, part optional.** Phone, region, monthly income and monthly expense are required to reach the app; debts, investments and itemised obligations are optional and editable later from the profile. Supersedes the wholly skippable wizard in F1 | A dashboard with no income or expense figure can say nothing useful, so the first session would open onto an empty product. Keeping the detail optional protects the ~30s target: two figures, not an inventory. Enforced server-side as an onboarding step, since a client-side gate is not a gate |
 | 2026-09-12 | **The setup wizard records no status and has no skip endpoint.** The mandatory pair is gated by the `financial_setup` onboarding step, which reads the figures themselves; for the optional half a skipped answer and an unasked one are stored identically — no row. Optional data is added later from the profile and is never re-prompted | A status flag must be kept in sync with the figures it summarises and can disagree with them, while the figures are what the dashboard actually needs. A single whole-wizard skip timestamp also cannot say *which* optional field was declined, so it could not drive re-prompting either; per-field "declined" flags are a feature in their own right (manager decision, 2.5 build) |
 | 2026-09-15 | **Ways in: email and password, Google, Apple. Phone OTP is no longer a sign-in route**; every account still verifies a phone once, straight after signup. Email signup is confirmed by emailed code; forgot password resets by emailed code. Name is not captured at signup. **A phone collision is refused**: the phone step says the number is already registered and asks for another, with no offer to sign in to or link with that account. **A verified email links automatically, including to accounts that already verified a phone**; different verified phones never link. Adding a method is recorded in the backend only — nobody is emailed or shown anything. Supersedes the 2026-08-29 routes, and the rule that email only links accounts without a phone | Sign-in by SMS alone ties the account to a number that can be lost, ported or recycled, and makes SMS cost and deliverability a login dependency. Once email and password is a way in, whoever controls the address can already reset the password, so refusing to link Google by that same verified address guards a door that is open anyway. The remaining exposure — a reassigned address adding a method to its previous owner's account — is accepted without notifying the account; the backend keeps the record. The phone stays as the one key that survives Apple Hide My Email (manager decision, 2026-09-15) |
+| 2026-09-21 | **Statement extraction moves onto the device; the document is never uploaded.** Text is pulled locally (the PDF's own text layer via PDFKit / PdfBox-Android, on-device OCR via Apple Vision / ML Kit bundled otherwise), redacted by a shared KMP redactor, and only the redacted text is posted to the API — which does LLM row structuring, dedup and categorization inside the request. Supersedes the 2026-08-27 pipeline and source-deletion entries: Supabase Storage, the `pgmq` queue and the Render worker are not used for extraction, no document-AI vendor (Textract / Document AI) is used, and there is no LLM-vision fallback. The LLM now sees a statement's worth of redacted rows rather than only the ambiguous ones | Privacy was the manager's driver (raised 2026-09-15, settled 2026-09-21). Keeping the document off our infrastructure entirely is a stronger claim than any deletion promise, and it removes a retention obligation rather than automating one. It is also cheaper — roughly $0.02–0.05 per statement in tokens, against ~$0.085 plus a $7/month worker — and per-page OCR fees disappear. The wall-clock argument for the worker falls with it: the source file stays on the phone, so a failed import is a retry, not a half-imported statement. Letting the model reconstruct rows avoids writing per-bank parsers on two platforms and keeps a misparse fixable by a server-side deploy instead of an app release. Accepted costs, recorded openly: past imports can never be re-parsed, unreadable photographs have no fallback but manual entry, and OCR quality varies by device |
 
 
 ---
@@ -504,7 +506,7 @@ Under all three frameworks the AI provider is a **processor acting on our instru
 2. **Signed DPA** with every processor — LLM provider, document-AI provider, Supabase, Render, email provider — including **EU SCCs and the UK Addendum / UK-extension certification** where transfers require them (see A.4).
 3. **Plain disclosure** in the privacy policy: the categories of processor, what is sent, why, and that processing may occur outside the user's country.
 4. **Express consent before first upload** (F2), covering AI processing of financial documents.
-5. **Data minimization in the pipeline** — satisfied by F2: structured extraction before any LLM, redaction before any LLM call, and categorization receiving only `(merchant_string, amount)`. This is what "privacy by design" means in practice and is demonstrable from the architecture.
+5. **Data minimization in the pipeline** — satisfied by F2, and strengthened on 2026-09-21: extraction and redaction happen **on the user's device**, so the statement itself is never transferred to us or to any processor; the model receives redacted transaction text, and categorization only `(merchant_string, amount)`. This is what "privacy by design" means in practice, and it is now demonstrable from the architecture rather than from a retention policy. Note the trade recorded in §9: the model sees a whole statement's redacted rows, where the earlier design sent it only the ambiguous ones.
 
 Optional hardening to revisit at volume: **zero-data-retention configurations** with the LLM provider, and in-region inference endpoints if we onboard EU users.
 
@@ -542,10 +544,10 @@ The recurring cause is US surveillance law (FISA §702, EO 12333) and the absenc
 1. **Consent** — express, unbundled, nothing pre-checked: one consent for account/service, a separate one before first document upload. Consent events are **audit-logged with the policy version** consented to.
 2. **Data export** — one-click machine-readable export (JSON/CSV) of everything we hold.
 3. **Account deletion** — hard delete of documents, transactions, embeddings, chat history and derived snapshots within 30 days, propagated to backups per a written policy.
-4. **Retention enforced in code** — F2's delete-on-confirmation-or-72-hours rule, as a scheduled job, not a manual process.
-5. **Encryption** at rest and in transit everywhere; Supabase Storage bucket policies explicitly verified, not assumed.
+4. **Retention enforced in code** — ~~F2's delete-on-confirmation-or-72-hours rule, as a scheduled job~~ **withdrawn 2026-09-21: statements are never received, so there is nothing to retain or delete** (F2). Retention duties still apply in full to transactions, corrections, embeddings and chat history — covered by items 2 and 3.
+5. **Encryption** at rest and in transit everywhere. Supabase Storage holds no statements (F2); if any later feature stores a file there, its bucket policies must be explicitly verified, not assumed.
 6. **Purpose limitation in architecture** — per-household personalization only; **no cross-user model training** (locked, §9).
-7. **Log hygiene** — no document bytes, raw statement text, or unredacted account numbers in logs, traces, queue payloads or temp files (F2).
+7. **Log hygiene** — no document bytes, raw statement text, or unredacted account numbers in logs, traces, queue payloads or temp files — **on the device as well as on the server**, since extraction now runs there (F2). A crash report carrying the pre-redaction text would be the same violation, in a place that is easier to forget.
 8. **Data residency decision is deliberate** — Supabase and Render regions chosen and documented; note Law 25's transfer-assessment duty for data leaving Quebec.
 9. **Breach response plan** — detection, 72-hour notification capability, user notification templates. Written before launch.
 10. **Profiling transparency** — an in-app explanation of how AI recommendations are produced, kept advisory (supports GDPR Art. 22 and our guidance-not-advice posture, §1).
@@ -555,6 +557,6 @@ The recurring cause is US surveillance law (FISA §702, EO 12333) and the absenc
 
 - Client to budget for **privacy counsel review** before launch (§8 Q13).
 - **GLBA applicability** to be assessed before any US launch (§8 Q14).
-- Document retention preference — delete after confirmation (current spec) vs user-visible archive — remains a client decision (§8 Q7).
+- ~~Document retention preference — delete after confirmation vs user-visible archive~~ — **closed 2026-09-21**: statements are never uploaded, so neither option exists. A user-visible archive would now mean re-architecting F2 and would need its own decision (§8 Q7).
 - **Transfer paperwork before EU/UK launch:** confirm DPF status, verify each processor's UK-extension certification or execute UK Addendum/IDTA, and complete a TIA (EU) and TRA (UK).
 - **Auth identity strategy across regions** must be decided before a second region is stood up (§4.2).
