@@ -83,6 +83,7 @@ M1 follow-ups with no roadmap ticket: [Finance-backend#23](https://github.com/Hu
 - **3.1** — The API key stays on the server. Nothing in the mobile repo may hold an LLM credential; the apps call our endpoint (PRD §6, Secrets & config).
 - **3.4 / 3.7** — With no vision fallback, the review queue catches everything the model could not resolve, not only low-confidence rows. Its volume is the quality signal for the whole feature — worth a metric from day one.
 - **3.6 / 3.7 / 3.5** — **No design is provided** for the M3 screens (manager decision, 2026-09-21): build against the tokens and components M2 established. The UI standards still apply in full and are embedded in each ticket.
+- **3.1 / 3.6** — **Opt-in diagnostic text** (manager decision, 2026-09-21): on a failed or heavily-flagged import only, the user may choose to send that import's redacted text, kept 30 days, so the parser can be fixed. Never automatic, never on success, consented separately, exported and deleted with the account. It is the only thing retained from an import beyond the transactions.
 - **3.6** — Three error codes go live in the client for the first time: `403 feature_unavailable`, `409 consent_required` and `429 import_quota_exceeded`. Each needs its own copy; a quota limit rendered as "something went wrong" generates support mail.
 
 ## M4 — Money understood (F4, F6)
