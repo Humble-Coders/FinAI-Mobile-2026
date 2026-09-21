@@ -14,7 +14,7 @@ Milestone and ticket breakdown of **PRD Phase 1** (the core money loop). Milesto
 |---|---|---|---|
 | **M1** | Foundation | A signed-in user exists with a household, and both clients reach the API | §4.2, §4.4 |
 | **M2** | Onboarding | Sign up in ~30s and complete the financial setup wizard | F1 |
-| **M3** | Money in | Upload a statement and see correctly categorized transactions | F2, F3 |
+| **M3** | Money in | Import a statement and see correctly categorized transactions | F2, F3 |
 | **M4** | Money understood | See a dashboard with an auto-generated budget and health score | F4, F6 |
 | **M5** | Goals | Create and track short- and long-term goals | F5 |
 | **M6** | AI coach | Ask the chatbot about real spending and get grounded answers | F7, F8 |
@@ -58,20 +58,29 @@ M1 follow-ups with no roadmap ticket: [Finance-backend#23](https://github.com/Hu
 
 ## M3 — Money in (F2, F3)
 
+**Re-cut 2026-09-21** after the decision to extract on the device (PRD §9). The document is never uploaded: the apps pull the text out locally, redact it locally, and post a few KB of redacted text to the API, which does the LLM row structuring, dedup and categorization inside the request. Gone with that: the Supabase Storage bucket, the `pgmq` queue, the Render worker, any document-AI vendor, and the 72-hour deletion job.
+
 | # | Ticket | Repo |
 |---|---|---|
-| 3.1 | Document upload endpoint → Storage → queue enqueue; returns `queued` immediately | backend |
-| 3.2 | Extraction pipeline: document-AI table extraction → **redaction** → LLM normalization of ambiguous rows | backend |
-| 3.3 | Dedup (DB constraint + fuzzy near-match) + categorization on `(merchant, amount)` only + confidence flags | backend |
+| 3.1 | **Statement parse endpoint.** Takes redacted statement text, returns structured rows (date, description, amount, direction) with a confidence each; LLM called server-side only. Chunked so a long statement cannot monopolize a connection; quota-enforced (free tier: 1 import/month) | backend |
+| 3.2 | **On-device extraction + shared redactor.** PDF text layer (PDFKit / PdfBox-Android) with on-device OCR fallback (Apple Vision / ML Kit bundled), password-protected PDFs, and the `sharedLogic` redactor that drops names, addresses, balances and all but the last 4 of an account number before anything is sent | mobile |
+| 3.3 | Dedup (DB constraint + fuzzy near-match) + deterministic `normalized_description` + categorization on `(merchant, amount)` only + confidence flags | backend |
 | 3.4 | Review queue endpoints + correction learning (per-household rules, never cross-user) | backend |
-| 3.5 | Source-document deletion job — on user confirmation or 72h, whichever first | backend |
-| 3.6 | Upload + processing-status UI (poll/observe `document_upload.status`) | mobile |
+| ~~3.5~~ | ~~Source-document deletion job~~ — **removed**: nothing is ever received, so there is nothing to delete | — |
+| 3.6 | Import + progress UI — on-device extraction progress, then the parse call and its result | mobile |
 | 3.7 | Transaction review and correction UI | mobile |
 
 **Carry-over from M1** — fold these into the ticket when drafting it.
 
 - **3.1** — Gate with the existing `require_feature` dependency rather than new gating code; so far it is proven only on a throwaway test route. This is also the first live `403 feature_unavailable`, which the mobile client handles by tests only. *(backend `handoffs/ticket-12.md`, mobile `ticket-6.md`)*
 - **3.3** — `transaction.normalized_description` is part of the dedup key, but nothing produces it yet. It must be normalised deterministically, or dedup silently stops working. *(backend `handoffs/ticket-10.md`)*
+
+**From the 2026-09-21 decision** — fold these in too.
+
+- **3.2** — Measure the APK/IPA size increase before committing: ML Kit's bundled model is ~4 MB per script per ABI and PdfBox-Android is not small. If it lands badly, the Play Services variant of ML Kit trades size for a first-use download and a GMS dependency.
+- **3.2 / 3.6** — Express consent before the **first import** (PRD Appendix A.5 #1), covering AI processing of financial data. It is a separate consent from the account one, recorded with its policy version — the same mechanism ticket 2.1 built for signup consent.
+- **3.1** — The API key stays on the server. Nothing in the mobile repo may hold an LLM credential; the apps call our endpoint (PRD §6, Secrets & config).
+- **3.4 / 3.7** — With no vision fallback, the review queue catches everything the model could not resolve, not only low-confidence rows. Its volume is the quality signal for the whole feature — worth a metric from day one.
 
 ## M4 — Money understood (F4, F6)
 
