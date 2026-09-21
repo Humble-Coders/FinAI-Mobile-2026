@@ -63,10 +63,11 @@ M1 follow-ups with no roadmap ticket: [Finance-backend#23](https://github.com/Hu
 | # | Ticket | Repo |
 |---|---|---|
 | 3.1 | **Statement parse endpoint.** Takes redacted statement text, returns structured rows (date, description, amount, direction) with a confidence each; LLM called server-side only. Chunked so a long statement cannot monopolize a connection; quota-enforced (free tier: 1 import/month) | backend |
-| 3.2 | **On-device extraction + shared redactor.** PDF text layer (PDFKit / PdfBox-Android) with on-device OCR fallback (Apple Vision / ML Kit bundled), password-protected PDFs, and the `sharedLogic` redactor that drops names, addresses, balances and all but the last 4 of an account number before anything is sent | mobile |
-| 3.3 | Dedup (DB constraint + fuzzy near-match) + deterministic `normalized_description` + categorization on `(merchant, amount)` only + confidence flags | backend |
+| 3.2 | **On-device extraction, shared redactor and the parse repository.** PDF text layer (PDFKit / PdfBox-Android) with on-device OCR fallback (Apple Vision / ML Kit bundled), password-protected PDFs, and the `sharedLogic` redactor that drops names, addresses, balances and all but the last 4 of an account number before anything is sent | mobile |
+| 3.3 | Persist, dedup (DB constraint + fuzzy near-match), deterministic `normalized_description`, seeded category taxonomy, categorization on `(merchant, amount)` only, confidence flags — **plus minimal account create/list**, without which an import has nowhere to land | backend |
 | 3.4 | Review queue endpoints + correction learning (per-household rules, never cross-user) | backend |
 | ~~3.5~~ | ~~Source-document deletion job~~ — **removed**: nothing is ever received, so there is nothing to delete | — |
+| 3.5 | **Manual transaction entry** (new, 2026-09-21). With no vision fallback this is the only way in when a document cannot be read, so it ships in M3 rather than M4 | backend + mobile |
 | 3.6 | Import + progress UI — on-device extraction progress, then the parse call and its result | mobile |
 | 3.7 | Transaction review and correction UI | mobile |
 
@@ -81,6 +82,9 @@ M1 follow-ups with no roadmap ticket: [Finance-backend#23](https://github.com/Hu
 - **3.2 / 3.6** — Express consent before the **first import** (PRD Appendix A.5 #1), covering AI processing of financial data. It is a separate consent from the account one, recorded with its policy version — the same mechanism ticket 2.1 built for signup consent.
 - **3.1** — The API key stays on the server. Nothing in the mobile repo may hold an LLM credential; the apps call our endpoint (PRD §6, Secrets & config).
 - **3.4 / 3.7** — With no vision fallback, the review queue catches everything the model could not resolve, not only low-confidence rows. Its volume is the quality signal for the whole feature — worth a metric from day one.
+- **3.6 / 3.7 / 3.5** — **No design is provided** for the M3 screens (manager decision, 2026-09-21): build against the tokens and components M2 established. The UI standards still apply in full and are embedded in each ticket.
+- **3.1 / 3.6** — **Opt-in diagnostic text** (manager decision, 2026-09-21): on a failed or heavily-flagged import only, the user may choose to send that import's redacted text, kept 30 days, so the parser can be fixed. Never automatic, never on success, consented separately, exported and deleted with the account. It is the only thing retained from an import beyond the transactions.
+- **3.6** — Three error codes go live in the client for the first time: `403 feature_unavailable`, `409 consent_required` and `429 import_quota_exceeded`. Each needs its own copy; a quota limit rendered as "something went wrong" generates support mail.
 
 ## M4 — Money understood (F4, F6)
 
