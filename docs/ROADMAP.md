@@ -63,10 +63,11 @@ M1 follow-ups with no roadmap ticket: [Finance-backend#23](https://github.com/Hu
 | # | Ticket | Repo |
 |---|---|---|
 | 3.1 | **Statement parse endpoint.** Takes redacted statement text, returns structured rows (date, description, amount, direction) with a confidence each; LLM called server-side only. Chunked so a long statement cannot monopolize a connection; quota-enforced (free tier: 1 import/month) | backend |
-| 3.2 | **On-device extraction + shared redactor.** PDF text layer (PDFKit / PdfBox-Android) with on-device OCR fallback (Apple Vision / ML Kit bundled), password-protected PDFs, and the `sharedLogic` redactor that drops names, addresses, balances and all but the last 4 of an account number before anything is sent | mobile |
-| 3.3 | Dedup (DB constraint + fuzzy near-match) + deterministic `normalized_description` + categorization on `(merchant, amount)` only + confidence flags | backend |
+| 3.2 | **On-device extraction, shared redactor and the parse repository.** PDF text layer (PDFKit / PdfBox-Android) with on-device OCR fallback (Apple Vision / ML Kit bundled), password-protected PDFs, and the `sharedLogic` redactor that drops names, addresses, balances and all but the last 4 of an account number before anything is sent | mobile |
+| 3.3 | Persist, dedup (DB constraint + fuzzy near-match), deterministic `normalized_description`, seeded category taxonomy, categorization on `(merchant, amount)` only, confidence flags — **plus minimal account create/list**, without which an import has nowhere to land | backend |
 | 3.4 | Review queue endpoints + correction learning (per-household rules, never cross-user) | backend |
 | ~~3.5~~ | ~~Source-document deletion job~~ — **removed**: nothing is ever received, so there is nothing to delete | — |
+| 3.5 | **Manual transaction entry** (new, 2026-09-21). With no vision fallback this is the only way in when a document cannot be read, so it ships in M3 rather than M4 | backend + mobile |
 | 3.6 | Import + progress UI — on-device extraction progress, then the parse call and its result | mobile |
 | 3.7 | Transaction review and correction UI | mobile |
 
@@ -81,6 +82,9 @@ M1 follow-ups with no roadmap ticket: [Finance-backend#23](https://github.com/Hu
 - **3.2 / 3.6** — Express consent before the **first import** (PRD Appendix A.5 #1), covering AI processing of financial data. It is a separate consent from the account one, recorded with its policy version — the same mechanism ticket 2.1 built for signup consent.
 - **3.1** — The API key stays on the server. Nothing in the mobile repo may hold an LLM credential; the apps call our endpoint (PRD §6, Secrets & config).
 - **3.4 / 3.7** — With no vision fallback, the review queue catches everything the model could not resolve, not only low-confidence rows. Its volume is the quality signal for the whole feature — worth a metric from day one.
+- **3.6 / 3.7 / 3.5** — **No design is provided** for the M3 screens (manager decision, 2026-09-21): build against the tokens and components M2 established. The UI standards still apply in full and are embedded in each ticket.
+- **3.1 / 3.6** — **Opt-in diagnostic text** (manager decision, 2026-09-21): on a failed or heavily-flagged import only, the user may choose to send that import's redacted text, kept 30 days, so the parser can be fixed. Never automatic, never on success, consented separately, exported and deleted with the account. It is the only thing retained from an import beyond the transactions.
+- **3.6** — Five error codes go live in the client for the first time: `403 feature_unavailable`, `409 consent_required`, `429 import_quota_exceeded`, and two 413s — `statement_too_long` and `too_many_transactions`. Each needs its own copy; a quota limit rendered as "something went wrong" generates support mail.
 
 ## M4 — Money understood (F4, F6)
 
@@ -131,6 +135,7 @@ M1 follow-ups with no roadmap ticket: [Finance-backend#23](https://github.com/Hu
 Not tied to a milestone — each must be done before real users sign up.
 
 - **SMS provider.** Development signs in with Supabase test phone numbers, and the provider credentials are placeholders. Connect a real provider **and** remove or expire every test number — a test number with a fixed code is a sign-in path for anyone who knows it. *(mobile `handoffs/ticket-6.md`)*
+- **Scheduled purge of diagnostic text.** Expiry is enforced on the import path: every parse request deletes what has expired. That is honest and needs no cron, but it means expired text survives until *somebody* imports — fine at volume, an overhang of days when there are few users. Appendix A.5 says 30 days, so before launch this needs a scheduled sweep, or the wording needs to change. The claim and the code must not drift apart.
 - **LLM tier.** Development runs on a **free-tier API key** (manager decision, 2026-09-21), whose terms generally permit the provider to train on the inputs — which Appendix A.3 forbids for this data. The free key may only ever see synthetic fixtures. **Before a single real user's statement is parsed, swap to a paid, no-training API tier** and re-read that provider's terms. The client reads provider and model from settings, so the swap is configuration, not a release.
 - **Staging.** Migrations run straight against production; there is no staging database. That has been safe only because there is no user data yet. *(backend `handoffs/ticket-10.md`, `ticket-15.md`)*
 - **Branch protection.** CI is advisory in both repos until `main` requires its checks: backend `test` + `database` (free — the repo is public); mobile `Android` + `iOS` (needs the repo public or a paid plan). *(mobile `handoffs/ticket-8.md`, backend `handoffs/ticket-15.md`)*
