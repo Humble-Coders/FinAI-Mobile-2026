@@ -109,7 +109,13 @@ final class IOSStatementReader {
 
         for raw in text.components(separatedBy: .newlines) {
             let line = raw.trimmingCharacters(in: .whitespaces)
-            let length = raw.count
+            // UTF-16 units, not Characters: `characterBounds(at:)` and
+            // `numberOfCharacters` index UTF-16, and the two agree only for
+            // ASCII. A decomposed accent — `E` + combining acute, which PDFs
+            // carry routinely and French statements are full of — is one
+            // Character and two UTF-16 units, so counting Characters drifts
+            // the index and every later line on the page gets the wrong box.
+            let length = raw.utf16.count
             defer { characterIndex += length + 1 }
             guard !line.isEmpty, characterIndex < page.numberOfCharacters else { continue }
 

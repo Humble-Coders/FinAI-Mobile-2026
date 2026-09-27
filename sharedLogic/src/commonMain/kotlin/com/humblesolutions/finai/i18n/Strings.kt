@@ -179,6 +179,8 @@ object Strings {
     const val statement_unsupported = "statement_unsupported" // "We cannot read this kind of file. Import a PDF, or a photo or screenshot of the statement."
     const val statement_nothing_readable = "statement_nothing_readable" // "We opened the file but found no text in it. If it is a photo, try a sharper one in better light."
     const val statement_too_long = "statement_too_long" // "This statement is too long to import at once. Import one month at a time."
+    const val statement_too_many_pages = "statement_too_many_pages" // "This statement has too many pages to import at once. Import one month at a time."
+    const val statement_no_transactions = "statement_no_transactions" // "We could not find any transactions on this statement. If it is a photo, try a sharper one in better light."
     const val statement_reading_page = "statement_reading_page" // "Reading page {0} of {1}…"
 
     // Throwaway demo screen (ticket #6), replaced in M2.

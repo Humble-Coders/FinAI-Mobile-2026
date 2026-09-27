@@ -164,6 +164,67 @@ class ImportStatementTest {
     }
 
     @Test
+    fun tooManyPagesIsRefusedBeforeAnyRequest() = runTest {
+        val imports = FakeImports()
+        val pages = (0..StatementLimits.MAX_PAGES).map {
+            ExtractedPage(index = it, lines = listOf(ExtractedLine(text = transaction)))
+        }
+
+        val refused = assertFailsWith<StatementTooManyPages> {
+            ImportStatement(imports).execute(ExtractedDocument(pages = pages))
+        }
+
+        assertNull(imports.sent, "an over-paged statement must not be sent")
+        assertEquals(StatementLimits.MAX_PAGES + 1, refused.pages)
+        assertEquals(StatementLimits.MAX_PAGES, refused.limit)
+    }
+
+    @Test
+    fun pagesAreRefusedBeforeLengthSoTheAdviceIsActionable() = runTest {
+        // A statement can fail both bounds. Pages is the one a person can do
+        // something about, so it is the one they are told about.
+        val imports = FakeImports()
+        val long = "14 Aug  " + "SPOTIFY ".repeat(StatementLimits.MAX_TEXT_CHARS / 8) + " 10.99"
+        val pages = (0..StatementLimits.MAX_PAGES).map {
+            ExtractedPage(index = it, lines = listOf(ExtractedLine(text = long)))
+        }
+
+        assertFailsWith<StatementTooManyPages> {
+            ImportStatement(imports).execute(ExtractedDocument(pages = pages))
+        }
+        assertNull(imports.sent)
+    }
+
+    @Test
+    fun aStatementWithNoTransactionsSaysSoRatherThanPostingNothing() = runTest {
+        // Page 1 with nothing that reads as a transaction redacts to "", and
+        // the server refuses empty text with a validation error that means
+        // nothing to a person.
+        val imports = FakeImports()
+
+        val refused = assertFailsWith<StatementHasNothingToSend> {
+            ImportStatement(imports).execute(statement("ROYAL BANK OF CANADA", "JANE DOE"))
+        }
+
+        assertNull(imports.sent, "empty text must never be posted")
+        assertEquals(2, refused.droppedLines, "the count is the only explanation there is")
+    }
+
+    @Test
+    fun everyLocalRefusalIsOneTypeAScreenCanCatch() {
+        // A screen that handles two of these and forgets the third is the
+        // failure this interface exists to prevent.
+        val refusals: List<StatementRefusal> = listOf(
+            StatementTooLong(StatementLimits.MAX_TEXT_CHARS + 1),
+            StatementTooManyPages(StatementLimits.MAX_PAGES + 1),
+            StatementHasNothingToSend(3),
+        )
+
+        assertEquals(refusals.size, refusals.map { it.messageKey }.toSet().size)
+        assertTrue(refusals.all { it.messageKey.isNotBlank() })
+    }
+
+    @Test
     fun theCallerIsToldHowMuchWasDropped() = runTest {
         val imports = FakeImports()
         var redaction: StatementRedactor.Redaction? = null

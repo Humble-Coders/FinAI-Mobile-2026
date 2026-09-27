@@ -36,7 +36,7 @@ backend omits a row it cannot date rather than guessing one.
 | `iosApp/iosApp/repository/IOSStatementReader.swift` | The same three paths with PDFKit and Vision. |
 
 ### Tests
-`StatementRedactorTest` (22), `StatementPeriodTest` (11), `ImportStatementTest` (8),
+`StatementRedactorTest` (22), `StatementPeriodTest` (11), `ImportStatementTest` (12),
 `AndroidStatementReaderTest` (10, Robolectric, `@Config(sdk = [34])`).
 
 ## How to test
@@ -182,6 +182,33 @@ re-read the round-3 change.
 Mutation-checked: taking the dates in matched order and dropping the calendar
 check fails exactly the four tests named for those shapes.
 
+## Review fixes (round 5)
+
+Review checked the wire contract against the backend's own schema for the first
+time. `source_kind`'s values and `MAX_TEXT_CHARS` agree exactly; two bounds the
+server enforces were unknown to the device.
+
+1. **An over-paged statement was sent and refused.** `page_count` is
+   `Field(ge=1, le=500)` in `StatementParseIn`, and the device checked only text
+   length — so a 501-page scan was fully OCR'd, then 422'd. That is the wait the
+   local text check exists to prevent, and on the OCR path it is minutes.
+   `StatementLimits.MAX_PAGES` now sits beside `MAX_TEXT_CHARS`, checked first,
+   because pages is the bound a person can act on.
+2. **Empty text was posted.** `text` is `Field(min_length=1)`. Redaction returns
+   `""` when page 1 holds nothing that reads as a transaction and there are no
+   later pages, and the server answered with a validation error that means
+   nothing to a reader. The device now says so itself, using the dropped-line
+   count added in round 1 — which is what that count was for.
+3. **iOS line boxes drifted on accented text.** `raw.count` counts Characters
+   while `characterBounds(at:)` indexes UTF-16; they agree only for ASCII. A
+   decomposed accent is one Character and two UTF-16 units, so on a French
+   statement the index slipped and every later line on the page took the wrong
+   box. Latent — nothing reads the coordinates yet and they never reach the
+   wire — and now correct.
+
+The three local refusals share a `StatementRefusal` interface, so a screen
+cannot handle two of them and forget the third.
+
 ## Verify OCR by hand
 
 The two paths no test can reach, on a device or emulator:
@@ -243,7 +270,7 @@ On iOS the cost is **zero**: PDFKit and Vision are system frameworks.
 
 ## Verification
 
-`:sharedLogic:testAndroidHostTest` 179 tests, `:androidApp:testDebugUnitTest` 32 tests,
+`:sharedLogic:testAndroidHostTest` 183 tests, `:androidApp:testDebugUnitTest` 32 tests,
 and the iOS workspace build — all green on CI run 36317571132, which ran
 `:sharedLogic:syncFramework` and compiled `IOSStatementReader.swift`.
 

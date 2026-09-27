@@ -51,6 +51,8 @@ class ImportStatement(
      */
     @Throws(
         StatementTooLong::class,
+        StatementTooManyPages::class,
+        StatementHasNothingToSend::class,
         ApiException::class,
         CancellationException::class,
     )
@@ -64,7 +66,13 @@ class ImportStatement(
         val text = redaction.text
         onRedacted(redaction)
 
+        tooManyPages(document.pages.size)?.let { throw it }
         tooLong(text)?.let { throw it }
+        // Everything was dropped. The server refuses empty text with a
+        // validation error that means nothing to a person, so say the useful
+        // thing here instead — and it is knowable here, which is the point of
+        // counting what redaction threw away.
+        if (text.isEmpty()) throw StatementHasNothingToSend(redaction.droppedLines)
 
         return imports.parse(
             StatementUpload(
@@ -91,6 +99,14 @@ class ImportStatement(
             } else {
                 null
             }
+
+        /** The companion to [tooLong], read the same way and by the same screens. */
+        fun tooManyPages(pages: Int): StatementTooManyPages? =
+            if (pages > StatementLimits.MAX_PAGES) {
+                StatementTooManyPages(pages)
+            } else {
+                null
+            }
     }
 }
 
@@ -101,9 +117,48 @@ class ImportStatement(
  * it tells the user what to do about it rather than quoting a character count
  * at them.
  */
+/**
+ * Why the device did not send a statement, in a form a screen can act on.
+ *
+ * One type to catch for every local refusal, so a screen cannot handle two of
+ * them and forget the third.
+ */
+interface StatementRefusal {
+    /** The string to show. Never a character count quoted at the user. */
+    val messageKey: String
+}
+
+/** The redacted text is longer than `POST /statements/parse` accepts. */
 class StatementTooLong(
     val characters: Int,
     val limit: Int = StatementLimits.MAX_TEXT_CHARS,
-) : Exception("statement too long") {
-    val messageKey: String get() = Strings.statement_too_long
+) : Exception("statement too long"), StatementRefusal {
+    override val messageKey: String get() = Strings.statement_too_long
+}
+
+/**
+ * More pages than the endpoint accepts.
+ *
+ * Checked before the request and, deliberately, before the text length: a
+ * statement can fail both, and pages is the one a person can act on by
+ * importing a shorter range.
+ */
+class StatementTooManyPages(
+    val pages: Int,
+    val limit: Int = StatementLimits.MAX_PAGES,
+) : Exception("statement has too many pages"), StatementRefusal {
+    override val messageKey: String get() = Strings.statement_too_many_pages
+}
+
+/**
+ * Redaction left nothing to send — no line on the statement read as a
+ * transaction.
+ *
+ * Carries [droppedLines] because the count is the only thing that explains it,
+ * and a count is safe to show where the text is not.
+ */
+class StatementHasNothingToSend(
+    val droppedLines: Int = 0,
+) : Exception("nothing to send"), StatementRefusal {
+    override val messageKey: String get() = Strings.statement_no_transactions
 }

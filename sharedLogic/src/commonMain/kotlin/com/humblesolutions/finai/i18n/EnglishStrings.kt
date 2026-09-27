@@ -140,6 +140,8 @@ val EnglishStrings: Map<String, String> = mapOf(
     Strings.statement_unsupported to "We cannot read this kind of file. Import a PDF, or a photo or screenshot of the statement.",
     Strings.statement_nothing_readable to "We opened the file but found no text in it. If it is a photo, try a sharper one in better light.",
     Strings.statement_too_long to "This statement is too long to import at once. Import one month at a time.",
+    Strings.statement_too_many_pages to "This statement has too many pages to import at once. Import one month at a time.",
+    Strings.statement_no_transactions to "We could not find any transactions on this statement. If it is a photo, try a sharper one in better light.",
     Strings.statement_reading_page to "Reading page {0} of {1}…",
     Strings.demo_title to "API check",
     Strings.demo_phone_label to "Test phone number",
