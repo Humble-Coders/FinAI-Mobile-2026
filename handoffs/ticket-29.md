@@ -53,7 +53,7 @@ cd iosApp && xcodebuild -workspace iosApp.xcworkspace -scheme iosApp \
 | Criterion | Status |
 |---|---|
 | Text-layer PDF → one line per statement line, in order, with coordinates, `PDF_TEXT` | **met** — `aPdfWithATextLayerIsReadWithoutOcr`, `everyStatementLineComesBackInReadingOrder`, `linesCarryTheirPositionOnThePage` |
-| Scanned PDF and PNG go through OCR | **met on Android**; iOS path written but see *Not verified* |
+| Scanned PDF and PNG go through OCR | **met on Android** by test; the iOS path compiles but has no automated test (no Vision test harness) |
 | Redactor tests table-driven; transaction lines survive untouched; no commas in names | **met** — `StatementRedactorTest` |
 | Wire text has no digit run > 4, no email, no postal code | **met** — asserted on `StatementUpload.text` in `theUploadCarriesNothingBeyondTheAgreedFields` |
 | Over-limit text refused on the device before any request | **met** — `textOverTheLimitIsRefusedBeforeAnyRequest` asserts nothing was sent |
@@ -61,7 +61,7 @@ cd iosApp && xcodebuild -workspace iosApp.xcworkspace -scheme iosApp \
 | Password-protected PDF: unlocks, clear error, never sent | **partly met** — the password cannot reach the request (it is not a parameter of `ImportStatement`), and the wrong-password error is typed. **There is no test that a real encrypted PDF unlocks.** |
 | 20-page read never blocks the main thread; progress per page | **met** — `readingProgressIsReportedPerPage`; both readers take an `onPage` callback |
 | Nothing logs page text, a line, or the redacted string | **met** — no logging call of any kind in the statement code |
-| Android + shared tests pass and iOS `xcodebuild` succeeds | **partly** — see *Not verified* |
+| Android + shared tests pass and iOS `xcodebuild` succeeds | **met** — 161 shared, 28 Android, and CI's iOS job green (run 36317571132) |
 
 ## Deviations / decisions
 
@@ -106,20 +106,20 @@ variant and revisiting if install size becomes a conversion problem.
 
 On iOS the cost is **zero**: PDFKit and Vision are system frameworks.
 
-## Not verified / follow-ups
+## Verification
 
-1. **The iOS build has not been re-run since the shared layer changed.** The
-   workspace build succeeded earlier in the session (`** BUILD SUCCEEDED **`, with
-   `IOSStatementReader.o` emitted, so the Swift really compiled), but
-   `ImportStatement.kt` was restructured after that. The Kotlin compiles for
-   Android; what is unproven is SKIE codegen over the new class. **Re-run the
-   `xcodebuild` command above before merging.**
-2. **The release APK could not be built** — the build host ran out of disk
+`:sharedLogic:testAndroidHostTest` 161 tests, `:androidApp:testDebugUnitTest` 28 tests,
+and the iOS workspace build — all green on CI run 36317571132, which ran
+`:sharedLogic:syncFramework` and compiled `IOSStatementReader.swift`.
+
+## Follow-ups
+
+1. **The release APK could not be built** — the build host ran out of disk
    (`D8: java.io.IOException: No space left on device`). Not a code fault. Run
    `./gradlew :androidApp:assembleRelease` on a machine with space to get the
    release size.
-3. **No test unlocks a real encrypted PDF.** A fixture that guessed at
+2. **No test unlocks a real encrypted PDF.** A fixture that guessed at
    PdfBox-Android's encryption API was removed rather than left asserting nothing.
    Worth adding a generated encrypted fixture.
-4. **Nothing calls `ImportStatement` yet** — the picker, progress and results UI
+3. **Nothing calls `ImportStatement` yet** — the picker, progress and results UI
    are ticket 3.6, which this unblocks.
