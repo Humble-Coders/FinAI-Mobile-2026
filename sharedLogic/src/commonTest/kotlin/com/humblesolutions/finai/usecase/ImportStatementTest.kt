@@ -126,7 +126,19 @@ class ImportStatementTest {
         val imports = FakeImports()
 
         ImportStatement(imports).execute(
-            statement("JANE DOE", "jane@example.com", "M5V 3A8", header, transaction),
+            statement(
+                "JANE DOE",
+                "jane@example.com",
+                "M5V 3A8",
+                header,
+                transaction,
+                // Identifiers of the lengths that used to slip through: the
+                // rule masked at seven digits while the wire is checked at
+                // five, and the fixture happened to contain neither.
+                "15 Aug  E-TRANSFER 12345                  25.00",
+                "16 Aug  PURCHASE REF 123456               10.99",
+                "17 Aug  CHQ 1234567 10.99",
+            ),
         )
 
         // Asserted on the object that goes on the wire, not on an intermediate:
@@ -134,9 +146,35 @@ class ImportStatementTest {
         val sent = assertNotNull(imports.sent)
         assertFalse(sent.text.contains("jane@example.com"), "email line dropped")
         assertFalse(sent.text.contains("M5V 3A8"), "postal code line dropped")
+        assertFalse(sent.text.contains("12345"), "five-digit run survived")
+        assertFalse(sent.text.contains("123456"), "six-digit run survived")
+        assertFalse(sent.text.contains("1234567"), "seven-digit run survived")
+
+        // Amounts are not identifiers, so they are taken out before the run is
+        // measured, and the run is measured inside a token — a masked tail
+        // printed next to an amount is not one long number.
+        val withoutAmounts = Regex("""\d[\d,]*\.\d{2}""").replace(sent.text, " ")
         assertFalse(
-            Regex("""\d(?:[ -]?\d){4,}""").containsMatchIn(sent.text),
-            "no digit run longer than 4 may survive",
+            Regex("""\d(?:-?\d){4,}""").containsMatchIn(withoutAmounts),
+            "no digit run longer than 4 may survive: ${sent.text}",
         )
+        // ...and no amount was rewritten on the way.
+        assertTrue(sent.text.contains("10.99"), "an amount was altered: ${sent.text}")
+        assertTrue(sent.text.contains("25.00"), "an amount was altered: ${sent.text}")
+    }
+
+    @Test
+    fun theCallerIsToldHowMuchWasDropped() = runTest {
+        val imports = FakeImports()
+        var redaction: StatementRedactor.Redaction? = null
+
+        ImportStatement(imports).execute(
+            statement("JANE DOE", "55 Main St", header, transaction),
+            onRedacted = { redaction = it },
+        )
+
+        // Three header lines sit above the first transaction and are dropped;
+        // a silent short import is the one failure nothing else reveals.
+        assertEquals(3, assertNotNull(redaction).droppedLines)
     }
 }

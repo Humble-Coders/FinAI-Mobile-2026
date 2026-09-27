@@ -40,6 +40,10 @@ class ImportStatement(
      *        redaction of it is.
      * @param accountId the account these rows belong to, when the user has
      *        already chosen one.
+     * @param onRedacted the redaction and what it discarded, before the
+     *        request goes out. A dropped line is the one outcome that is
+     *        otherwise invisible — the import simply comes up short — and a
+     *        count is safe to surface where the text is not.
      *
      * @throws StatementTooLong the redacted text is over what the API accepts;
      *         thrown **before** any request, so the user is not made to wait
@@ -53,9 +57,12 @@ class ImportStatement(
     suspend fun execute(
         document: ExtractedDocument,
         accountId: String? = null,
+        onRedacted: (StatementRedactor.Redaction) -> Unit = {},
     ): ParsedStatement {
         val period = StatementPeriod.find(document)
-        val text = StatementRedactor.redact(document)
+        val redaction = StatementRedactor.of(document)
+        val text = redaction.text
+        onRedacted(redaction)
 
         tooLong(text)?.let { throw it }
 

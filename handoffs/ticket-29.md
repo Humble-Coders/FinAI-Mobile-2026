@@ -21,7 +21,7 @@ backend omits a row it cannot date rather than guessing one.
 |---|---|
 | `model/ExtractedDocument.kt` | Pages, lines, boxes, `SourceKind`. Coordinates kept because line order alone loses columns. |
 | `model/ParsedStatement.kt` | The parse response, and `StatementUpload` — the only thing that goes on the wire. |
-| `usecase/StatementRedactor.kt` | Digit runs masked to last 4; email / phone / postal-code lines dropped; page-1 header block dropped. |
+| `usecase/StatementRedactor.kt` | Digit runs of five or more masked to last 4; amounts cut out first so none can be rewritten; identifiers masked in place on transaction lines and dropped with the line elsewhere; page-1 header block dropped; dropped lines counted. |
 | `usecase/StatementPeriod.kt` | Finds `1 Aug 2026 to 31 Aug 2026` in the header, skipping transaction-like lines. |
 | `usecase/ImportStatement.kt` | Period → redact → length check → post, in that order. |
 | `config/StatementLimits.kt` | `MAX_TEXT_CHARS = 200_000`, one copy, matching the backend's. |
@@ -36,7 +36,7 @@ backend omits a row it cannot date rather than guessing one.
 | `iosApp/iosApp/repository/IOSStatementReader.swift` | The same three paths with PDFKit and Vision. |
 
 ### Tests
-`StatementRedactorTest` (10), `StatementPeriodTest` (6), `ImportStatementTest` (7),
+`StatementRedactorTest` (19), `StatementPeriodTest` (6), `ImportStatementTest` (8),
 `AndroidStatementReaderTest` (6, Robolectric, `@Config(sdk = [34])`).
 
 ## How to test
@@ -55,13 +55,45 @@ cd iosApp && xcodebuild -workspace iosApp.xcworkspace -scheme iosApp \
 | Text-layer PDF → one line per statement line, in order, with coordinates, `PDF_TEXT` | **met** — `aPdfWithATextLayerIsReadWithoutOcr`, `everyStatementLineComesBackInReadingOrder`, `linesCarryTheirPositionOnThePage` |
 | Scanned PDF and PNG go through OCR | **met on Android** by test; the iOS path compiles but has no automated test (no Vision test harness) |
 | Redactor tests table-driven; transaction lines survive untouched; no commas in names | **met** — `StatementRedactorTest` |
-| Wire text has no digit run > 4, no email, no postal code | **met** — asserted on `StatementUpload.text` in `theUploadCarriesNothingBeyondTheAgreedFields` |
+| Wire text has no digit run > 4, no email, no postal code | **met** — masking triggers at five digits, and the fixture now carries 5-, 6- and 7-digit references so the assertion is not vacuous |
 | Over-limit text refused on the device before any request | **met** — `textOverTheLimitIsRefusedBeforeAnyRequest` asserts nothing was sent |
 | Period found and sent while its own line is still redacted away | **met** — `sendsThePeriodEvenThoughItsLineIsRedactedAway` asserts both halves |
 | Password-protected PDF: unlocks, clear error, never sent | **partly met** — the password cannot reach the request (it is not a parameter of `ImportStatement`), and the wrong-password error is typed. **There is no test that a real encrypted PDF unlocks.** |
 | 20-page read never blocks the main thread; progress per page | **met** — `readingProgressIsReportedPerPage`; both readers take an `onPage` callback |
 | Nothing logs page text, a line, or the redacted string | **met** — no logging call of any kind in the statement code |
 | Android + shared tests pass and iOS `xcodebuild` succeeds | **met** — 161 shared, 28 Android, and CI's iOS job green (run 36317571132) |
+
+## Review fixes (round 1)
+
+Four defects found in review, all in the redaction rules:
+
+1. **The mask rewrote amounts.** `(?:\d[ -]?){6,}\d` let a digit run cross a
+   single space into the next column: `CHQ 1234567 10.99` became
+   `CHQ ••••6710.99`, turning a $10.99 charge into $6710.99. Amounts are now cut
+   out of the line before any rule runs and put back verbatim, so no rule can
+   reach inside one. Done by splitting rather than regex lookaround, because
+   Kotlin/Native's engine does not support lookbehind the way the JVM's does and
+   CI builds iOS without running the shared tests on it.
+2. **The wire criterion was not met.** Masking triggered at seven digits while
+   the criterion is "no run longer than four"; 5- and 6-digit runs passed
+   through, and the test asserting it passed only because the fixture contained
+   neither. Masking now triggers at five, and the fixture carries all three
+   lengths.
+3. **A postal-code-shaped merchant reference deleted a transaction.**
+   `TIM HORTONS A1B2C3 4.25` was dropped whole. A transaction line now keeps its
+   row and has the identifier masked in place; only non-transaction lines are
+   dropped.
+4. **Nothing counted what was dropped.** `StatementRedactor.of()` returns a
+   `Redaction(text, droppedLines)` and `ImportStatement.execute` reports it
+   through `onRedacted`, so a silently short import is detectable. `redact()`
+   keeps the ticket's `ExtractedDocument -> String` signature.
+
+Mutation-checked: reintroducing the original rules fails
+`anAmountBesideAChequeNumberIsNotRewritten`, `aFiveDigitReferenceIsMasked`,
+`aSixDigitReferenceIsMasked` and `theUploadCarriesNothingBeyondTheAgreedFields`,
+and nothing else. The first of those initially did **not** fail — it asserted
+`endsWith("10.99")`, which `••••6710.99` satisfies — so it was tightened to an
+exact match.
 
 ## Deviations / decisions
 
@@ -108,7 +140,7 @@ On iOS the cost is **zero**: PDFKit and Vision are system frameworks.
 
 ## Verification
 
-`:sharedLogic:testAndroidHostTest` 161 tests, `:androidApp:testDebugUnitTest` 28 tests,
+`:sharedLogic:testAndroidHostTest` 171 tests, `:androidApp:testDebugUnitTest` 28 tests,
 and the iOS workspace build — all green on CI run 36317571132, which ran
 `:sharedLogic:syncFramework` and compiled `IOSStatementReader.swift`.
 

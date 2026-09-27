@@ -14,20 +14,30 @@ import com.humblesolutions.finai.model.ExtractedDocument
  * implementations of a decision drift, and this drift would be invisible until
  * somebody's address reached a model.
  *
- * Both directions are failures. Leaving an account number in breaks a promise;
- * dropping a transaction line means the user's statement imports short and
- * nothing says so. The tests assert both.
+ * Three ways to fail, and the tests assert all three. Leaving an account number
+ * in breaks a promise. Dropping a transaction line means the statement imports
+ * short and nothing says so. **Altering an amount is the worst of the three** —
+ * a wrong number that looks right is not caught by anyone downstream.
  */
 object StatementRedactor {
 
-    // Seven digits is long enough to be an account or card number and long
-    // enough that no amount reaches it — `1234.56` is six.
-    private val LONG_DIGIT_RUN = Regex("""(?:\d[ -]?){6,}\d""")
+    // Five digits is the bar, because that is what the wire is checked
+    // against: nothing longer than four digits may survive. A hyphen inside a
+    // token is allowed (`06012-5004321`); a SPACE is not, and that is the
+    // whole point — `(?:\d[ -]?){6,}\d` once matched `1234567 10` in
+    // `CHQ 1234567 10.99` and rewrote the amount as 6710.99.
+    private val TOKEN_DIGIT_RUN = Regex("""\d(?:-?\d){4,}""")
+
+    // A card number written in spaced groups. Exactly four digits per group
+    // and three groups at least, so a cheque number beside its amount can
+    // never qualify.
+    private val GROUPED_DIGIT_RUN = Regex("""\b\d{4}(?:[ -]\d{4}){2,}\b""")
+
     private val EMAIL = Regex("""[\w.+-]+@[\w-]+\.[\w.]+""")
     private val PHONE =
         Regex("""\b(?:\+?1[ -]?)?(?:\(\d{3}\)|\d{3})[ -]\d{3}[ -]\d{4}\b""")
 
-    // The trailing boundary matters: without it this also matches the `P3A4B5`
+    // The trailing boundary matters: without it this also matches the `A4B5C6`
     // inside `SPOTIFY P3A4B5C6`, which is a transaction, not an address.
     private val POSTAL_CODE = Regex("""\b[A-Za-z]\d[A-Za-z][ -]?\d[A-Za-z]\d\b""")
 
@@ -39,9 +49,23 @@ object StatementRedactor {
     private val DATE =
         Regex("""\b(\d{1,2}[/-]\d{1,2}|\d{1,2}\s?[A-Za-z]{3,}|[A-Za-z]{3,}\s?\d{1,2})\b""")
 
+    private const val MASK = "••••"
+
     /** Whether a line reads as a transaction: a date and an amount together. */
     fun looksLikeATransaction(line: String): Boolean =
         AMOUNT.containsMatchIn(line) && DATE.containsMatchIn(line)
+
+    /**
+     * What redaction produced, and what it cost.
+     *
+     * [droppedLines] exists because every other outcome of this function is
+     * visible and a dropped line is not: the import simply comes up short. A
+     * count is safe to log — it is not text (Appendix A.5 #7).
+     */
+    data class Redaction(
+        val text: String = "",
+        val droppedLines: Int = 0,
+    )
 
     /**
      * The text that goes on the wire, and nothing else.
@@ -49,8 +73,12 @@ object StatementRedactor {
      * Call [StatementPeriod.find] on the same document **first** — the header
      * block this drops is where the year is.
      */
-    fun redact(document: ExtractedDocument): String {
+    fun redact(document: ExtractedDocument): String = of(document).text
+
+    /** [redact], plus the count of what it threw away. */
+    fun of(document: ExtractedDocument): Redaction {
         val kept = mutableListOf<String>()
+        var dropped = 0
 
         for (page in document.pages) {
             val lines = page.lines.map { it.text }
@@ -63,22 +91,64 @@ object StatementRedactor {
                 if (page.index == 0) lines.indexOfFirst { looksLikeATransaction(it) }
                 else 0
 
-            if (start < 0) continue
+            if (start < 0) {
+                dropped += lines.size
+                continue
+            }
+            dropped += start
 
             for (line in lines.drop(start)) {
-                if (EMAIL.containsMatchIn(line)) continue
-                if (PHONE.containsMatchIn(line)) continue
-                if (POSTAL_CODE.containsMatchIn(line)) continue
-                kept += maskLongDigits(line)
+                // A transaction line is never dropped for carrying an
+                // identifier — an e-transfer names an email, and a merchant
+                // reference can be shaped exactly like a postal code. Losing
+                // the row hides money; masking the identifier does not.
+                if (!looksLikeATransaction(line) && carriesAnIdentifier(line)) {
+                    dropped++
+                    continue
+                }
+                kept += mask(line)
             }
         }
-        return kept.joinToString("\n").trim()
+        return Redaction(text = kept.joinToString("\n").trim(), droppedLines = dropped)
     }
 
+    private fun carriesAnIdentifier(line: String): Boolean =
+        EMAIL.containsMatchIn(line) ||
+            PHONE.containsMatchIn(line) ||
+            POSTAL_CODE.containsMatchIn(line)
+
     /** `06012-5004321` becomes `••••4321`: enough to recognise, not to use. */
-    private fun maskLongDigits(line: String): String =
-        LONG_DIGIT_RUN.replace(line) { match ->
-            val digits = match.value.filter { it.isDigit() }
-            "••••" + digits.takeLast(4)
+    private fun mask(line: String): String {
+        // Amounts are cut out of the line before anything is masked and put
+        // back verbatim. No identifier rule can reach inside one, so no rule
+        // can quietly turn 10.99 into 6710.99 — a wrong number that looks
+        // right is the one failure nobody downstream catches.
+        //
+        // Done by splitting rather than by regex lookaround on purpose:
+        // Kotlin/Native's regex engine does not support lookbehind the way the
+        // JVM's does, and CI builds iOS without running the shared tests on
+        // it, so a lookaround that worked on the JVM could fail only on a
+        // user's phone.
+        val out = StringBuilder()
+        var last = 0
+        for (amount in AMOUNT.findAll(line)) {
+            out.append(maskIdentifiers(line.substring(last, amount.range.first)))
+            out.append(amount.value)
+            last = amount.range.last + 1
         }
+        out.append(maskIdentifiers(line.substring(last)))
+        return out.toString()
+    }
+
+    /** Masks everything identifying in a stretch of line that holds no amount. */
+    private fun maskIdentifiers(segment: String): String {
+        var masked = EMAIL.replace(segment, MASK)
+        masked = PHONE.replace(masked, MASK)
+        masked = POSTAL_CODE.replace(masked, MASK)
+        masked = GROUPED_DIGIT_RUN.replace(masked) { lastFour(it.value) }
+        return TOKEN_DIGIT_RUN.replace(masked) { lastFour(it.value) }
+    }
+
+    private fun lastFour(run: String): String =
+        MASK + run.filter { it.isDigit() }.takeLast(4)
 }
