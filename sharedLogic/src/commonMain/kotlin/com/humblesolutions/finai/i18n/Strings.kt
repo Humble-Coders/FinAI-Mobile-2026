@@ -172,6 +172,15 @@ object Strings {
     const val feature_reason_region_unknown = "feature_reason_region_unknown" // "Available once we know your region"
     const val feature_reason_unavailable = "feature_reason_unavailable" // "Not available"
 
+    // Importing a statement (#29). The document is read on the device, so
+    // every one of these is about a file, never about a server.
+    const val statement_password_prompt = "statement_password_prompt" // "This statement is password protected. Enter its password to read it on this device."
+    const val statement_password_wrong = "statement_password_wrong" // "That password did not open the statement. Check it and try again."
+    const val statement_unsupported = "statement_unsupported" // "We cannot read this kind of file. Import a PDF, or a photo or screenshot of the statement."
+    const val statement_nothing_readable = "statement_nothing_readable" // "We opened the file but found no text in it. If it is a photo, try a sharper one in better light."
+    const val statement_too_long = "statement_too_long" // "This statement is too long to import at once. Import one month at a time."
+    const val statement_reading_page = "statement_reading_page" // "Reading page {0} of {1}…"
+
     // Throwaway demo screen (ticket #6), replaced in M2.
     const val demo_title = "demo_title" // "API check"
     const val demo_phone_label = "demo_phone_label" // "Test phone number"
