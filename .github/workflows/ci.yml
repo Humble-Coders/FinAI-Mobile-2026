@@ -1,13 +1,31 @@
 name: CI
 
+# Documentation cannot break a build, and an iOS job bills at ten times the
+# Linux rate. Five docs-only pushes in one day exhausted the account's included
+# minutes for every project sharing them, so prose no longer starts a runner.
+#
+# The list is deliberately an ignore-list of things that are definitely not
+# code, not an allow-list of things that are: a new source directory must build
+# by default. Anything under androidApp/, iosApp/, sharedLogic/, gradle/ or
+# .github/ always runs, including this file.
 on:
   pull_request:
     branches: [main]
+    paths-ignore:
+      - "docs/**"
+      - "handoffs/**"
+      - "design/**"
+      - "*.md"
   push:
     branches: [main]
+    paths-ignore:
+      - "docs/**"
+      - "handoffs/**"
+      - "design/**"
+      - "*.md"
 
-# On a pull request, a newer push makes the older run irrelevant — cancel it; on
-# this private repository the macOS minutes are the expensive part. A push to
+# On a pull request, a newer push makes the older run irrelevant — cancel it;
+# the macOS minutes are the expensive part. A push to
 # main gets a group of its own (its commit), so no merge ever cancels another:
 # every commit on main is verified, and main is the only ref whose runs write
 # the Gradle cache. (cancel-in-progress: false would not be enough — GitHub
