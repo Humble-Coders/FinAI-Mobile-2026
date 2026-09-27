@@ -158,11 +158,17 @@ ABI from an App Bundle, so an arm64 device gets roughly 40 MB of the 70.8 MB, i.
 about **+21 MB over the 19.2 MB baseline** — and that is an unminified debug build,
 so a release with R8 will be lower again.
 
-**This needs a manager decision.** +21 MB is real. The alternative named in the
-ticket — ML Kit's Play Services variant — trades roughly 20 MB of install size for
-a model download on first use, which means the first import can fail with no
-network and the offline-first promise weakens. Recommend keeping the bundled
-variant and revisiting if install size becomes a conversion problem.
+**Decided 2026-09-27: keep the bundled variant.** +21 MB is real and was
+weighed against it. The alternative named in the ticket — ML Kit's Play Services
+variant — trades roughly 20 MB of install size for a model download on first
+use, which means the first import can fail with no network, and it does not work
+at all on a device without Play Services. Paying the size to keep the first
+import working offline is the trade we want.
+
+Worth revisiting if install size starts costing conversions. The switch is
+contained — the dependency, plus a download state and its failure handling in
+the Android reader and the import screen — so it is a change, not a rewrite, and
+nothing here is built in a way that assumes the model is local.
 
 On iOS the cost is **zero**: PDFKit and Vision are system frameworks.
 
