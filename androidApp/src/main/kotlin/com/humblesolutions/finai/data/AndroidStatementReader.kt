@@ -2,10 +2,7 @@ package com.humblesolutions.finai.data
 
 import android.content.Context
 import android.graphics.Bitmap
-import android.graphics.Color
-import android.graphics.pdf.PdfRenderer
 import android.net.Uri
-import android.os.ParcelFileDescriptor
 import com.humblesolutions.finai.model.BoundingBox
 import com.humblesolutions.finai.model.ExtractedDocument
 import com.humblesolutions.finai.model.ExtractedLine
@@ -18,6 +15,8 @@ import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import com.tom_roush.pdfbox.pdmodel.PDDocument
+import com.tom_roush.pdfbox.pdmodel.encryption.InvalidPasswordException
+import com.tom_roush.pdfbox.rendering.PDFRenderer
 import com.tom_roush.pdfbox.text.PDFTextStripper
 import com.tom_roush.pdfbox.text.TextPosition
 import kotlinx.coroutines.Dispatchers
@@ -25,6 +24,7 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
+import java.io.IOException
 
 /**
  * Reads a statement on the device, and nowhere else.
@@ -38,14 +38,21 @@ import kotlin.coroutines.resumeWithException
  *     pixels.
  *  3. **An image** — a photo or screenshot. Read the pixels directly.
  *
- * `PdfRenderer` appears here only to *draw* pages for (2); it has no text API
- * at all, which is why PdfBox is a dependency.
+ * PdfBox does both the reading and the drawing. The platform's `PdfRenderer`
+ * can draw a page but has no text API at all, and — the reason it is not used
+ * even for (2) — it cannot open an encrypted PDF, so a locked scanned
+ * statement could never reach the OCR path through it.
  */
 class AndroidStatementReader(private val context: Context) : StatementReader {
 
-    private val recognizer by lazy {
+    // Held as the `Lazy` itself, not just its value, so [close] can ask
+    // whether OCR ever ran. Most statements are text-layer PDFs that never
+    // touch it, and closing a recogniser that was never built would construct
+    // one purely to throw it away.
+    private val lazyRecognizer = lazy {
         TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
     }
+    private val recognizer by lazyRecognizer
 
     // Below this, a "text layer" is page furniture — a header, a page number —
     // and the document is really a scan.
@@ -60,48 +67,53 @@ class AndroidStatementReader(private val context: Context) : StatementReader {
         if (looksLikeAnImage(uri)) return@withContext readImage(uri, onPage)
 
         PDFBoxResourceLoader.init(context.applicationContext)
-        val textLayer = readTextLayer(uri, password, onPage)
-        if (textLayer != null) return@withContext textLayer
-
-        readScannedPdf(uri, onPage)
+        // Opened once, with the password, and used for both paths. Reopening
+        // the file for the scan instead would drop the password — and
+        // `PdfRenderer`, which used to draw the pages here, cannot open an
+        // encrypted PDF at all, so a locked scanned statement died on a
+        // `SecurityException` that is not even the declared exception type.
+        // iOS never had the bug because it keeps the unlocked document.
+        openPdf(uri, password).use { pdf ->
+            readTextLayer(pdf, onPage) ?: readScannedPdf(pdf, onPage)
+        }
     }
 
     private fun looksLikeAnImage(uri: Uri): Boolean =
         context.contentResolver.getType(uri)?.startsWith("image/") == true
 
-    /** Path 1 — or null when the file carries no usable text. */
-    private fun readTextLayer(
-        uri: Uri,
-        password: String?,
-        onPage: (Int, Int) -> Unit,
-    ): ExtractedDocument? {
-        val document = try {
+    /** The password is used here and never leaves the device. */
+    private fun openPdf(uri: Uri, password: String?): PDDocument =
+        try {
             context.contentResolver.openInputStream(uri).use { stream ->
                 PDDocument.load(stream, password ?: "")
             }
-        } catch (error: Exception) {
-            // PdfBox reports a wrong or missing password as a load failure.
-            // The password is used here and never leaves the device.
-            if (isPasswordProblem(error)) {
-                throw StatementReadException.PasswordRequired(wrongPassword = password != null)
-            }
-            throw StatementReadException.Unsupported(error::class.simpleName.orEmpty())
+        } catch (wrongPassword: InvalidPasswordException) {
+            // Caught by type, not by looking for "password" in the message:
+            // a message match breaks on a library upgrade or a translation,
+            // and when it breaks the screen says "we cannot read this file"
+            // instead of asking again — leaving the user no way through.
+            throw StatementReadException.PasswordRequired(wrongPassword = password != null)
+        } catch (broken: IOException) {
+            throw StatementReadException.Unsupported(broken::class.simpleName.orEmpty())
         }
 
-        document.use { pdf ->
-            val pages = mutableListOf<ExtractedPage>()
-            var characters = 0
-            for (index in 0 until pdf.numberOfPages) {
-                val lines = linesOnPage(pdf, index + 1)
-                characters += lines.sumOf { it.text.length }
-                pages += ExtractedPage(index = index, lines = lines)
-                onPage(index + 1, pdf.numberOfPages)
-            }
-            return if (characters >= meaningfulCharacters) {
-                ExtractedDocument(pages = pages, source = SourceKind.PDF_TEXT)
-            } else {
-                null
-            }
+    /** Path 1 — or null when the file carries no usable text. */
+    private fun readTextLayer(
+        pdf: PDDocument,
+        onPage: (Int, Int) -> Unit,
+    ): ExtractedDocument? {
+        val pages = mutableListOf<ExtractedPage>()
+        var characters = 0
+        for (index in 0 until pdf.numberOfPages) {
+            val lines = linesOnPage(pdf, index + 1)
+            characters += lines.sumOf { it.text.length }
+            pages += ExtractedPage(index = index, lines = lines)
+            onPage(index + 1, pdf.numberOfPages)
+        }
+        return if (characters >= meaningfulCharacters) {
+            ExtractedDocument(pages = pages, source = SourceKind.PDF_TEXT)
+        } else {
+            null
         }
     }
 
@@ -128,46 +140,42 @@ class AndroidStatementReader(private val context: Context) : StatementReader {
         return lines
     }
 
-    /** Path 2 — draw each page, then read the pixels. */
+    /** Path 2 — draw each page of the document already open, then read it. */
     private suspend fun readScannedPdf(
-        uri: Uri,
+        pdf: PDDocument,
         onPage: (Int, Int) -> Unit,
     ): ExtractedDocument {
-        val descriptor = context.contentResolver.openFileDescriptor(uri, "r")
-            ?: throw StatementReadException.Unsupported("cannot open")
-        descriptor.use { file ->
-            PdfRenderer(file).use { renderer ->
-                val pages = mutableListOf<ExtractedPage>()
-                for (index in 0 until renderer.pageCount) {
-                    val bitmap = renderPage(renderer, index)
-                    pages += ExtractedPage(index = index, lines = recognise(bitmap))
-                    bitmap.recycle()
-                    onPage(index + 1, renderer.pageCount)
-                }
-                if (pages.all { it.lines.isEmpty() }) {
-                    throw StatementReadException.NothingReadable()
-                }
-                return ExtractedDocument(pages = pages, source = SourceKind.OCR)
+        val renderer = PDFRenderer(pdf)
+        val pages = mutableListOf<ExtractedPage>()
+        for (index in 0 until pdf.numberOfPages) {
+            // Twice nominal size: OCR on a 72-dpi render of small print reads
+            // plausible nonsense rather than failing, and a wrong amount that
+            // looks right is the worst thing this feature can produce.
+            val bitmap = try {
+                renderer.renderImage(index, 2f)
+            } catch (broken: IOException) {
+                throw StatementReadException.Unsupported(broken::class.simpleName.orEmpty())
             }
+            pages += ExtractedPage(index = index, lines = recognise(bitmap))
+            bitmap.recycle()
+            onPage(index + 1, pdf.numberOfPages)
         }
+        if (pages.all { it.lines.isEmpty() }) {
+            throw StatementReadException.NothingReadable()
+        }
+        return ExtractedDocument(pages = pages, source = SourceKind.OCR)
     }
-
-    private fun renderPage(renderer: PdfRenderer, index: Int): Bitmap =
-        renderer.openPage(index).use { page ->
-            // Twice the page's nominal size: OCR on a 72-dpi render of small
-            // print reads plausible nonsense rather than failing.
-            val bitmap = Bitmap.createBitmap(page.width * 2, page.height * 2, Bitmap.Config.ARGB_8888)
-            bitmap.eraseColor(Color.WHITE)
-            page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
-            bitmap
-        }
 
     /** Path 3. */
     private suspend fun readImage(
         uri: Uri,
         onPage: (Int, Int) -> Unit,
     ): ExtractedDocument {
-        val image = InputImage.fromFilePath(context, uri)
+        val image = try {
+            InputImage.fromFilePath(context, uri)
+        } catch (broken: IOException) {
+            throw StatementReadException.Unsupported(broken::class.simpleName.orEmpty())
+        }
         val lines = recogniseImage(image)
         onPage(1, 1)
         if (lines.isEmpty()) throw StatementReadException.NothingReadable()
@@ -204,16 +212,12 @@ class AndroidStatementReader(private val context: Context) : StatementReader {
                 .addOnFailureListener { continuation.resumeWithException(it) }
         }
 
-    private fun isPasswordProblem(error: Exception): Boolean {
-        val text = (error.message ?: "") + error::class.simpleName.orEmpty()
-        return text.contains("password", ignoreCase = true) ||
-            text.contains("InvalidPassword", ignoreCase = true)
+    /**
+     * Releases the OCR recogniser, which holds native resources.
+     *
+     * Safe to call when no page was ever scanned, and safe to call twice.
+     */
+    override fun close() {
+        if (lazyRecognizer.isInitialized()) lazyRecognizer.value.close()
     }
 }
-
-private inline fun <T> ParcelFileDescriptor.use(block: (ParcelFileDescriptor) -> T): T =
-    try {
-        block(this)
-    } finally {
-        close()
-    }

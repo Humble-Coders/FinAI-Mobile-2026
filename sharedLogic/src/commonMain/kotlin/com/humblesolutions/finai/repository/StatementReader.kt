@@ -28,6 +28,14 @@ interface StatementReader {
         password: String? = null,
         onPage: (completed: Int, total: Int) -> Unit = { _, _ -> },
     ): ExtractedDocument
+
+    /**
+     * Releases whatever the platform reader holds open — on Android an ML Kit
+     * recogniser, which owns native resources and leaks without this. Called
+     * when the screen that made the reader goes away, as with
+     * [StatementImportRepository.close] (kmp-arch-v2).
+     */
+    fun close()
 }
 
 /**

@@ -37,7 +37,7 @@ backend omits a row it cannot date rather than guessing one.
 
 ### Tests
 `StatementRedactorTest` (22), `StatementPeriodTest` (6), `ImportStatementTest` (8),
-`AndroidStatementReaderTest` (6, Robolectric, `@Config(sdk = [34])`).
+`AndroidStatementReaderTest` (10, Robolectric, `@Config(sdk = [34])`).
 
 ## How to test
 
@@ -53,12 +53,12 @@ cd iosApp && xcodebuild -workspace iosApp.xcworkspace -scheme iosApp \
 | Criterion | Status |
 |---|---|
 | Text-layer PDF → one line per statement line, in order, with coordinates, `PDF_TEXT` | **met** — `aPdfWithATextLayerIsReadWithoutOcr`, `everyStatementLineComesBackInReadingOrder`, `linesCarryTheirPositionOnThePage` |
-| Scanned PDF and PNG go through OCR | **met on Android** by test; the iOS path compiles but has no automated test (no Vision test harness) |
+| Scanned PDF and PNG go through OCR | **not met.** No automated test covers either OCR path on either platform — ML Kit will not start under Robolectric and Vision has no test harness — and the emulator is off limits here, so the code has never been executed. Manual steps below. |
 | Redactor tests table-driven; transaction lines survive untouched; no commas in names | **met** — `StatementRedactorTest` |
 | Wire text has no digit run > 4, no email, no postal code | **met** — masking triggers at five digits, and the fixture now carries 5-, 6- and 7-digit references so the assertion is not vacuous |
 | Over-limit text refused on the device before any request | **met** — `textOverTheLimitIsRefusedBeforeAnyRequest` asserts nothing was sent |
 | Period found and sent while its own line is still redacted away | **met** — `sendsThePeriodEvenThoughItsLineIsRedactedAway` asserts both halves |
-| Password-protected PDF: unlocks, clear error, never sent | **partly met** — the password cannot reach the request (it is not a parameter of `ImportStatement`), and the wrong-password error is typed. **There is no test that a real encrypted PDF unlocks.** |
+| Password-protected PDF: unlocks, clear error, never sent | **met** for a text-layer PDF — `aLockedStatementOpensWithItsPassword`, `theWrongPasswordSaysSoRatherThanFailingObscurely` and `aLockedStatementWithNoPasswordAsksForOne` run against a genuinely encrypted fixture. The password cannot reach a request at all: it is not a parameter of `ImportStatement`. A locked *scanned* PDF takes the OCR path, which is unexecuted. |
 | 20-page read never blocks the main thread; progress per page | **met** — `readingProgressIsReportedPerPage`; both readers take an `onPage` callback |
 | Nothing logs page text, a line, or the redacted string | **met** — no logging call of any kind in the statement code |
 | Android + shared tests pass and iOS `xcodebuild` succeeds | **met** — 161 shared, 28 Android, and CI's iOS job green (run 36317571132) |
@@ -123,6 +123,43 @@ and `anAccountNumberIsNotPartlySavedByATrailingAmount`; removing the per-token
 amount protection fails the four round-1 tests. Neither mutation touches
 anything else.
 
+## Review fixes (round 3)
+
+Review turned to the Android reader, which the first two rounds had not looked at.
+
+1. **A password-protected scanned PDF crashed.** The scan path reopened the file
+   from its URI, dropping the password, and the platform's `PdfRenderer` cannot
+   open an encrypted PDF at all — so it threw `SecurityException`, which is not
+   the exception type the interface declares, and the screen would never have
+   caught it. The document is now opened once, with the password, and both paths
+   use it; rendering moved to PdfBox's own `PDFRenderer`. iOS never had this bug
+   — it kept the unlocked document — so this also closes a platform divergence
+   in the one layer where the platforms are allowed to differ.
+2. **The OCR recogniser was never closed.** `StatementReader` now has `close()`,
+   and it only closes a recogniser that was actually built, so a reader that
+   only ever saw text-layer PDFs does not construct an ML Kit engine in order to
+   release it.
+3. **Password failures were detected by matching "password" in the exception
+   message.** Now caught as `InvalidPasswordException`. When the string match
+   missed, a wrong password surfaced as "unsupported file" and the user had no
+   way to try again.
+4. **Two raw `IOException`s escaped the declared contract** — from opening an
+   image and from rendering a page. Both wrapped.
+
+This also closed the oldest gap on the ticket: PdfBox can build an encrypted PDF
+in the test, so **three tests now exercise a genuinely locked statement** — right
+password, wrong password, and no password.
+
+## Verify OCR by hand
+
+The two paths no test can reach, on a device or emulator:
+
+1. Print a statement to PDF and re-scan it (or photograph one) so the file has
+   no text layer. Import it. Expect rows, and `source = ocr` on the request.
+2. Import a PNG screenshot of a statement. Same expectation.
+3. Lock a scanned PDF with a password and import it. Expect the password prompt,
+   then rows — this is the path that used to crash.
+
 ## Deviations / decisions
 
 **`ImportStatement` takes an `ExtractedDocument`, not a `StatementReader`.**
@@ -174,7 +211,7 @@ On iOS the cost is **zero**: PDFKit and Vision are system frameworks.
 
 ## Verification
 
-`:sharedLogic:testAndroidHostTest` 174 tests, `:androidApp:testDebugUnitTest` 28 tests,
+`:sharedLogic:testAndroidHostTest` 174 tests, `:androidApp:testDebugUnitTest` 32 tests,
 and the iOS workspace build — all green on CI run 36317571132, which ran
 `:sharedLogic:syncFramework` and compiled `IOSStatementReader.swift`.
 
@@ -184,8 +221,9 @@ and the iOS workspace build — all green on CI run 36317571132, which ran
    (`D8: java.io.IOException: No space left on device`). Not a code fault. Run
    `./gradlew :androidApp:assembleRelease` on a machine with space to get the
    release size.
-2. **No test unlocks a real encrypted PDF.** A fixture that guessed at
-   PdfBox-Android's encryption API was removed rather than left asserting nothing.
-   Worth adding a generated encrypted fixture.
+2. **Neither OCR path has ever run.** Not a unit-testable gap: ML Kit does not
+   start under Robolectric, Vision has no test harness, and running the
+   emulator is not permitted here. Both were written against the SDK docs and
+   compile, and nothing more than that is claimed. See *Verify OCR by hand*.
 3. **Nothing calls `ImportStatement` yet** — the picker, progress and results UI
    are ticket 3.6, which this unblocks.

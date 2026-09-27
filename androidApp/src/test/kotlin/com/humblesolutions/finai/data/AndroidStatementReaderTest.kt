@@ -7,6 +7,8 @@ import com.humblesolutions.finai.usecase.StatementPeriod
 import com.humblesolutions.finai.usecase.StatementRedactor
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import com.tom_roush.pdfbox.pdmodel.PDDocument
+import com.tom_roush.pdfbox.pdmodel.encryption.AccessPermission
+import com.tom_roush.pdfbox.pdmodel.encryption.StandardProtectionPolicy
 import com.tom_roush.pdfbox.pdmodel.PDPage
 import com.tom_roush.pdfbox.pdmodel.PDPageContentStream
 import com.tom_roush.pdfbox.pdmodel.font.PDType1Font
@@ -22,6 +24,10 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.RuntimeEnvironment
 import java.io.File
+import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
+import kotlin.test.assertEquals
 
 /**
  * The text-layer path, end to end on the JVM.
@@ -60,6 +66,69 @@ class AndroidStatementReaderTest {
         val context = RuntimeEnvironment.getApplication()
         PDFBoxResourceLoader.init(context)
         reader = AndroidStatementReader(context)
+    }
+
+    /** The same statement, encrypted — what plenty of banks actually email. */
+    private fun aLockedStatementPdf(password: String): Uri {
+        val file = File.createTempFile("locked-statement", ".pdf")
+        PDDocument().use { document ->
+            val page = PDPage()
+            document.addPage(page)
+            PDPageContentStream(document, page).use { content ->
+                content.beginText()
+                content.setFont(PDType1Font.HELVETICA, 10f)
+                content.newLineAtOffset(40f, 750f)
+                statementLines.forEach { line ->
+                    content.showText(line)
+                    content.newLineAtOffset(0f, -14f)
+                }
+                content.endText()
+            }
+            document.protect(
+                StandardProtectionPolicy(password, password, AccessPermission()),
+            )
+            document.save(file)
+        }
+        return Uri.fromFile(file)
+    }
+
+    @Test
+    fun aLockedStatementOpensWithItsPassword() = runTest {
+        val document = reader.read(aLockedStatementPdf("hunter2").toString(), "hunter2")
+
+        assertEquals(SourceKind.PDF_TEXT, document.source)
+        assertTrue(
+            document.allLines().any { it.text.contains("TIM HORTONS") },
+            "the statement did not come back: ${document.allLines().size} lines",
+        )
+    }
+
+    @Test
+    fun theWrongPasswordSaysSoRatherThanFailingObscurely() = runTest {
+        val failure = assertFailsWith<StatementReadException.PasswordRequired> {
+            reader.read(aLockedStatementPdf("hunter2").toString(), "not-the-password")
+        }
+
+        assertTrue(failure.wrongPassword, "the screen needs to know a password was tried")
+    }
+
+    @Test
+    fun aLockedStatementWithNoPasswordAsksForOne() = runTest {
+        val failure = assertFailsWith<StatementReadException.PasswordRequired> {
+            reader.read(aLockedStatementPdf("hunter2").toString())
+        }
+
+        assertFalse(failure.wrongPassword, "nothing was tried yet, so nothing was wrong")
+    }
+
+    @Test
+    fun closingAReaderThatNeverScannedDoesNotBuildAnOcrEngine() {
+        // Every test above reads a text-layer PDF, so the recogniser was never
+        // needed. Closing must not construct one just to release it — under
+        // Robolectric that throws "MlKitContext has not been initialized",
+        // which is exactly what it would do on a device in the same state.
+        reader.close()
+        reader.close()
     }
 
     private fun aStatementPdf(): Uri {
