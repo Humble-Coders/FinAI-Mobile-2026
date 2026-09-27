@@ -1,88 +1,125 @@
-# Handoff — ticket #29 (mobile half)
-
-**Ticket:** [Humble-Coders/Finance-backend#29 — \[M2\] Make the core financial setup mandatory](https://github.com/Humble-Coders/Finance-backend/issues/29)
-**Branch:** `ticket-29-mandatory-financial-setup` · **Base:** `main` (`ea107c5`) · **Implementation:** `71d4198`, `b18a0c7` · **PR:** #20 · 6 files (3 implementation, 3 documentation)
+# Ticket #29 — Read the statement on the device and redact it there
 
 ## Summary
 
-`OnboardingStep` now knows every step the API can send. `FINANCIAL_SETUP` is the
-new one from 2.5; `REGION` and `CONSENT` have been sent since #24 and were still
-decoding to `UNKNOWN` — safe, because an unknown step counts as incomplete and
-nobody slipped through the gate, but it left the app unable to route to two of
-the four steps.
+A statement now goes from a file the user picked to redacted text and structured
+rows without the document leaving the phone. Each platform does the one genuinely
+native thing — PDFKit and Vision on iOS, PdfBox-Android and bundled ML Kit on
+Android, three paths each (text layer → render + OCR → image OCR). Everything
+after the read is shared Kotlin: find the statement period, redact, check the
+length against what the API accepts, and post. Only the redacted text and a date
+range are sent; the document, its lines and any PDF password stay on the device.
 
-The routing and the screens are deliberately **not** here: this repo has no
-navigation layer and no wizard to attach them to.
+The step order is the load-bearing part. The period is read **before** redaction,
+because the block carrying the year is the same block the redactor drops, and the
+backend omits a row it cannot date rather than guessing one.
 
 ## Files changed
 
+### Shared — the decisions, made once
 | File | Why |
 |---|---|
-| `sharedLogic/.../model/Capabilities.kt` | The three missing enum cases, declared in the order the server returns them, each documented with the condition that raises it. |
-| `sharedLogic/.../model/CapabilitiesDecodingTest.kt` | Decodes the full four-step list; the existing unknown-step test still pins that an unrecognised value stays `UNKNOWN` and incomplete. |
-| `sharedLogic/.../model/MeDecodingTest.kt` | `/me` reporting `financial_setup` alone. |
-| `docs/PRD.md` | §9 decision log: the wizard records no status and has no skip endpoint. |
-| `docs/tickets/M2.4-financial-setup-wizard-ui.md` | Five steps not four, no `status` field, no skip call, and routing straight to home once the gate clears. |
-| `handoffs/ticket-29.md` | This report. |
+| `model/ExtractedDocument.kt` | Pages, lines, boxes, `SourceKind`. Coordinates kept because line order alone loses columns. |
+| `model/ParsedStatement.kt` | The parse response, and `StatementUpload` — the only thing that goes on the wire. |
+| `usecase/StatementRedactor.kt` | Digit runs masked to last 4; email / phone / postal-code lines dropped; page-1 header block dropped. |
+| `usecase/StatementPeriod.kt` | Finds `1 Aug 2026 to 31 Aug 2026` in the header, skipping transaction-like lines. |
+| `usecase/ImportStatement.kt` | Period → redact → length check → post, in that order. |
+| `config/StatementLimits.kt` | `MAX_TEXT_CHARS = 200_000`, one copy, matching the backend's. |
+| `repository/StatementReader.kt` | The native-read seam plus its typed failures. |
+| `repository/StatementImportRepository.kt`, `data/KtorStatementImportRepository.kt` | `POST /statements/parse`. |
+| `i18n/Strings.kt`, `i18n/EnglishStrings.kt` | Six strings; no literals in platform code. |
+
+### Platform — only the native SDK call
+| File | Why |
+|---|---|
+| `androidApp/data/AndroidStatementReader.kt` | PdfBox text layer, bitmap render + ML Kit, ML Kit on images. Off the main thread, progress per page. |
+| `iosApp/iosApp/repository/IOSStatementReader.swift` | The same three paths with PDFKit and Vision. |
+
+### Tests
+`StatementRedactorTest` (10), `StatementPeriodTest` (6), `ImportStatementTest` (7),
+`AndroidStatementReaderTest` (6, Robolectric, `@Config(sdk = [34])`).
 
 ## How to test
 
 ```bash
-./gradlew :androidApp:assembleDebug :sharedLogic:allTests
+./gradlew :sharedLogic:testAndroidHostTest :androidApp:testDebugUnitTest
+cd iosApp && xcodebuild -workspace iosApp.xcworkspace -scheme iosApp \
+  -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+  CODE_SIGNING_ALLOWED=NO build
 ```
-
-Then, for the done-rule's iOS half:
-
-```bash
-./gradlew :sharedLogic:podInstall && cd iosApp && xcodebuild -workspace iosApp.xcworkspace -scheme iosApp -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
-```
-
-Both were run on this branch: Gradle **BUILD SUCCESSFUL** (including
-`iosSimulatorArm64Test`), Xcode **BUILD SUCCEEDED**.
 
 ## Acceptance criteria
 
 | Criterion | Status |
 |---|---|
-| `OnboardingStep.FINANCIAL_SETUP` exists and decodes | **Met** |
-| An old build meeting an unknown step neither crashes nor silently passes the gate | **Met** — `keeps an onboarding step this build does not know` |
-| Android compiles and tests pass; iOS `xcodebuild` succeeds | **Met** — both run locally; CI is the check on the PR |
-| The wizard is the destination for the step, and cannot be escaped | **Deferred to 2.4 (#17)** — no router or wizard exists yet |
-| The mandatory screens offer no Skip; the optional ones do | **Deferred to 2.4 (#17)** — already in that ticket's scope and acceptance criteria |
-| Strings for the new field and changed copy | **Deferred to 2.4 (#17)** — see below |
+| Text-layer PDF → one line per statement line, in order, with coordinates, `PDF_TEXT` | **met** — `aPdfWithATextLayerIsReadWithoutOcr`, `everyStatementLineComesBackInReadingOrder`, `linesCarryTheirPositionOnThePage` |
+| Scanned PDF and PNG go through OCR | **met on Android**; iOS path written but see *Not verified* |
+| Redactor tests table-driven; transaction lines survive untouched; no commas in names | **met** — `StatementRedactorTest` |
+| Wire text has no digit run > 4, no email, no postal code | **met** — asserted on `StatementUpload.text` in `theUploadCarriesNothingBeyondTheAgreedFields` |
+| Over-limit text refused on the device before any request | **met** — `textOverTheLimitIsRefusedBeforeAnyRequest` asserts nothing was sent |
+| Period found and sent while its own line is still redacted away | **met** — `sendsThePeriodEvenThoughItsLineIsRedactedAway` asserts both halves |
+| Password-protected PDF: unlocks, clear error, never sent | **partly met** — the password cannot reach the request (it is not a parameter of `ImportStatement`), and the wrong-password error is typed. **There is no test that a real encrypted PDF unlocks.** |
+| 20-page read never blocks the main thread; progress per page | **met** — `readingProgressIsReportedPerPage`; both readers take an `onPage` callback |
+| Nothing logs page text, a line, or the redacted string | **met** — no logging call of any kind in the statement code |
+| Android + shared tests pass and iOS `xcodebuild` succeeds | **partly** — see *Not verified* |
 
 ## Deviations / decisions
 
-- **Scope reduced to the shared contract**, on the manager's decision during
-  planning. The mobile app today is still the ticket-6 demo screen: no
-  `navigation/` package, no auth or wizard screens on either platform. Routing
-  and screens land in 2.3 (#16) and 2.4 (#17).
-- **No i18n keys added.** The ticket asked for strings for the new field and the
-  changed copy, but there is no screen to label and 2.4 holds the design. Keys
-  invented here would be guesses for 2.4 to redo, and `OnboardingStep` itself
-  carries no `messageKey` (unlike `FeatureReason`), so nothing in this change
-  needs one.
-- **`REGION` and `CONSENT` added beyond the ticket's letter.** The ticket asked
-  only for `FINANCIAL_SETUP`; adding one case while leaving two others decoding
-  to `UNKNOWN` would have left the enum trailing the contract for no reason.
+**`ImportStatement` takes an `ExtractedDocument`, not a `StatementReader`.**
+A Kotlin `suspend` interface is awkward to conform to from Swift. Had the reader
+been a constructor dependency, iOS could not have used this class at all and would
+have reimplemented period-finding, redaction and the length check in Swift — which
+is exactly how two platforms come to disagree about what gets redacted. So the
+platform reads natively and hands the result to shared. `StatementReader` still
+exists and Android still implements it, because there it costs nothing.
 
-## Open questions / follow-ups
+**`IOSStatementReader` does not conform to `StatementReader`** for the same reason.
+Nothing shared calls into it.
 
-- **#17 now says route straight to home** once `financial_setup` clears, rather
-  than re-offering the wizard when optional setup is unanswered. Nothing records
-  whether an optional step was declined, so the old rule would have shown the
-  wizard on every launch to anyone who skipped.
-- **The wizard's shared model, repository and `Money` utility are still 2.4's**
-  — this change touches none of them.
-- **`UNKNOWN` has no defined routing behaviour, and 2.3 must give it one.**
-  Decoding is safe — an unrecognised step maps to `UNKNOWN` and keeps
-  `needsOnboarding` true — but that holds a stale build in onboarding with no
-  screen to route to. The router needs an explicit "update the app" destination
-  rather than a loop or a blank. Neither #16 nor #17 says so yet. Raised in the
-  review of PR #20.
-- **Adding an enum case is free today and will not be later.** Nothing switches
-  over `OnboardingStep`: iOS only reads `.wire`, and there is no Kotlin `when`
-  over it. Once 2.3 adds a router that switches on the step, a new case becomes
-  a breaking change for Swift exhaustiveness under SKIE.
-- **Not verified against a live API.** Render is suspended, so the new step has
-  only been exercised against decoded JSON, not a real response.
+**PDF boxes are flipped to a top-left origin on iOS.** PDF user space starts at the
+bottom left; `BoundingBox` is documented top-left and Android's PdfBox path already
+reports it that way. A box meaning two different things is worse than no box.
+
+## Size cost
+
+Measured from the debug APK, before and after these dependencies:
+
+| | APK |
+|---|---|
+| before (17 Sep, no ML Kit / PdfBox) | 19.2 MB |
+| after, all four ABIs in one APK | 70.8 MB |
+
+Nearly all of it is one file, `libmlkit_google_ocr_pipeline.so`, once per ABI:
+11.6 MB (x86_64), 11.6 MB (x86), 11.1 MB (arm64-v8a), 6.8 MB (armeabi-v7a).
+PdfBox is 1.8 MB.
+
+**What a real user downloads is the per-ABI split, not this APK.** Play serves one
+ABI from an App Bundle, so an arm64 device gets roughly 40 MB of the 70.8 MB, i.e.
+about **+21 MB over the 19.2 MB baseline** — and that is an unminified debug build,
+so a release with R8 will be lower again.
+
+**This needs a manager decision.** +21 MB is real. The alternative named in the
+ticket — ML Kit's Play Services variant — trades roughly 20 MB of install size for
+a model download on first use, which means the first import can fail with no
+network and the offline-first promise weakens. Recommend keeping the bundled
+variant and revisiting if install size becomes a conversion problem.
+
+On iOS the cost is **zero**: PDFKit and Vision are system frameworks.
+
+## Not verified / follow-ups
+
+1. **The iOS build has not been re-run since the shared layer changed.** The
+   workspace build succeeded earlier in the session (`** BUILD SUCCEEDED **`, with
+   `IOSStatementReader.o` emitted, so the Swift really compiled), but
+   `ImportStatement.kt` was restructured after that. The Kotlin compiles for
+   Android; what is unproven is SKIE codegen over the new class. **Re-run the
+   `xcodebuild` command above before merging.**
+2. **The release APK could not be built** — the build host ran out of disk
+   (`D8: java.io.IOException: No space left on device`). Not a code fault. Run
+   `./gradlew :androidApp:assembleRelease` on a machine with space to get the
+   release size.
+3. **No test unlocks a real encrypted PDF.** A fixture that guessed at
+   PdfBox-Android's encryption API was removed rather than left asserting nothing.
+   Worth adding a generated encrypted fixture.
+4. **Nothing calls `ImportStatement` yet** — the picker, progress and results UI
+   are ticket 3.6, which this unblocks.
