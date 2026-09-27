@@ -192,6 +192,7 @@ server enforces were unknown to the device.
    `Field(ge=1, le=500)` in `StatementParseIn`, and the device checked only text
    length — so a 501-page scan was fully OCR'd, then 422'd. That is the wait the
    local text check exists to prevent, and on the OCR path it is minutes.
+   **The round-5 check did not actually prevent it** — see round 6.
    `StatementLimits.MAX_PAGES` now sits beside `MAX_TEXT_CHARS`, checked first,
    because pages is the bound a person can act on.
 2. **Empty text was posted.** `text` is `Field(min_length=1)`. Redaction returns
@@ -208,6 +209,24 @@ server enforces were unknown to the device.
 
 The three local refusals share a `StatementRefusal` interface, so a screen
 cannot handle two of them and forget the third.
+
+## Review fixes (round 6)
+
+1. **The page limit was checked in the wrong layer.** Round 5 put it in
+   `ImportStatement`, which receives a document the reader has *already* read —
+   so on a 501-page scan every page was still rendered and OCR'd, and only the
+   network round trip was saved. The commit message, the PR comment and this
+   report all described a benefit the change did not deliver. The check now sits
+   in both readers, immediately after the document opens and before a page is
+   touched; the use-case check stays as a backstop for a document supplied from
+   anywhere else. `AndroidStatementReaderTest` asserts the progress callback
+   fired **zero** times, so the test guards where the check is, not just that it
+   exists.
+2. **413 fell through to "something went wrong".** It is the statement
+   endpoint's own refusal, and the device prevents it — but the two copies of
+   the limit live in different repositories and can drift, which is the whole
+   reason `StatementLimits` exists. Mapped to `ApiException.StatementTooLarge`,
+   carrying the same "import one month at a time" string.
 
 ## Verify OCR by hand
 

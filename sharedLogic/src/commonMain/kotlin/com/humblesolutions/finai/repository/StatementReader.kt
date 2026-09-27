@@ -1,5 +1,6 @@
 package com.humblesolutions.finai.repository
 
+import com.humblesolutions.finai.config.StatementLimits
 import com.humblesolutions.finai.model.ApiException
 import com.humblesolutions.finai.model.ExtractedDocument
 import kotlin.coroutines.cancellation.CancellationException
@@ -53,4 +54,18 @@ sealed class StatementReadException(message: String) : Exception(message) {
 
     /** Opened, but nothing that reads as text came out. */
     class NothingReadable : StatementReadException("nothing readable")
+
+    /**
+     * More pages than the API will accept, refused **before** any page is read.
+     *
+     * This has to live here rather than only at the point of sending. By the
+     * time a document reaches
+     * [com.humblesolutions.finai.usecase.ImportStatement] every page has
+     * already been rendered and put through OCR, which on a long scan is
+     * minutes — so refusing there saves a round trip and none of the waiting.
+     */
+    class TooManyPages(
+        val pages: Int,
+        val limit: Int = StatementLimits.MAX_PAGES,
+    ) : StatementReadException("too many pages")
 }

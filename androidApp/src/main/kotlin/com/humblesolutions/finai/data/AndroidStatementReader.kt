@@ -3,6 +3,7 @@ package com.humblesolutions.finai.data
 import android.content.Context
 import android.graphics.Bitmap
 import android.net.Uri
+import com.humblesolutions.finai.config.StatementLimits
 import com.humblesolutions.finai.model.BoundingBox
 import com.humblesolutions.finai.model.ExtractedDocument
 import com.humblesolutions.finai.model.ExtractedLine
@@ -74,6 +75,12 @@ class AndroidStatementReader(private val context: Context) : StatementReader {
         // `SecurityException` that is not even the declared exception type.
         // iOS never had the bug because it keeps the unlocked document.
         openPdf(uri, password).use { pdf ->
+            // Before a single page is drawn. Counting after the read — which is
+            // where the send-time check sits — costs the user the whole OCR
+            // pass to be told the file was never acceptable.
+            if (pdf.numberOfPages > StatementLimits.MAX_PAGES) {
+                throw StatementReadException.TooManyPages(pdf.numberOfPages)
+            }
             readTextLayer(pdf, onPage) ?: readScannedPdf(pdf, onPage)
         }
     }

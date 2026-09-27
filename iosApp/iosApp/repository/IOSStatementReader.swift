@@ -29,6 +29,8 @@ final class IOSStatementReader {
         case unsupported(String)
         /// Opened, but nothing that reads as text came out.
         case nothingReadable
+        /// More pages than the API accepts, refused before any page is read.
+        case tooManyPages(pages: Int, limit: Int)
     }
 
     /// Below this, a "text layer" is page furniture — a header, a page number —
@@ -53,6 +55,13 @@ final class IOSStatementReader {
             guard let password, document.unlock(withPassword: password) else {
                 throw ReadError.passwordRequired(wrongPassword: password != nil)
             }
+        }
+        // Before a single page is read. Counting after the read — which is
+        // where the send-time check sits — costs the user the whole OCR pass
+        // to be told the file was never acceptable.
+        let limit = Int(StatementLimits.shared.MAX_PAGES)
+        if document.pageCount > limit {
+            throw ReadError.tooManyPages(pages: document.pageCount, limit: limit)
         }
         if let withText = readTextLayer(document, onPage: onPage) {
             return withText

@@ -6,6 +6,7 @@ import com.humblesolutions.finai.repository.StatementReadException
 import com.humblesolutions.finai.usecase.StatementPeriod
 import com.humblesolutions.finai.usecase.StatementRedactor
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
+import com.humblesolutions.finai.config.StatementLimits
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.encryption.AccessPermission
 import com.tom_roush.pdfbox.pdmodel.encryption.StandardProtectionPolicy
@@ -129,6 +130,25 @@ class AndroidStatementReaderTest {
         // which is exactly what it would do on a device in the same state.
         reader.close()
         reader.close()
+    }
+
+    @Test
+    fun aStatementWithTooManyPagesIsRefusedBeforeItIsRead() = runTest {
+        val file = File.createTempFile("long-statement", ".pdf")
+        PDDocument().use { document ->
+            repeat(StatementLimits.MAX_PAGES + 1) { document.addPage(PDPage()) }
+            document.save(file)
+        }
+        var pagesRead = 0
+
+        val refused = assertFailsWith<StatementReadException.TooManyPages> {
+            reader.read(Uri.fromFile(file).toString()) { _, _ -> pagesRead++ }
+        }
+
+        assertEquals(StatementLimits.MAX_PAGES + 1, refused.pages)
+        // The point of the check: nothing was read. Counting pages after the
+        // read costs the user the whole OCR pass before the refusal.
+        assertEquals(0, pagesRead, "pages were read before the file was refused")
     }
 
     private fun aStatementPdf(): Uri {
