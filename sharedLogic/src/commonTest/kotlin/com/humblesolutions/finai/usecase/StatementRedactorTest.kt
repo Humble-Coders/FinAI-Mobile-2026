@@ -164,17 +164,67 @@ class StatementRedactorTest {
         assertEquals(2, redaction.droppedLines)
     }
 
+    @Test
+    fun aSocialInsuranceNumberIsMasked() {
+        // Printed 3-3-3, which a rule written only for 4-4-4-4 card numbers
+        // walks straight past. This is the worst thing that can reach the API.
+        val text = StatementRedactor.redact(
+            document(listOf("14 Aug  GOVT DEPOSIT 123 456 789          20.00")),
+        )
+
+        assertFalse(text.contains("123 456 789"), "a SIN reached the wire: $text")
+        assertNoLongDigitRun(text)
+    }
+
+    @Test
+    fun anIdentifierWrittenWithDecimalsIsStillMasked() {
+        // Two decimal places do not make something an amount. Seven digits
+        // before the point is nobody's grocery bill.
+        val text = StatementRedactor.redact(
+            document(listOf("14 Aug  WIRE REF 1234567.89               50.00")),
+        )
+
+        assertFalse(text.contains("1234567"), "the reference reached the wire: $text")
+        assertTrue(text.contains("50.00"), "the real amount was lost: $text")
+    }
+
+    @Test
+    fun anAccountNumberIsNotPartlySavedByATrailingAmount() {
+        // `5004321.00` used to be read as an amount, so only the `06012`
+        // prefix was masked and the identifying digits went out intact.
+        val text = StatementRedactor.redact(
+            document(listOf("14 Aug  ACCT 06012-5004321.00             10.00")),
+        )
+
+        assertFalse(text.contains("5004321"), "the account number survived: $text")
+        assertTrue(text.contains("10.00"), "the real amount was lost: $text")
+    }
+
     /**
-     * The wire claim, asserted the way it is meant.
+     * The wire claim, asserted the way it is meant — and deliberately NOT by
+     * stripping anything that looks like an amount first.
      *
-     * Amounts come out first: `123456.78` is a price, not an identifier, and
-     * the run is measured inside a token because a masked tail printed beside
-     * an amount ("••••4567 10.99") is not a seven-digit number.
+     * That is how the leak hid: the helper removed `\d[\d,]*\.\d{2}` before
+     * looking, so `WIRE REF 1234567.89` was erased by the strip and the check
+     * reported clean while seven digits went out on the wire. The assertion
+     * could not see the one thing it exists to catch.
+     *
+     * So it mirrors the masking rules instead: no run of five or more digits
+     * inside a token, and no number written in spaced groups. A price is
+     * neither — `123456.78` is one token that is an amount, and a masked tail
+     * printed beside an amount ("••••4567 10.99") is not one long number.
      */
     private fun assertNoLongDigitRun(text: String) {
-        val withoutAmounts = Regex("""\d[\d,]*\.\d{2}""").replace(text, " ")
-        val runs = Regex("""\d(?:-?\d){4,}""").findAll(withoutAmounts).toList()
-        assertTrue(runs.isEmpty(), "unmasked digits: ${runs.map { it.value }}")
+        val amount =
+            Regex("""\(?-?\$?(?:\d{1,3}(?:,\d{3})*|\d{1,6})\.\d{2}\)?-?""")
+        val offenders = Regex("""\S+""").findAll(text)
+            .filterNot { amount.matches(it.value) }
+            .flatMap { Regex("""\d(?:-?\d){4,}""").findAll(it.value) }
+            .map { it.value }
+            .toList() +
+            Regex("""\b\d{3,5}(?:[ -]\d{3,5}){2,}\b""").findAll(text).map { it.value }
+
+        assertTrue(offenders.isEmpty(), "unmasked digits: $offenders in: $text")
     }
 
     @Test

@@ -28,10 +28,22 @@ object StatementRedactor {
     // `CHQ 1234567 10.99` and rewrote the amount as 6710.99.
     private val TOKEN_DIGIT_RUN = Regex("""\d(?:-?\d){4,}""")
 
-    // A card number written in spaced groups. Exactly four digits per group
-    // and three groups at least, so a cheque number beside its amount can
-    // never qualify.
-    private val GROUPED_DIGIT_RUN = Regex("""\b\d{4}(?:[ -]\d{4}){2,}\b""")
+    // A number written in spaced groups: a card as 4-4-4-4, a SIN as 3-3-3.
+    // Three groups at least, each three to five digits — a cheque number
+    // beside its amount is two groups and the second is two digits, so it can
+    // never qualify. Narrowing this to four-digit groups once stopped SIN-
+    // shaped numbers being masked at all.
+    private val GROUPED_DIGIT_RUN = Regex("""\b\d{3,5}(?:[ -]\d{3,5}){2,}\b""")
+
+    // What counts as an amount for the purpose of leaving it alone: a WHOLE
+    // token, with at most six digits before the point. Both bounds matter.
+    // Unbounded, `1234567.89` reads as an amount and a seven-digit identifier
+    // goes out untouched; un-anchored, `06012-5004321.00` has its tail read as
+    // an amount and only the `06012` gets masked.
+    private val AMOUNT_TOKEN =
+        Regex("""\(?-?\$?(?:\d{1,3}(?:,\d{3})*|\d{1,6})\.\d{2}\)?-?""")
+
+    private val TOKEN = Regex("""\S+""")
 
     private val EMAIL = Regex("""[\w.+-]+@[\w-]+\.[\w.]+""")
     private val PHONE =
@@ -119,34 +131,28 @@ object StatementRedactor {
 
     /** `06012-5004321` becomes `••••4321`: enough to recognise, not to use. */
     private fun mask(line: String): String {
-        // Amounts are cut out of the line before anything is masked and put
-        // back verbatim. No identifier rule can reach inside one, so no rule
-        // can quietly turn 10.99 into 6710.99 — a wrong number that looks
-        // right is the one failure nobody downstream catches.
-        //
-        // Done by splitting rather than by regex lookaround on purpose:
-        // Kotlin/Native's regex engine does not support lookbehind the way the
-        // JVM's does, and CI builds iOS without running the shared tests on
-        // it, so a lookaround that worked on the JVM could fail only on a
-        // user's phone.
-        val out = StringBuilder()
-        var last = 0
-        for (amount in AMOUNT.findAll(line)) {
-            out.append(maskIdentifiers(line.substring(last, amount.range.first)))
-            out.append(amount.value)
-            last = amount.range.last + 1
-        }
-        out.append(maskIdentifiers(line.substring(last)))
-        return out.toString()
-    }
-
-    /** Masks everything identifying in a stretch of line that holds no amount. */
-    private fun maskIdentifiers(segment: String): String {
-        var masked = EMAIL.replace(segment, MASK)
+        // Anything spanning spaces goes first, while the spaces are still
+        // there: an email, a phone number, a postal code, a grouped account or
+        // card number.
+        var masked = EMAIL.replace(line, MASK)
         masked = PHONE.replace(masked, MASK)
         masked = POSTAL_CODE.replace(masked, MASK)
         masked = GROUPED_DIGIT_RUN.replace(masked) { lastFour(it.value) }
-        return TOKEN_DIGIT_RUN.replace(masked) { lastFour(it.value) }
+
+        // Then token by token, so that an amount is recognised as a whole word
+        // and everything else is masked. Deciding this per token is what keeps
+        // a digit run from reaching across a space into the next column and
+        // rewriting the amount there — `CHQ 1234567 10.99` once became
+        // `CHQ ••••6710.99`, turning $10.99 into $6710.99.
+        //
+        // Per token rather than by regex lookaround on purpose: Kotlin/Native's
+        // regex engine does not support lookbehind the way the JVM's does, and
+        // CI builds iOS without running the shared tests on it, so a lookaround
+        // that passed here could fail only on a user's phone.
+        return TOKEN.replace(masked) { token ->
+            if (AMOUNT_TOKEN.matches(token.value)) token.value
+            else TOKEN_DIGIT_RUN.replace(token.value) { lastFour(it.value) }
+        }
     }
 
     private fun lastFour(run: String): String =

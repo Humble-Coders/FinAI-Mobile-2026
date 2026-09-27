@@ -36,7 +36,7 @@ backend omits a row it cannot date rather than guessing one.
 | `iosApp/iosApp/repository/IOSStatementReader.swift` | The same three paths with PDFKit and Vision. |
 
 ### Tests
-`StatementRedactorTest` (19), `StatementPeriodTest` (6), `ImportStatementTest` (8),
+`StatementRedactorTest` (22), `StatementPeriodTest` (6), `ImportStatementTest` (8),
 `AndroidStatementReaderTest` (6, Robolectric, `@Config(sdk = [34])`).
 
 ## How to test
@@ -95,6 +95,34 @@ and nothing else. The first of those initially did **not** fail — it asserted
 `endsWith("10.99")`, which `••••6710.99` satisfies — so it was tightened to an
 exact match.
 
+## Review fixes (round 2)
+
+The round-1 amount fix bought correctness with three privacy holes, all found
+in review before merge:
+
+1. **SIN-shaped numbers stopped being masked — a regression.** Narrowing the
+   grouped rule to four-digit groups to kill the amount-crossing bug also
+   dropped 3-3-3, which is exactly how a Canadian SIN is printed. `123 456 789`
+   was masked before the round-1 fix and not after. The rule now takes three or
+   more groups of three to five digits.
+2. **Anything with two decimal places was protected as an "amount".** The
+   pattern had no bound on the integer part, so `WIRE REF 1234567.89` went out
+   untouched. An amount is now at most six digits before the point.
+3. **Amount protection was not token-bounded**, so `ACCT 06012-5004321.00` had
+   its tail read as an amount and only the `06012` masked — the identifying
+   digits survived. Amounts are now matched as whole tokens.
+
+**The test helper was hiding #2.** `assertNoLongDigitRun` stripped anything
+amount-shaped before looking for runs, so the leak was erased by the strip and
+the check reported clean. It now mirrors the masking rules instead of
+second-guessing them.
+
+Mutation-checked both ways: restoring the round-1 rules fails
+`aSocialInsuranceNumberIsMasked`, `anIdentifierWrittenWithDecimalsIsStillMasked`
+and `anAccountNumberIsNotPartlySavedByATrailingAmount`; removing the per-token
+amount protection fails the four round-1 tests. Neither mutation touches
+anything else.
+
 ## Deviations / decisions
 
 **`ImportStatement` takes an `ExtractedDocument`, not a `StatementReader`.**
@@ -140,7 +168,7 @@ On iOS the cost is **zero**: PDFKit and Vision are system frameworks.
 
 ## Verification
 
-`:sharedLogic:testAndroidHostTest` 171 tests, `:androidApp:testDebugUnitTest` 28 tests,
+`:sharedLogic:testAndroidHostTest` 174 tests, `:androidApp:testDebugUnitTest` 28 tests,
 and the iOS workspace build — all green on CI run 36317571132, which ran
 `:sharedLogic:syncFramework` and compiled `IOSStatementReader.swift`.
 
