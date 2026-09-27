@@ -78,10 +78,15 @@ final class IOSStatementReader {
             let lines = self.lines(on: page)
             characters += lines.reduce(0) { $0 + $1.text.count }
             pages.append(ExtractedPage(index: Int32(index), lines: lines))
-            onPage(index + 1, document.pageCount)
         }
 
+        // No per-page progress here, matching Android. This pass does not yet
+        // know whether it is the answer, and when it is not, the OCR pass
+        // counts from one again — a bar that fills, resets and then crawls
+        // reads as a fault. Reading a text layer is the fast path, so it
+        // reports once, on success.
         guard characters >= meaningfulCharacters else { return nil }
+        onPage(document.pageCount, document.pageCount)
         return ExtractedDocument(pages: pages, source: .pdfText)
     }
 

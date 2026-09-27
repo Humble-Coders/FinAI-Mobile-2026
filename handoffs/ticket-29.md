@@ -36,7 +36,7 @@ backend omits a row it cannot date rather than guessing one.
 | `iosApp/iosApp/repository/IOSStatementReader.swift` | The same three paths with PDFKit and Vision. |
 
 ### Tests
-`StatementRedactorTest` (22), `StatementPeriodTest` (6), `ImportStatementTest` (8),
+`StatementRedactorTest` (22), `StatementPeriodTest` (11), `ImportStatementTest` (8),
 `AndroidStatementReaderTest` (10, Robolectric, `@Config(sdk = [34])`).
 
 ## How to test
@@ -150,6 +150,38 @@ This also closed the oldest gap on the ticket: PdfBox can build an encrypted PDF
 in the test, so **three tests now exercise a genuinely locked statement** — right
 password, wrong password, and no password.
 
+## Review fixes (round 4)
+
+Review reached `StatementPeriod`, which the first three rounds never opened, and
+re-read the round-3 change.
+
+1. **The period could be sent backwards.** `find` took the first two dates on a
+   line in the order they matched, unchecked. `Statement date: 5 Sep 2026
+   Period: 1 Aug 2026 to 31 Aug 2026` yielded start 2026-09-05, end 2026-08-01,
+   and `Closing … opening …` inverted outright. Both are ordinary header
+   shapes. The backend uses this to supply the year the redactor strips, so a
+   reversed period dates the statement wrong or empties the import — the exact
+   failure the field exists to prevent. Dates are now returned earliest first.
+2. **No date was checked for existing.** `32 Aug 2026` became `2026-08-32` and
+   went out as a period bound; the ISO branch would have passed `2026-13-45`
+   through untouched. Day and month are now validated against the real calendar,
+   leap years included.
+3. **Round 3's own fix had narrowed a catch too far.** Replacing
+   `catch (Exception)` with `catch (IOException)` let everything PdfBox throws
+   off a damaged file — `IllegalArgumentException`, `IndexOutOfBoundsException`,
+   an NPE off a malformed xref — escape as itself, which is not the type the
+   interface promises. The broad fallback is back, under the typed password
+   catch, and a null input stream is handled rather than reaching
+   `PDDocument.load`.
+4. **Progress filled, reset, then crawled.** The text-layer pass reported
+   per page before knowing whether it was the answer; when it was not, OCR
+   started counting from one. The text pass is silent now and reports once on
+   success, leaving the running count to the slow path. Changed on **both**
+   platforms, so they still behave alike.
+
+Mutation-checked: taking the dates in matched order and dropping the calendar
+check fails exactly the four tests named for those shapes.
+
 ## Verify OCR by hand
 
 The two paths no test can reach, on a device or emulator:
@@ -211,7 +243,7 @@ On iOS the cost is **zero**: PDFKit and Vision are system frameworks.
 
 ## Verification
 
-`:sharedLogic:testAndroidHostTest` 174 tests, `:androidApp:testDebugUnitTest` 32 tests,
+`:sharedLogic:testAndroidHostTest` 179 tests, `:androidApp:testDebugUnitTest` 32 tests,
 and the iOS workspace build — all green on CI run 36317571132, which ran
 `:sharedLogic:syncFramework` and compiled `IOSStatementReader.swift`.
 

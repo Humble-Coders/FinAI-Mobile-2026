@@ -53,14 +53,33 @@ object StatementPeriod {
             // the backend a period one day wide, which is worse than none.
             if (StatementRedactor.looksLikeATransaction(line.text)) continue
             val dates = datesIn(line.text)
-            if (dates.size >= 2) return Range(dates[0], dates[1])
+            if (dates.size >= 2) return ordered(dates[0], dates[1])
         }
         return null
     }
 
+    /**
+     * The two dates, earliest first.
+     *
+     * They are taken in the order they appear on the line, and that order is
+     * not always the period's. `Statement date: 5 Sep 2026  Period: 1 Aug 2026
+     * to 31 Aug 2026` opens with a date that is not the start, and `Closing …
+     * opening …` prints them backwards outright. A reversed period is worse
+     * than none: the backend uses it to supply the year the redactor strips,
+     * so the statement is dated wrong or comes back empty — the very failure
+     * this field exists to prevent.
+     *
+     * ISO strings, so comparing them as text compares them as dates.
+     */
+    private fun ordered(first: String, second: String): Range =
+        if (first <= second) Range(first, second) else Range(second, first)
+
     private fun datesIn(text: String): List<String> {
         val found = mutableListOf<String>()
-        ISO.findAll(text).forEach { found += it.value }
+        ISO.findAll(text).forEach { match ->
+            val (year, month, day) = match.destructured
+            if (isReal(year, month.toInt(), day.toInt())) found += match.value
+        }
         if (found.size >= 2) return found
 
         DAY_MONTH_YEAR.findAll(text).forEach { match ->
@@ -78,8 +97,23 @@ object StatementPeriod {
 
     private fun iso(year: String, month: String, day: String): String? {
         val number = MONTHS[month.lowercase().take(3)] ?: return null
-        val paddedDay = day.padStart(2, '0')
-        val paddedMonth = number.toString().padStart(2, '0')
-        return "$year-$paddedMonth-$paddedDay"
+        val numberedDay = day.toIntOrNull() ?: return null
+        // `32 Aug 2026` is not a date. Unchecked it became "2026-08-32" and
+        // went to the API as a period bound, where it can only be rejected or
+        // misread — and a statement whose period will not parse imports empty.
+        if (!isReal(year, number, numberedDay)) return null
+        return "$year-${number.toString().padStart(2, '0')}-${day.padStart(2, '0')}"
+    }
+
+    private fun isReal(year: String, month: Int, day: Int): Boolean {
+        val numberedYear = year.toIntOrNull() ?: return false
+        if (month !in 1..12 || day < 1) return false
+        return day <= daysIn(month, numberedYear)
+    }
+
+    private fun daysIn(month: Int, year: Int): Int = when (month) {
+        1, 3, 5, 7, 8, 10, 12 -> 31
+        4, 6, 9, 11 -> 30
+        else -> if (year % 4 == 0 && (year % 100 != 0 || year % 400 == 0)) 29 else 28
     }
 }

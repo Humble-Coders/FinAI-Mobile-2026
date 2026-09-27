@@ -84,16 +84,24 @@ class AndroidStatementReader(private val context: Context) : StatementReader {
     /** The password is used here and never leaves the device. */
     private fun openPdf(uri: Uri, password: String?): PDDocument =
         try {
-            context.contentResolver.openInputStream(uri).use { stream ->
-                PDDocument.load(stream, password ?: "")
-            }
+            val stream = context.contentResolver.openInputStream(uri)
+                ?: throw StatementReadException.Unsupported("cannot open")
+            stream.use { PDDocument.load(it, password ?: "") }
         } catch (wrongPassword: InvalidPasswordException) {
             // Caught by type, not by looking for "password" in the message:
             // a message match breaks on a library upgrade or a translation,
             // and when it breaks the screen says "we cannot read this file"
             // instead of asking again — leaving the user no way through.
             throw StatementReadException.PasswordRequired(wrongPassword = password != null)
-        } catch (broken: IOException) {
+        } catch (alreadyOurs: StatementReadException) {
+            throw alreadyOurs
+        } catch (broken: Exception) {
+            // Deliberately Exception and not IOException. A damaged PDF makes
+            // PdfBox throw from wherever it lost its footing —
+            // IllegalArgumentException, IndexOutOfBoundsException, an NPE off a
+            // malformed xref — and none of those are IOException. Narrowing
+            // this to IOException let them escape as themselves, which is not
+            // the type this interface promises and not one the screen catches.
             throw StatementReadException.Unsupported(broken::class.simpleName.orEmpty())
         }
 
@@ -108,9 +116,14 @@ class AndroidStatementReader(private val context: Context) : StatementReader {
             val lines = linesOnPage(pdf, index + 1)
             characters += lines.sumOf { it.text.length }
             pages += ExtractedPage(index = index, lines = lines)
-            onPage(index + 1, pdf.numberOfPages)
         }
+        // No per-page progress from here. This pass does not know yet whether
+        // it is the answer, and when it is not, the OCR pass starts counting
+        // from one again — the bar filled, reset, and crawled, which reads as
+        // a fault. Reading a text layer is the fast path, so it reports once,
+        // on success; the slow path is the one that needs a running count.
         return if (characters >= meaningfulCharacters) {
+            onPage(pdf.numberOfPages, pdf.numberOfPages)
             ExtractedDocument(pages = pages, source = SourceKind.PDF_TEXT)
         } else {
             null
