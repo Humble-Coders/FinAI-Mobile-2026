@@ -228,6 +228,25 @@ cannot handle two of them and forget the third.
    reason `StatementLimits` exists. Mapped to `ApiException.StatementTooLarge`,
    carrying the same "import one month at a time" string.
 
+## Review fixes (round 7)
+
+**The client gave up on a parse before the server was done with it.** The
+default request timeout is 60 s and the backend allows itself
+`PARSE_BUDGET_SECONDS = 180.0`. A statement taking 61-180 s to parse timed out
+on the phone while the server carried on, finished the import and spent the
+model call — so the user was told it failed, retried, and paid for the same
+statement twice. Dedup does not cover this: rows are not stored until the user
+confirms them, so what repeats is the import record and the model spend.
+
+`POST /statements/parse` now carries its own `PARSE_TIMEOUT_MS = 210_000`, in
+`StatementLimits` beside the other two numbers that mirror the backend. The
+global 60 s is unchanged and should stay — it is right for signing in, and a
+hung auth call should not hang for three minutes.
+
+Also checked and clean, which is worth recording: `FinAiHttpClient` logs at
+`LogLevel.HEADERS`, so no request body — and therefore no redacted statement
+text — can reach a log, and `sanitizeHeader` keeps the bearer token out too.
+
 ## Verify OCR by hand
 
 The two paths no test can reach, on a device or emulator:

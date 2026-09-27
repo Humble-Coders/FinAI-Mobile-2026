@@ -25,4 +25,19 @@ object StatementLimits {
      * over-paged scan is refused after minutes of OCR.
      */
     const val MAX_PAGES: Int = 500
+
+    /**
+     * How long to wait for `POST /statements/parse`, in milliseconds.
+     *
+     * Mirrors `PARSE_BUDGET_SECONDS = 180.0` in the backend's
+     * `app/services/statements.py`, with thirty seconds of margin for the
+     * request itself. The default client timeout is a minute, which is right
+     * for signing in and wrong for this: a long statement fans out into many
+     * model calls, and the server is allowed three minutes for them.
+     *
+     * Giving up first is worse than waiting. The server does not stop when the
+     * client does — it finishes the import and spends the model call — so the
+     * user is told it failed, retries, and pays for the same statement twice.
+     */
+    const val PARSE_TIMEOUT_MS: Long = 210_000
 }
