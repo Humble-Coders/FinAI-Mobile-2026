@@ -22,6 +22,9 @@ internal object ApiErrorMapper {
         403 -> forbidden(body)
         404 -> ApiException.NotFound()
         400, 409, 422 -> rejected(status, body)
+        // The statement endpoint's own refusal. Left to `Unexpected` it showed
+        // "something went wrong" for a file the user could simply split.
+        413 -> ApiException.StatementTooLarge()
         in 500..599 -> ApiException.Server(status)
         else -> ApiException.Unexpected(status)
     }

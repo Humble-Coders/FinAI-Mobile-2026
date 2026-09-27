@@ -19,6 +19,7 @@ import io.ktor.client.plugins.plugin
 import io.ktor.client.request.accept
 import io.ktor.client.request.bearerAuth
 import io.ktor.client.request.get
+import io.ktor.client.request.HttpRequestBuilder
 import io.ktor.client.request.post
 import io.ktor.client.request.put
 import io.ktor.client.request.setBody
@@ -169,5 +170,15 @@ internal suspend inline fun <reified T> HttpClient.getJson(path: String): T =
 internal suspend inline fun <reified B, reified T> HttpClient.putJson(path: String, body: B): T =
     sendMapped { put(path) { contentType(ContentType.Application.Json); setBody(body) } }.decoded()
 
-internal suspend inline fun <reified B, reified T> HttpClient.postJson(path: String, body: B): T =
-    sendMapped { post(path) { contentType(ContentType.Application.Json); setBody(body) } }.decoded()
+internal suspend inline fun <reified B, reified T> HttpClient.postJson(
+    path: String,
+    body: B,
+    crossinline configure: HttpRequestBuilder.() -> Unit = {},
+): T =
+    sendMapped {
+        post(path) {
+            contentType(ContentType.Application.Json)
+            setBody(body)
+            configure()
+        }
+    }.decoded()

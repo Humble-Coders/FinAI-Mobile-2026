@@ -46,6 +46,10 @@ dependencies {
     // The screens' derived rules — which button is enabled, which control is
     // drawn at all — are computed on the UiState data classes, so they test
     // with a plain constructor and no Android at all (kmp-arch-v2).
+    implementation(libs.pdfbox.android)
+    implementation(libs.mlkit.textRecognition)
+
+    testImplementation(libs.robolectric)
     testImplementation(libs.kotlin.testJunit)
     testImplementation(libs.junit)
     // Replaces the main dispatcher, so a view model's own coroutines run in a
@@ -82,6 +86,14 @@ android {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
+    testOptions {
+        unitTests {
+            // Robolectric reads the merged manifest and resources; without this
+            // it starts with none and every test fails on a missing package.
+            isIncludeAndroidResources = true
+        }
+    }
+
     buildFeatures {
         compose = true
         // BuildConfig.DEBUG decides whether the API client may log at all —

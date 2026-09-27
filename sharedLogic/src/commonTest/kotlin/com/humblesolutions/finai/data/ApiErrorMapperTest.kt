@@ -5,6 +5,7 @@ import com.humblesolutions.finai.model.FeatureReason
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import com.humblesolutions.finai.i18n.Strings
 
 class ApiErrorMapperTest {
 
@@ -95,6 +96,15 @@ class ApiErrorMapperTest {
     @Test
     fun `maps 5xx to Server`() {
         assertEquals(503, assertIs<ApiException.Server>(ApiErrorMapper.fromResponse(503, "")).status)
+    }
+
+    @Test
+    fun `maps 413 to a statement refusal a reader can act on`() {
+        // The statement endpoint's own status. Left to Unexpected it showed
+        // "something went wrong" for a file the user could simply split.
+        val refusal = assertIs<ApiException.StatementTooLarge>(ApiErrorMapper.fromResponse(413, ""))
+
+        assertEquals(Strings.statement_too_long, refusal.messageKey)
     }
 
     @Test

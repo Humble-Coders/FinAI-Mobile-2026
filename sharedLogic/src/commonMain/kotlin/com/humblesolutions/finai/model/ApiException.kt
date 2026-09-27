@@ -49,6 +49,19 @@ sealed class ApiException(message: String, cause: Throwable? = null) : Exception
         override val messageKey: String = Strings.error_validation
     }
 
+    /**
+     * The statement was longer than the API accepts (413).
+     *
+     * The device checks the same limit before sending, so this should be
+     * unreachable — but the two copies live in different repositories and the
+     * whole reason [com.humblesolutions.finai.config.StatementLimits] exists is
+     * that they can drift. When they do, this is the path that carries the
+     * news, and it should carry advice rather than "something went wrong".
+     */
+    class StatementTooLarge : ApiException("statement too large") {
+        override val messageKey: String = Strings.statement_too_long
+    }
+
     /** The number itself was refused — usually the wrong country code in front of it. */
     class InvalidPhone : ApiException("phone number rejected") {
         override val messageKey: String = Strings.error_invalid_phone
