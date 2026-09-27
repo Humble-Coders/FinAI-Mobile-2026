@@ -254,6 +254,31 @@ Also checked and clean, which is worth recording: `FinAiHttpClient` logs at
 `LogLevel.HEADERS`, so no request body — and therefore no redacted statement
 text — can reach a log, and `sanitizeHeader` keeps the bearer token out too.
 
+## Review fixes (round 9)
+
+**CI was red and I had not seen it.** `ci.yml` sets `cancel-in-progress`, and
+pushing every ten minutes meant each push killed the previous run: the last
+completed run before this round was round 4's. Four commits went unverified
+while the reports on them said otherwise.
+
+The run that finally completed failed, on a step no local command covers —
+`:sharedLogic:iosSimulatorArm64Test`, the shared suite compiled and run as
+Kotlin/Native. One test failed there and nowhere else:
+`pagesAreRefusedBeforeLengthSoTheAdviceIsActionable`, with
+`UncompletedCoroutinesError` — `runTest` timing out.
+
+The cause was the test, not the code. To make a statement that breaks both the
+page bound and the text bound, it gave each of 501 pages its own
+200,000-character line: about a hundred megabytes of strings, which the JVM
+absorbs and Native does not finish inside a minute. The text bound is on the
+whole document, so the length is spread across the pages now — 501 lines of
+~430 characters, 215,430 in total, the same assertions and a fifth of a
+megabyte.
+
+Worth keeping in mind for this repo: **the JVM suite is not the whole suite.**
+`testAndroidHostTest` passing says nothing about Kotlin/Native, where these
+tests also run.
+
 ## Verify OCR by hand
 
 The two paths no test can reach, on a device or emulator:

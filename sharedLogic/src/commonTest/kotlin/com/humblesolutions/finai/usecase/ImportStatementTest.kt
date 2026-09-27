@@ -184,9 +184,15 @@ class ImportStatementTest {
         // A statement can fail both bounds. Pages is the one a person can do
         // something about, so it is the one they are told about.
         val imports = FakeImports()
-        val long = "14 Aug  " + "SPOTIFY ".repeat(StatementLimits.MAX_TEXT_CHARS / 8) + " 10.99"
+        // Long in total, not long per page. Giving every one of 501 pages its
+        // own 200,000-character line built about a hundred megabytes of
+        // strings: the JVM absorbed it and Kotlin/Native did not finish inside
+        // runTest's minute, so this failed only on the iOS simulator. The
+        // bound is on the whole text, so spreading it is the same test.
+        val perPage = StatementLimits.MAX_TEXT_CHARS / StatementLimits.MAX_PAGES + 20
+        val line = "14 Aug  " + "SPOTIFY ".repeat(perPage / 8) + " 10.99"
         val pages = (0..StatementLimits.MAX_PAGES).map {
-            ExtractedPage(index = it, lines = listOf(ExtractedLine(text = long)))
+            ExtractedPage(index = it, lines = listOf(ExtractedLine(text = line)))
         }
 
         assertFailsWith<StatementTooManyPages> {
