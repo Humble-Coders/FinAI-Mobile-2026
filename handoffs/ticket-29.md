@@ -243,6 +243,13 @@ confirms them, so what repeats is the import record and the model spend.
 global 60 s is unchanged and should stay — it is right for signing in, and a
 hung auth call should not hang for three minutes.
 
+**Round 8 correction:** the first attempt raised only `requestTimeoutMillis`
+and left `socketTimeoutMillis` at the default minute. While the server parses
+nothing comes back down the connection, so the socket bound ended the call at
+sixty seconds regardless — the fix did not work, and the test did not notice
+because it asserted the field that had been set rather than the waiting it was
+supposed to buy. Both bounds are raised now, and both are asserted.
+
 Also checked and clean, which is worth recording: `FinAiHttpClient` logs at
 `LogLevel.HEADERS`, so no request body — and therefore no redacted statement
 text — can reach a log, and `sanitizeHeader` keeps the bearer token out too.

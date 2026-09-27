@@ -38,6 +38,11 @@ object StatementLimits {
      * Giving up first is worse than waiting. The server does not stop when the
      * client does — it finishes the import and spends the model call — so the
      * user is told it failed, retries, and pays for the same statement twice.
+     *
+     * Applies to the socket timeout as well as the request timeout. While the
+     * server parses, nothing comes back down the connection, so a socket
+     * bound left at the default ends the request at a minute no matter what
+     * the request bound says.
      */
     const val PARSE_TIMEOUT_MS: Long = 210_000
 }

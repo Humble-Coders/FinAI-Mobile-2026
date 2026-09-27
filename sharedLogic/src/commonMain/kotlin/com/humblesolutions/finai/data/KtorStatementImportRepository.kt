@@ -26,11 +26,19 @@ class KtorStatementImportRepository internal constructor(
 
     @Throws(ApiException::class, CancellationException::class)
     override suspend fun parse(upload: StatementUpload): ParsedStatement =
-        // Its own timeout, not the client's default minute. The server is
+        // Its own timeouts, not the client's default minute. The server is
         // allowed three minutes to parse, and giving up before it does leaves
         // the import finishing unseen while the user is told it failed.
+        //
+        // BOTH bounds, and that is the whole point: while the server parses,
+        // the connection is silent — nothing is sent until the handler
+        // returns — so a socket timeout left at the default kills the request
+        // at a minute however long the request timeout is.
         http.postJson("statements/parse", upload) {
-            timeout { requestTimeoutMillis = StatementLimits.PARSE_TIMEOUT_MS }
+            timeout {
+                requestTimeoutMillis = StatementLimits.PARSE_TIMEOUT_MS
+                socketTimeoutMillis = StatementLimits.PARSE_TIMEOUT_MS
+            }
         }
 
     override fun close() = http.close()

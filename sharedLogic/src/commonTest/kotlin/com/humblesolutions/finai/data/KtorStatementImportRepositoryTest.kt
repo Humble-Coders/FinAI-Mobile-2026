@@ -62,7 +62,20 @@ class KtorStatementImportRepositoryTest {
             assertNotNull(seen).getCapabilityOrNull(HttpTimeoutCapability),
             "the parse request carries no timeout of its own",
         )
-        assertEquals(StatementLimits.PARSE_TIMEOUT_MS, timeout.requestTimeoutMillis)
+        // Both bounds. Asserting only the request timeout is how the first
+        // attempt at this passed while the socket timeout still ended the
+        // call at a minute: the test checked the field that had been set
+        // rather than the waiting the change was meant to buy.
+        assertEquals(
+            StatementLimits.PARSE_TIMEOUT_MS,
+            timeout.requestTimeoutMillis,
+            "request timeout fell back to the default",
+        )
+        assertEquals(
+            StatementLimits.PARSE_TIMEOUT_MS,
+            timeout.socketTimeoutMillis,
+            "socket timeout fell back to the default, so the parse still dies at a minute",
+        )
         assertTrue(
             StatementLimits.PARSE_TIMEOUT_MS > FinAiHttpClient.REQUEST_TIMEOUT_MS,
             "the parse timeout must exceed the default, not fall back to it",
