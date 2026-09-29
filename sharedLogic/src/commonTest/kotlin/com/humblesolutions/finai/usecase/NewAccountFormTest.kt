@@ -47,7 +47,7 @@ class NewAccountFormTest {
 
     @Test
     fun aNameAtTheServersLimitIsAcceptedAndOnePastItIsNot() {
-        val atLimit = complete.copy(name = "a".repeat(NewAccountForm.NAME_MAX))
+        val atLimit = complete.copy(name = "a".repeat(NewAccountForm.MAX_NAME_LENGTH))
 
         assertNull(NewAccountForm.blockingReason(atLimit))
         assertEquals(
@@ -64,7 +64,7 @@ class NewAccountFormTest {
 
     @Test
     fun aNameTooLongIsSaidStraightAway() {
-        val tooLong = NewAccountDraft(name = "a".repeat(NewAccountForm.NAME_MAX + 1))
+        val tooLong = NewAccountDraft(name = "a".repeat(NewAccountForm.MAX_NAME_LENGTH + 1))
 
         assertEquals(NewAccountBlock.NAME_TOO_LONG, NewAccountForm.notice(tooLong, touched = false))
     }

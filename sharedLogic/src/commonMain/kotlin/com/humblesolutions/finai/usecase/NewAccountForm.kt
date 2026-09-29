@@ -26,14 +26,17 @@ enum class NewAccountBlock(val messageKey: String, val isUnanswered: Boolean) {
 /** The rules for [NewAccountDraft] — the button, the notice and the request all read [blockingReason]. */
 object NewAccountForm {
 
-    /** The backend's limit on an account's name (`AccountIn.name`). */
-    const val NAME_MAX = 255
+    /**
+     * The backend's limit on an account's name (`AccountIn.name`). Not
+     * `NAME_MAX`: that is a C macro, and the iOS header would not compile.
+     */
+    const val MAX_NAME_LENGTH = 255
 
     fun blockingReason(draft: NewAccountDraft): NewAccountBlock? {
         val name = draft.name.trim()
         if (name.isEmpty()) return NewAccountBlock.NO_NAME
         // UTF-16 units here, code points on the server: only ever stricter.
-        if (name.length > NAME_MAX) return NewAccountBlock.NAME_TOO_LONG
+        if (name.length > MAX_NAME_LENGTH) return NewAccountBlock.NAME_TOO_LONG
         if (draft.kind == null || draft.kind == AccountKind.UNKNOWN) return NewAccountBlock.NO_KIND
         return null
     }

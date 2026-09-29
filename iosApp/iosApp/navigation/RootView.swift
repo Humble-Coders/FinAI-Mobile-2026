@@ -11,6 +11,12 @@ struct RootView: View {
     /// The wizard owns a repository and a draft nothing else needs, so it has
     /// its own model, built and closed with the screen.
     @StateObject private var setupModel = SetupViewModel()
+    /// Manual entry's model, kept here like the wizard's so a draft outlives
+    /// the view being rebuilt.
+    @StateObject private var entryModel = ManualEntryViewModel()
+    /// Scene storage, so the app coming back after iOS reclaimed it reopens
+    /// the entry being typed rather than dropping the person on home.
+    @SceneStorage("manual_entry.open") private var addingTransaction = false
     /// One coin loader for the whole app: centred, everything behind it blurred,
     /// for at least two seconds.
     @StateObject private var loader = AppLoader()
@@ -51,6 +57,16 @@ struct RootView: View {
     /// load. Continue inside the wizard is not here: it never waits on the coin.
     private var loaderActive: Bool {
         model.busy || model.showLoadingCard || (showingSetup && setupModel.loading)
+            || (showingEntry && entryModel.loading)
+    }
+
+    private var showingEntry: Bool {
+        model.configurationProblemKey == nil
+            && model.introFinished
+            && !model.showLoadingCard
+            && model.reset == nil
+            && model.destination.screen == .home
+            && addingTransaction
     }
 
     private var showingSetup: Bool {
@@ -121,7 +137,13 @@ struct RootView: View {
         case .updateRequired:
             UpdateRequiredView()
         case .home:
-            HomeView { model.signOut() }
+            if addingTransaction {
+                ManualEntryView(model: entryModel, userId: model.me?.user.id ?? "") {
+                    addingTransaction = false
+                }
+            } else {
+                HomeView(onAddTransaction: { addingTransaction = true }, onSignOut: { model.signOut() })
+            }
         case .failed:
             FailedView(
                 messageKey: failureKey,

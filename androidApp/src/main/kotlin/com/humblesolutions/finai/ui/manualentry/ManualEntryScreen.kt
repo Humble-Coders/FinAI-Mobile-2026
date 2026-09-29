@@ -2,7 +2,6 @@ package com.humblesolutions.finai.ui.manualentry
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -24,19 +23,26 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
-import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SelectableDates
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -50,6 +56,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -384,12 +391,12 @@ private fun DateRow(state: ManualEntryUiState, onPick: () -> Unit, onToday: () -
                 isError = state.notice in DateBlocks,
             )
         }
-        ChoiceChip(
-            text = strings(Strings.manual_entry_date_today),
+        FilterChip(
             selected = state.draft.occurredOn == state.today,
             onClick = onToday,
-            role = Role.Button,
-            modifier = Modifier.height(56.dp),
+            label = { Text(strings(Strings.manual_entry_date_today)) },
+            colors = neutralChipColors(),
+            modifier = Modifier.padding(bottom = 12.dp),
         )
     }
 }
@@ -404,66 +411,45 @@ private fun DirectionChoice(
         FieldLabel(strings(Strings.manual_entry_direction_label))
         // Neither is preselected: "money out" is the likelier answer, which is
         // exactly why guessing it would go unnoticed when it is wrong.
-        Row(
-            modifier = Modifier.fillMaxWidth().selectableGroup(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            ChoiceChip(
-                text = strings(Strings.manual_entry_direction_out),
-                selected = chosen == TransactionDirection.DEBIT,
-                onClick = { onChosen(TransactionDirection.DEBIT) },
-                isError = isError,
-                modifier = Modifier.weight(1f).height(56.dp),
-            )
-            ChoiceChip(
-                text = strings(Strings.manual_entry_direction_in),
-                selected = chosen == TransactionDirection.CREDIT,
-                onClick = { onChosen(TransactionDirection.CREDIT) },
-                isError = isError,
-                modifier = Modifier.weight(1f).height(56.dp),
-            )
+        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+            Directions.forEachIndexed { index, (direction, labelKey) ->
+                SegmentedButton(
+                    selected = chosen == direction,
+                    onClick = { onChosen(direction) },
+                    shape = SegmentedButtonDefaults.itemShape(index = index, count = Directions.size),
+                    colors = SegmentedButtonDefaults.colors(
+                        activeContainerColor = MaterialTheme.colorScheme.inverseSurface,
+                        activeContentColor = MaterialTheme.colorScheme.inverseOnSurface,
+                        inactiveContainerColor = MaterialTheme.colorScheme.surface,
+                        inactiveBorderColor = if (isError) {
+                            MaterialTheme.colorScheme.error
+                        } else {
+                            MaterialTheme.colorScheme.outlineVariant
+                        },
+                    ),
+                    modifier = Modifier.heightIn(min = 48.dp),
+                ) {
+                    Text(strings(labelKey), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            }
         }
     }
 }
 
+private val Directions = listOf(
+    TransactionDirection.DEBIT to Strings.manual_entry_direction_out,
+    TransactionDirection.CREDIT to Strings.manual_entry_direction_in,
+)
+
 /**
- * One option of a choice, in the fields' box. Chosen, it takes a heavier
- * border in the text colour — not the accent, which belongs to Save alone.
+ * A chosen chip is drawn in the inverse surface — not the accent, which belongs
+ * to Save alone — and both come from theme tokens defined for light and dark.
  */
 @Composable
-private fun ChoiceChip(
-    text: String,
-    selected: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    isError: Boolean = false,
-    role: Role = Role.RadioButton,
-) {
-    val shape = RoundedCornerShape(16.dp)
-    val border = when {
-        selected -> MaterialTheme.colorScheme.onSurface
-        isError -> MaterialTheme.colorScheme.error
-        else -> MaterialTheme.colorScheme.outlineVariant
-    }
-    Box(
-        modifier = modifier
-            .heightIn(min = 48.dp)
-            .background(MaterialTheme.colorScheme.surface, shape)
-            .border(if (selected || isError) 2.dp else 1.dp, border, shape)
-            .selectable(selected = selected, role = role, onClick = onClick)
-            .padding(horizontal = 16.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            text = text,
-            style = MaterialTheme.typography.labelLarge,
-            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
-            color = MaterialTheme.colorScheme.onSurface,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-    }
-}
+private fun neutralChipColors() = FilterChipDefaults.filterChipColors(
+    selectedContainerColor = MaterialTheme.colorScheme.inverseSurface,
+    selectedLabelColor = MaterialTheme.colorScheme.inverseOnSurface,
+)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -577,16 +563,16 @@ private fun NewAccountSheet(state: ManualEntryUiState, actions: ManualEntryActio
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 FieldLabel(strings(Strings.account_new_kind_label))
                 FlowRow(
-                    modifier = Modifier.fillMaxWidth().selectableGroup(),
+                    modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     AccountKind.choosable.forEach { kind ->
-                        ChoiceChip(
-                            text = kind.labelKey?.let { strings(it) }.orEmpty(),
+                        FilterChip(
                             selected = draft.kind == kind,
                             onClick = { actions.onNewAccountKind(kind) },
-                            isError = state.newAccountNotice == NewAccountBlock.NO_KIND,
+                            label = { Text(kind.labelKey?.let { strings(it) }.orEmpty()) },
+                            colors = neutralChipColors(),
                         )
                     }
                 }
@@ -622,6 +608,7 @@ private fun SheetTitle(text: String) {
     )
 }
 
+/** A row in a chooser: Material's list item, with a radio button when it is one of a set. */
 @Composable
 private fun SheetRow(
     title: String,
@@ -630,48 +617,36 @@ private fun SheetRow(
     onClick: () -> Unit,
     role: Role = Role.RadioButton,
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .heightIn(min = 56.dp)
-            .then(
-                if (role == Role.RadioButton) {
-                    Modifier.selectable(selected = selected, role = role, onClick = onClick)
-                } else {
-                    Modifier.clickable(role = role, onClick = onClick)
-                },
-            )
-            .padding(horizontal = 24.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+    val choice = role == Role.RadioButton
+    ListItem(
+        headlineContent = {
             Text(
                 text = title,
-                style = MaterialTheme.typography.bodyLarge,
                 fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            if (!detail.isNullOrEmpty()) {
-                Text(
-                    text = detail,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-        }
-        if (selected) {
-            Box(
-                Modifier
-                    .padding(start = 12.dp)
-                    .height(10.dp)
-                    .widthIn(min = 10.dp)
-                    .background(MaterialTheme.colorScheme.onSurface, RoundedCornerShape(50)),
-            )
-        }
-    }
+        },
+        supportingContent = detail?.takeIf { it.isNotEmpty() }?.let {
+            { Text(it, maxLines = 2, overflow = TextOverflow.Ellipsis) }
+        },
+        // The row carries the click, so the button only shows the state.
+        trailingContent = if (choice) {
+            { RadioButton(selected = selected, onClick = null) }
+        } else {
+            null
+        },
+        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+        modifier = Modifier
+            .padding(horizontal = 8.dp)
+            .then(
+                if (choice) {
+                    Modifier.selectable(selected = selected, role = role, onClick = onClick)
+                } else {
+                    Modifier.clickable(role = role, onClick = onClick)
+                },
+            ),
+    )
 }
 
 /**
