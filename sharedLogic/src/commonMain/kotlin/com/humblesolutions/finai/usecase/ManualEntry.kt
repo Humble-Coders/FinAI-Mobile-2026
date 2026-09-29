@@ -1,8 +1,11 @@
 package com.humblesolutions.finai.usecase
 
+import com.humblesolutions.finai.i18n.LocalizationRegistry
 import com.humblesolutions.finai.i18n.Strings
+import com.humblesolutions.finai.model.DuplicateMatch
 import com.humblesolutions.finai.model.NewTransaction
 import com.humblesolutions.finai.model.TransactionDirection
+import com.humblesolutions.finai.util.Dates
 import com.humblesolutions.finai.util.Money
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
@@ -151,6 +154,26 @@ object ManualEntry {
             description = draft.description.trim(),
             categoryId = draft.categoryId,
             allowDuplicate = allowDuplicate,
+        )
+    }
+
+    /**
+     * What the duplicate warning says: the amount, day and description of the
+     * transaction this one matched, so the person can tell whether it really is
+     * the same one. Anything missing from the server's answer falls back to a
+     * plain "this looks like one you already have" rather than a half-filled
+     * sentence.
+     */
+    fun duplicateMessage(match: DuplicateMatch?, currency: String, locale: String): String {
+        val date = Dates.parse(match?.occurredOn)
+        val amount = match?.let { Money.format(it.amount, currency, locale) }.orEmpty()
+        val description = match?.description?.trim().orEmpty()
+        if (date == null || amount.isEmpty() || description.isEmpty()) {
+            return LocalizationRegistry.get(Strings.manual_entry_duplicate_body_unknown)
+        }
+        return LocalizationRegistry.format(
+            Strings.manual_entry_duplicate_body,
+            listOf(amount, Dates.display(date), description),
         )
     }
 

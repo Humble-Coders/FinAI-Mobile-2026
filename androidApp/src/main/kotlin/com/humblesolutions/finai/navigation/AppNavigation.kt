@@ -29,6 +29,9 @@ import com.humblesolutions.finai.ui.components.LoaderHost
 import com.humblesolutions.finai.ui.components.LoaderSignal
 import com.humblesolutions.finai.ui.components.LoadingCard
 import com.humblesolutions.finai.ui.home.HomeScreen
+import com.humblesolutions.finai.ui.manualentry.ManualEntryActions
+import com.humblesolutions.finai.ui.manualentry.ManualEntryScreen
+import com.humblesolutions.finai.ui.manualentry.ManualEntryViewModel
 import com.humblesolutions.finai.ui.onboarding.CodeScreen
 import com.humblesolutions.finai.ui.onboarding.ConsentScreen
 import com.humblesolutions.finai.ui.onboarding.FailedScreen
@@ -190,7 +193,7 @@ private fun AppContent(viewModel: OnboardingViewModel) {
         }
 
         Destination.UpdateRequired -> UpdateRequiredScreen()
-        Destination.Home -> HomeScreen(onSignOut = viewModel::signOut)
+        Destination.Home -> HomeOrEntry(userId = state.me?.user?.id.orEmpty(), onSignOut = viewModel::signOut)
         is Destination.Failed -> FailedScreen(
             messageKey = destination.error.messageKey,
             onRetry = viewModel::retry,
@@ -235,6 +238,67 @@ private fun SetupRoute(userId: String, onFinished: () -> Unit) {
         onRemoveRow = model::removeRow,
         onKeepRows = model::keepRows,
         onDiscardRows = model::discardRows,
+    )
+}
+
+/**
+ * Home, or the manual entry screen opened from it (#30).
+ *
+ * Saveable, so the app coming back after Android reclaimed it reopens the
+ * entry being typed rather than dropping the person on home.
+ */
+@Composable
+private fun HomeOrEntry(userId: String, onSignOut: () -> Unit) {
+    var addingTransaction by rememberSaveable { mutableStateOf(false) }
+    if (addingTransaction) {
+        ManualEntryRoute(userId = userId, fromUnreadable = false, onClose = { addingTransaction = false })
+    } else {
+        HomeScreen(onAddTransaction = { addingTransaction = true }, onSignOut = onSignOut)
+    }
+}
+
+/**
+ * The manual entry screen with its own view model, which holds the draft
+ * across rotation and — through its saved state — the process being killed.
+ *
+ * Internal so the import flow can open it when a statement cannot be read
+ * (#31), passing [fromUnreadable] so the screen says why it is there.
+ */
+@Composable
+internal fun ManualEntryRoute(userId: String, fromUnreadable: Boolean, onClose: () -> Unit) {
+    val model: ManualEntryViewModel = viewModel()
+    val state by model.uiState.collectAsStateWithLifecycle()
+    LaunchedEffect(userId) { model.bind(userId, logging = BuildConfig.DEBUG) }
+    LoaderSignal(key = "manual_entry", active = state.loading)
+
+    val close = {
+        model.discard()
+        onClose()
+    }
+    BackHandler(onBack = close)
+
+    ManualEntryScreen(
+        state = state,
+        fromUnreadable = fromUnreadable,
+        actions = ManualEntryActions(
+            onClose = close,
+            onRetry = model::load,
+            onAccountChosen = model::onAccountChosen,
+            onDateChosen = model::onDateChosen,
+            onToday = model::onToday,
+            onAmountChange = model::onAmountChange,
+            onDirectionChosen = model::onDirectionChosen,
+            onDescriptionChange = model::onDescriptionChange,
+            onCategoryChosen = model::onCategoryChosen,
+            onSave = model::save,
+            onKeepDuplicate = model::keepDuplicate,
+            onDismissDuplicate = model::dismissDuplicate,
+            onOpenNewAccount = model::openNewAccount,
+            onNewAccountName = model::onNewAccountName,
+            onNewAccountKind = model::onNewAccountKind,
+            onCreateAccount = model::createAccount,
+            onCancelNewAccount = model::cancelNewAccount,
+        ),
     )
 }
 

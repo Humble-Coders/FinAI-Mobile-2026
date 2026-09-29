@@ -1,5 +1,6 @@
 package com.humblesolutions.finai.model
 
+import com.humblesolutions.finai.i18n.Strings
 import kotlinx.serialization.EncodeDefault
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.SerialName
@@ -27,6 +28,18 @@ enum class AccountKind(val wire: String) {
 
     /** A kind this build does not know yet. Never offered when creating one. */
     UNKNOWN("");
+
+    /** The string naming this kind, so both apps label it alike. Null for [UNKNOWN]. */
+    val labelKey: String?
+        get() = when (this) {
+            CHEQUING -> Strings.account_kind_chequing
+            SAVINGS -> Strings.account_kind_savings
+            CREDIT_CARD -> Strings.account_kind_credit_card
+            LOAN -> Strings.account_kind_loan
+            INVESTMENT -> Strings.account_kind_investment
+            CASH -> Strings.account_kind_cash
+            UNKNOWN -> null
+        }
 
     companion object {
         /** The kinds a person may choose from — everything but [UNKNOWN]. */

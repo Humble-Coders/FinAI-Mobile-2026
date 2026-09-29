@@ -1,5 +1,6 @@
 package com.humblesolutions.finai.usecase
 
+import com.humblesolutions.finai.model.DuplicateMatch
 import com.humblesolutions.finai.model.TransactionDirection
 import kotlinx.datetime.LocalDate
 import kotlin.test.Test
@@ -188,6 +189,35 @@ class ManualEntryTest {
             assertNotNull(
                 ManualEntry.request(complete, "CAD", today, allowDuplicate = true),
             ).allowDuplicate,
+        )
+    }
+
+    @Test
+    fun theDuplicateWarningNamesWhatItMatched() {
+        val match = DuplicateMatch(id = "t-1", occurredOn = "2026-09-12", amount = "1200.5", description = "Rent")
+
+        assertEquals(
+            "You already have $1,200.50 on Sep 12, 2026: \"Rent\". Is this a second one?",
+            ManualEntry.duplicateMessage(match, "CAD", "en-CA"),
+        )
+    }
+
+    @Test
+    fun aDuplicateWithNothingToShowSaysSoPlainly() {
+        val plain = "This looks like a transaction you already have."
+
+        assertEquals(plain, ManualEntry.duplicateMessage(null, "CAD", "en-CA"))
+        assertEquals(
+            plain,
+            ManualEntry.duplicateMessage(DuplicateMatch(occurredOn = "2026-09-12", amount = "5"), "CAD", "en-CA"),
+        )
+        assertEquals(
+            plain,
+            ManualEntry.duplicateMessage(
+                DuplicateMatch(occurredOn = "not a date", amount = "5", description = "Rent"),
+                "CAD",
+                "en-CA",
+            ),
         )
     }
 }
