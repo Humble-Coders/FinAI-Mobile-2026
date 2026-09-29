@@ -1,6 +1,8 @@
 package com.humblesolutions.finai.usecase
 
 import com.humblesolutions.finai.model.DuplicateMatch
+import com.humblesolutions.finai.model.ReviewReason
+import com.humblesolutions.finai.model.Transaction
 import com.humblesolutions.finai.model.TransactionDirection
 import kotlinx.datetime.LocalDate
 import kotlin.test.Test
@@ -219,5 +221,41 @@ class ManualEntryTest {
                 "en-CA",
             ),
         )
+    }
+
+    @Test
+    fun aFiledEntrySaysSaved() {
+        val filed = Transaction(id = "t-1", categoryId = "cat-1", needsReview = false)
+
+        assertEquals(ManualEntrySaved.SAVED, ManualEntry.savedAs(filed))
+    }
+
+    @Test
+    fun anUncategorizedEntrySaysItNeedsACategory() {
+        val waiting = Transaction(needsReview = true, reviewReason = ReviewReason.UNKNOWN_CATEGORY)
+
+        assertEquals(ManualEntrySaved.NEEDS_CATEGORY, ManualEntry.savedAs(waiting))
+    }
+
+    @Test
+    fun aPossibleDuplicateSaysSo() {
+        val flagged = Transaction(needsReview = true, reviewReason = ReviewReason.SUSPECTED_DUPLICATE)
+
+        assertEquals(ManualEntrySaved.LOOKS_LIKE_A_DUPLICATE, ManualEntry.savedAs(flagged))
+    }
+
+    @Test
+    fun aRowWaitingForAnUnknownReasonNeverReadsAsAllFine() {
+        for (reason in listOf(ReviewReason.UNKNOWN, ReviewReason.LOW_CONFIDENCE, null)) {
+            val waiting = Transaction(needsReview = true, reviewReason = reason)
+            assertEquals(ManualEntrySaved.NEEDS_REVIEW, ManualEntry.savedAs(waiting), "$reason")
+        }
+    }
+
+    @Test
+    fun everyOutcomeHasItsOwnMessage() {
+        val keys = ManualEntrySaved.entries.map { it.messageKey }
+
+        assertEquals(keys.size, keys.toSet().size)
     }
 }

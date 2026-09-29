@@ -91,6 +91,13 @@ data class Transaction(
     @SerialName("category_id")
     val categoryId: String? = null,
     val source: String? = null,
+    // Whether the backend put the row in the review queue on the way in, and
+    // why (#38): a possible duplicate, or nothing to file it into a category.
+    // The phone says so on Save rather than a bare "saved" (#30).
+    @SerialName("needs_review")
+    val needsReview: Boolean = false,
+    @SerialName("review_reason")
+    val reviewReason: ReviewReason? = null,
 )
 
 /**

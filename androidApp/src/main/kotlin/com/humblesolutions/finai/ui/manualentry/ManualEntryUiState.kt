@@ -6,6 +6,7 @@ import com.humblesolutions.finai.model.DuplicateMatch
 import com.humblesolutions.finai.usecase.ManualEntry
 import com.humblesolutions.finai.usecase.ManualEntryBlock
 import com.humblesolutions.finai.usecase.ManualEntryDraft
+import com.humblesolutions.finai.usecase.ManualEntrySaved
 import com.humblesolutions.finai.usecase.NewAccountBlock
 import com.humblesolutions.finai.usecase.NewAccountDraft
 import com.humblesolutions.finai.usecase.NewAccountForm
@@ -44,8 +45,12 @@ data class ManualEntryUiState(
     /** Whether the user has tried to save or changed anything — unanswered fields are not scolded before. */
     val touched: Boolean = false,
     val errorKey: String? = null,
-    /** The last save went through; cleared by the next change. */
-    val saved: Boolean = false,
+    /**
+     * What the last save came to, or null; cleared by the next change. Not a
+     * yes/no: the backend may have put the row in review (#38), and the line
+     * shown after Save says so (#30).
+     */
+    val saved: ManualEntrySaved? = null,
     val duplicate: DuplicateWarning? = null,
     /** An account being added, while its sheet is open. */
     val newAccount: NewAccountDraft? = null,

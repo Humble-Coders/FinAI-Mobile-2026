@@ -220,7 +220,7 @@ class ManualEntryViewModel internal constructor(
             it.copy(
                 draft = change(it.draft),
                 touched = true,
-                saved = false,
+                saved = null,
                 errorKey = null,
                 today = today(),
             )
@@ -259,14 +259,14 @@ class ManualEntryViewModel internal constructor(
         _uiState.update { it.copy(saving = true, errorKey = null, duplicate = null, today = state.today) }
         viewModelScope.launch {
             try {
-                transactions.create(request)
+                val stored = transactions.create(request)
                 if (started != generation || typed != entry) return@launch
                 _uiState.update {
                     // The account stays chosen for the next line of the same
                     // statement; everything else starts unanswered again.
                     it.copy(
                         saving = false,
-                        saved = true,
+                        saved = ManualEntry.savedAs(stored),
                         touched = false,
                         draft = ManualEntryDraft(accountId = it.draft.accountId),
                     )
@@ -342,7 +342,7 @@ class ManualEntryViewModel internal constructor(
                         accounts = it.accounts + created,
                         draft = it.draft.copy(accountId = created.id),
                         touched = true,
-                        saved = false,
+                        saved = null,
                     )
                 }
                 store(_uiState.value)

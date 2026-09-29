@@ -228,8 +228,8 @@ struct ManualEntryView: View {
                 ErrorText(messageKey: model.errorKey)
                 // The same rule the button reads, said out loud.
                 if model.errorKey == nil { ErrorText(messageKey: model.notice?.messageKey) }
-                if model.saved {
-                    Text(L.t(Strings.shared.manual_entry_saved))
+                if let saved = model.saved {
+                    Text(L.t(saved.messageKey))
                         .font(.subheadline.weight(.medium))
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .accessibilityAddTraits(.updatesFrequently)

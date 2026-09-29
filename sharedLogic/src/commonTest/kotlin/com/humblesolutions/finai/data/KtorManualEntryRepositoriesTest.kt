@@ -4,6 +4,7 @@ import com.humblesolutions.finai.model.AccountKind
 import com.humblesolutions.finai.model.ApiException
 import com.humblesolutions.finai.model.NewAccount
 import com.humblesolutions.finai.model.NewTransaction
+import com.humblesolutions.finai.model.ReviewReason
 import com.humblesolutions.finai.model.TransactionDirection
 import com.humblesolutions.finai.repository.SessionTokenSource
 import io.ktor.client.engine.mock.MockEngine
@@ -224,5 +225,42 @@ class KtorManualEntryRepositoriesTest {
         ).create(entry)
 
         assertEquals(TransactionDirection.UNKNOWN, saved.direction)
+    }
+
+    @Test
+    fun whetherARowWentToReviewIsReadFromTheResponse() = runTest {
+        // The backend's 201 body for a typed-in entry with no consent to AI
+        // processing (#38): saved, uncategorized, waiting in review.
+        val waiting = SAVED
+            .replace("\"category_id\":\"cat-1\"", "\"category_id\":null")
+            .replace("\"source\":\"manual\"}", "\"source\":\"manual\",\"needs_review\":true,\"review_reason\":\"unknown_category\"}")
+
+        val saved = KtorTransactionsRepository(client(HttpStatusCode.Created, waiting)).create(entry)
+
+        assertTrue(saved.needsReview)
+        assertEquals(ReviewReason.UNKNOWN_CATEGORY, saved.reviewReason)
+        assertNull(saved.categoryId)
+    }
+
+    @Test
+    fun aResponseWithoutTheReviewFieldsReadsAsNotWaiting() = runTest {
+        // An older backend, or a filed row that omits them.
+        val saved = KtorTransactionsRepository(client(HttpStatusCode.Created, SAVED)).create(entry)
+
+        assertFalse(saved.needsReview)
+        assertNull(saved.reviewReason)
+    }
+
+    @Test
+    fun aReviewReasonThisBuildDoesNotKnowIsNotDropped() = runTest {
+        val body = SAVED.replace(
+            "\"source\":\"manual\"}",
+            "\"source\":\"manual\",\"needs_review\":true,\"review_reason\":\"stale_rate\"}",
+        )
+
+        val saved = KtorTransactionsRepository(client(HttpStatusCode.Created, body)).create(entry)
+
+        assertTrue(saved.needsReview)
+        assertEquals(ReviewReason.UNKNOWN, saved.reviewReason)
     }
 }

@@ -32,8 +32,10 @@ final class ManualEntryViewModel: ObservableObject {
     /// Unanswered fields are not scolded before the user has done anything.
     @Published private(set) var touched = false
     @Published private(set) var errorKey: String?
-    /// The last save went through; cleared by the next change.
-    @Published private(set) var saved = false
+    /// What the last save came to, or nil; cleared by the next change. Not a
+    /// yes/no: the backend may have put the row in review (#38), and the line
+    /// shown after Save says so (#30).
+    @Published private(set) var saved: ManualEntrySaved?
     /// The server said this matches one already there. The match itself may be
     /// nil when the server did not name it; the warning shows either way.
     @Published private(set) var duplicate: DuplicateWarning?
@@ -170,7 +172,7 @@ final class ManualEntryViewModel: ObservableObject {
         saving = false
         touched = false
         errorKey = nil
-        saved = false
+        saved = nil
         duplicate = nil
         newAccount = nil
         newAccountTouched = false
@@ -232,7 +234,7 @@ final class ManualEntryViewModel: ObservableObject {
         creatingAccount = false
         draft = Self.emptyDraft
         touched = false
-        saved = false
+        saved = nil
         duplicate = nil
         newAccount = nil
         newAccountTouched = false
@@ -265,7 +267,7 @@ final class ManualEntryViewModel: ObservableObject {
         today = ManualEntry.shared.today()
         change(self)
         touched = true
-        saved = false
+        saved = nil
         errorKey = nil
     }
 
@@ -320,10 +322,10 @@ final class ManualEntryViewModel: ObservableObject {
         Task { [weak self] in
             guard let self else { return }
             do {
-                _ = try await transactionsRepository.create(entry: request)
+                let stored = try await transactionsRepository.create(entry: request)
                 guard started == self.generation, typed == self.entry else { return }
                 self.saving = false
-                self.saved = true
+                self.saved = ManualEntry.shared.savedAs(saved: stored)
                 self.touched = false
                 // The account stays chosen for the next line of the same
                 // statement; everything else starts unanswered again.

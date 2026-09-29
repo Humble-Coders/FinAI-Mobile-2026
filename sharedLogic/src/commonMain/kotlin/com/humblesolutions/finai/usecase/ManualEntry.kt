@@ -4,6 +4,8 @@ import com.humblesolutions.finai.i18n.LocalizationRegistry
 import com.humblesolutions.finai.i18n.Strings
 import com.humblesolutions.finai.model.DuplicateMatch
 import com.humblesolutions.finai.model.NewTransaction
+import com.humblesolutions.finai.model.ReviewReason
+import com.humblesolutions.finai.model.Transaction
 import com.humblesolutions.finai.model.TransactionDirection
 import com.humblesolutions.finai.util.Dates
 import com.humblesolutions.finai.util.Money
@@ -51,6 +53,26 @@ enum class ManualEntryBlock(val messageKey: String, val isUnanswered: Boolean) {
     NO_DIRECTION(Strings.manual_entry_block_no_direction, isUnanswered = true),
     NO_DESCRIPTION(Strings.manual_entry_block_no_description, isUnanswered = true),
     DESCRIPTION_TOO_LONG(Strings.manual_entry_block_description_too_long, isUnanswered = false),
+}
+
+/**
+ * What happened to an entry the server accepted — the line shown after Save.
+ *
+ * "Saved" alone would be wrong for two of these: the backend may have put the
+ * row in the review queue (#38), and a person who is not told will not look.
+ */
+enum class ManualEntrySaved(val messageKey: String) {
+    /** Saved and filed; nothing waits on the person. */
+    SAVED(Strings.manual_entry_saved),
+
+    /** Saved with no category — no rule covered it, and no model was asked. */
+    NEEDS_CATEGORY(Strings.manual_entry_saved_needs_category),
+
+    /** Saved, but same day and amount as another row under a different name. */
+    LOOKS_LIKE_A_DUPLICATE(Strings.manual_entry_saved_possible_duplicate),
+
+    /** Waiting for review for a reason this build does not know. Never "all fine". */
+    NEEDS_REVIEW(Strings.manual_entry_saved_needs_review),
 }
 
 /**
@@ -175,6 +197,23 @@ object ManualEntry {
             Strings.manual_entry_duplicate_body,
             listOf(amount, Dates.display(date), description),
         )
+    }
+
+    /**
+     * What to say after the server accepted [saved].
+     *
+     * A row carries one reason, and the backend keeps a possible duplicate's
+     * reason over a missing category (#38), so that is the order here too: the
+     * duplicate is the question the person should see first. A row waiting for
+     * a reason this build does not know still says it is waiting.
+     */
+    fun savedAs(saved: Transaction): ManualEntrySaved {
+        if (!saved.needsReview) return ManualEntrySaved.SAVED
+        return when (saved.reviewReason) {
+            ReviewReason.SUSPECTED_DUPLICATE -> ManualEntrySaved.LOOKS_LIKE_A_DUPLICATE
+            ReviewReason.UNKNOWN_CATEGORY -> ManualEntrySaved.NEEDS_CATEGORY
+            ReviewReason.LOW_CONFIDENCE, ReviewReason.UNKNOWN, null -> ManualEntrySaved.NEEDS_REVIEW
+        }
     }
 
     /** The device's local date — what "Today" means to the person holding it. */
