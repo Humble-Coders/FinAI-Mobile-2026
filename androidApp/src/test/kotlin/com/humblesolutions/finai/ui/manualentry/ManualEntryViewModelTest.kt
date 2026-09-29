@@ -10,6 +10,7 @@ import com.humblesolutions.finai.model.Category
 import com.humblesolutions.finai.model.DuplicateMatch
 import com.humblesolutions.finai.model.NewAccount
 import com.humblesolutions.finai.model.NewTransaction
+import com.humblesolutions.finai.model.ReviewReason
 import com.humblesolutions.finai.model.Transaction
 import com.humblesolutions.finai.model.TransactionDirection
 import com.humblesolutions.finai.repository.AccountsRepository
@@ -17,6 +18,7 @@ import com.humblesolutions.finai.repository.CapabilitiesRepository
 import com.humblesolutions.finai.repository.CategoriesRepository
 import com.humblesolutions.finai.repository.TransactionsRepository
 import com.humblesolutions.finai.usecase.ManualEntryBlock
+import com.humblesolutions.finai.usecase.ManualEntrySaved
 import com.humblesolutions.finai.usecase.NewAccountBlock
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
@@ -214,12 +216,61 @@ class ManualEntryViewModelTest {
         model.save()
 
         val state = model.uiState.value
-        assertTrue(state.saved)
+        assertEquals(ManualEntrySaved.SAVED, state.saved)
         assertEquals(chequing.id, state.draft.accountId)
         assertNull(state.draft.occurredOn)
         assertNull(state.draft.direction)
         assertEquals("", state.draft.amount)
         assertNull(state.notice)
+    }
+
+    @Test
+    fun `a save the backend sent to review says why`() {
+        // #38: no AI consent means no category, so the row waits in review.
+        // "Transaction saved" alone would leave the person thinking it is filed.
+        val model = model()
+        model.bind("alice") {
+            repositories(
+                transactions = FakeTransactions(
+                    answer = { Transaction(id = "t-new", needsReview = true, reviewReason = ReviewReason.UNKNOWN_CATEGORY) },
+                ),
+            )
+        }
+        model.fillIn()
+
+        model.save()
+
+        assertEquals(ManualEntrySaved.NEEDS_CATEGORY, model.uiState.value.saved)
+        assertEquals(Strings.manual_entry_saved_needs_category, model.uiState.value.saved?.messageKey)
+    }
+
+    @Test
+    fun `a save flagged as a possible duplicate says so`() {
+        val model = model()
+        model.bind("alice") {
+            repositories(
+                transactions = FakeTransactions(
+                    answer = { Transaction(id = "t-new", needsReview = true, reviewReason = ReviewReason.SUSPECTED_DUPLICATE) },
+                ),
+            )
+        }
+        model.fillIn()
+
+        model.save()
+
+        assertEquals(ManualEntrySaved.LOOKS_LIKE_A_DUPLICATE, model.uiState.value.saved)
+    }
+
+    @Test
+    fun `the saved line goes with the next change`() {
+        val model = model()
+        model.bind("alice") { repositories() }
+        model.fillIn()
+        model.save()
+
+        model.onAmountChange("3")
+
+        assertNull(model.uiState.value.saved)
     }
 
     @Test
@@ -232,7 +283,7 @@ class ManualEntryViewModelTest {
 
         val state = model.uiState.value
         assertFalse(state.saving)
-        assertFalse(state.saved)
+        assertNull(state.saved)
         assertEquals("1,200.5", state.draft.amount)
         assertEquals(Strings.error_network, state.errorKey)
     }
@@ -268,7 +319,7 @@ class ManualEntryViewModelTest {
             "You already have $1,200.50 on Sep 29, 2026: \"Rent\". Is this a second one?",
             model.uiState.value.duplicateMessage,
         )
-        assertFalse(model.uiState.value.saved)
+        assertNull(model.uiState.value.saved)
 
         transactions.failWith = null
         model.keepDuplicate()
@@ -276,7 +327,7 @@ class ManualEntryViewModelTest {
         assertEquals(listOf(false, true), transactions.sent.map { it.allowDuplicate })
         assertEquals(transactions.sent[0].copy(allowDuplicate = true), transactions.sent[1])
         assertNull(model.uiState.value.duplicate)
-        assertTrue(model.uiState.value.saved)
+        assertEquals(ManualEntrySaved.SAVED, model.uiState.value.saved)
     }
 
     @Test
@@ -380,7 +431,7 @@ class ManualEntryViewModelTest {
         model.bind("bob") { repositories() }
         gate.complete(Unit)
 
-        assertFalse(model.uiState.value.saved)
+        assertNull(model.uiState.value.saved)
         assertFalse(model.uiState.value.saving)
     }
 
@@ -397,7 +448,7 @@ class ManualEntryViewModelTest {
         gate.complete(Unit)
 
         val state = model.uiState.value
-        assertFalse(state.saved)
+        assertNull(state.saved)
         assertNull(state.draft.accountId)
         assertEquals("", state.draft.amount)
     }
@@ -529,6 +580,7 @@ class ManualEntryViewModelTest {
     private class FakeTransactions(
         var failWith: ApiException? = null,
         private val gate: CompletableDeferred<Unit>? = null,
+        private val answer: ((NewTransaction) -> Transaction)? = null,
     ) : TransactionsRepository {
         val sent = mutableListOf<NewTransaction>()
 
@@ -536,6 +588,7 @@ class ManualEntryViewModelTest {
             sent += entry
             gate?.await()
             failWith?.let { throw it }
+            answer?.let { return it(entry) }
             return Transaction(id = "t-new", accountId = entry.accountId, amount = entry.amount)
         }
 

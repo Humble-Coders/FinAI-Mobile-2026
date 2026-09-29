@@ -238,9 +238,9 @@ fun ManualEntryScreen(state: ManualEntryUiState, fromUnreadable: Boolean, action
             ErrorText(state.errorKey)
             // The same rule the button reads, said out loud.
             if (state.errorKey == null) ErrorText(state.notice?.messageKey)
-            if (state.saved) {
+            state.saved?.let { saved ->
                 Text(
-                    text = strings(Strings.manual_entry_saved),
+                    text = strings(saved.messageKey),
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.Medium,
                     color = MaterialTheme.colorScheme.onBackground,
