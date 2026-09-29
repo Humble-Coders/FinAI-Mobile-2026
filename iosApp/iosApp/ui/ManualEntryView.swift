@@ -54,6 +54,17 @@ struct ManualEntryView: View {
         .onChange(of: scenePhase) { _, phase in if phase == .active { model.refreshToday() } }
         .onDisappear { model.unbind() }
         .onChange(of: model.snapshot) { _, snapshot in stored = snapshot }
+        // Spoken, not just shown: focus stays on Save, so without this a
+        // VoiceOver user hears nothing — and the line may be the only place
+        // they learn the entry is waiting for a category or a second look.
+        // (A trait like `.updatesFrequently` does not speak anything.) Each
+        // save follows an edit, which clears the line, so every outcome is a
+        // change and is announced.
+        .onChange(of: model.saved) { _, saved in
+            if let saved {
+                AccessibilityNotification.Announcement(L.t(saved.messageKey)).post()
+            }
+        }
         .sheet(isPresented: $choosingAccount, onDismiss: {
             guard addAccountNext else { return }
             addAccountNext = false
@@ -232,7 +243,6 @@ struct ManualEntryView: View {
                     Text(L.t(saved.messageKey))
                         .font(.subheadline.weight(.medium))
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .accessibilityAddTraits(.updatesFrequently)
                 }
                 GradientButton(
                     title: L.t(Strings.shared.manual_entry_save),

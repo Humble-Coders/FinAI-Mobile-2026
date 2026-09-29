@@ -128,7 +128,7 @@ By hand, on a device (not run by the developer, per the no-simulator rule):
 
 ## Addendum: saying what happened on Save (2026-09-30)
 
-With backend #38 live, a saved entry can land in the review queue. It does so when it looks like a duplicate (same day and amount, another name), or when nothing filed it into a category. The second case is every entry from someone without AI consent, and every entry in production until the no-training tier is on. The screen used to say "Transaction saved" either way, so the person had no reason to look.
+With backend #38 live, a saved entry can land in the review queue. It does so when it looks like a duplicate (same day and amount, another name), or when nothing filed it into a category. The second case is every entry that the household's own correction rules don't cover, when the AI isn't asked: always for someone without AI consent, and in production until the no-training tier is on. The screen used to say "Transaction saved" either way, so the person had no reason to look.
 
 **What changed:**
 - `model/ReviewReason.kt` (new) is the backend's reason as a wire enum, with an `UNKNOWN` fallback that still counts as waiting.
@@ -139,11 +139,11 @@ With backend #38 live, a saved entry can land in the review queue. It does so wh
   - `LOOKS_LIKE_A_DUPLICATE`: "Saved. It looks like another transaction on that day, so we'll ask you to check it in review.";
   - `NEEDS_REVIEW` for any other reason: "Saved, and waiting for you to review it". Never "all fine".
 - A possible duplicate takes precedence, matching the backend, which keeps that reason on the row.
-- Android `ManualEntryUiState.saved` and the iOS view model's `saved` hold the outcome instead of a yes/no. Both screens show its message, still announced to screen readers.
+- Android `ManualEntryUiState.saved` and the iOS view model's `saved` hold the outcome instead of a yes/no. Both screens show its message and announce it. Android uses a polite live region. iOS posts an `AccessibilityNotification.Announcement` when the outcome changes: its old `.updatesFrequently` trait (from #37) showed the line but never spoke it, so a VoiceOver user heard nothing after Save. That was found in review.
 - Manager decision (2026-09-30): the line just says it's waiting and links nowhere, because the review screen (#32) isn't built yet. #32 can add the link.
 
 **Tests:**
-- Shared **239** (8 new): each outcome, the precedence, the unknown-reason fallback, and decoding a real 201 body with, without and with an unknown reason.
+- Shared **240** (9 new): each outcome, the precedence, the unknown-reason fallback, and decoding a 201 body in four shapes: with the fields; without them; with an unknown reason; and a filed row exactly as FastAPI sends it (`"needs_review": false, "review_reason": null`).
 - Android **62** (3 new): each message reaches the state, and the line clears on the next change.
 - iOS `xcodebuild` succeeded.
 - **Break-it check:** reporting `SAVED` whatever the response makes exactly the two new message tests fail.
@@ -152,5 +152,6 @@ With backend #38 live, a saved entry can land in the review queue. It does so wh
 1. Home → **Add a transaction**. Choose an account, tap Today, enter 5.25, Money out, "Tim Hortons", no category. Tap **Save**. It shows "Saved. We'll ask you to choose a category for it in review."
 2. Save the same entry again. The dialog names the first one. Tap **Yes, keep both**; it saves.
 3. Save "Starbucks", 5.25, today, **with** a category. It shows "Saved. It looks like another transaction on that day…"
+4. On iPhone with **VoiceOver on**, repeat step 1. VoiceOver speaks the line without focus moving to it.
 
 #30 is closed once these pass.

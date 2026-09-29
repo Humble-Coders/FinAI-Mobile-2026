@@ -252,6 +252,21 @@ class KtorManualEntryRepositoriesTest {
     }
 
     @Test
+    fun aFiledRowAsTheBackendSendsItReadsAsNotWaiting() = runTest {
+        // What production actually sends for a filed row: FastAPI writes the
+        // empty fields out as explicit nulls rather than leaving them off.
+        val body = SAVED.replace(
+            "\"source\":\"manual\"}",
+            "\"source\":\"manual\",\"needs_review\":false,\"review_reason\":null}",
+        )
+
+        val saved = KtorTransactionsRepository(client(HttpStatusCode.Created, body)).create(entry)
+
+        assertFalse(saved.needsReview)
+        assertNull(saved.reviewReason)
+    }
+
+    @Test
     fun aReviewReasonThisBuildDoesNotKnowIsNotDropped() = runTest {
         val body = SAVED.replace(
             "\"source\":\"manual\"}",
