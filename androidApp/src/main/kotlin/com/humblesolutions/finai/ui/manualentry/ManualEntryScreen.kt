@@ -1,67 +1,52 @@
 package com.humblesolutions.finai.ui.manualentry
 
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.ListItem
-import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SelectableDates
-import androidx.compose.material3.SheetValue
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDatePickerState
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.LiveRegionMode
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
@@ -72,10 +57,14 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.humblesolutions.finai.R
 import com.humblesolutions.finai.i18n.Strings
-import com.humblesolutions.finai.model.Account
 import com.humblesolutions.finai.model.AccountKind
 import com.humblesolutions.finai.model.TransactionDirection
+import com.humblesolutions.finai.ui.components.AccountSheet
 import com.humblesolutions.finai.ui.components.AmountField
+import com.humblesolutions.finai.ui.components.NewAccountSheet
+import com.humblesolutions.finai.ui.components.SheetRow
+import com.humblesolutions.finai.ui.components.SheetTitle
+import com.humblesolutions.finai.ui.components.neutralChipColors
 import com.humblesolutions.finai.ui.components.ErrorText
 import com.humblesolutions.finai.ui.components.FieldLabel
 import com.humblesolutions.finai.ui.components.GradientButton
@@ -83,7 +72,6 @@ import com.humblesolutions.finai.ui.components.PickerField
 import com.humblesolutions.finai.ui.components.WizardField
 import com.humblesolutions.finai.ui.strings
 import com.humblesolutions.finai.usecase.ManualEntryBlock
-import com.humblesolutions.finai.usecase.NewAccountBlock
 import kotlinx.datetime.LocalDate
 
 /** What the screen can ask its model to do. */
@@ -276,7 +264,19 @@ fun ManualEntryScreen(state: ManualEntryUiState, fromUnreadable: Boolean, action
         )
     }
 
-    if (state.newAccount != null) NewAccountSheet(state, actions)
+    state.newAccount?.let { draft ->
+        NewAccountSheet(
+            draft = draft,
+            notice = state.newAccountNotice,
+            errorKey = state.newAccountErrorKey,
+            canCreate = state.canCreateAccount,
+            creating = state.creatingAccount,
+            onName = actions.onNewAccountName,
+            onKind = actions.onNewAccountKind,
+            onCreate = actions.onCreateAccount,
+            onCancel = actions.onCancelNewAccount,
+        )
+    }
 
     if (choosingDate) {
         DateDialog(
@@ -454,62 +454,6 @@ private val Directions = listOf(
     TransactionDirection.CREDIT to Strings.manual_entry_direction_in,
 )
 
-/**
- * A chosen chip is drawn in the inverse surface — not the accent, which belongs
- * to Save alone — and both come from theme tokens defined for light and dark.
- */
-@Composable
-private fun neutralChipColors() = FilterChipDefaults.filterChipColors(
-    selectedContainerColor = MaterialTheme.colorScheme.inverseSurface,
-    selectedLabelColor = MaterialTheme.colorScheme.inverseOnSurface,
-)
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun AccountSheet(
-    accounts: List<Account>,
-    chosenId: String?,
-    onChosen: (String) -> Unit,
-    onAdd: () -> Unit,
-    onDismiss: () -> Unit,
-) {
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
-        SheetTitle(strings(Strings.manual_entry_account_label))
-        LazyColumn(Modifier.fillMaxWidth()) {
-            if (accounts.isEmpty()) {
-                item {
-                    Text(
-                        text = strings(Strings.manual_entry_accounts_empty),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
-                    )
-                }
-            }
-            items(accounts, key = { it.id }) { account ->
-                val kind = account.kind.labelKey?.let { strings(it) }
-                SheetRow(
-                    title = account.name,
-                    detail = listOfNotNull(kind, account.currency.ifBlank { null }).joinToString(" · "),
-                    selected = account.id == chosenId,
-                    onClick = { onChosen(account.id) },
-                )
-            }
-            item {
-                HorizontalDivider(Modifier.padding(vertical = 8.dp))
-                SheetRow(
-                    title = strings(Strings.manual_entry_account_add),
-                    detail = null,
-                    selected = false,
-                    onClick = onAdd,
-                    role = Role.Button,
-                )
-                Spacer(Modifier.height(24.dp))
-            }
-        }
-    }
-}
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun CategorySheet(state: ManualEntryUiState, onChosen: (String?) -> Unit, onDismiss: () -> Unit) {
@@ -536,138 +480,6 @@ private fun CategorySheet(state: ManualEntryUiState, onChosen: (String?) -> Unit
             item { Spacer(Modifier.height(24.dp)) }
         }
     }
-}
-
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
-@Composable
-private fun NewAccountSheet(state: ManualEntryUiState, actions: ManualEntryActions) {
-    val draft = state.newAccount ?: return
-    val focus = LocalFocusManager.current
-    // While the account is being created the sheet must stay up: the model
-    // refuses to cancel then, and a sheet swiped away regardless would hide
-    // but stay in place, with any error it shows unseen.
-    val creating by rememberUpdatedState(state.creatingAccount)
-    val sheet = rememberModalBottomSheetState(
-        skipPartiallyExpanded = true,
-        confirmValueChange = { it != SheetValue.Hidden || !creating },
-    )
-    // Back closes the sheet, not the screen underneath it.
-    BackHandler { actions.onCancelNewAccount() }
-    ModalBottomSheet(
-        onDismissRequest = actions.onCancelNewAccount,
-        sheetState = sheet,
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .imePadding()
-                .padding(horizontal = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
-            Text(
-                text = strings(Strings.account_new_title),
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.semantics { heading() },
-            )
-            WizardField(
-                value = draft.name,
-                onValueChange = actions.onNewAccountName,
-                label = strings(Strings.account_new_name_label),
-                placeholder = strings(Strings.account_new_name_hint),
-                imeAction = ImeAction.Done,
-                isError = state.newAccountNotice == NewAccountBlock.NO_NAME ||
-                    state.newAccountNotice == NewAccountBlock.NAME_TOO_LONG,
-                onDone = { focus.clearFocus() },
-            )
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                FieldLabel(strings(Strings.account_new_kind_label))
-                FlowRow(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    AccountKind.choosable.forEach { kind ->
-                        FilterChip(
-                            selected = draft.kind == kind,
-                            onClick = { actions.onNewAccountKind(kind) },
-                            label = { Text(kind.labelKey?.let { strings(it) }.orEmpty()) },
-                            colors = neutralChipColors(),
-                        )
-                    }
-                }
-            }
-            ErrorText(state.newAccountErrorKey)
-            if (state.newAccountErrorKey == null) ErrorText(state.newAccountNotice?.messageKey)
-            GradientButton(
-                text = strings(Strings.account_new_create),
-                onClick = {
-                    focus.clearFocus()
-                    actions.onCreateAccount()
-                },
-                enabled = state.canCreateAccount,
-                busy = state.creatingAccount,
-            )
-            TextButton(
-                onClick = actions.onCancelNewAccount,
-                enabled = !state.creatingAccount,
-                modifier = Modifier.align(Alignment.CenterHorizontally),
-            ) { Text(strings(Strings.account_new_cancel)) }
-            Spacer(Modifier.height(16.dp))
-        }
-    }
-}
-
-@Composable
-private fun SheetTitle(text: String) {
-    Text(
-        text = text,
-        style = MaterialTheme.typography.titleLarge,
-        fontWeight = FontWeight.SemiBold,
-        modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp).semantics { heading() },
-    )
-}
-
-/** A row in a chooser: Material's list item, with a radio button when it is one of a set. */
-@Composable
-private fun SheetRow(
-    title: String,
-    detail: String?,
-    selected: Boolean,
-    onClick: () -> Unit,
-    role: Role = Role.RadioButton,
-) {
-    val choice = role == Role.RadioButton
-    ListItem(
-        headlineContent = {
-            Text(
-                text = title,
-                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        },
-        supportingContent = detail?.takeIf { it.isNotEmpty() }?.let {
-            { Text(it, maxLines = 2, overflow = TextOverflow.Ellipsis) }
-        },
-        // The row carries the click, so the button only shows the state.
-        trailingContent = if (choice) {
-            { RadioButton(selected = selected, onClick = null) }
-        } else {
-            null
-        },
-        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-        modifier = Modifier
-            .padding(horizontal = 8.dp)
-            .then(
-                if (choice) {
-                    Modifier.selectable(selected = selected, role = role, onClick = onClick)
-                } else {
-                    Modifier.clickable(role = role, onClick = onClick)
-                },
-            ),
-    )
 }
 
 /**

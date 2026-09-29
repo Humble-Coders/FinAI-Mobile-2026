@@ -249,4 +249,16 @@ class ImportStatementTest {
         // a silent short import is the one failure nothing else reveals.
         assertEquals(3, assertNotNull(redaction).droppedLines)
     }
+
+    @Test
+    fun theDiagnosticAnswerTravelsOnlyWhenGiven() = runTest {
+        val imports = FakeImports()
+        val document = statement("2026-08-14  TIM HORTONS  12.40")
+
+        ImportStatement(imports).execute(document, accountId = "acct-1")
+        assertFalse(assertNotNull(imports.sent).keepTextForDiagnostics)
+
+        ImportStatement(imports).execute(document, accountId = "acct-1", keepTextForDiagnostics = true)
+        assertTrue(assertNotNull(imports.sent).keepTextForDiagnostics)
+    }
 }

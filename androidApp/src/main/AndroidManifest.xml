@@ -20,6 +20,19 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- A photo of a statement, taken for an import (#31), is written to
+             the app's cache and handed to the camera through this provider.
+             Not exported; the camera gets one-off access to one file. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.captures"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/statement_captures" />
+        </provider>
     </application>
 
 </manifest>
