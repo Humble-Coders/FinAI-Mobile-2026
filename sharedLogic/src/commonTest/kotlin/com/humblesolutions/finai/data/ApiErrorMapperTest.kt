@@ -111,4 +111,70 @@ class ApiErrorMapperTest {
     fun `maps an unexpected status to Unexpected`() {
         assertIs<ApiException.Unexpected>(ApiErrorMapper.fromResponse(418, ""))
     }
+
+    // ── Importing a statement (#31): each refusal its own error ─────────
+
+    @Test
+    fun `no consent to AI processing is its own error carrying the version`() {
+        val error = ApiErrorMapper.fromResponse(
+            409,
+            """{"detail":{"code":"consent_required","policy_version":"ai-v1"}}""",
+        )
+        assertIs<ApiException.ConsentRequired>(error)
+        assertEquals("ai-v1", error.policyVersion)
+    }
+
+    @Test
+    fun `a policy that moved on carries the version now in force`() {
+        val error = ApiErrorMapper.fromResponse(
+            409,
+            """{"detail":{"code":"ai_policy_version_mismatch","current_version":"ai-v2"}}""",
+        )
+        assertIs<ApiException.AiPolicyChanged>(error)
+        assertEquals("ai-v2", error.currentVersion)
+    }
+
+    @Test
+    fun `a used-up quota carries its limit and when it resets`() {
+        val error = ApiErrorMapper.fromResponse(
+            429,
+            """{"detail":{"code":"import_quota_exceeded","limit":1,"resets_at":"2026-10-01T00:00:00+00:00"}}""",
+        )
+        assertIs<ApiException.ImportQuotaExceeded>(error)
+        assertEquals(1, error.limit)
+        assertEquals("2026-10-01T00:00:00+00:00", error.resetsAt)
+    }
+
+    @Test
+    fun `any other 429 is not called a quota`() {
+        assertIs<ApiException.Unexpected>(ApiErrorMapper.fromResponse(429, """{"detail":"slow down"}"""))
+    }
+
+    @Test
+    fun `the two 413s are two different errors`() {
+        assertIs<ApiException.StatementTooLarge>(
+            ApiErrorMapper.fromResponse(413, """{"detail":{"code":"statement_too_long"}}"""),
+        )
+        assertIs<ApiException.TooManyTransactions>(
+            ApiErrorMapper.fromResponse(413, """{"detail":{"code":"too_many_transactions"}}"""),
+        )
+        // A 413 from something in front of the API, with no body we know.
+        assertIs<ApiException.StatementTooLarge>(ApiErrorMapper.fromResponse(413, "<html>too large</html>"))
+    }
+
+    @Test
+    fun `a model failure is safe to retry and says so`() {
+        assertIs<ApiException.ParseFailed>(
+            ApiErrorMapper.fromResponse(502, """{"detail":{"code":"parse_failed"}}"""),
+        )
+        assertIs<ApiException.Server>(ApiErrorMapper.fromResponse(502, "bad gateway"))
+    }
+
+    @Test
+    fun `production refusing to send anything to a model is its own error`() {
+        assertIs<ApiException.ImportUnavailable>(
+            ApiErrorMapper.fromResponse(503, """{"detail":{"code":"ai_processing_unavailable"}}"""),
+        )
+        assertIs<ApiException.Server>(ApiErrorMapper.fromResponse(503, "unavailable"))
+    }
 }

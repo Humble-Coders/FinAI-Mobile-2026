@@ -5,6 +5,8 @@ import com.humblesolutions.finai.model.ExtractedDocument
 import com.humblesolutions.finai.model.ExtractedLine
 import com.humblesolutions.finai.model.ExtractedPage
 import com.humblesolutions.finai.model.ParsedStatement
+import com.humblesolutions.finai.model.RowsToSave
+import com.humblesolutions.finai.model.SaveOutcome
 import com.humblesolutions.finai.model.SourceKind
 import com.humblesolutions.finai.model.StatementUpload
 import com.humblesolutions.finai.repository.StatementImportRepository
@@ -27,6 +29,9 @@ class ImportStatementTest {
             sent = upload
             return ParsedStatement(importId = "import-1")
         }
+
+        override suspend fun save(importId: String, rows: RowsToSave): SaveOutcome =
+            error("these tests only parse")
 
         override fun close() = Unit
     }
