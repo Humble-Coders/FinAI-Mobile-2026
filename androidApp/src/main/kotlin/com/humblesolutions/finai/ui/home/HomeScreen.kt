@@ -41,6 +41,9 @@ fun HomeScreen(onAddTransaction: () -> Unit, onSignOut: () -> Unit) {
         Spacer(Modifier.height(24.dp))
         GradientButton(text = strings(Strings.manual_entry_title), onClick = onAddTransaction)
         Spacer(Modifier.height(8.dp))
-        TextButton(onClick = onSignOut) { Text(strings(Strings.action_sign_out)) }
+        // Not green: the accent belongs to the one primary action above.
+        TextButton(onClick = onSignOut) {
+            Text(strings(Strings.action_sign_out), color = MaterialTheme.colorScheme.onBackground)
+        }
     }
 }

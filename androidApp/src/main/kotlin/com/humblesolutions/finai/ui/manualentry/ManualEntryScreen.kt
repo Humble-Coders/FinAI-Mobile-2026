@@ -42,6 +42,7 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SelectableDates
+import androidx.compose.material3.SheetValue
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -52,6 +53,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -145,7 +147,7 @@ fun ManualEntryScreen(state: ManualEntryUiState, fromUnreadable: Boolean, action
         Header(onClose = actions.onClose)
 
         if (state.loadFailed) {
-            LoadFailed(state.errorKey, actions.onRetry)
+            LoadFailed(state.errorKey, actions.onRetry.takeIf { state.canRetry })
             return@Column
         }
 
@@ -345,7 +347,7 @@ private fun Header(onClose: () -> Unit) {
 }
 
 @Composable
-private fun LoadFailed(errorKey: String?, onRetry: () -> Unit) {
+private fun LoadFailed(errorKey: String?, onRetry: (() -> Unit)?) {
     Column(
         modifier = Modifier.widthIn(max = ContentMaxWidth).fillMaxSize().padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
@@ -358,7 +360,8 @@ private fun LoadFailed(errorKey: String?, onRetry: () -> Unit) {
         )
         // The specific cause, when there is one beyond "no connection".
         if (errorKey != null && errorKey != Strings.error_network) ErrorText(errorKey)
-        GradientButton(text = strings(Strings.manual_entry_retry), onClick = onRetry)
+        // No button when trying again cannot help: one that does nothing reads as broken.
+        if (onRetry != null) GradientButton(text = strings(Strings.manual_entry_retry), onClick = onRetry)
     }
 }
 
@@ -530,11 +533,19 @@ private fun CategorySheet(state: ManualEntryUiState, onChosen: (String?) -> Unit
 private fun NewAccountSheet(state: ManualEntryUiState, actions: ManualEntryActions) {
     val draft = state.newAccount ?: return
     val focus = LocalFocusManager.current
+    // While the account is being created the sheet must stay up: the model
+    // refuses to cancel then, and a sheet swiped away regardless would hide
+    // but stay in place, with any error it shows unseen.
+    val creating by rememberUpdatedState(state.creatingAccount)
+    val sheet = rememberModalBottomSheetState(
+        skipPartiallyExpanded = true,
+        confirmValueChange = { it != SheetValue.Hidden || !creating },
+    )
     // Back closes the sheet, not the screen underneath it.
     BackHandler { actions.onCancelNewAccount() }
     ModalBottomSheet(
         onDismissRequest = actions.onCancelNewAccount,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        sheetState = sheet,
     ) {
         Column(
             modifier = Modifier

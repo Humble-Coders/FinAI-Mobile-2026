@@ -20,6 +20,10 @@ struct ManualEntryView: View {
     /// after iOS reclaimed it reopens the entry being typed.
     @SceneStorage("manual_entry.draft") private var stored = ""
     @State private var choosingAccount = false
+    /// "Add an account" was tapped in the account list. The new-account sheet
+    /// opens once that list has finished closing: SwiftUI will not present a
+    /// sheet while another is still going away, and would drop the request.
+    @State private var addAccountNext = false
     @State private var choosingDate = false
     @State private var choosingCategory = false
 
@@ -47,7 +51,11 @@ struct ManualEntryView: View {
         .onAppear { model.bind(userId: userId, restoring: stored) }
         .onDisappear { model.unbind() }
         .onChange(of: model.snapshot) { _, snapshot in stored = snapshot }
-        .sheet(isPresented: $choosingAccount) { accountSheet }
+        .sheet(isPresented: $choosingAccount, onDismiss: {
+            guard addAccountNext else { return }
+            addAccountNext = false
+            model.openNewAccount()
+        }) { accountSheet }
         .sheet(isPresented: newAccountShown) { NewAccountSheet(model: model) }
         .sheet(isPresented: $choosingDate) {
             DateSheet(chosen: model.draft.occurredOn, today: model.today) { date in
@@ -109,7 +117,10 @@ struct ManualEntryView: View {
             if let key = model.errorKey, key != Strings.shared.error_network {
                 ErrorText(messageKey: key)
             }
-            GradientButton(title: L.t(Strings.shared.manual_entry_retry)) { model.load() }
+            // No button when trying again cannot help: one that does nothing reads as broken.
+            if model.canRetry {
+                GradientButton(title: L.t(Strings.shared.manual_entry_retry)) { model.load() }
+            }
         }
         .frame(maxWidth: 480)
         .padding(24)
@@ -261,8 +272,8 @@ struct ManualEntryView: View {
                 }
                 Section {
                     Button(L.t(Strings.shared.manual_entry_account_add)) {
+                        addAccountNext = true
                         choosingAccount = false
-                        model.openNewAccount()
                     }
                 }
             }

@@ -37,6 +37,8 @@ data class ManualEntryUiState(
     val loading: Boolean = true,
     /** Accounts could not be had, so there is nothing to file into; the screen offers a retry. */
     val loadFailed: Boolean = false,
+    /** Whether trying the load again could help. Not when there is no user to load for. */
+    val canRetry: Boolean = true,
     /** The entry is on its way to the server; Save must not send it twice. */
     val saving: Boolean = false,
     /** Whether the user has tried to save or changed anything — unanswered fields are not scolded before. */

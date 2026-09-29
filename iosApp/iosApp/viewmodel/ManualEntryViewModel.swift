@@ -25,6 +25,8 @@ final class ManualEntryViewModel: ObservableObject {
     @Published private(set) var loading = true
     /// Accounts could not be had, so there is nothing to file into.
     @Published private(set) var loadFailed = false
+    /// Whether trying the load again could help. Not when there is no user to load for.
+    @Published private(set) var canRetry = true
     /// The entry is on its way; Save must not send it twice.
     @Published private(set) var saving = false
     /// Unanswered fields are not scolded before the user has done anything.
@@ -54,6 +56,9 @@ final class ManualEntryViewModel: ObservableObject {
     private var owner: String?
     /// Bumped on every unbind, so a reply for the session being left is dropped.
     private var generation = 0
+    /// Bumped when the entry is discarded, so a save or an account create still
+    /// on its way cannot write into the clean form of the next visit.
+    private var entry = 0
 
     #if DEBUG
     private let logging = true
@@ -120,6 +125,7 @@ final class ManualEntryViewModel: ObservableObject {
             reset()
             loading = false
             loadFailed = true
+            canRetry = false
             errorKey = Strings.shared.error_unexpected
             return
         }
@@ -160,6 +166,7 @@ final class ManualEntryViewModel: ObservableObject {
         locale = ""
         loading = true
         loadFailed = false
+        canRetry = true
         saving = false
         touched = false
         errorKey = nil
@@ -217,7 +224,12 @@ final class ManualEntryViewModel: ObservableObject {
     /// Leaving the screen on purpose: what was typed goes with it, so the next
     /// visit starts clean. The household's accounts stay — they are not the entry.
     func discard() {
-        guard !saving else { return }
+        // Also mid-request: the person has left, so the reply is theirs to
+        // ignore. A save still lands on the server; it just no longer changes
+        // this form.
+        entry += 1
+        saving = false
+        creatingAccount = false
         draft = Self.emptyDraft
         touched = false
         saved = false
@@ -292,6 +304,7 @@ final class ManualEntryViewModel: ObservableObject {
             return
         }
         let started = generation
+        let typed = entry
         saving = true
         errorKey = nil
         duplicate = nil
@@ -299,7 +312,7 @@ final class ManualEntryViewModel: ObservableObject {
             guard let self else { return }
             do {
                 _ = try await transactionsRepository.create(entry: request)
-                guard started == self.generation else { return }
+                guard started == self.generation, typed == self.entry else { return }
                 self.saving = false
                 self.saved = true
                 self.touched = false
@@ -310,7 +323,7 @@ final class ManualEntryViewModel: ObservableObject {
                     direction: nil, description: "", categoryId: nil
                 )
             } catch {
-                guard started == self.generation else { return }
+                guard started == self.generation, typed == self.entry else { return }
                 self.saving = false
                 if let duplicate = Self.kotlin(error) as? ApiException.DuplicateTransaction {
                     self.duplicate = DuplicateWarning(match: duplicate.match)
@@ -359,6 +372,7 @@ final class ManualEntryViewModel: ObservableObject {
             return
         }
         let started = generation
+        let typed = entry
         creatingAccount = true
         newAccountErrorKey = nil
         Task { [weak self] in
@@ -366,13 +380,19 @@ final class ManualEntryViewModel: ObservableObject {
             do {
                 let created = try await accountsRepository.create(account: request)
                 guard started == self.generation else { return }
+                guard typed == self.entry else {
+                    // Left before it answered: the account exists now, so it
+                    // is listed, but nobody chose it for the next entry.
+                    self.accounts.append(created)
+                    return
+                }
                 self.creatingAccount = false
                 self.newAccount = nil
                 self.newAccountTouched = false
                 self.accounts.append(created)
                 self.edit { $0.setDraft(accountId: created.id) }
             } catch {
-                guard started == self.generation else { return }
+                guard started == self.generation, typed == self.entry else { return }
                 self.creatingAccount = false
                 self.newAccountErrorKey = Self.messageKey(error)
             }

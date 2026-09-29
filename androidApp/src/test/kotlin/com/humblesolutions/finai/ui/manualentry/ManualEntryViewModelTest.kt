@@ -366,6 +366,34 @@ class ManualEntryViewModelTest {
         assertFalse(model.uiState.value.saving)
     }
 
+    @Test
+    fun `leaving while a save is on its way keeps the next visit clean`() {
+        val gate = CompletableDeferred<Unit>()
+        val model = model()
+        model.bind("alice") { repositories(transactions = FakeTransactions(gate = gate)) }
+        model.fillIn()
+        model.save()
+
+        model.discard()
+        assertFalse(model.uiState.value.saving)
+        gate.complete(Unit)
+
+        val state = model.uiState.value
+        assertFalse(state.saved)
+        assertNull(state.draft.accountId)
+        assertEquals("", state.draft.amount)
+    }
+
+    @Test
+    fun `an unknown user is not offered a retry that cannot help`() {
+        val model = model()
+
+        model.bind("") { repositories() }
+
+        assertTrue(model.uiState.value.loadFailed)
+        assertFalse(model.uiState.value.canRetry)
+    }
+
     // ── Adding an account ───────────────────────────────────────────────
 
     @Test
@@ -414,6 +442,26 @@ class ManualEntryViewModelTest {
         assertNull(state.draft.accountId)
     }
 
+    @Test
+    fun `an account created after leaving is listed but not chosen`() {
+        val gate = CompletableDeferred<Unit>()
+        val model = model()
+        model.bind("alice") { repositories(accounts = FakeAccounts(createGate = gate)) }
+        model.openNewAccount()
+        model.onNewAccountName("Visa")
+        model.onNewAccountKind(AccountKind.CREDIT_CARD)
+        model.createAccount()
+
+        model.discard()
+        gate.complete(Unit)
+
+        val state = model.uiState.value
+        assertTrue(state.accounts.any { it.id == "acct-new" })
+        assertNull(state.draft.accountId)
+        assertFalse(state.creatingAccount)
+        assertFalse(state.touched)
+    }
+
     // ── Fakes ───────────────────────────────────────────────────────────
 
     /** What Android does on a restart: a new handle holding the old one's values. */
@@ -430,6 +478,7 @@ class ManualEntryViewModelTest {
         private val stored: List<Account> = listOf(chequing),
         var failList: Boolean = false,
         private val failCreate: ApiException? = null,
+        private val createGate: CompletableDeferred<Unit>? = null,
     ) : AccountsRepository {
         var lists = 0
         val created = mutableListOf<NewAccount>()
@@ -441,6 +490,7 @@ class ManualEntryViewModelTest {
         }
 
         override suspend fun create(account: NewAccount): Account {
+            createGate?.await()
             failCreate?.let { throw it }
             created += account
             return Account(id = "acct-new", name = account.name, kind = account.kind, currency = "CAD")

@@ -65,6 +65,12 @@ class ManualEntryViewModel internal constructor(
     /** Bumped on every rebind, so a reply meant for the last user is dropped (see SetupViewModel). */
     private var generation = 0
 
+    /**
+     * Bumped when the entry is discarded, so a save or an account create still
+     * on its way cannot write into the clean form of the next visit.
+     */
+    private var entry = 0
+
     fun bind(userId: String, logging: Boolean) = bind(userId) {
         Supabase.clientOrNull()?.let { client ->
             val tokens = SupabaseTokenSource(client)
@@ -100,7 +106,12 @@ class ManualEntryViewModel internal constructor(
         generation++
         boundTo = null
         clearSaved()
-        _uiState.value = ManualEntryUiState(loading = false, loadFailed = true, errorKey = Strings.error_unexpected)
+        _uiState.value = ManualEntryUiState(
+            loading = false,
+            loadFailed = true,
+            canRetry = false,
+            errorKey = Strings.error_unexpected,
+        )
     }
 
     override fun onCleared() = closeClients()
@@ -155,7 +166,10 @@ class ManualEntryViewModel internal constructor(
      * household's accounts stay loaded — they are not the entry.
      */
     fun discard() {
-        if (_uiState.value.saving) return
+        // Also mid-request: the person has left, so the reply is theirs to
+        // ignore. A save still lands on the server; it just no longer changes
+        // this form.
+        entry++
         _uiState.update {
             ManualEntryUiState(
                 today = today(),
@@ -164,6 +178,7 @@ class ManualEntryViewModel internal constructor(
                 locale = it.locale,
                 loading = it.loading,
                 loadFailed = it.loadFailed,
+                canRetry = it.canRetry,
                 errorKey = it.errorKey.takeIf { _ -> it.loadFailed },
             )
         }
@@ -228,11 +243,12 @@ class ManualEntryViewModel internal constructor(
             return
         }
         val started = generation
+        val typed = entry
         _uiState.update { it.copy(saving = true, errorKey = null, duplicate = null, today = state.today) }
         viewModelScope.launch {
             try {
                 transactions.create(request)
-                if (started != generation) return@launch
+                if (started != generation || typed != entry) return@launch
                 _uiState.update {
                     // The account stays chosen for the next line of the same
                     // statement; everything else starts unanswered again.
@@ -247,10 +263,10 @@ class ManualEntryViewModel internal constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: ApiException.DuplicateTransaction) {
-                if (started != generation) return@launch
+                if (started != generation || typed != entry) return@launch
                 _uiState.update { it.copy(saving = false, duplicate = DuplicateWarning(e.match)) }
             } catch (e: ApiException) {
-                if (started != generation) return@launch
+                if (started != generation || typed != entry) return@launch
                 // What was typed stays: a failed save must never lose an entry.
                 _uiState.update { it.copy(saving = false, errorKey = e.messageKey) }
             }
@@ -294,11 +310,18 @@ class ManualEntryViewModel internal constructor(
             return
         }
         val started = generation
+        val typed = entry
         _uiState.update { it.copy(creatingAccount = true, newAccountErrorKey = null) }
         viewModelScope.launch {
             try {
                 val created = accounts.create(request)
                 if (started != generation) return@launch
+                if (typed != entry) {
+                    // Left before it answered: the account exists now, so it
+                    // is listed, but nobody chose it for the next entry.
+                    _uiState.update { it.copy(accounts = it.accounts + created) }
+                    return@launch
+                }
                 _uiState.update {
                     it.copy(
                         creatingAccount = false,
@@ -314,7 +337,7 @@ class ManualEntryViewModel internal constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: ApiException) {
-                if (started != generation) return@launch
+                if (started != generation || typed != entry) return@launch
                 _uiState.update { it.copy(creatingAccount = false, newAccountErrorKey = e.messageKey) }
             }
         }
