@@ -139,7 +139,7 @@ With backend #38 live, a saved entry can land in the review queue. It does so wh
   - `LOOKS_LIKE_A_DUPLICATE`: "Saved. It looks like another transaction on that day, so we'll ask you to check it in review.";
   - `NEEDS_REVIEW` for any other reason: "Saved, and waiting for you to review it". Never "all fine".
 - A possible duplicate takes precedence, matching the backend, which keeps that reason on the row.
-- Android `ManualEntryUiState.saved` and the iOS view model's `saved` hold the outcome instead of a yes/no. Both screens show its message and announce it. Android uses a polite live region. iOS posts an `AccessibilityNotification.Announcement` when the outcome changes: its old `.updatesFrequently` trait (from #37) showed the line but never spoke it, so a VoiceOver user heard nothing after Save. That was found in review.
+- Android `ManualEntryUiState.saved` and the iOS view model's `saved` hold the outcome instead of a yes/no. Both screens show its message and are meant to announce it. Android uses a polite live region (not yet heard on a device; step 5). iOS posts an `AccessibilityNotification.Announcement` when the outcome changes: its old `.updatesFrequently` trait (from #37) showed the line but never spoke it, so a VoiceOver user heard nothing after Save. That was found in review.
 - Manager decision (2026-09-30): the line just says it's waiting and links nowhere, because the review screen (#32) isn't built yet. #32 can add the link.
 
 **Tests:**
@@ -153,5 +153,6 @@ With backend #38 live, a saved entry can land in the review queue. It does so wh
 2. Save the same entry again. The dialog names the first one. Tap **Yes, keep both**; it saves.
 3. Save "Starbucks", 5.25, today, **with** a category. It shows "Saved. It looks like another transaction on that day…"
 4. On iPhone with **VoiceOver on**, repeat step 1. VoiceOver speaks the line without focus moving to it.
+5. On Android with **TalkBack on**, repeat step 1. TalkBack speaks the line. Android marks it as a polite live region, which reliably announces a *change* to a node that's already there. This line is newly *added* on Save, and whether TalkBack speaks that varies by Compose and TalkBack version. It hasn't been seen on a device. If it isn't spoken, keep the line composed and change only its text, or announce on change (`LocalView.current.announceForAccessibility`), taking care not to have both at once, which would speak it twice.
 
 #30 is closed once these pass.
