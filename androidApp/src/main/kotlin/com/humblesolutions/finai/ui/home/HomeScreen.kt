@@ -12,12 +12,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.humblesolutions.finai.i18n.Strings
+import com.humblesolutions.finai.ui.components.GradientButton
 import com.humblesolutions.finai.ui.components.ScreenScaffold
 import com.humblesolutions.finai.ui.strings
 
-/** A placeholder: reaching it is what this ticket proves. The dashboard is M4. */
+/**
+ * A placeholder until the dashboard (M4), carrying the one thing that can be
+ * done from it so far: typing in a transaction (#30).
+ */
 @Composable
-fun HomeScreen(onSignOut: () -> Unit) {
+fun HomeScreen(onAddTransaction: () -> Unit, onSignOut: () -> Unit) {
     ScreenScaffold(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
@@ -35,6 +39,11 @@ fun HomeScreen(onSignOut: () -> Unit) {
             textAlign = TextAlign.Center,
         )
         Spacer(Modifier.height(24.dp))
-        TextButton(onClick = onSignOut) { Text(strings(Strings.action_sign_out)) }
+        GradientButton(text = strings(Strings.manual_entry_title), onClick = onAddTransaction)
+        Spacer(Modifier.height(8.dp))
+        // Not green: the accent belongs to the one primary action above.
+        TextButton(onClick = onSignOut) {
+            Text(strings(Strings.action_sign_out), color = MaterialTheme.colorScheme.onBackground)
+        }
     }
 }

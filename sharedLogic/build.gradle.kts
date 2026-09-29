@@ -71,7 +71,9 @@ kotlin {
             implementation(libs.ktor.serialization.kotlinxJson)
             implementation(libs.kotlinx.coroutines.core)
             implementation(libs.kotlinx.serialization.json)
-            implementation(libs.kotlinx.datetime)
+            // `api`: a manual entry's date is a `LocalDate` in shared state the
+            // apps hold and restore (#30), so they compile against the type too.
+            api(libs.kotlinx.datetime)
         }
         androidMain.dependencies {
             implementation(libs.ktor.client.okhttp)

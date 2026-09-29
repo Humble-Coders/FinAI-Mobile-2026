@@ -2,17 +2,12 @@ package com.humblesolutions.finai.ui.setup
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -36,8 +31,6 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -48,14 +41,11 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.painterResource
@@ -71,7 +61,10 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.humblesolutions.finai.R
 import com.humblesolutions.finai.i18n.Strings
+import com.humblesolutions.finai.ui.components.AmountField
 import com.humblesolutions.finai.ui.components.ErrorText
+import com.humblesolutions.finai.ui.components.WizardField
+import com.humblesolutions.finai.ui.components.fieldFrame
 import com.humblesolutions.finai.ui.components.GradientButton
 import com.humblesolutions.finai.ui.strings
 import com.humblesolutions.finai.ui.theme.FinAiPalette
@@ -655,150 +648,4 @@ private fun Card(content: @Composable () -> Unit) {
     ) {
         Box(Modifier.padding(16.dp)) { content() }
     }
-}
-
-private val FieldShape = RoundedCornerShape(16.dp)
-
-/**
- * The box every field and list row sits in: the surface colour, a hairline
- * border, green and thicker while typing, red while its figure will not do.
- */
-@Composable
-private fun Modifier.fieldFrame(focused: Boolean, isError: Boolean): Modifier {
-    val colour by animateColorAsState(
-        targetValue = when {
-            isError -> MaterialTheme.colorScheme.error
-            focused -> FinAiPalette.Green
-            else -> MaterialTheme.colorScheme.outlineVariant
-        },
-        animationSpec = tween(150),
-        label = "fieldBorder",
-    )
-    val width by animateDpAsState(if (focused || isError) 2.dp else 1.dp, tween(150), label = "fieldBorderWidth")
-    return this
-        .clip(FieldShape)
-        .background(MaterialTheme.colorScheme.surface)
-        .border(width, colour, FieldShape)
-}
-
-/**
- * An amount, the way finance apps take one: a label above, the figure large and
- * bold beside the currency the server named — never a hardcoded symbol — a faint
- * zero while it is empty, and what the figure is per, when it is per anything.
- * The whole box is the text field, so tapping anywhere on it starts typing.
- */
-@Composable
-private fun AmountField(
-    value: String,
-    onValueChange: (String) -> Unit,
-    label: String,
-    symbol: String,
-    placeholder: String,
-    suffix: String? = null,
-    isError: Boolean = false,
-    large: Boolean = true,
-    imeAction: ImeAction = ImeAction.Next,
-) {
-    val interaction = remember { MutableInteractionSource() }
-    val focused by interaction.collectIsFocusedAsState()
-    val figure = if (large) MaterialTheme.typography.headlineSmall else MaterialTheme.typography.titleLarge
-    val muted = MaterialTheme.colorScheme.onSurfaceVariant
-
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        FieldLabel(label)
-        BasicTextField(
-            value = value,
-            onValueChange = onValueChange,
-            singleLine = true,
-            interactionSource = interaction,
-            textStyle = figure.copy(color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold),
-            cursorBrush = SolidColor(FinAiPalette.Green),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = imeAction),
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(if (large) 68.dp else 56.dp)
-                .fieldFrame(focused, isError)
-                .semantics { contentDescription = label },
-            decorationBox = { inner ->
-                Row(
-                    modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        text = symbol,
-                        style = figure,
-                        fontWeight = FontWeight.Medium,
-                        color = muted,
-                        modifier = Modifier.padding(end = 8.dp),
-                    )
-                    Box(Modifier.weight(1f)) {
-                        if (value.isEmpty()) {
-                            Text(text = placeholder, style = figure, color = muted.copy(alpha = 0.4f))
-                        }
-                        inner()
-                    }
-                    if (suffix != null) {
-                        Text(
-                            text = suffix,
-                            style = MaterialTheme.typography.labelLarge,
-                            color = muted,
-                            modifier = Modifier.padding(start = 8.dp),
-                        )
-                    }
-                }
-            },
-        )
-    }
-}
-
-/** A plain text field in the same box as the amounts. */
-@Composable
-private fun WizardField(
-    value: String,
-    onValueChange: (String) -> Unit,
-    label: String,
-    keyboardType: KeyboardType = KeyboardType.Text,
-    imeAction: ImeAction = ImeAction.Next,
-    capitalization: KeyboardCapitalization = KeyboardCapitalization.Words,
-) {
-    val interaction = remember { MutableInteractionSource() }
-    val focused by interaction.collectIsFocusedAsState()
-
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        FieldLabel(label)
-        BasicTextField(
-            value = value,
-            onValueChange = onValueChange,
-            singleLine = true,
-            interactionSource = interaction,
-            textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
-            cursorBrush = SolidColor(FinAiPalette.Green),
-            keyboardOptions = KeyboardOptions(
-                capitalization = capitalization,
-                keyboardType = keyboardType,
-                imeAction = imeAction,
-            ),
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(56.dp)
-                .fieldFrame(focused, isError = false)
-                .semantics { contentDescription = label },
-            decorationBox = { inner ->
-                Box(
-                    modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
-                    contentAlignment = Alignment.CenterStart,
-                ) { inner() }
-            },
-        )
-    }
-}
-
-@Composable
-private fun FieldLabel(text: String) {
-    Text(
-        text = text,
-        style = MaterialTheme.typography.labelLarge,
-        fontWeight = FontWeight.Medium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
 }
