@@ -194,6 +194,18 @@ class ManualEntryViewModel internal constructor(
     /** The one-tap Today: the answer is still the user's, just quicker to give. */
     fun onToday() = edit { it.copy(occurredOn = today()) }
 
+    /**
+     * Re-reads the clock without touching the entry. "Today" is otherwise
+     * refreshed only by an edit, a load or a save, so a screen left open past
+     * midnight would still think it was yesterday: the calendar would refuse
+     * the new day, and the notice would lag. Called when the app comes back to
+     * the front and when the calendar opens.
+     */
+    fun refreshToday() {
+        val now = today()
+        if (_uiState.value.today != now) _uiState.update { it.copy(today = now) }
+    }
+
     fun onAmountChange(value: String) = edit { it.copy(amount = value) }
 
     fun onDirectionChosen(direction: TransactionDirection) = edit { it.copy(direction = direction) }

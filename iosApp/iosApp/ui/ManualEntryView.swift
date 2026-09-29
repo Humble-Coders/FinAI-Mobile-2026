@@ -26,6 +26,7 @@ struct ManualEntryView: View {
     @State private var addAccountNext = false
     @State private var choosingDate = false
     @State private var choosingCategory = false
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         ZStack {
@@ -49,6 +50,8 @@ struct ManualEntryView: View {
             }
         }
         .onAppear { model.bind(userId: userId, restoring: stored) }
+        // Back to the front after a while away — possibly on another day.
+        .onChange(of: scenePhase) { _, phase in if phase == .active { model.refreshToday() } }
         .onDisappear { model.unbind() }
         .onChange(of: model.snapshot) { _, snapshot in stored = snapshot }
         .sheet(isPresented: $choosingAccount, onDismiss: {
@@ -151,7 +154,12 @@ struct ManualEntryView: View {
                             value: model.dateLabel,
                             placeholder: L.t(Strings.shared.manual_entry_date_placeholder),
                             isError: model.notice == .noDate || model.notice == .futureDate
-                        ) { choosingDate = true }
+                        ) {
+                            // The calendar's last pickable day is today as of
+                            // now, not as of the last edit.
+                            model.refreshToday()
+                            choosingDate = true
+                        }
                         Button(L.t(Strings.shared.manual_entry_date_today)) { model.chooseToday() }
                             .buttonStyle(.bordered)
                             .tint(model.isToday ? .primary : .secondary)

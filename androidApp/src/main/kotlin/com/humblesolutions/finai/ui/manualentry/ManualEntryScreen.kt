@@ -15,9 +15,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -94,6 +93,7 @@ class ManualEntryActions(
     val onAccountChosen: (String) -> Unit,
     val onDateChosen: (LocalDate) -> Unit,
     val onToday: () -> Unit,
+    val onRefreshToday: () -> Unit,
     val onAmountChange: (String) -> Unit,
     val onDirectionChosen: (TransactionDirection) -> Unit,
     val onDescriptionChange: (String) -> Unit,
@@ -139,9 +139,10 @@ fun ManualEntryScreen(state: ManualEntryUiState, fromUnreadable: Boolean, action
         modifier = Modifier
             .fillMaxSize()
             .background(ground)
-            .statusBarsPadding()
-            .navigationBarsPadding()
-            .imePadding(),
+            // Status bar, navigation bar, keyboard *and* the camera cutout:
+            // held sideways, a phone's cutout sits beside the content, which
+            // the bars alone do not account for. The ground still bleeds under.
+            .safeDrawingPadding(),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Header(onClose = actions.onClose)
@@ -170,7 +171,16 @@ fun ManualEntryScreen(state: ManualEntryUiState, fromUnreadable: Boolean, action
                 isError = state.notice == ManualEntryBlock.NO_ACCOUNT,
             )
 
-            DateRow(state, onPick = { choosingDate = true }, onToday = actions.onToday)
+            DateRow(
+                state,
+                onPick = {
+                    // The calendar's last pickable day is today as of now, not
+                    // as of the last edit: the screen may have sat open past midnight.
+                    actions.onRefreshToday()
+                    choosingDate = true
+                },
+                onToday = actions.onToday,
+            )
 
             AmountField(
                 value = state.draft.amount,

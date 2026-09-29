@@ -14,6 +14,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.humblesolutions.finai.BuildConfig
@@ -269,6 +270,11 @@ internal fun ManualEntryRoute(userId: String, fromUnreadable: Boolean, onClose: 
     val model: ManualEntryViewModel = viewModel()
     val state by model.uiState.collectAsStateWithLifecycle()
     LaunchedEffect(userId) { model.bind(userId, logging = BuildConfig.DEBUG) }
+    // Back to the front after a while away — possibly on another day.
+    LifecycleResumeEffect(Unit) {
+        model.refreshToday()
+        onPauseOrDispose { }
+    }
     LoaderSignal(key = "manual_entry", active = state.loading)
 
     val close = {
@@ -286,6 +292,7 @@ internal fun ManualEntryRoute(userId: String, fromUnreadable: Boolean, onClose: 
             onAccountChosen = model::onAccountChosen,
             onDateChosen = model::onDateChosen,
             onToday = model::onToday,
+            onRefreshToday = model::refreshToday,
             onAmountChange = model::onAmountChange,
             onDirectionChosen = model::onDirectionChosen,
             onDescriptionChange = model::onDescriptionChange,

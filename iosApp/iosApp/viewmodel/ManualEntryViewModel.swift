@@ -246,6 +246,15 @@ final class ManualEntryViewModel: ObservableObject {
     func chooseDate(_ date: Kotlinx_datetimeLocalDate) { edit { $0.setDraft(occurredOn: .some(date)) } }
     /// The one-tap Today: the answer is still the user's, just quicker to give.
     func chooseToday() { edit { $0.setDraft(occurredOn: .some(ManualEntry.shared.today())) } }
+    /// Re-reads the clock without touching the entry. "Today" otherwise moves
+    /// only on an edit, a load or a save, so a screen left open past midnight
+    /// would refuse the new day. Called when the app comes back to the front
+    /// and when the calendar opens.
+    func refreshToday() {
+        let now = ManualEntry.shared.today()
+        if !now.isEqual(today) { today = now }
+    }
+
     func setAmount(_ value: String) { edit { $0.setDraft(amount: value) } }
     func chooseDirection(_ direction: TransactionDirection) { edit { $0.setDraft(direction: .some(direction)) } }
     func setDescription(_ value: String) { edit { $0.setDraft(description: value) } }

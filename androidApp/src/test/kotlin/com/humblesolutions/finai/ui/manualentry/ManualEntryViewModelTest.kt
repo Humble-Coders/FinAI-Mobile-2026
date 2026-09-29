@@ -150,6 +150,24 @@ class ManualEntryViewModelTest {
     }
 
     @Test
+    fun `a screen left open past midnight catches up without touching the entry`() {
+        var clock = today
+        val model = ManualEntryViewModel(SavedStateHandle()) { clock }
+        model.bind("alice") { repositories() }
+        model.fillIn()
+        model.onDateChosen(LocalDate(2026, 9, 30))
+        assertEquals(ManualEntryBlock.FUTURE_DATE, model.uiState.value.block)
+
+        clock = LocalDate(2026, 9, 30)
+        model.refreshToday()
+
+        val state = model.uiState.value
+        assertEquals(clock, state.today)
+        assertNull(state.block)
+        assertEquals(LocalDate(2026, 9, 30), state.draft.occurredOn)
+    }
+
+    @Test
     fun `saving while blocked sends nothing and shows why`() {
         val transactions = FakeTransactions()
         val model = model()
