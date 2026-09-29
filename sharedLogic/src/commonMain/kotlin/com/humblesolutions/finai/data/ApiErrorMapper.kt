@@ -1,10 +1,12 @@
 package com.humblesolutions.finai.data
 
 import com.humblesolutions.finai.model.ApiException
+import com.humblesolutions.finai.model.DuplicateMatch
 import com.humblesolutions.finai.model.FeatureReason
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.jsonObject
 
 /** Maps a non-2xx response to the error a screen renders. Pure, so it is tested without a network. */
@@ -16,6 +18,8 @@ internal object ApiErrorMapper {
     private const val PHONE_ALREADY_LINKED = "phone_already_linked"
     private const val TERMS_VERSION_MISMATCH = "terms_version_mismatch"
     private const val INVALID_AMOUNT = "invalid_amount"
+    private const val DUPLICATE_TRANSACTION = "duplicate_transaction"
+    private const val DUPLICATE_ACCOUNT_NAME = "duplicate_account_name"
 
     fun fromResponse(status: Int, body: String): ApiException = when (status) {
         401 -> ApiException.Unauthorized("token rejected")
@@ -45,6 +49,16 @@ internal object ApiErrorMapper {
                 TERMS_VERSION_MISMATCH ->
                     return ApiException.TermsChanged(detail.string("current_version"))
                 INVALID_AMOUNT -> return ApiException.InvalidAmount(detail.string("field"))
+                DUPLICATE_TRANSACTION -> return ApiException.DuplicateTransaction(
+                    // A match that will not decode still leaves a duplicate:
+                    // the screen can say "you already have this" without the
+                    // detail, which beats falling back to a generic error.
+                    detail["duplicate_of"]?.let {
+                        runCatching { FinAiJson.decodeFromJsonElement<DuplicateMatch>(it) }
+                            .getOrNull()
+                    },
+                )
+                DUPLICATE_ACCOUNT_NAME -> return ApiException.DuplicateAccountName()
             }
         }
         return ApiException.Validation(status)

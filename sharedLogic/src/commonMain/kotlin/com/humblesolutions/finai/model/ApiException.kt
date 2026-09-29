@@ -95,6 +95,29 @@ sealed class ApiException(message: String, cause: Throwable? = null) : Exception
         override val messageKey: String = Strings.error_phone_already_linked
     }
 
+    /**
+     * A transaction typed in by hand matches one already recorded (#30,
+     * Finance-backend #38).
+     *
+     * Carries the match so the screen can show it — "you already have this" is
+     * useful information, and the user decides: keep theirs anyway (resend with
+     * `allow_duplicate`) or cancel. Null only if a server that predates the
+     * amended 409 answers without the match.
+     */
+    class DuplicateTransaction(val match: DuplicateMatch?) :
+        ApiException("transaction duplicates an existing one") {
+        override val messageKey: String = Strings.manual_entry_duplicate_title
+    }
+
+    /**
+     * An account name the household already uses. Separate accounts for one real
+     * account split its statements into piles that cannot see each other's
+     * duplicates, so the server refuses it (Finance-backend 3.3).
+     */
+    class DuplicateAccountName : ApiException("account name already used") {
+        override val messageKey: String = Strings.account_name_taken
+    }
+
     /** Creating an account with an email that already has one. */
     class EmailAlreadyRegistered : ApiException("email already registered") {
         override val messageKey: String = Strings.error_email_taken
