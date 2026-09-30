@@ -79,6 +79,7 @@ class StatementImportViewModel(private val saved: SavedStateHandle) : ViewModel(
                 imports = KtorStatementImportRepository(ApiConfig.BASE_URL, tokens, logging),
                 consent = KtorAiConsentRepository(ApiConfig.BASE_URL, tokens, logging),
                 reader = AndroidStatementReader(context.applicationContext),
+                files = AndroidPickedFiles(context.applicationContext),
             )
         }
     }
@@ -203,7 +204,15 @@ class StatementImportViewModel(private val saved: SavedStateHandle) : ViewModel(
     /** A file was picked (or photographed): read it straight away. */
     fun onFilePicked(uri: String) {
         if (_uiState.value.working || _uiState.value.accountId == null) return
+        // A different file replaces this one: give back access to the old.
+        _uiState.value.fileUri?.takeIf { it != uri }?.let { release(it) }
         saved[KEY_FILE] = uri
+        // Marked before reading, not inside it. Opening the camera or the
+        // picker is exactly when Android kills the app, and the result then
+        // arrives before `bind` has built the clients — `read` returns at once.
+        // Marked here, the restore after `bind` reads the file instead of
+        // quietly dropping the photo that was just taken.
+        saved[KEY_IN_PROGRESS] = true
         password = null
         document = null
         parsed = null
@@ -222,6 +231,7 @@ class StatementImportViewModel(private val saved: SavedStateHandle) : ViewModel(
 
     fun chooseAnotherFile() {
         if (_uiState.value.working) return
+        _uiState.value.fileUri?.let { release(it) }
         work?.cancel()
         saved.remove<String>(KEY_FILE)
         saved.remove<Boolean>(KEY_IN_PROGRESS)
@@ -317,6 +327,7 @@ class StatementImportViewModel(private val saved: SavedStateHandle) : ViewModel(
                 if (started != generation) return@launch
                 saved.remove<Boolean>(KEY_IN_PROGRESS)
                 document = null
+                _uiState.value.fileUri?.let { release(it) }
                 _uiState.update {
                     it.copy(
                         step = ImportStep.DONE,
@@ -332,6 +343,15 @@ class StatementImportViewModel(private val saved: SavedStateHandle) : ViewModel(
                 fail(e)
             }
         }
+    }
+
+    /**
+     * Gives back the lasting access taken to a picked file so a restore could
+     * read it again. Kept, it would pile up — the app holding read access to
+     * every statement ever imported, long after the import.
+     */
+    private fun release(uri: String) {
+        repositories?.files?.release(uri)
     }
 
     private fun fail(error: Throwable) {
@@ -433,6 +453,7 @@ class StatementImportViewModel(private val saved: SavedStateHandle) : ViewModel(
      * only when this screen saves it).
      */
     fun discard() {
+        _uiState.value.fileUri?.let { release(it) }
         work?.cancel()
         generation++
         document = null
@@ -475,12 +496,35 @@ class StatementImportViewModel(private val saved: SavedStateHandle) : ViewModel(
     }
 }
 
+/**
+ * Lasting read access to a picked file. Taken when the file is picked (the
+ * route does that — it must happen at once); given back here when the import
+ * is done with it.
+ */
+internal interface PickedFiles {
+    fun release(uri: String)
+}
+
+internal class AndroidPickedFiles(private val context: Context) : PickedFiles {
+    override fun release(uri: String) {
+        // Not every file has a lasting grant — a camera photo is the app's own,
+        // and some providers refuse one — so there may be nothing to give back.
+        runCatching {
+            context.contentResolver.releasePersistableUriPermission(
+                android.net.Uri.parse(uri),
+                android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION,
+            )
+        }
+    }
+}
+
 /** The clients the import needs, built together for one signed-in user. */
 internal class ImportRepositories(
     val accounts: AccountsRepository,
     val imports: StatementImportRepository,
     val consent: AiConsentRepository,
     val reader: StatementReader,
+    val files: PickedFiles,
 ) {
     fun close() {
         accounts.close()

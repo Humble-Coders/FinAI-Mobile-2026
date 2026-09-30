@@ -540,6 +540,9 @@ enum ImportFiles {
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         let copy = folder.appendingPathComponent("statement." + (url.pathExtension.isEmpty ? "pdf" : url.pathExtension.lowercased()))
         try FileManager.default.copyItem(at: url, to: copy)
+        // The same protection a photo gets: this is the statement, readable
+        // only while the phone is unlocked.
+        try FileManager.default.setAttributes([.protectionKey: FileProtectionType.complete], ofItemAtPath: copy.path)
         return copy
     }
 

@@ -360,6 +360,59 @@ class StatementImportViewModelTest {
     }
 
     @Test
+    fun `a photo that comes back before the screen is bound is still read`() {
+        // Opening the camera is when Android kills the app. Coming back, the
+        // photo arrives as soon as the picker is registered — before `bind`
+        // has built the clients — so it must be kept for the restore to read.
+        val saved = SavedStateHandle(
+            mapOf(
+                StatementImportViewModel.KEY_OWNER to "alice",
+                StatementImportViewModel.KEY_ACCOUNT to "acct-1",
+            ),
+        )
+        val reader = FakeReader()
+        val model = model(saved)
+        val photo = "content://com.humblesolutions.finai.captures/statement_captures/statement-1.jpg"
+
+        model.onFilePicked(photo)
+        model.bind("alice") { repositories(imports = FakeImports(parse = { twoRows }), reader = reader) }
+
+        assertEquals(listOf(photo), reader.sources)
+        assertEquals(ImportStep.DONE, model.uiState.value.step)
+    }
+
+    @Test
+    fun `access to a picked file is given back when the import is done with it`() {
+        val files = FakeFiles()
+        val model = model()
+        model.bind("alice") { repositories(imports = FakeImports(parse = { twoRows }), files = files) }
+        model.upToFile()
+
+        model.onFilePicked(file)
+
+        // Kept only as long as a restore might need it, never for good.
+        assertEquals(listOf(file), files.released)
+    }
+
+    @Test
+    fun `access is given back when the file is abandoned or replaced`() {
+        val files = FakeFiles()
+        val model = model()
+        model.bind("alice") {
+            repositories(imports = FakeImports(parse = { throw ApiException.ParseFailed() }), files = files)
+        }
+        model.upToFile()
+        model.onFilePicked(file)
+
+        model.onFilePicked("content://files/second.pdf")
+        model.chooseAnotherFile()
+        model.onFilePicked("content://files/third.pdf")
+        model.discard()
+
+        assertEquals(listOf(file, "content://files/second.pdf", "content://files/third.pdf"), files.released)
+    }
+
+    @Test
     fun `someone else's half-finished import is never picked up`() {
         val saved = SavedStateHandle(
             mapOf(
@@ -405,9 +458,18 @@ class StatementImportViewModelTest {
         imports: FakeImports = FakeImports(parse = { twoRows }),
         consent: FakeConsent = FakeConsent(agreed = "ai-v1"),
         reader: FakeReader = FakeReader(),
+        files: FakeFiles = FakeFiles(),
     ): ImportRepositories {
         lastReader = reader
-        return ImportRepositories(accounts, imports, consent, reader)
+        return ImportRepositories(accounts, imports, consent, reader, files)
+    }
+
+    private class FakeFiles : PickedFiles {
+        val released = mutableListOf<String>()
+
+        override fun release(uri: String) {
+            released += uri
+        }
     }
 
     private inner class FakeAccounts : AccountsRepository {

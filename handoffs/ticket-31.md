@@ -33,8 +33,8 @@ No extraction logic was added. The 3.2 readers and `ImportStatement` do the read
 ### Android
 | File | Why |
 |---|---|
-| `ui/statementimport/StatementImportViewModel.kt`, `…UiState.kt` | The flow. Account, file and "a read was under way" go in `SavedStateHandle`, owner-checked. The document and password are held in memory only. A retry re-sends, or re-saves, rather than re-reading. `discard()` is for leaving. |
-| `ui/statementimport/StatementImportScreen.kt`, `…Route.kt` | The steps. Pickers are `OpenDocument` (PDF and image), `PickVisualMedia`, and `TakePicture` through a `FileProvider`. Access to picked files is kept with `takePersistableUriPermission` where the provider allows. A camera photo is deleted when the import finishes or is abandoned, never just on a rotation. |
+| `ui/statementimport/StatementImportViewModel.kt`, `…UiState.kt` | The flow. Account, file and "a read was under way" go in `SavedStateHandle`, owner-checked. "In progress" is marked **as soon as a file is picked**: a camera or picker result that comes back after Android killed the app arrives before `bind`, and the restore then reads it rather than dropping it (a review fix). The document and password are held in memory only. A retry re-sends, or re-saves, rather than re-reading. `discard()` is for leaving. |
+| `ui/statementimport/StatementImportScreen.kt`, `…Route.kt` | The steps. Pickers are `OpenDocument` (PDF and image), `PickVisualMedia`, and `TakePicture` through a `FileProvider`. Access to picked files is kept with `takePersistableUriPermission` where the provider allows, so a restore can re-read the file, and **given back** (`releasePersistableUriPermission`, through `PickedFiles`) when the import finishes, is abandoned, or the file is replaced. Otherwise the app would hold access to every statement ever imported. A camera photo is deleted when the import finishes or is abandoned, never just on a rotation. |
 | `ui/components/AppLoader.kt` | `LoaderSignal(…, caption)` draws a caption under the coin, as a polite live region. |
 | `ui/components/AccountSheets.kt` | The account list and new-account sheet, moved from manual entry and shared by both screens. |
 | `AndroidManifest.xml`, `res/xml/statement_captures.xml` | A non-exported `FileProvider`, limited to `cache/statement-captures/`. There is no camera permission, because the system camera takes the photo. |
@@ -43,7 +43,7 @@ No extraction logic was added. The 3.2 readers and `ImportStatement` do the read
 ### iOS
 | File | Why |
 |---|---|
-| `viewmodel/StatementImportViewModel.swift` | The same flow and rules. A picked file is copied into the app's temp folder (`ImportFiles`), so it can be read again after a restore; the copy is deleted when the import finishes or is abandoned. Scene-storage snapshot is owner-checked. |
+| `viewmodel/StatementImportViewModel.swift` | The same flow and rules. A picked file is copied into the app's temp folder (`ImportFiles`), with complete file protection like a photo, so it can be read again after a restore; the copy is deleted when the import finishes or is abandoned. Scene-storage snapshot is owner-checked. |
 | `ui/StatementImportView.swift` | `.fileImporter`, `PhotosPicker` (converted to JPEG), the camera where one exists, `SecureField`, and a checkbox style that nothing pre-ticks. |
 | `ui/components/CameraPicker.swift` | A UIKit camera wrapper, since SwiftUI has none. |
 | `ui/components/AppLoader.swift` | `LoaderHost(caption:)`, announced to VoiceOver as it changes. |
@@ -57,7 +57,7 @@ No extraction logic was added. The 3.2 readers and `ImportStatement` do the read
   - `KtorStatementImportRepositoryTest`: the diagnostics flag stays off the wire unless true; the save path and body.
   - `StatementImportFlowTest`: 12 tests.
   - `ImportStatementTest`: the flag passes through.
-- Android (**78**, 16 new): `StatementImportViewModelTest`.
+- Android (**81**, 19 new): `StatementImportViewModelTest`, including a file picked before `bind` and file access given back.
 
 ## How to test
 
@@ -65,7 +65,7 @@ No extraction logic was added. The 3.2 readers and `ImportStatement` do the read
 ./gradlew :sharedLogic:testAndroidHostTest :androidApp:testDebugUnitTest :androidApp:assembleDebug
 ```
 
-This gives shared **266** and Android **78**, 0 failures.
+This gives shared **266** and Android **81**, 0 failures.
 
 ```bash
 cd iosApp && xcodebuild -workspace iosApp.xcworkspace -scheme iosApp -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
@@ -83,6 +83,8 @@ This gives BUILD SUCCEEDED. No simulator was run. `:sharedLogic:iosSimulatorArm6
 | Consent box pre-ticked | `consent is asked before the first import and never ticked for the person` |
 | Retry reads again | `a model failure is retried by sending again not by reading again` |
 | A killed read not resumed | `the app killed mid-read reads the same file again for the same account` |
+| "In progress" not marked on pick (the original bug) | `a photo that comes back before the screen is bound is still read` |
+| File access not given back when done | `access to a picked file is given back when the import is done with it` |
 
 **By hand, on a device, with synthetic statements only.** **Production refuses every import right now** (503 until `LLM_NO_TRAINING_TIER` is on), so point a debug build at a **local backend**: set `api.baseUrl` in `local.properties` on Android, and the equivalent on iOS. You can also test against production to see the "not available yet" state.
 1. Home → **Import a statement**. **Continue** is disabled until an account is chosen. Add one from the sheet; it's selected.
@@ -108,12 +110,12 @@ This gives BUILD SUCCEEDED. No simulator was run. `:sharedLogic:iosSimulatorArm6
 | The account step can't be skipped; a new account is selectable without leaving the flow | **Met.** Android tests `the account step cannot be skipped` and `a new account is chosen without leaving the flow`. iOS uses the same gate (`canContinueFromAccount`). |
 | Consent asked once, before the first import, never again after it's recorded | **Met.** `consent is asked before the first import…` and `once consent is recorded it is not asked again`. |
 | 403, 409, 429, both 413s, 502 and network each render their own message, proven over the UI state | **Met.** `each server refusal renders its own message` (Android) and `everyServerRefusalTheTicketNamesHasItsOwnMessage` (shared). A 409 isn't a message: it's the consent step, which is tested. The production-only 503 is covered too. |
-| Rotation or backgrounding mid-read doesn't lose the picked file or restart the read | **Met for rotation and backgrounding.** The read runs in the view model, which outlives both. If the OS **kills** the app mid-read, the file and account are kept but the read starts again (tested). The document is never written to disk, by design. |
+| Rotation or backgrounding mid-read doesn't lose the picked file or restart the read | **Met for rotation and backgrounding.** The read runs in the view model, which outlives both. If the OS **kills** the app mid-read, the file and account are kept but the read starts again (tested). This includes a photo or file that comes back from the camera or picker while the app was being killed (tested). The document is never written to disk, by design. |
 | A password-protected PDF prompts, accepts the password, and it never leaves the device | **Met.** `a locked PDF prompts and the password is used on the device only`: never in saved state, never in the upload. |
 | The send-the-text offer appears only on a failed or heavily-flagged import, unticked, and declining sends nothing | **Partly, by decision.** Unticked, declining sends nothing, and offered only once are all tested. It appears after a **failed** import only, not a mostly-flagged one that saved rows (manager decision, 2026-09-30): the backend keeps text only from the parse request, a re-parse is needed, and the monthly quota would refuse one after a successful import. |
 | From nothing-could-be-read, manual entry is one tap away, exercised by a test | **Met in the rules; the tap itself is by inspection.** `when nothing can be read manual entry is offered…` asserts the offer. The button calls `onTypeInstead`, which routes to manual entry with `fromUnreadable = true`. The app has no UI-test harness to press it. |
 | Nothing logs page text, a row or the redacted payload | **Met.** The HTTP client logs headers only (`LogLevel.HEADERS`, with Authorization sanitized), and debug builds only. There's no other logging in these screens. |
-| Android compiles and tests pass, `testAndroidHostTest` passes, iOS `xcodebuild` succeeds | **Met.** 266 / 78 / BUILD SUCCEEDED. |
+| Android compiles and tests pass, `testAndroidHostTest` passes, iOS `xcodebuild` succeeds | **Met.** 266 / 81 / BUILD SUCCEEDED. |
 
 ## Deviations / decisions
 
@@ -136,4 +138,5 @@ Also:
 - **Production can't import until `LLM_NO_TRAINING_TIER` is on**, which needs ai-v2 dated first (#42).
 - **Diagnostics after a mostly-flagged import** would need a backend endpoint that attaches text to an existing import, with no re-parse and no quota.
 - **#32 (review)**: the result should link to it once it exists.
+- **A save that keeps failing strands the import** (from review, left as a follow-up). If the parse succeeded (using up the month) but saving fails for a reason that won't change, such as a 422 on a row, **Try again** re-saves forever and the rows stay unfiled on the server. The fix is to tell a save refusal apart from a network failure and say so, or to let #32 pick up unfiled imports.
 - **The iOS view model has no unit-test target**, as with #30. Its rules come from the tested shared layer, and its plumbing is covered by the device steps.
