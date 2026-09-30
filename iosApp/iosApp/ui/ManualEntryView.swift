@@ -272,37 +272,19 @@ struct ManualEntryView: View {
     }
 
     private var accountSheet: some View {
-        NavigationStack {
-            List {
-                if model.accounts.isEmpty {
-                    Text(L.t(Strings.shared.manual_entry_accounts_empty)).foregroundColor(Brand.textMuted)
-                }
-                ForEach(model.accounts, id: \.id) { account in
-                    ChoiceRow(
-                        title: account.name,
-                        detail: [account.kind.labelKey.map { L.t($0) }, account.currency.isEmpty ? nil : account.currency]
-                            .compactMap { $0 }.joined(separator: " · "),
-                        selected: account.id == model.draft.accountId
-                    ) {
-                        model.chooseAccount(account.id)
-                        choosingAccount = false
-                    }
-                }
-                Section {
-                    Button(L.t(Strings.shared.manual_entry_account_add)) {
-                        addAccountNext = true
-                        choosingAccount = false
-                    }
-                }
-            }
-            .navigationTitle(L.t(Strings.shared.manual_entry_account_label))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button(L.t(Strings.shared.action_cancel)) { choosingAccount = false }
-                }
-            }
-        }
+        AccountListSheet(
+            accounts: model.accounts,
+            chosenId: model.draft.accountId,
+            onChosen: { id in
+                model.chooseAccount(id)
+                choosingAccount = false
+            },
+            onAdd: {
+                addAccountNext = true
+                choosingAccount = false
+            },
+            onCancel: { choosingAccount = false }
+        )
     }
 
     private var categorySheet: some View {
@@ -333,33 +315,6 @@ struct ManualEntryView: View {
                 }
             }
         }
-    }
-}
-
-/// A row in a chooser: the whole row taps, with a checkmark on the chosen one.
-private struct ChoiceRow: View {
-    let title: String
-    let detail: String?
-    let selected: Bool
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title).lineLimit(1).foregroundColor(.primary)
-                    if let detail, !detail.isEmpty {
-                        Text(detail).font(.footnote).foregroundColor(Brand.textMuted).lineLimit(2)
-                    }
-                }
-                Spacer()
-                if selected {
-                    Image(systemName: "checkmark").foregroundColor(.primary).accessibilityHidden(true)
-                }
-            }
-            .tappableRow()
-        }
-        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }
 
@@ -418,64 +373,5 @@ private struct DateSheet: View {
         formatter.timeZone = .current
         formatter.dateFormat = "yyyy-MM-dd"
         return formatter
-    }
-}
-
-/// Adding an account without leaving the entry: named, and of a kind the
-/// person chose — the kind starts unanswered.
-private struct NewAccountSheet: View {
-    @ObservedObject var model: ManualEntryViewModel
-
-    var body: some View {
-        NavigationStack {
-            Form {
-                Section {
-                    TextField(
-                        L.t(Strings.shared.account_new_name_label),
-                        text: Binding(get: { model.newAccount?.name ?? "" }, set: { model.setNewAccountName($0) }),
-                        prompt: Text(L.t(Strings.shared.account_new_name_hint))
-                    )
-                    .textInputAutocapitalization(.words)
-                    .submitLabel(.done)
-                    .onSubmit { dismissKeyboard() }
-                } header: {
-                    Text(L.t(Strings.shared.account_new_name_label))
-                }
-                Section {
-                    ForEach(AccountKind.companion.choosable, id: \.self) { kind in
-                        ChoiceRow(
-                            title: kind.labelKey.map { L.t($0) } ?? "",
-                            detail: nil,
-                            selected: model.newAccount?.kind == kind
-                        ) { model.chooseNewAccountKind(kind) }
-                    }
-                } header: {
-                    Text(L.t(Strings.shared.account_new_kind_label))
-                }
-                Section {
-                    ErrorText(messageKey: model.newAccountErrorKey)
-                    if model.newAccountErrorKey == nil { ErrorText(messageKey: model.newAccountNotice?.messageKey) }
-                    GradientButton(
-                        title: L.t(Strings.shared.account_new_create),
-                        enabled: model.canCreateAccount,
-                        busy: model.creatingAccount
-                    ) {
-                        dismissKeyboard()
-                        model.createAccount()
-                    }
-                    .listRowInsets(EdgeInsets())
-                    .listRowBackground(Color.clear)
-                }
-            }
-            .navigationTitle(L.t(Strings.shared.account_new_title))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button(L.t(Strings.shared.account_new_cancel)) { model.cancelNewAccount() }
-                        .disabled(model.creatingAccount)
-                }
-            }
-        }
-        .interactiveDismissDisabled(model.creatingAccount)
     }
 }

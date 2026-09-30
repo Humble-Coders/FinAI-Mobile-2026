@@ -45,6 +45,9 @@ extension EnvironmentValues {
 /// for the minimum however quickly the work finishes.
 struct LoaderHost<Content: View>: View {
     let active: Bool
+    /// What the wait is for, shown under the coin — "Reading page 3 of 12…".
+    /// A long wait with nothing said reads as a hang (#31).
+    var caption: String? = nil
     @ObservedObject var loader: AppLoader
     @ViewBuilder var content: () -> Content
 
@@ -84,6 +87,21 @@ struct LoaderHost<Content: View>: View {
                     .ignoresSafeArea()
                     .allowsHitTesting(false)
             }
+        }
+        .overlay {
+            if shown, let caption {
+                Text(caption)
+                    .font(.body)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 32)
+                    // Below the coin, which sits in the middle at 112pt.
+                    .offset(y: 112)
+                    .allowsHitTesting(false)
+            }
+        }
+        // Spoken as it changes, page by page, without moving focus.
+        .onChange(of: caption) { _, caption in
+            if shown, let caption { AccessibilityNotification.Announcement(caption).post() }
         }
         .task(id: active) { await follow(active) }
     }
