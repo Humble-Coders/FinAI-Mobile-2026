@@ -68,6 +68,7 @@ class OnboardingViewModel : ViewModel() {
                 when {
                     // Signed in, and we have nothing (or stale) to route on.
                     session == SessionState.SIGNED_IN -> loadMe()
+
                     // Signing out clears everything the previous account loaded.
                     session == SessionState.SIGNED_OUT && was != SessionState.SIGNED_OUT ->
                         _uiState.update {
@@ -121,13 +122,11 @@ class OnboardingViewModel : ViewModel() {
 
     // ── Welcome: email and password ─────────────────────────────────────
 
-    fun onWelcomeModeChange(mode: WelcomeMode) =
-        _uiState.update {
-            it.copy(welcomeMode = mode, errorKey = null, providerErrorKey = null, emailTaken = false)
-        }
+    fun onWelcomeModeChange(mode: WelcomeMode) = _uiState.update {
+        it.copy(welcomeMode = mode, errorKey = null, providerErrorKey = null, emailTaken = false)
+    }
 
-    fun onEmailChange(value: String) =
-        _uiState.update { it.copy(email = value, errorKey = null, emailTaken = false) }
+    fun onEmailChange(value: String) = _uiState.update { it.copy(email = value, errorKey = null, emailTaken = false) }
 
     fun onPasswordChange(value: String) = _uiState.update { it.copy(password = value, errorKey = null) }
 
@@ -260,11 +259,9 @@ class OnboardingViewModel : ViewModel() {
 
     // ── The phone step ──────────────────────────────────────────────────
 
-    fun onDialCodeSelected(dialCode: DialCode) =
-        _uiState.update { it.copy(dialCode = dialCode, dialCodePicked = true) }
+    fun onDialCodeSelected(dialCode: DialCode) = _uiState.update { it.copy(dialCode = dialCode, dialCodePicked = true) }
 
-    fun onPhoneChange(value: String) =
-        _uiState.update { it.copy(phoneDigits = value, errorKey = null) }
+    fun onPhoneChange(value: String) = _uiState.update { it.copy(phoneDigits = value, errorKey = null) }
 
     fun onCodeChange(value: String) = _uiState.update {
         it.copy(code = value.filter(Char::isDigit).take(OnboardingUiState.CODE_LENGTH), errorKey = null)
@@ -337,14 +334,11 @@ class OnboardingViewModel : ViewModel() {
     }
 
     /** The provider sheet was dismissed. Silently back — a cancel is not an error. */
-    fun onProviderCancelled() =
-        _uiState.update { it.copy(busy = false, providerErrorKey = null) }
+    fun onProviderCancelled() = _uiState.update { it.copy(busy = false, providerErrorKey = null) }
 
-    fun onProviderFailed(messageKey: String) =
-        _uiState.update { it.copy(busy = false, providerErrorKey = messageKey) }
+    fun onProviderFailed(messageKey: String) = _uiState.update { it.copy(busy = false, providerErrorKey = messageKey) }
 
-    fun onProviderStarted() =
-        _uiState.update { it.copy(busy = true, errorKey = null, providerErrorKey = null) }
+    fun onProviderStarted() = _uiState.update { it.copy(busy = true, errorKey = null, providerErrorKey = null) }
 
     fun signOut() {
         val auth = auth ?: return

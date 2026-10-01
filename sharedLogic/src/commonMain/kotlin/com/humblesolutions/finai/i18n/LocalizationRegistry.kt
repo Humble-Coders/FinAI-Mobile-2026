@@ -16,10 +16,9 @@ object LocalizationRegistry {
     private const val DEFAULT_LANGUAGE = "en"
 
     /** Returns the localized value, falling back to English, then to the key itself. */
-    fun get(key: String, language: String = DEFAULT_LANGUAGE): String =
-        languages[language]?.get(key)
-            ?: languages.getValue(DEFAULT_LANGUAGE)[key]
-            ?: key
+    fun get(key: String, language: String = DEFAULT_LANGUAGE): String = languages[language]?.get(key)
+        ?: languages.getValue(DEFAULT_LANGUAGE)[key]
+        ?: key
 
     /**
      * [get], with `{0}`-style placeholders filled from [args].
@@ -29,6 +28,5 @@ object LocalizationRegistry {
      * argument is left as-is rather than blanked: a visible `{1}` is a bug
      * report, an empty gap is a mystery.
      */
-    fun format(key: String, args: List<String>, language: String = DEFAULT_LANGUAGE): String =
-        args.foldIndexed(get(key, language)) { index, text, arg -> text.replace("{$index}", arg) }
+    fun format(key: String, args: List<String>, language: String = DEFAULT_LANGUAGE): String = args.foldIndexed(get(key, language)) { index, text, arg -> text.replace("{$index}", arg) }
 }

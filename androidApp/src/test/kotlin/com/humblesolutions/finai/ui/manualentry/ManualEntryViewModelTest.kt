@@ -12,8 +12,8 @@ import com.humblesolutions.finai.model.NewAccount
 import com.humblesolutions.finai.model.NewTransaction
 import com.humblesolutions.finai.model.ReviewReason
 import com.humblesolutions.finai.model.Transaction
-import com.humblesolutions.finai.model.TransactionPatch
 import com.humblesolutions.finai.model.TransactionDirection
+import com.humblesolutions.finai.model.TransactionPatch
 import com.humblesolutions.finai.repository.AccountsRepository
 import com.humblesolutions.finai.repository.CapabilitiesRepository
 import com.humblesolutions.finai.repository.CategoriesRepository
@@ -535,8 +535,7 @@ class ManualEntryViewModelTest {
     // ── Fakes ───────────────────────────────────────────────────────────
 
     /** What Android does on a restart: a new handle holding the old one's values. */
-    private fun restart(saved: SavedStateHandle) =
-        SavedStateHandle(saved.keys().associateWith { saved.get<Any?>(it) })
+    private fun restart(saved: SavedStateHandle) = SavedStateHandle(saved.keys().associateWith { saved.get<Any?>(it) })
 
     private fun repositories(
         accounts: FakeAccounts = FakeAccounts(),

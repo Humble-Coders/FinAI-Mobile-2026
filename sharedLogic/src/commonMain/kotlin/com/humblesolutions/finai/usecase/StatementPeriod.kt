@@ -71,8 +71,7 @@ object StatementPeriod {
      *
      * ISO strings, so comparing them as text compares them as dates.
      */
-    private fun ordered(first: String, second: String): Range =
-        if (first <= second) Range(first, second) else Range(second, first)
+    private fun ordered(first: String, second: String): Range = if (first <= second) Range(first, second) else Range(second, first)
 
     private fun datesIn(text: String): List<String> {
         val found = mutableListOf<String>()

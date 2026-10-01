@@ -1,11 +1,11 @@
 package com.humblesolutions.finai.data
 
+import com.humblesolutions.finai.i18n.Strings
 import com.humblesolutions.finai.model.ApiException
 import com.humblesolutions.finai.model.FeatureReason
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
-import com.humblesolutions.finai.i18n.Strings
 
 class ApiErrorMapperTest {
 

@@ -16,11 +16,11 @@ import io.ktor.client.plugins.logging.Logger
 import io.ktor.client.plugins.logging.Logging
 import io.ktor.client.plugins.logging.SIMPLE
 import io.ktor.client.plugins.plugin
+import io.ktor.client.request.HttpRequestBuilder
 import io.ktor.client.request.accept
 import io.ktor.client.request.bearerAuth
-import io.ktor.client.request.get
-import io.ktor.client.request.HttpRequestBuilder
 import io.ktor.client.request.delete
+import io.ktor.client.request.get
 import io.ktor.client.request.patch
 import io.ktor.client.request.post
 import io.ktor.client.request.put
@@ -29,9 +29,9 @@ import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
-import io.ktor.http.contentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.Url
+import io.ktor.http.contentType
 import io.ktor.http.isSuccess
 import io.ktor.serialization.kotlinx.json.json
 import kotlin.coroutines.cancellation.CancellationException
@@ -126,8 +126,7 @@ internal val SessionBearer = createClientPlugin("SessionBearer", ::SessionBearer
 }
 
 /** Same scheme, host and port — the unit a bearer token may be sent to. */
-private fun Url.sameOriginAs(other: Url): Boolean =
-    protocol == other.protocol && host.equals(other.host, ignoreCase = true) && port == other.port
+private fun Url.sameOriginAs(other: Url): Boolean = protocol == other.protocol && host.equals(other.host, ignoreCase = true) && port == other.port
 
 /**
  * Sends a request and maps every failure to [ApiException]: statuses through
@@ -171,28 +170,33 @@ internal suspend inline fun <reified T> HttpClient.getJson(
     crossinline configure: HttpRequestBuilder.() -> Unit = {},
 ): T = sendMapped { get(path) { configure() } }.decoded()
 
-internal suspend inline fun <reified B, reified T> HttpClient.putJson(path: String, body: B): T =
-    sendMapped { put(path) { contentType(ContentType.Application.Json); setBody(body) } }.decoded()
+internal suspend inline fun <reified B, reified T> HttpClient.putJson(path: String, body: B): T = sendMapped {
+    put(path) {
+        contentType(ContentType.Application.Json)
+        setBody(body)
+    }
+}.decoded()
 
 internal suspend inline fun <reified B, reified T> HttpClient.postJson(
     path: String,
     body: B,
     crossinline configure: HttpRequestBuilder.() -> Unit = {},
-): T =
-    sendMapped {
-        post(path) {
-            contentType(ContentType.Application.Json)
-            setBody(body)
-            configure()
-        }
-    }.decoded()
+): T = sendMapped {
+    post(path) {
+        contentType(ContentType.Application.Json)
+        setBody(body)
+        configure()
+    }
+}.decoded()
 
-internal suspend inline fun <reified B, reified T> HttpClient.patchJson(path: String, body: B): T =
-    sendMapped { patch(path) { contentType(ContentType.Application.Json); setBody(body) } }.decoded()
+internal suspend inline fun <reified B, reified T> HttpClient.patchJson(path: String, body: B): T = sendMapped {
+    patch(path) {
+        contentType(ContentType.Application.Json)
+        setBody(body)
+    }
+}.decoded()
 
-internal suspend inline fun <reified T> HttpClient.deleteJson(path: String): T =
-    sendMapped { delete(path) }.decoded()
+internal suspend inline fun <reified T> HttpClient.deleteJson(path: String): T = sendMapped { delete(path) }.decoded()
 
 /** A POST with nothing to say: the row it acts on is named in the path. */
-internal suspend inline fun <reified T> HttpClient.postEmpty(path: String): T =
-    sendMapped { post(path) }.decoded()
+internal suspend inline fun <reified T> HttpClient.postEmpty(path: String): T = sendMapped { post(path) }.decoded()

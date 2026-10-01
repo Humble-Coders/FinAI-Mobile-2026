@@ -1,7 +1,7 @@
 package com.humblesolutions.finai.ui.onboarding
 
-import androidx.compose.foundation.border
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -29,9 +29,9 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.humblesolutions.finai.i18n.Strings
+import com.humblesolutions.finai.ui.components.CardScreen
 import com.humblesolutions.finai.ui.components.ErrorText
 import com.humblesolutions.finai.ui.components.PrimaryButton
-import com.humblesolutions.finai.ui.components.CardScreen
 import com.humblesolutions.finai.ui.strings
 
 /**

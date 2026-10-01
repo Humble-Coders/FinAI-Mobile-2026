@@ -112,12 +112,18 @@ fun StatementImportScreen(state: StatementImportUiState, actions: StatementImpor
         ) {
             when (state.step) {
                 ImportStep.CHOOSE_ACCOUNT -> AccountStep(state, actions) { choosingAccount = true }
+
                 ImportStep.CHOOSE_FILE -> FileStep(state, actions)
+
                 ImportStep.CONSENT -> ConsentStep(state, actions)
+
                 ImportStep.PASSWORD -> PasswordStep(state, actions)
+
                 // The coin loader covers these; its caption says which.
                 ImportStep.READING, ImportStep.SENDING, ImportStep.SAVING -> Spacer(Modifier.height(1.dp))
+
                 ImportStep.DONE -> DoneStep(state, actions)
+
                 ImportStep.FAILED -> FailedStep(state, actions)
             }
             Spacer(Modifier.height(16.dp))

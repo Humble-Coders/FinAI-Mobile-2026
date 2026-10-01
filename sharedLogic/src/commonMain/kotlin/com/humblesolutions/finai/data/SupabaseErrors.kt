@@ -58,57 +58,59 @@ internal object SupabaseErrors {
         else -> ApiException.Unexpected(null, error)
     }
 
-    private fun fromAuthCode(error: AuthRestException, call: SupabaseCall): ApiException =
-        when (error.errorCode) {
-            // The number already belongs to someone else. Supabase often
-            // refuses before the API ever sees it, so both sides map here.
-            AuthErrorCode.PhoneExists -> ApiException.PhoneAlreadyLinked()
+    private fun fromAuthCode(error: AuthRestException, call: SupabaseCall): ApiException = when (error.errorCode) {
+        // The number already belongs to someone else. Supabase often
+        // refuses before the API ever sees it, so both sides map here.
+        AuthErrorCode.PhoneExists -> ApiException.PhoneAlreadyLinked()
 
-            AuthErrorCode.OtpExpired -> ApiException.InvalidCode()
+        AuthErrorCode.OtpExpired -> ApiException.InvalidCode()
 
-            // The same code for a wrong password and a wrong one-time code.
-            AuthErrorCode.InvalidCredentials ->
-                if (call == SupabaseCall.EMAIL) ApiException.WrongCredentials() else ApiException.InvalidCode()
+        // The same code for a wrong password and a wrong one-time code.
+        AuthErrorCode.InvalidCredentials ->
+            if (call == SupabaseCall.EMAIL) ApiException.WrongCredentials() else ApiException.InvalidCode()
 
-            AuthErrorCode.OverSmsSendRateLimit,
-            AuthErrorCode.OverEmailSendRateLimit,
-            -> ApiException.TooManyAttempts()
+        AuthErrorCode.OverSmsSendRateLimit,
+        AuthErrorCode.OverEmailSendRateLimit,
+        -> ApiException.TooManyAttempts()
 
-            AuthErrorCode.EmailExists,
-            AuthErrorCode.UserAlreadyExists,
-            -> ApiException.EmailAlreadyRegistered()
+        AuthErrorCode.EmailExists,
+        AuthErrorCode.UserAlreadyExists,
+        -> ApiException.EmailAlreadyRegistered()
 
-            AuthErrorCode.EmailNotConfirmed -> ApiException.EmailNotConfirmed()
+        AuthErrorCode.EmailNotConfirmed -> ApiException.EmailNotConfirmed()
 
-            AuthErrorCode.WeakPassword,
-            AuthErrorCode.SamePassword,
-            -> ApiException.WeakPassword()
+        AuthErrorCode.WeakPassword,
+        AuthErrorCode.SamePassword,
+        -> ApiException.WeakPassword()
 
-            AuthErrorCode.EmailAddressInvalid -> ApiException.InvalidEmail()
+        AuthErrorCode.EmailAddressInvalid -> ApiException.InvalidEmail()
 
-            // EmailAddressNotAuthorized is Supabase's built-in mailer refusing
-            // anyone outside the project team: a setup gap, not a bad address.
-            AuthErrorCode.PhoneProviderDisabled,
-            AuthErrorCode.EmailProviderDisabled,
-            AuthErrorCode.EmailAddressNotAuthorized,
-            AuthErrorCode.OtpDisabled,
-            AuthErrorCode.SignupDisabled,
-            -> ApiException.SignInMethodUnavailable()
+        // EmailAddressNotAuthorized is Supabase's built-in mailer refusing
+        // anyone outside the project team: a setup gap, not a bad address.
+        AuthErrorCode.PhoneProviderDisabled,
+        AuthErrorCode.EmailProviderDisabled,
+        AuthErrorCode.EmailAddressNotAuthorized,
+        AuthErrorCode.OtpDisabled,
+        AuthErrorCode.SignupDisabled,
+        -> ApiException.SignInMethodUnavailable()
 
-            // Could not text the code — nothing the user did wrong, and
-            // retrying is the only useful advice.
-            AuthErrorCode.SmsSendFailed -> ApiException.Server(error.statusCode)
+        // Could not text the code — nothing the user did wrong, and
+        // retrying is the only useful advice.
+        AuthErrorCode.SmsSendFailed -> ApiException.Server(error.statusCode)
 
-            AuthErrorCode.ValidationFailed -> when (call) {
-                SupabaseCall.PHONE -> ApiException.InvalidPhone()
-                SupabaseCall.CODE -> ApiException.InvalidCode()
-                SupabaseCall.EMAIL -> ApiException.InvalidEmail()
-                SupabaseCall.PASSWORD -> ApiException.WeakPassword()
-                else -> ApiException.Validation(error.statusCode)
-            }
-
-            else ->
-                if (error.statusCode in 500..599) ApiException.Server(error.statusCode)
-                else ApiException.Validation(error.statusCode)
+        AuthErrorCode.ValidationFailed -> when (call) {
+            SupabaseCall.PHONE -> ApiException.InvalidPhone()
+            SupabaseCall.CODE -> ApiException.InvalidCode()
+            SupabaseCall.EMAIL -> ApiException.InvalidEmail()
+            SupabaseCall.PASSWORD -> ApiException.WeakPassword()
+            else -> ApiException.Validation(error.statusCode)
         }
+
+        else ->
+            if (error.statusCode in 500..599) {
+                ApiException.Server(error.statusCode)
+            } else {
+                ApiException.Validation(error.statusCode)
+            }
+    }
 }

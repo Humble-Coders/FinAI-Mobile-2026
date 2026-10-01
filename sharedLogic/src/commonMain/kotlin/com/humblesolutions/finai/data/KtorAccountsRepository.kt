@@ -20,8 +20,7 @@ class KtorAccountsRepository internal constructor(
     override suspend fun list(): List<Account> = http.getJson("accounts")
 
     @Throws(ApiException::class, CancellationException::class)
-    override suspend fun create(account: NewAccount): Account =
-        http.postJson("accounts", account)
+    override suspend fun create(account: NewAccount): Account = http.postJson("accounts", account)
 
     override fun close() = http.close()
 }

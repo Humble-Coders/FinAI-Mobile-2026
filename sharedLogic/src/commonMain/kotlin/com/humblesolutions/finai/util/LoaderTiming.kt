@@ -17,6 +17,5 @@ object LoaderTiming {
      * [nowMs]. Never negative, and never more than the minimum — a clock that
      * steps backwards cannot hold it up for longer than that.
      */
-    fun remainingMs(shownAtMs: Long, nowMs: Long): Long =
-        (MIN_VISIBLE_MS - (nowMs - shownAtMs)).coerceIn(0L, MIN_VISIBLE_MS)
+    fun remainingMs(shownAtMs: Long, nowMs: Long): Long = (MIN_VISIBLE_MS - (nowMs - shownAtMs)).coerceIn(0L, MIN_VISIBLE_MS)
 }

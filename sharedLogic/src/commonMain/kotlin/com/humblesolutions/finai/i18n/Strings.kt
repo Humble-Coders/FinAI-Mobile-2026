@@ -164,7 +164,6 @@ object Strings {
     // Failure to load.
     const val error_title = "error_title" // "Something went wrong"
 
-
     // Why a feature is unavailable — FeatureReason.messageKey.
     const val feature_reason_coming_soon = "feature_reason_coming_soon" // "Coming soon"
     const val feature_reason_not_in_plan = "feature_reason_not_in_plan" // "Not included in your plan"

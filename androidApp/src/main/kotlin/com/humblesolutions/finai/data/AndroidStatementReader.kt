@@ -3,17 +3,17 @@ package com.humblesolutions.finai.data
 import android.content.Context
 import android.graphics.Bitmap
 import android.net.Uri
+import com.google.mlkit.vision.common.InputImage
+import com.google.mlkit.vision.text.TextRecognition
+import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import com.humblesolutions.finai.config.StatementLimits
 import com.humblesolutions.finai.model.BoundingBox
 import com.humblesolutions.finai.model.ExtractedDocument
 import com.humblesolutions.finai.model.ExtractedLine
 import com.humblesolutions.finai.model.ExtractedPage
 import com.humblesolutions.finai.model.SourceKind
-import com.humblesolutions.finai.repository.StatementReader
 import com.humblesolutions.finai.repository.StatementReadException
-import com.google.mlkit.vision.common.InputImage
-import com.google.mlkit.vision.text.TextRecognition
-import com.google.mlkit.vision.text.latin.TextRecognizerOptions
+import com.humblesolutions.finai.repository.StatementReader
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.encryption.InvalidPasswordException
@@ -23,9 +23,9 @@ import com.tom_roush.pdfbox.text.TextPosition
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import java.io.IOException
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
-import java.io.IOException
 
 /**
  * Reads a statement on the device, and nowhere else.
@@ -85,32 +85,30 @@ class AndroidStatementReader(private val context: Context) : StatementReader {
         }
     }
 
-    private fun looksLikeAnImage(uri: Uri): Boolean =
-        context.contentResolver.getType(uri)?.startsWith("image/") == true
+    private fun looksLikeAnImage(uri: Uri): Boolean = context.contentResolver.getType(uri)?.startsWith("image/") == true
 
     /** The password is used here and never leaves the device. */
-    private fun openPdf(uri: Uri, password: String?): PDDocument =
-        try {
-            val stream = context.contentResolver.openInputStream(uri)
-                ?: throw StatementReadException.Unsupported("cannot open")
-            stream.use { PDDocument.load(it, password ?: "") }
-        } catch (wrongPassword: InvalidPasswordException) {
-            // Caught by type, not by looking for "password" in the message:
-            // a message match breaks on a library upgrade or a translation,
-            // and when it breaks the screen says "we cannot read this file"
-            // instead of asking again — leaving the user no way through.
-            throw StatementReadException.PasswordRequired(wrongPassword = password != null)
-        } catch (alreadyOurs: StatementReadException) {
-            throw alreadyOurs
-        } catch (broken: Exception) {
-            // Deliberately Exception and not IOException. A damaged PDF makes
-            // PdfBox throw from wherever it lost its footing —
-            // IllegalArgumentException, IndexOutOfBoundsException, an NPE off a
-            // malformed xref — and none of those are IOException. Narrowing
-            // this to IOException let them escape as themselves, which is not
-            // the type this interface promises and not one the screen catches.
-            throw StatementReadException.Unsupported(broken::class.simpleName.orEmpty())
-        }
+    private fun openPdf(uri: Uri, password: String?): PDDocument = try {
+        val stream = context.contentResolver.openInputStream(uri)
+            ?: throw StatementReadException.Unsupported("cannot open")
+        stream.use { PDDocument.load(it, password ?: "") }
+    } catch (wrongPassword: InvalidPasswordException) {
+        // Caught by type, not by looking for "password" in the message:
+        // a message match breaks on a library upgrade or a translation,
+        // and when it breaks the screen says "we cannot read this file"
+        // instead of asking again — leaving the user no way through.
+        throw StatementReadException.PasswordRequired(wrongPassword = password != null)
+    } catch (alreadyOurs: StatementReadException) {
+        throw alreadyOurs
+    } catch (broken: Exception) {
+        // Deliberately Exception and not IOException. A damaged PDF makes
+        // PdfBox throw from wherever it lost its footing —
+        // IllegalArgumentException, IndexOutOfBoundsException, an NPE off a
+        // malformed xref — and none of those are IOException. Narrowing
+        // this to IOException let them escape as themselves, which is not
+        // the type this interface promises and not one the screen catches.
+        throw StatementReadException.Unsupported(broken::class.simpleName.orEmpty())
+    }
 
     /** Path 1 — or null when the file carries no usable text. */
     private fun readTextLayer(
@@ -205,32 +203,30 @@ class AndroidStatementReader(private val context: Context) : StatementReader {
         )
     }
 
-    private suspend fun recognise(bitmap: Bitmap): List<ExtractedLine> =
-        recogniseImage(InputImage.fromBitmap(bitmap, 0))
+    private suspend fun recognise(bitmap: Bitmap): List<ExtractedLine> = recogniseImage(InputImage.fromBitmap(bitmap, 0))
 
-    private suspend fun recogniseImage(image: InputImage): List<ExtractedLine> =
-        suspendCancellableCoroutine { continuation ->
-            recognizer.process(image)
-                .addOnSuccessListener { result ->
-                    continuation.resume(
-                        result.textBlocks
-                            .flatMap { it.lines }
-                            .map { line ->
-                                val box = line.boundingBox
-                                ExtractedLine(
-                                    text = line.text,
-                                    box = BoundingBox(
-                                        left = box?.left?.toFloat() ?: 0f,
-                                        top = box?.top?.toFloat() ?: 0f,
-                                        right = box?.right?.toFloat() ?: 0f,
-                                        bottom = box?.bottom?.toFloat() ?: 0f,
-                                    ),
-                                )
-                            },
-                    )
-                }
-                .addOnFailureListener { continuation.resumeWithException(it) }
-        }
+    private suspend fun recogniseImage(image: InputImage): List<ExtractedLine> = suspendCancellableCoroutine { continuation ->
+        recognizer.process(image)
+            .addOnSuccessListener { result ->
+                continuation.resume(
+                    result.textBlocks
+                        .flatMap { it.lines }
+                        .map { line ->
+                            val box = line.boundingBox
+                            ExtractedLine(
+                                text = line.text,
+                                box = BoundingBox(
+                                    left = box?.left?.toFloat() ?: 0f,
+                                    top = box?.top?.toFloat() ?: 0f,
+                                    right = box?.right?.toFloat() ?: 0f,
+                                    bottom = box?.bottom?.toFloat() ?: 0f,
+                                ),
+                            )
+                        },
+                )
+            }
+            .addOnFailureListener { continuation.resumeWithException(it) }
+    }
 
     /**
      * Releases the OCR recogniser, which holds native resources.

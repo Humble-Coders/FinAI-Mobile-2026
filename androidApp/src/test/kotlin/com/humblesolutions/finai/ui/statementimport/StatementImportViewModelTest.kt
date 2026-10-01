@@ -475,8 +475,7 @@ class StatementImportViewModelTest {
     private inner class FakeAccounts : AccountsRepository {
         override suspend fun list() = listOf(chequing)
 
-        override suspend fun create(account: NewAccount) =
-            Account(id = "acct-new", name = account.name, kind = account.kind, currency = "CAD")
+        override suspend fun create(account: NewAccount) = Account(id = "acct-new", name = account.name, kind = account.kind, currency = "CAD")
 
         override fun close() = Unit
     }

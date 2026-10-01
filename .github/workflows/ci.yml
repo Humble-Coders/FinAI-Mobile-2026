@@ -40,15 +40,67 @@ concurrency:
 permissions:
   contents: read
 
+# Every `uses:` below names a commit SHA, not a tag. A tag is a moving pointer
+# its owner can repoint at any time: `@v7` today and `@v7` tomorrow are a
+# promise, not a guarantee, and that is exactly how tj-actions/changed-files
+# shipped a credential stealer to ~23,000 repositories in March 2025 — the tags
+# were retargeted, and every repository tracking them ran the new code on its
+# next build. A SHA cannot be repointed. The trailing `# v7` is the human half:
+# it says what the SHA was when it was pinned, so a reader knows which release
+# they are on, and Dependabot rewrites both halves together — see
+# .github/dependabot.yml, which exists so a pin is not a freeze.
+#
+# To bump one by hand:
+#   gh api repos/<owner>/<repo>/git/ref/tags/<tag> --jq .object.sha
+# (dereference once more via git/tags/<sha> if it prints an annotated tag).
+
 jobs:
   android:
     name: Android
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Lint the workflows
+        # First, because a workflow that is wrong is wrong before anything is
+        # built, and this costs seconds. It checks .github/workflows/*.yml:
+        # expression syntax, unknown keys, runner labels, and — because
+        # ubuntu-latest ships shellcheck — the `run:` blocks too. It does NOT
+        # read .github/actions/*/action.yml; composite actions are outside what
+        # actionlint parses, so changes there are still reviewed by eye.
+        #
+        # The release tarball rather than a third-party action: this job is the
+        # one arguing for pinned SHAs, so it should not reach for one more
+        # unpinned dependency to say so. Version and digest are pinned together;
+        # bump both from the release page's checksums file.
+        env:
+          ACTIONLINT_VERSION: "1.7.12"
+          ACTIONLINT_SHA256: "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8"
+        run: |
+          set -euo pipefail
+          name="actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          # Unpacked outside the checkout, so linting the repo never sees the
+          # binary that is doing the linting.
+          dir="$(mktemp -d)"
+          curl --fail --silent --show-error --location --retry 3 --output "$dir/$name" \
+            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/${name}"
+          echo "${ACTIONLINT_SHA256}  $dir/$name" | sha256sum --check -
+          tar -xzf "$dir/$name" -C "$dir" actionlint
+          "$dir/actionlint" -color
 
       - uses: ./.github/actions/setup-build
+
+      - name: Check formatting
+        # Before the build, not after: ktlintCheck is a few seconds against a
+        # build measured in minutes, and forgetting `ktlintFormat` is the
+        # common failure. Failing here reports it in about a minute instead of
+        # billing the whole build first.
+        #
+        # `./gradlew ktlintFormat` fixes nearly everything this rejects. What it
+        # cannot fix — a file named after no declaration it holds, a KDoc over
+        # the wrong declaration — it names with a file:line.
+        run: ./gradlew ktlintCheck
 
       - name: Build and test
         # On Linux, allTests runs the host (JVM) tests only — Kotlin/Native iOS
@@ -58,7 +110,7 @@ jobs:
 
       - name: Upload test reports
         if: failure()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: android-test-reports
           path: sharedLogic/build/reports/tests/
@@ -82,7 +134,7 @@ jobs:
       # This image ships the iOS 26.2 simulator runtime the tests below need.
       XCODE_VERSION: "26.2"
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Select Xcode ${{ env.XCODE_VERSION }}
         run: |
@@ -103,7 +155,7 @@ jobs:
       - name: Cache the Kotlin/Native toolchain
         # Keyed on the Kotlin version alone: ~/.konan holds the compiler and its
         # platform libraries, which change only when Kotlin does.
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: ~/.konan
           key: konan-${{ runner.os }}-${{ runner.arch }}-${{ steps.kotlin.outputs.version }}
@@ -130,7 +182,7 @@ jobs:
 
       - name: Upload test reports
         if: failure()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: ios-test-reports
           path: sharedLogic/build/reports/tests/

@@ -48,14 +48,18 @@ object Money {
         return when {
             // "1,200." — nothing follows, so nothing was meant by it.
             after == 0 -> null
+
             // Few enough digits follow to be the decimal part, whichever
             // character was used: people type both.
             after <= fractionDigits -> assemble(cleaned.take(last), cleaned.drop(last + 1), fractionDigits)
+
             // "1,200" groups thousands; "1.234" could be either that or too many
             // decimal places, and a wrong guess there is out by a thousand — so
             // it is refused and the person can say which they meant.
             after == 3 && cleaned[last] == ',' -> assemble(cleaned, "", fractionDigits)
+
             after == 3 && separators.size > 1 -> assemble(cleaned, "", fractionDigits)
+
             else -> null
         }
     }
@@ -128,8 +132,7 @@ object Money {
     }
 
     /** True when [raw] is money and greater than nothing at all. */
-    fun isPositive(raw: String, fractionDigits: Int = 2): Boolean =
-        isMoney(raw, fractionDigits) && compare(raw, "0", fractionDigits) > 0
+    fun isPositive(raw: String, fractionDigits: Int = 2): Boolean = isMoney(raw, fractionDigits) && compare(raw, "0", fractionDigits) > 0
 
     /**
      * For display: `"1200.5"` in CAD becomes `"$1,200.50"`.
@@ -166,7 +169,13 @@ object Money {
     fun symbol(currency: String): String = SYMBOLS[currency.uppercase()] ?: currency.uppercase()
 
     private val SYMBOLS = mapOf(
-        "CAD" to "$", "USD" to "$", "EUR" to "€", "GBP" to "£", "INR" to "₹",
-        "AUD" to "$", "NZD" to "$", "JPY" to "¥",
+        "CAD" to "$",
+        "USD" to "$",
+        "EUR" to "€",
+        "GBP" to "£",
+        "INR" to "₹",
+        "AUD" to "$",
+        "NZD" to "$",
+        "JPY" to "¥",
     )
 }

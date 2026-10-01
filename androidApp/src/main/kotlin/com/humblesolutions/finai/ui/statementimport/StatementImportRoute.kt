@@ -78,8 +78,10 @@ internal fun StatementImportRoute(
     BackHandler {
         when (state.step) {
             ImportStep.CHOOSE_FILE -> model.backToAccount()
+
             // Nothing to go back to mid-read; the loader covers the screen.
             ImportStep.READING, ImportStep.SENDING, ImportStep.SAVING -> Unit
+
             else -> close()
         }
     }

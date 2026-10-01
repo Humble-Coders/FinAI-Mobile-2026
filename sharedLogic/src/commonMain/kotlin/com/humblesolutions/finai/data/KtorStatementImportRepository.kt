@@ -27,8 +27,7 @@ class KtorStatementImportRepository internal constructor(
         this(FinAiHttpClient.create(baseUrl, tokens, logging))
 
     @Throws(ApiException::class, CancellationException::class)
-    override suspend fun parse(upload: StatementUpload): ParsedStatement =
-        // Its own timeouts, not the client's default minute. The server is
+    override suspend fun parse(upload: StatementUpload): ParsedStatement = // Its own timeouts, not the client's default minute. The server is
         // allowed three minutes to parse, and giving up before it does leaves
         // the import finishing unseen while the user is told it failed.
         //
@@ -44,8 +43,7 @@ class KtorStatementImportRepository internal constructor(
         }
 
     @Throws(ApiException::class, CancellationException::class)
-    override suspend fun save(importId: String, rows: RowsToSave): SaveOutcome =
-        http.postJson("statements/$importId/transactions", rows)
+    override suspend fun save(importId: String, rows: RowsToSave): SaveOutcome = http.postJson("statements/$importId/transactions", rows)
 
     override fun close() = http.close()
 }

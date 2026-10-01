@@ -29,6 +29,7 @@ object SplashIntro {
     const val DELETE_MS = 60L
     const val PAUSE_AFTER_WORD_MS = 450L
     const val PAUSE_BEFORE_AI_MS = 150L
+
     /** The tagline's fade, which starts with the first letter. */
     const val TAGLINE_FADE_MS = 450L
 

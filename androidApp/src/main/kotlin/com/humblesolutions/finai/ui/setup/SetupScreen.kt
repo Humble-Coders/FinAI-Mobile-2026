@@ -63,9 +63,9 @@ import com.humblesolutions.finai.R
 import com.humblesolutions.finai.i18n.Strings
 import com.humblesolutions.finai.ui.components.AmountField
 import com.humblesolutions.finai.ui.components.ErrorText
+import com.humblesolutions.finai.ui.components.GradientButton
 import com.humblesolutions.finai.ui.components.WizardField
 import com.humblesolutions.finai.ui.components.fieldFrame
-import com.humblesolutions.finai.ui.components.GradientButton
 import com.humblesolutions.finai.ui.strings
 import com.humblesolutions.finai.ui.theme.FinAiPalette
 import com.humblesolutions.finai.usecase.ItemDraft
@@ -264,8 +264,11 @@ private fun StepHeader(
                         .size(width = if (here) 20.dp else 8.dp, height = 8.dp)
                         .clip(CircleShape)
                         .background(
-                            if (index <= step.ordinal) FinAiPalette.Green
-                            else MaterialTheme.colorScheme.outline,
+                            if (index <= step.ordinal) {
+                                FinAiPalette.Green
+                            } else {
+                                MaterialTheme.colorScheme.outline
+                            },
                         ),
                 )
             }

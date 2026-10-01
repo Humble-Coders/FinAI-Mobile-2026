@@ -160,12 +160,10 @@ class SupabaseAuthRepository internal constructor(
     override suspend fun terms(): Terms = http.getJson("legal/terms")
 
     @Throws(ApiException::class, CancellationException::class)
-    override suspend fun setRegion(countryCode: String): Me =
-        http.putJson("me/region", RegionIn(countryCode))
+    override suspend fun setRegion(countryCode: String): Me = http.putJson("me/region", RegionIn(countryCode))
 
     @Throws(ApiException::class, CancellationException::class)
-    override suspend fun acceptTerms(version: String): Me =
-        http.postJson("me/consent", ConsentIn(version))
+    override suspend fun acceptTerms(version: String): Me = http.postJson("me/consent", ConsentIn(version))
 
     override fun close() = http.close()
 

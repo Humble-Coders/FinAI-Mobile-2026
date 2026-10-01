@@ -87,47 +87,57 @@ object StatementImportFlow {
      */
     fun problemFor(error: Throwable): ImportProblem? = when (error) {
         is ApiException.ConsentRequired, is ApiException.AiPolicyChanged -> null
+
         is StatementReadException.PasswordRequired -> null
+
         is StatementReadException.Unsupported -> ImportProblem(ImportFailure.UNSUPPORTED_FILE)
+
         is StatementReadException.NothingReadable -> ImportProblem(ImportFailure.NOTHING_READABLE)
+
         is StatementReadException.TooManyPages, is StatementTooManyPages ->
             ImportProblem(ImportFailure.TOO_MANY_PAGES)
+
         is StatementTooLong, is ApiException.StatementTooLarge -> ImportProblem(ImportFailure.TOO_LONG)
+
         is StatementHasNothingToSend -> ImportProblem(ImportFailure.NOTHING_TO_SEND)
+
         is ApiException.TooManyTransactions -> ImportProblem(ImportFailure.TOO_MANY_TRANSACTIONS)
+
         is ApiException.ParseFailed -> ImportProblem(ImportFailure.PARSE_FAILED)
+
         is ApiException.ImportQuotaExceeded -> ImportProblem(ImportFailure.QUOTA_USED, error.resetsAt)
+
         is ApiException.ImportUnavailable -> ImportProblem(ImportFailure.UNAVAILABLE)
+
         is ApiException.FeatureUnavailable -> ImportProblem(ImportFailure.FEATURE_UNAVAILABLE)
+
         is ApiException.Network -> ImportProblem(ImportFailure.NETWORK)
+
         else -> ImportProblem(ImportFailure.OTHER)
     }
 
     /** Whether [error] means "show the consent step". */
-    fun needsConsent(error: Throwable): Boolean =
-        error is ApiException.ConsentRequired || error is ApiException.AiPolicyChanged
+    fun needsConsent(error: Throwable): Boolean = error is ApiException.ConsentRequired || error is ApiException.AiPolicyChanged
 
     /**
      * A parse that came back with no rows is a failure — the server records it
      * as one (so it does not use up the month), and so does the screen.
      */
-    fun problemAfterParse(parsed: ParsedStatement): ImportProblem? =
-        if (parsed.rows.isEmpty()) ImportProblem(ImportFailure.NO_TRANSACTIONS_FOUND) else null
+    fun problemAfterParse(parsed: ParsedStatement): ImportProblem? = if (parsed.rows.isEmpty()) ImportProblem(ImportFailure.NO_TRANSACTIONS_FOUND) else null
 
     /** The parsed rows, sent back unchanged to be saved against the chosen account. */
-    fun rowsToSave(accountId: String, parsed: ParsedStatement): RowsToSave =
-        RowsToSave(
-            accountId = accountId,
-            rows = parsed.rows.map {
-                RowToSave(
-                    occurredOn = it.occurredOn,
-                    description = it.description,
-                    amount = it.amount,
-                    direction = it.direction,
-                    confidence = it.confidence,
-                )
-            },
-        )
+    fun rowsToSave(accountId: String, parsed: ParsedStatement): RowsToSave = RowsToSave(
+        accountId = accountId,
+        rows = parsed.rows.map {
+            RowToSave(
+                occurredOn = it.occurredOn,
+                description = it.description,
+                amount = it.amount,
+                direction = it.direction,
+                confidence = it.confidence,
+            )
+        },
+    )
 
     /** The sentence the failure screen shows, written here so both apps say the same. */
     fun message(problem: ImportProblem): String {
@@ -143,11 +153,14 @@ object StatementImportFlow {
     }
 
     /** "Reading page 3 of 12…", or null before the reader has said how many. */
-    fun readingProgress(page: Int, pages: Int): String? =
-        if (pages <= 0) null else LocalizationRegistry.format(
+    fun readingProgress(page: Int, pages: Int): String? = if (pages <= 0) {
+        null
+    } else {
+        LocalizationRegistry.format(
             Strings.statement_reading_page,
             listOf(page.coerceIn(0, pages).toString(), pages.toString()),
         )
+    }
 
     /**
      * What the import came to, one line per fact that is not zero — so "3 were
@@ -176,6 +189,5 @@ object StatementImportFlow {
         }
     }
 
-    private fun counted(count: Int, one: String, other: String): String =
-        LocalizationRegistry.format(if (count == 1) one else other, listOf(count.toString()))
+    private fun counted(count: Int, one: String, other: String): String = LocalizationRegistry.format(if (count == 1) one else other, listOf(count.toString()))
 }

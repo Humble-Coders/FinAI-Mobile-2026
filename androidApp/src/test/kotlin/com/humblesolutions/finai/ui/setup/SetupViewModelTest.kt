@@ -68,11 +68,17 @@ class SetupViewModelTest {
         val model = SetupViewModel()
         val client = FakeSetup(alice)
         var built = 0
-        model.bind("alice") { built++; repositories(client) }
+        model.bind("alice") {
+            built++
+            repositories(client)
+        }
         model.onIncomeChange("9999")
 
         // What a rotation does: the recreated screen binds again.
-        model.bind("alice") { built++; repositories(FakeSetup(bob)) }
+        model.bind("alice") {
+            built++
+            repositories(FakeSetup(bob))
+        }
 
         assertEquals("9999", model.uiState.value.draft.income)
         assertEquals(1, built)

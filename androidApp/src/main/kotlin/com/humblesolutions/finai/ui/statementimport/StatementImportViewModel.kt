@@ -217,8 +217,15 @@ class StatementImportViewModel(private val saved: SavedStateHandle) : ViewModel(
         document = null
         parsed = null
         _uiState.update {
-            it.copy(fileUri = uri, problem = null, passwordWrong = false, diagnosticsTicked = false,
-                diagnosticsSent = false, diagnosticsThanks = null, canResend = false)
+            it.copy(
+                fileUri = uri,
+                problem = null,
+                passwordWrong = false,
+                diagnosticsTicked = false,
+                diagnosticsSent = false,
+                diagnosticsThanks = null,
+                canResend = false,
+            )
         }
         read()
     }
@@ -239,8 +246,15 @@ class StatementImportViewModel(private val saved: SavedStateHandle) : ViewModel(
         parsed = null
         password = null
         _uiState.update {
-            it.copy(step = ImportStep.CHOOSE_FILE, fileUri = null, problem = null, canResend = false,
-                diagnosticsTicked = false, diagnosticsSent = false, diagnosticsThanks = null)
+            it.copy(
+                step = ImportStep.CHOOSE_FILE,
+                fileUri = null,
+                problem = null,
+                canResend = false,
+                diagnosticsTicked = false,
+                diagnosticsSent = false,
+                diagnosticsThanks = null,
+            )
         }
     }
 

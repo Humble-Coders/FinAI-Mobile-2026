@@ -33,7 +33,8 @@ ui/<feature>/            ui/ + viewmodel/
 ### Platform scope (decided)
 - **In scope: Android + iOS.** Both ship; feature parity is the default.
 - **Desktop is explicitly out of scope for this repo** — the web experience is the separate React app. This is a recorded decision, not a silent skip.
-- **Done-rule:** a change touching `sharedLogic` is not done until **Android compiles + tests pass AND the iOS workspace `xcodebuild` succeeds**. SKIE breakages only surface in the iOS build. State both results in the PR.
+- **Done-rule:** a change touching `sharedLogic` is not done until **`./gradlew ktlintCheck` passes, Android compiles + tests pass, AND the iOS workspace `xcodebuild` succeeds**. SKIE breakages only surface in the iOS build. State all three results in the PR.
+- **Formatting is enforced, not advisory.** CI fails on `ktlintCheck` before it builds anything, so run it before pushing; `./gradlew ktlintFormat` fixes nearly everything it rejects. The rules live in `.editorconfig`, which your IDE reads too.
 
 ### Module layout
 ```
@@ -149,7 +150,7 @@ Process doc: `docs/PROCESS.md` (created by `/humble-task-force:setup-tickets`).
 7. Android: `ui/<feature>/` VM + UiState + Screen
 8. iOS: `viewmodel/` + `ui/`
 9. Navigation wiring per platform
-10. **Verification matrix: Android build + tests, iOS `xcodebuild`**
+10. **Verification matrix: `ktlintCheck`, Android build + tests, iOS `xcodebuild`**
 
 ---
 

@@ -24,8 +24,7 @@ class KtorFinancialSetupRepository internal constructor(
     override suspend fun get(): FinancialSetup = http.getJson("financial-setup")
 
     @Throws(ApiException::class, CancellationException::class)
-    override suspend fun save(setup: FinancialSetup): FinancialSetup =
-        http.putJson("financial-setup", setup.toRequest())
+    override suspend fun save(setup: FinancialSetup): FinancialSetup = http.putJson("financial-setup", setup.toRequest())
 
     override fun close() = http.close()
 }

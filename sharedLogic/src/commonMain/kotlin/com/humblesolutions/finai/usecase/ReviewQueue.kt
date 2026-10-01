@@ -6,10 +6,10 @@ import com.humblesolutions.finai.model.Category
 import com.humblesolutions.finai.model.ConfirmOutcome
 import com.humblesolutions.finai.model.DuplicateMatch
 import com.humblesolutions.finai.model.PatchOutcome
+import com.humblesolutions.finai.model.ReviewReason
 import com.humblesolutions.finai.model.Transaction
 import com.humblesolutions.finai.model.TransactionDirection
 import com.humblesolutions.finai.model.TransactionPatch
-import com.humblesolutions.finai.model.ReviewReason
 import com.humblesolutions.finai.util.Dates
 import com.humblesolutions.finai.util.Money
 import kotlinx.datetime.LocalDate
@@ -57,8 +57,7 @@ object ReviewQueue {
      * budget (Finance-backend #48). Counting it here would promise something
      * the request cannot deliver.
      */
-    fun confirmable(rows: List<Transaction>): List<Transaction> =
-        rows.filter { it.needsReview && it.categoryId != null }
+    fun confirmable(rows: List<Transaction>): List<Transaction> = rows.filter { it.needsReview && it.categoryId != null }
 
     /** What the Confirm-all button says, counting only what it can clear. */
     fun confirmAllLabel(rows: List<Transaction>): String {
@@ -131,8 +130,7 @@ object ReviewQueue {
     }
 
     /** The one for this id, or null when the row has none yet. */
-    fun categoryName(categories: List<Category>, id: String?): String? =
-        categories.firstOrNull { it.id == id }?.let(::categoryName)
+    fun categoryName(categories: List<Category>, id: String?): String? = categories.firstOrNull { it.id == id }?.let(::categoryName)
 
     /** The draft a correction starts from: the row as it stands. */
     fun draftOf(row: Transaction): CorrectionDraft = CorrectionDraft(
@@ -207,6 +205,7 @@ object ReviewQueue {
         }
         when {
             outcome.recategorized == 1 -> add(LocalizationRegistry.get(Strings.review_also_applied_one))
+
             outcome.recategorized > 1 ->
                 add(
                     LocalizationRegistry.format(

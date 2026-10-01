@@ -99,30 +99,21 @@ class ImportStatement(
          * a greyed-out button and the refusal can never disagree
          * (kmp-arch-v2, blocking reasons).
          */
-        fun tooLong(text: String): StatementTooLong? =
-            if (text.length > StatementLimits.MAX_TEXT_CHARS) {
-                StatementTooLong(text.length)
-            } else {
-                null
-            }
+        fun tooLong(text: String): StatementTooLong? = if (text.length > StatementLimits.MAX_TEXT_CHARS) {
+            StatementTooLong(text.length)
+        } else {
+            null
+        }
 
         /** The companion to [tooLong], read the same way and by the same screens. */
-        fun tooManyPages(pages: Int): StatementTooManyPages? =
-            if (pages > StatementLimits.MAX_PAGES) {
-                StatementTooManyPages(pages)
-            } else {
-                null
-            }
+        fun tooManyPages(pages: Int): StatementTooManyPages? = if (pages > StatementLimits.MAX_PAGES) {
+            StatementTooManyPages(pages)
+        } else {
+            null
+        }
     }
 }
 
-/**
- * The redacted text is longer than `POST /statements/parse` accepts.
- *
- * Carries lengths, never the text. [messageKey] is the string a screen shows;
- * it tells the user what to do about it rather than quoting a character count
- * at them.
- */
 /**
  * Why the device did not send a statement, in a form a screen can act on.
  *
@@ -134,11 +125,18 @@ interface StatementRefusal {
     val messageKey: String
 }
 
-/** The redacted text is longer than `POST /statements/parse` accepts. */
+/**
+ * The redacted text is longer than `POST /statements/parse` accepts.
+ *
+ * Carries lengths, never the text. [messageKey] is the string a screen shows;
+ * it tells the user what to do about it rather than quoting a character count
+ * at them.
+ */
 class StatementTooLong(
     val characters: Int,
     val limit: Int = StatementLimits.MAX_TEXT_CHARS,
-) : Exception("statement too long"), StatementRefusal {
+) : Exception("statement too long"),
+    StatementRefusal {
     override val messageKey: String get() = Strings.statement_too_long
 }
 
@@ -152,7 +150,8 @@ class StatementTooLong(
 class StatementTooManyPages(
     val pages: Int,
     val limit: Int = StatementLimits.MAX_PAGES,
-) : Exception("statement has too many pages"), StatementRefusal {
+) : Exception("statement has too many pages"),
+    StatementRefusal {
     override val messageKey: String get() = Strings.statement_too_many_pages
 }
 
@@ -165,6 +164,7 @@ class StatementTooManyPages(
  */
 class StatementHasNothingToSend(
     val droppedLines: Int = 0,
-) : Exception("nothing to send"), StatementRefusal {
+) : Exception("nothing to send"),
+    StatementRefusal {
     override val messageKey: String get() = Strings.statement_no_transactions
 }

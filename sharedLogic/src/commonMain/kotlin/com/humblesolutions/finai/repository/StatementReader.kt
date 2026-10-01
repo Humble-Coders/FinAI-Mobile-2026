@@ -46,8 +46,7 @@ interface StatementReader {
  */
 sealed class StatementReadException(message: String) : Exception(message) {
     /** The file is encrypted and needs a password, or the one given is wrong. */
-    class PasswordRequired(val wrongPassword: Boolean = false) :
-        StatementReadException("password required")
+    class PasswordRequired(val wrongPassword: Boolean = false) : StatementReadException("password required")
 
     /** A format we cannot open at all. */
     class Unsupported(val detail: String = "") : StatementReadException("unsupported")

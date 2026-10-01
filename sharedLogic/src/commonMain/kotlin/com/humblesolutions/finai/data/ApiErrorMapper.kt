@@ -33,31 +33,39 @@ internal object ApiErrorMapper {
 
     fun fromResponse(status: Int, body: String): ApiException = when (status) {
         401 -> ApiException.Unauthorized("token rejected")
+
         403 -> forbidden(body)
+
         404 -> ApiException.NotFound()
+
         400, 409, 422 -> rejected(status, body)
+
         // The statement endpoint's own refusals. Two different 413s, because
         // the advice differs: too much text, or too many rows (#31).
         413 -> when (code(body)) {
             TOO_MANY_TRANSACTIONS -> ApiException.TooManyTransactions()
             else -> ApiException.StatementTooLarge()
         }
+
         429 -> quota(body)
+
         502 -> if (code(body) == PARSE_FAILED) ApiException.ParseFailed() else ApiException.Server(status)
+
         503 -> if (code(body) == AI_PROCESSING_UNAVAILABLE) {
             ApiException.ImportUnavailable()
         } else {
             ApiException.Server(status)
         }
+
         in 500..599 -> ApiException.Server(status)
+
         else -> ApiException.Unexpected(status)
     }
 
     /** The `detail.code` of a structured refusal, or null. */
     private fun code(body: String): String? = detail(body)?.string("code")
 
-    private fun detail(body: String): JsonObject? =
-        runCatching { FinAiJson.parseToJsonElement(body).jsonObject["detail"] }.getOrNull() as? JsonObject
+    private fun detail(body: String): JsonObject? = runCatching { FinAiJson.parseToJsonElement(body).jsonObject["detail"] }.getOrNull() as? JsonObject
 
     /** 429 is the import quota when it says so; any other 429 stays unexplained. */
     private fun quota(body: String): ApiException {
@@ -82,9 +90,12 @@ internal object ApiErrorMapper {
         if (detail is JsonObject) {
             when (detail.string("code")) {
                 PHONE_ALREADY_LINKED -> return ApiException.PhoneAlreadyLinked()
+
                 TERMS_VERSION_MISMATCH ->
                     return ApiException.TermsChanged(detail.string("current_version"))
+
                 INVALID_AMOUNT -> return ApiException.InvalidAmount(detail.string("field"))
+
                 DUPLICATE_TRANSACTION -> return ApiException.DuplicateTransaction(
                     // A match that will not decode still leaves a duplicate:
                     // the screen can say "you already have this" without the
@@ -94,11 +105,17 @@ internal object ApiErrorMapper {
                             .getOrNull()
                     },
                 )
+
                 DUPLICATE_ACCOUNT_NAME -> return ApiException.DuplicateAccountName()
+
                 CATEGORY_EXISTS -> return ApiException.CategoryExists(detail.string("category_id"))
+
                 UNNAMED_CATEGORY -> return ApiException.UnnamedCategory()
+
                 WOULD_DUPLICATE -> return ApiException.WouldDuplicate(detail.string("duplicate_of"))
+
                 CONSENT_REQUIRED -> return ApiException.ConsentRequired(detail.string("policy_version"))
+
                 AI_POLICY_VERSION_MISMATCH ->
                     return ApiException.AiPolicyChanged(detail.string("current_version"))
             }
