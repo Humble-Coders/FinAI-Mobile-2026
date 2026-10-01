@@ -336,7 +336,10 @@ final class StatementImportViewModel: ObservableObject, NewAccountHost {
     }
 
     private func send(_ read: ExtractedDocument, keepText: Bool) {
-        guard let importsRepository, let accountId else { return }
+        // Never a silent return: that left the screen on "reading" with the
+        // loader up and Back disabled. Say so, and let a retry send it once
+        // the clients are back.
+        guard let importsRepository, let accountId else { return unbound() }
         let started = generation
         step = .sending
         problem = nil
@@ -373,7 +376,7 @@ final class StatementImportViewModel: ObservableObject, NewAccountHost {
     }
 
     private func save(_ result: ParsedStatement) {
-        guard let importsRepository, let accountId else { return }
+        guard let importsRepository, let accountId else { return unbound() }
         let started = generation
         step = .saving
         problem = nil
@@ -397,6 +400,13 @@ final class StatementImportViewModel: ObservableObject, NewAccountHost {
                 self.fail(error)
             }
         }
+    }
+
+    /// The clients are gone mid-import (the screen was away). A retryable
+    /// failure, not a stuck loader: the document is still in memory, so Try
+    /// again sends it once `bind` has rebuilt them.
+    private func unbound() {
+        show(ImportProblem(failure: .other, resetsAt: nil))
     }
 
     private func fail(_ error: Error) {

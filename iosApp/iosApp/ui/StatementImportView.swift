@@ -44,7 +44,10 @@ struct StatementImportView: View {
         }
         .safeAreaInset(edge: .top, spacing: 0) { header }
         .onAppear { model.bind(userId: userId, restoring: stored) }
-        .onDisappear { model.unbind() }
+        // Not while the camera is up: a full-screen cover makes this view
+        // disappear, and unbinding then closed the clients — a photo read
+        // before the view came back found none to send with.
+        .onDisappear { if !takingPhoto { model.unbind() } }
         .onChange(of: model.snapshot) { _, snapshot in stored = snapshot }
         .sheet(isPresented: $choosingAccount, onDismiss: {
             guard addAccountNext else { return }

@@ -44,7 +44,7 @@ No extraction logic was added. The 3.2 readers and `ImportStatement` do the read
 | File | Why |
 |---|---|
 | `viewmodel/StatementImportViewModel.swift` | The same flow and rules. A picked file is copied into the app's temp folder (`ImportFiles`), with complete file protection like a photo, so it can be read again after a restore; the copy is deleted when the import finishes or is abandoned. Scene-storage snapshot is owner-checked. |
-| `ui/StatementImportView.swift` | `.fileImporter`, `PhotosPicker` (converted to JPEG), the camera where one exists, `SecureField`, and a checkbox style that nothing pre-ticks. |
+| `ui/StatementImportView.swift` | `.fileImporter`, `PhotosPicker` (converted to JPEG), the camera where one exists, `SecureField`, and a checkbox style that nothing pre-ticks. The view doesn't unbind while the camera's full-screen cover is up: SwiftUI fires `onDisappear` for a full-screen cover, and unbinding closed the clients mid-import (a review fix). |
 | `ui/components/CameraPicker.swift` | A UIKit camera wrapper, since SwiftUI has none. |
 | `ui/components/AppLoader.swift` | `LoaderHost(caption:)`, announced to VoiceOver as it changes. |
 | `ui/components/AccountSheets.swift` | `AccountListSheet`, `ChoiceRow`, and `NewAccountSheet` behind a `NewAccountHost` protocol, shared with manual entry. |
@@ -101,6 +101,7 @@ This gives BUILD SUCCEEDED. No simulator was run. `:sharedLogic:iosSimulatorArm6
    - production → "isn't available yet".
 8. A statement the backend returns no rows for: the failure shows the **unticked** "Help us read statements like this one?" box. **Send** is disabled until it's ticked. Ticked and sent, it thanks you with the date the text is kept until.
 9. Light and dark, the largest text size, VoiceOver and TalkBack: the progress caption and the result are spoken.
+10. **iPhone camera, repeated** (a review fix): take a photo of a short synthetic statement several times. Each one goes on to the result or a retryable message, and never stays on the loader.
 
 ## Acceptance criteria
 
@@ -139,4 +140,5 @@ Also:
 - **Diagnostics after a mostly-flagged import** would need a backend endpoint that attaches text to an existing import, with no re-parse and no quota.
 - **#32 (review)**: the result should link to it once it exists.
 - **A save that keeps failing strands the import** (from review, left as a follow-up). If the parse succeeded (using up the month) but saving fails for a reason that won't change, such as a 422 on a row, **Try again** re-saves forever and the rows stay unfiled on the server. The fix is to tell a save refusal apart from a network failure and say so, or to let #32 pick up unfiled imports.
+- **Sending or saving with no client open now fails visibly, with a retry, on both platforms.** Before, it returned silently, which left the loader up with Back disabled. On Android that state can't be reached today (the clients are only missing before `bind`, and `read` stops earlier), so it has no test. On iOS it was reachable through the camera; it's now prevented, and covered by device step 10.
 - **The iOS view model has no unit-test target**, as with #30. Its rules come from the tested shared layer, and its plumbing is covered by the device steps.

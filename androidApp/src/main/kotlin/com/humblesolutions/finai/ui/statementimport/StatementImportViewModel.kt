@@ -287,8 +287,12 @@ class StatementImportViewModel(private val saved: SavedStateHandle) : ViewModel(
     }
 
     private fun send(read: ExtractedDocument, keepText: Boolean) {
-        val repos = repositories ?: return
-        val accountId = _uiState.value.accountId ?: return
+        // Never a silent return: that would leave the screen on "reading" with
+        // the loader up and Back ignored. Unreachable today — the clients only
+        // go missing before `bind`, and `read` stops earlier — but a retryable
+        // failure is the safe answer if that ever changes (as it did on iOS).
+        val repos = repositories ?: return unbound()
+        val accountId = _uiState.value.accountId ?: return unbound()
         val started = generation
         _uiState.update { it.copy(step = ImportStep.SENDING, problem = null, canResend = true) }
         work = viewModelScope.launch {
@@ -317,8 +321,8 @@ class StatementImportViewModel(private val saved: SavedStateHandle) : ViewModel(
     }
 
     private fun save(result: ParsedStatement) {
-        val repos = repositories ?: return
-        val accountId = _uiState.value.accountId ?: return
+        val repos = repositories ?: return unbound()
+        val accountId = _uiState.value.accountId ?: return unbound()
         val started = generation
         _uiState.update { it.copy(step = ImportStep.SAVING, problem = null) }
         work = viewModelScope.launch {
@@ -353,6 +357,9 @@ class StatementImportViewModel(private val saved: SavedStateHandle) : ViewModel(
     private fun release(uri: String) {
         repositories?.files?.release(uri)
     }
+
+    /** A retryable failure instead of a stuck loader; see [send]. */
+    private fun unbound() = showProblem(ImportProblem(ImportFailure.OTHER))
 
     private fun fail(error: Throwable) {
         showProblem(StatementImportFlow.problemFor(error) ?: ImportProblem(ImportFailure.OTHER))
