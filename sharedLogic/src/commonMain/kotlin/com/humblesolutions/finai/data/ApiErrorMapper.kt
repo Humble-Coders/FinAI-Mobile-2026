@@ -20,6 +20,9 @@ internal object ApiErrorMapper {
     private const val INVALID_AMOUNT = "invalid_amount"
     private const val DUPLICATE_TRANSACTION = "duplicate_transaction"
     private const val DUPLICATE_ACCOUNT_NAME = "duplicate_account_name"
+    private const val CATEGORY_EXISTS = "category_exists"
+    private const val UNNAMED_CATEGORY = "unnamed_category"
+    private const val WOULD_DUPLICATE = "would_duplicate"
     private const val CONSENT_REQUIRED = "consent_required"
     private const val AI_POLICY_VERSION_MISMATCH = "ai_policy_version_mismatch"
     private const val IMPORT_QUOTA_EXCEEDED = "import_quota_exceeded"
@@ -92,6 +95,9 @@ internal object ApiErrorMapper {
                     },
                 )
                 DUPLICATE_ACCOUNT_NAME -> return ApiException.DuplicateAccountName()
+                CATEGORY_EXISTS -> return ApiException.CategoryExists(detail.string("category_id"))
+                UNNAMED_CATEGORY -> return ApiException.UnnamedCategory()
+                WOULD_DUPLICATE -> return ApiException.WouldDuplicate(detail.string("duplicate_of"))
                 CONSENT_REQUIRED -> return ApiException.ConsentRequired(detail.string("policy_version"))
                 AI_POLICY_VERSION_MISMATCH ->
                     return ApiException.AiPolicyChanged(detail.string("current_version"))

@@ -2,12 +2,13 @@ package com.humblesolutions.finai.data
 
 import com.humblesolutions.finai.model.ApiException
 import com.humblesolutions.finai.model.Category
+import com.humblesolutions.finai.model.NewCategory
 import com.humblesolutions.finai.repository.CategoriesRepository
 import com.humblesolutions.finai.repository.SessionTokenSource
 import io.ktor.client.HttpClient
 import kotlin.coroutines.cancellation.CancellationException
 
-/** `GET /categories` over Ktor. */
+/** `GET` and `POST /categories` over Ktor. */
 class KtorCategoriesRepository internal constructor(
     private val http: HttpClient,
 ) : CategoriesRepository {
@@ -17,6 +18,9 @@ class KtorCategoriesRepository internal constructor(
 
     @Throws(ApiException::class, CancellationException::class)
     override suspend fun list(): List<Category> = http.getJson("categories")
+
+    @Throws(ApiException::class, CancellationException::class)
+    override suspend fun create(name: String): Category = http.postJson("categories", NewCategory(name))
 
     override fun close() = http.close()
 }

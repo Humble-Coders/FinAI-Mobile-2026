@@ -155,6 +155,31 @@ sealed class ApiException(message: String, cause: Throwable? = null) : Exception
         override val messageKey: String = Strings.error_terms_changed
     }
 
+    // ── The review queue (#32) ──────────────────────────────────────────
+
+    /**
+     * A category with that name is already there — the shared taxonomy's or
+     * the household's own. [categoryId] is the one that exists, so the picker
+     * can simply select it instead of making the person rename theirs.
+     */
+    class CategoryExists(val categoryId: String?) : ApiException("category already exists") {
+        override val messageKey: String = Strings.review_category_exists
+    }
+
+    /** A category name with no letter or number in it. */
+    class UnnamedCategory : ApiException("category name has no letters") {
+        override val messageKey: String = Strings.review_category_unnamed
+    }
+
+    /**
+     * The correction would make this row a copy of one already recorded — same
+     * account, day, amount and description. The screen says which, so the
+     * person can delete this one instead.
+     */
+    class WouldDuplicate(val duplicateOfId: String?) : ApiException("edit would duplicate") {
+        override val messageKey: String = Strings.review_would_duplicate
+    }
+
     // ── Importing a statement (#31) ─────────────────────────────────────
     // Each refusal of `POST /statements/parse` gets its own type and words.
     // "Something went wrong" for a quota limit generates support mail; the
