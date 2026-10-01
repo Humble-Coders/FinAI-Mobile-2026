@@ -15,9 +15,19 @@
 version: 2
 updates:
   - package-ecosystem: github-actions
-    # Covers .github/workflows/ AND .github/actions/ — "/" means the repository
-    # root for this ecosystem, not only the workflows directory.
-    directory: "/"
+    # Two entries, because "/" alone is not the whole repository. For this
+    # ecosystem it means `.github/workflows/` plus an `action.yml` at the
+    # repository ROOT — and this repository's composite action is not at the
+    # root, it is at .github/actions/setup-build/. Left on "/" alone, the two
+    # pins inside it would never have been offered a bump, which is precisely
+    # the staleness this file exists to prevent, and silently: nobody notices
+    # a pull request that is not opened.
+    #
+    # `directories` (plural) rather than `directory`, because only the plural
+    # form supports globbing.
+    directories:
+      - "/"
+      - "/.github/actions/*"
     schedule:
       interval: monthly
     # A pull request per action would be five; one grouped PR is one review.

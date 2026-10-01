@@ -1,6 +1,6 @@
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import java.io.File
 import java.util.Properties
-import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
@@ -17,7 +17,7 @@ val generatedConfigDir = layout.buildDirectory.dir("generated/finai/config")
 kotlin {
     listOf(
         iosArm64(),
-        iosSimulatorArm64()
+        iosSimulatorArm64(),
     ).forEach { iosTarget ->
         iosTarget.binaries.framework {
             baseName = "SharedLogic"
@@ -41,19 +41,19 @@ kotlin {
     }
 
     android {
-       namespace = "com.humblesolutions.finai.sharedLogic"
-       compileSdk = libs.versions.android.compileSdk.get().toInt()
-       minSdk = libs.versions.android.minSdk.get().toInt()
+        namespace = "com.humblesolutions.finai.sharedLogic"
+        compileSdk = libs.versions.android.compileSdk.get().toInt()
+        minSdk = libs.versions.android.minSdk.get().toInt()
 
-       compilerOptions {
-           jvmTarget = JvmTarget.JVM_11
-       }
-       androidResources {
-           enable = true
-       }
-       withHostTest {
-           isIncludeAndroidResources = true
-       }
+        compilerOptions {
+            jvmTarget = JvmTarget.JVM_11
+        }
+        androidResources {
+            enable = true
+        }
+        withHostTest {
+            isIncludeAndroidResources = true
+        }
     }
 
     sourceSets {
@@ -104,7 +104,6 @@ skie {
 // never come near this repo. Placeholders are used when local.properties has no
 // entry, so a fresh clone still builds.
 
-
 val generateAppConfig by tasks.registering {
     val outputDir = generatedConfigDir
     val localProperties = rootProject.file("local.properties")
@@ -154,7 +153,7 @@ val generateAppConfig by tasks.registering {
                 appendLine("    val isConfigured: Boolean")
                 appendLine("        get() = !URL.contains(\"REPLACE_ME\") && !ANON_KEY.contains(\"REPLACE_ME\")")
                 appendLine("}")
-            }
+            },
         )
         packageDir.resolve("GoogleConfig.kt").writeText(
             buildString {
@@ -172,7 +171,7 @@ val generateAppConfig by tasks.registering {
                 appendLine("    val isConfigured: Boolean")
                 appendLine("        get() = !WEB_CLIENT_ID.contains(\"REPLACE_ME\") && !IOS_CLIENT_ID.contains(\"REPLACE_ME\")")
                 appendLine("}")
-            }
+            },
         )
         packageDir.resolve("ApiConfig.kt").writeText(
             buildString {
@@ -184,7 +183,7 @@ val generateAppConfig by tasks.registering {
                 appendLine("object ApiConfig {")
                 appendLine("    const val BASE_URL: String = \"" + apiBaseUrl.get() + "\"")
                 appendLine("}")
-            }
+            },
         )
     }
 }
