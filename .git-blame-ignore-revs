@@ -1,0 +1,12 @@
+# Commits that changed formatting only. `git blame` skips them, so blame lands
+# on whoever wrote the line rather than on the person who ran the formatter.
+#
+# Local git does not read this file on its own — point it here once:
+#
+#     git config blame.ignoreRevsFile .git-blame-ignore-revs
+#
+# GitHub reads it with no setup. Only add a commit that is PURELY formatting;
+# a real change hidden in one of these becomes invisible to blame.
+
+# Reformat with ktlint (#14)
+25b0b9c83741be9cf1f765224634fb85771ee5a8
