@@ -47,6 +47,8 @@ data class ReviewUiState(
      * What the last action came to: what was confirmed, what a correction
      * moved. **Said once** — each action replaces the last, rather than
      * stacking lines above the button for the length of the queue.
+     *
+     * Finished text, never a string key: the screen draws these as they are.
      */
     val announcements: List<String> = emptyList(),
     /** The row being corrected, with the draft as far as the person has got. */

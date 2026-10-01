@@ -1,6 +1,7 @@
 package com.humblesolutions.finai.ui.review
 
 import androidx.lifecycle.SavedStateHandle
+import com.humblesolutions.finai.i18n.LocalizationRegistry
 import com.humblesolutions.finai.model.ApiException
 import com.humblesolutions.finai.model.Capabilities
 import com.humblesolutions.finai.model.Category
@@ -464,6 +465,43 @@ class ReviewViewModelTest {
         // Selected rather than refused: thinking of another name is busywork.
         assertEquals("cat-2", model.uiState.value.draft.categoryId)
         assertNull(model.uiState.value.newCategoryName)
+    }
+
+    @Test
+    fun `every announcement is a sentence, never a string key`() {
+        // The screen draws these as they are, and both are `String`, so
+        // nothing but a test notices a key going in raw. `LocalizationRegistry`
+        // answers an unknown key with the key itself, which is what makes
+        // "does this resolve to something else?" the question worth asking.
+        val categories = FakeCategories(failCreate = ApiException.CategoryExists("cat-2"))
+        val transactions = FakeTransactions(
+            pages = listOf(ReviewPage(rows = listOf(row("a"), row("b")))),
+            correction = PatchOutcome(transaction = row("a").copy(needsReview = false), recategorized = 2),
+            confirmed = 1,
+        )
+        val model = model()
+        model.bind("alice") { repositories(transactions = transactions, categories = categories) }
+        val seen = mutableListOf<String>()
+
+        model.edit("a")
+        model.openNewCategory()
+        model.onNewCategoryName("Dining out")
+        model.createCategory()
+        seen += model.uiState.value.announcements
+        model.onCategoryChosen("cat-2")
+        model.saveCorrection()
+        seen += model.uiState.value.announcements
+        model.confirmAll()
+        seen += model.uiState.value.announcements
+
+        assertTrue(seen.isNotEmpty())
+        for (announcement in seen) {
+            assertEquals(announcement, LocalizationRegistry.get(announcement), "an unresolved key reached the screen")
+        }
+        assertTrue(
+            seen.contains("You already have a category with that name — we've selected it."),
+            seen.toString(),
+        )
     }
 
     // ── Deleting, with undo ─────────────────────────────────────────────

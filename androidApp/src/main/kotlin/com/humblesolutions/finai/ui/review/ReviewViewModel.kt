@@ -9,6 +9,7 @@ import com.humblesolutions.finai.data.KtorCapabilitiesRepository
 import com.humblesolutions.finai.data.KtorCategoriesRepository
 import com.humblesolutions.finai.data.KtorTransactionsRepository
 import com.humblesolutions.finai.data.SupabaseTokenSource
+import com.humblesolutions.finai.i18n.LocalizationRegistry
 import com.humblesolutions.finai.model.ApiException
 import com.humblesolutions.finai.model.Transaction
 import com.humblesolutions.finai.model.TransactionDirection
@@ -340,7 +341,10 @@ class ReviewViewModel(private val saved: SavedStateHandle) : ViewModel() {
                         creatingCategory = false,
                         newCategoryName = null,
                         draft = it.draft.copy(categoryId = e.categoryId ?: it.draft.categoryId),
-                        announcements = listOf(e.messageKey),
+                        // Resolved here: `announcements` holds finished text,
+                        // and the screen draws it as it is. A key put in raw
+                        // reaches the person as `review_category_exists`.
+                        announcements = listOf(LocalizationRegistry.get(e.messageKey)),
                     )
                 }
                 storeCorrection()
