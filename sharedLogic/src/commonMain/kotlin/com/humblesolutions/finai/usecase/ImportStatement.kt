@@ -40,6 +40,10 @@ class ImportStatement(
      *        redaction of it is.
      * @param accountId the account these rows belong to, when the user has
      *        already chosen one.
+     * @param keepTextForDiagnostics the person's explicit yes to keeping this
+     *        import's redacted text so the parser can be fixed — asked only
+     *        after an import the server read and failed on (#31). Never
+     *        defaulted to yes, never remembered.
      * @param onRedacted the redaction and what it discarded, before the
      *        request goes out. A dropped line is the one outcome that is
      *        otherwise invisible — the import simply comes up short — and a
@@ -59,6 +63,7 @@ class ImportStatement(
     suspend fun execute(
         document: ExtractedDocument,
         accountId: String? = null,
+        keepTextForDiagnostics: Boolean = false,
         onRedacted: (StatementRedactor.Redaction) -> Unit = {},
     ): ParsedStatement {
         val period = StatementPeriod.find(document)
@@ -82,6 +87,7 @@ class ImportStatement(
                 accountId = accountId,
                 statementPeriodStart = period?.start,
                 statementPeriodEnd = period?.end,
+                keepTextForDiagnostics = keepTextForDiagnostics,
             ),
         )
     }

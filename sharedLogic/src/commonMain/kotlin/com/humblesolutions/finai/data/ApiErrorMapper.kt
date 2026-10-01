@@ -20,17 +20,50 @@ internal object ApiErrorMapper {
     private const val INVALID_AMOUNT = "invalid_amount"
     private const val DUPLICATE_TRANSACTION = "duplicate_transaction"
     private const val DUPLICATE_ACCOUNT_NAME = "duplicate_account_name"
+    private const val CONSENT_REQUIRED = "consent_required"
+    private const val AI_POLICY_VERSION_MISMATCH = "ai_policy_version_mismatch"
+    private const val IMPORT_QUOTA_EXCEEDED = "import_quota_exceeded"
+    private const val STATEMENT_TOO_LONG = "statement_too_long"
+    private const val TOO_MANY_TRANSACTIONS = "too_many_transactions"
+    private const val PARSE_FAILED = "parse_failed"
+    private const val AI_PROCESSING_UNAVAILABLE = "ai_processing_unavailable"
 
     fun fromResponse(status: Int, body: String): ApiException = when (status) {
         401 -> ApiException.Unauthorized("token rejected")
         403 -> forbidden(body)
         404 -> ApiException.NotFound()
         400, 409, 422 -> rejected(status, body)
-        // The statement endpoint's own refusal. Left to `Unexpected` it showed
-        // "something went wrong" for a file the user could simply split.
-        413 -> ApiException.StatementTooLarge()
+        // The statement endpoint's own refusals. Two different 413s, because
+        // the advice differs: too much text, or too many rows (#31).
+        413 -> when (code(body)) {
+            TOO_MANY_TRANSACTIONS -> ApiException.TooManyTransactions()
+            else -> ApiException.StatementTooLarge()
+        }
+        429 -> quota(body)
+        502 -> if (code(body) == PARSE_FAILED) ApiException.ParseFailed() else ApiException.Server(status)
+        503 -> if (code(body) == AI_PROCESSING_UNAVAILABLE) {
+            ApiException.ImportUnavailable()
+        } else {
+            ApiException.Server(status)
+        }
         in 500..599 -> ApiException.Server(status)
         else -> ApiException.Unexpected(status)
+    }
+
+    /** The `detail.code` of a structured refusal, or null. */
+    private fun code(body: String): String? = detail(body)?.string("code")
+
+    private fun detail(body: String): JsonObject? =
+        runCatching { FinAiJson.parseToJsonElement(body).jsonObject["detail"] }.getOrNull() as? JsonObject
+
+    /** 429 is the import quota when it says so; any other 429 stays unexplained. */
+    private fun quota(body: String): ApiException {
+        val detail = detail(body)
+        if (detail?.string("code") != IMPORT_QUOTA_EXCEEDED) return ApiException.Unexpected(429)
+        return ApiException.ImportQuotaExceeded(
+            limit = detail.string("limit")?.toIntOrNull(),
+            resetsAt = detail.string("resets_at"),
+        )
     }
 
     /**
@@ -59,6 +92,9 @@ internal object ApiErrorMapper {
                     },
                 )
                 DUPLICATE_ACCOUNT_NAME -> return ApiException.DuplicateAccountName()
+                CONSENT_REQUIRED -> return ApiException.ConsentRequired(detail.string("policy_version"))
+                AI_POLICY_VERSION_MISMATCH ->
+                    return ApiException.AiPolicyChanged(detail.string("current_version"))
             }
         }
         return ApiException.Validation(status)

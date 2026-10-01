@@ -155,6 +155,56 @@ sealed class ApiException(message: String, cause: Throwable? = null) : Exception
         override val messageKey: String = Strings.error_terms_changed
     }
 
+    // ── Importing a statement (#31) ─────────────────────────────────────
+    // Each refusal of `POST /statements/parse` gets its own type and words.
+    // "Something went wrong" for a quota limit generates support mail; the
+    // two size refusals are the cases where the person can actually act.
+
+    /**
+     * No consent to AI processing yet, or it was withdrawn (#42). The import
+     * screen answers this by showing the consent step, not an error.
+     */
+    class ConsentRequired(val policyVersion: String?) : ApiException("consent required") {
+        override val messageKey: String = Strings.import_consent_required
+    }
+
+    /**
+     * The AI-processing policy changed between being shown and being agreed
+     * to. Reload it and ask again, as with [TermsChanged].
+     */
+    class AiPolicyChanged(val currentVersion: String?) : ApiException("ai policy version mismatch") {
+        override val messageKey: String = Strings.import_consent_changed
+    }
+
+    /** This month's imports are used up (429). [resetsAt] is an ISO instant, or null. */
+    class ImportQuotaExceeded(val limit: Int?, val resetsAt: String?) :
+        ApiException("import quota exceeded") {
+        override val messageKey: String = Strings.import_quota_exceeded
+    }
+
+    /** More rows than one import may carry (413 `too_many_transactions`). */
+    class TooManyTransactions : ApiException("too many transactions") {
+        override val messageKey: String = Strings.import_too_many_transactions
+    }
+
+    /**
+     * The model failed to read the text (502). Safe to retry: the file is
+     * still on the phone, and a failed import does not use up the month.
+     */
+    class ParseFailed : ApiException("parse failed") {
+        override val messageKey: String = Strings.import_parse_failed
+    }
+
+    /**
+     * Production refuses to send anything to a model until its provider is
+     * confirmed not to train on it (503 `ai_processing_unavailable`) — the
+     * consent screen promises exactly that. Nothing the person can do but
+     * wait, or type transactions in instead.
+     */
+    class ImportUnavailable : ApiException("ai processing unavailable") {
+        override val messageKey: String = Strings.import_unavailable
+    }
+
     class Server(val status: Int) : ApiException("server error $status") {
         override val messageKey: String = Strings.error_server
     }

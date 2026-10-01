@@ -35,6 +35,13 @@
 			</array>
 		</dict>
 	</array>
+	<!--
+	  Asked the first time someone takes a photo of a statement to import it
+	  (#31). The one piece of user-facing text that cannot come from the shared
+	  strings: iOS reads it from here before the app runs.
+	-->
+	<key>NSCameraUsageDescription</key>
+	<string>FinAI uses the camera to photograph a statement so it can be read on this phone. The photo never leaves your phone.</string>
 	<key>UILaunchScreen</key>
 	<dict>
 		<key>UIColorName</key>

@@ -175,7 +175,9 @@ struct NotConfiguredView: View {
 
 /// A placeholder: reaching it is what this ticket proves. The dashboard is M4.
 struct HomeView: View {
-    /// The one thing that can be done from home so far: typing in a transaction (#30).
+    /// Importing a statement (#31) — the main way in.
+    let onImportStatement: () -> Void
+    /// Typing a transaction in (#30) — the other.
     let onAddTransaction: () -> Void
     let onSignOut: () -> Void
 
@@ -188,8 +190,13 @@ struct HomeView: View {
                 .font(.subheadline)
                 .foregroundColor(Brand.textMuted)
                 .multilineTextAlignment(.center)
-            GradientButton(title: L.t(Strings.shared.manual_entry_title), action: onAddTransaction)
+            GradientButton(title: L.t(Strings.shared.import_entry), action: onImportStatement)
                 .padding(.top, 16)
+            Button(action: onAddTransaction) {
+                Text(L.t(Strings.shared.manual_entry_title)).font(.headline).tappableRow(minHeight: 52)
+            }
+            .buttonStyle(.bordered)
+            .tint(.primary)
             // Not green: the accent belongs to the one primary action above.
             Button(L.t(Strings.shared.action_sign_out), action: onSignOut)
                 .foregroundColor(.primary)

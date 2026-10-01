@@ -12,7 +12,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -33,6 +35,10 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.unit.IntSize
@@ -64,13 +70,20 @@ class AppLoader {
     var coinAway by mutableStateOf(false)
         internal set
 
-    private val requests = mutableStateMapOf<String, Unit>()
+    private val requests = mutableStateMapOf<String, String>()
 
     /** Whether any screen outside the onboarding flow has asked for the loader. */
     val requested: Boolean get() = requests.isNotEmpty()
 
-    fun request(key: String, active: Boolean) {
-        if (active) requests[key] = Unit else requests.remove(key)
+    /**
+     * What the wait is for, shown under the coin — "Reading page 3 of 12…".
+     * A long wait with nothing said reads as a hang (#31). Empty for the waits
+     * that are short enough not to need one.
+     */
+    val caption: String? get() = requests.values.lastOrNull { it.isNotEmpty() }
+
+    fun request(key: String, active: Boolean, caption: String = "") {
+        if (active) requests[key] = caption else requests.remove(key)
     }
 
     internal fun place(owner: Any, centre: Offset) {
@@ -87,12 +100,15 @@ class AppLoader {
 
 val LocalAppLoader = staticCompositionLocalOf { AppLoader() }
 
-/** Asks for the loader for as long as [active] holds and this stays on screen. */
+/**
+ * Asks for the loader for as long as [active] holds and this stays on screen,
+ * saying [caption] under the coin when there is one.
+ */
 @Composable
-fun LoaderSignal(key: String, active: Boolean) {
+fun LoaderSignal(key: String, active: Boolean, caption: String? = null) {
     val loader = LocalAppLoader.current
-    DisposableEffect(loader, key, active) {
-        loader.request(key, active)
+    DisposableEffect(loader, key, active, caption) {
+        loader.request(key, active, caption.orEmpty())
         onDispose { loader.request(key, false) }
     }
 }
@@ -140,6 +156,22 @@ fun LoaderHost(active: Boolean, loader: AppLoader, content: @Composable () -> Un
             )
         }
         TravellingCoin(shown, loader, host)
+        val caption = loader.caption
+        if (shown && caption != null) {
+            Text(
+                text = caption,
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onBackground,
+                textAlign = TextAlign.Center,
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    // Below the coin, which sits in the middle at 112dp.
+                    .padding(top = 112.dp + 48.dp)
+                    .padding(horizontal = 32.dp)
+                    // Spoken as it changes, page by page, without moving focus.
+                    .semantics { liveRegion = LiveRegionMode.Polite },
+            )
+        }
     }
 }
 

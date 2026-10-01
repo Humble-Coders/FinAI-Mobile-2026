@@ -5,6 +5,8 @@ import com.humblesolutions.finai.model.ExtractedDocument
 import com.humblesolutions.finai.model.ExtractedLine
 import com.humblesolutions.finai.model.ExtractedPage
 import com.humblesolutions.finai.model.ParsedStatement
+import com.humblesolutions.finai.model.RowsToSave
+import com.humblesolutions.finai.model.SaveOutcome
 import com.humblesolutions.finai.model.SourceKind
 import com.humblesolutions.finai.model.StatementUpload
 import com.humblesolutions.finai.repository.StatementImportRepository
@@ -27,6 +29,9 @@ class ImportStatementTest {
             sent = upload
             return ParsedStatement(importId = "import-1")
         }
+
+        override suspend fun save(importId: String, rows: RowsToSave): SaveOutcome =
+            error("these tests only parse")
 
         override fun close() = Unit
     }
@@ -243,5 +248,17 @@ class ImportStatementTest {
         // Three header lines sit above the first transaction and are dropped;
         // a silent short import is the one failure nothing else reveals.
         assertEquals(3, assertNotNull(redaction).droppedLines)
+    }
+
+    @Test
+    fun theDiagnosticAnswerTravelsOnlyWhenGiven() = runTest {
+        val imports = FakeImports()
+        val document = statement("2026-08-14  TIM HORTONS  12.40")
+
+        ImportStatement(imports).execute(document, accountId = "acct-1")
+        assertFalse(assertNotNull(imports.sent).keepTextForDiagnostics)
+
+        ImportStatement(imports).execute(document, accountId = "acct-1", keepTextForDiagnostics = true)
+        assertTrue(assertNotNull(imports.sent).keepTextForDiagnostics)
     }
 }

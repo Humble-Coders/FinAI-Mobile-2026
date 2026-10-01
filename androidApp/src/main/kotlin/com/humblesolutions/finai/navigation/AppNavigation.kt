@@ -33,6 +33,7 @@ import com.humblesolutions.finai.ui.home.HomeScreen
 import com.humblesolutions.finai.ui.manualentry.ManualEntryActions
 import com.humblesolutions.finai.ui.manualentry.ManualEntryScreen
 import com.humblesolutions.finai.ui.manualentry.ManualEntryViewModel
+import com.humblesolutions.finai.ui.statementimport.StatementImportRoute
 import com.humblesolutions.finai.ui.onboarding.CodeScreen
 import com.humblesolutions.finai.ui.onboarding.ConsentScreen
 import com.humblesolutions.finai.ui.onboarding.FailedScreen
@@ -242,19 +243,33 @@ private fun SetupRoute(userId: String, onFinished: () -> Unit) {
     )
 }
 
+/** Where the signed-in, set-up person is: home, or one of the two ways money gets in. */
+private enum class HomeRoute { HOME, ADD, IMPORT, ADD_AFTER_IMPORT }
+
 /**
- * Home, or the manual entry screen opened from it (#30).
+ * Home, the statement import opened from it (#31), or manual entry — from home
+ * (#30), or from an import that could not be read, which says why it is there.
  *
  * Saveable, so the app coming back after Android reclaimed it reopens the
- * entry being typed rather than dropping the person on home.
+ * screen the person was on rather than dropping them on home.
  */
 @Composable
 private fun HomeOrEntry(userId: String, onSignOut: () -> Unit) {
-    var addingTransaction by rememberSaveable { mutableStateOf(false) }
-    if (addingTransaction) {
-        ManualEntryRoute(userId = userId, fromUnreadable = false, onClose = { addingTransaction = false })
-    } else {
-        HomeScreen(onAddTransaction = { addingTransaction = true }, onSignOut = onSignOut)
+    var route by rememberSaveable { mutableStateOf(HomeRoute.HOME) }
+    when (route) {
+        HomeRoute.HOME -> HomeScreen(
+            onImportStatement = { route = HomeRoute.IMPORT },
+            onAddTransaction = { route = HomeRoute.ADD },
+            onSignOut = onSignOut,
+        )
+        HomeRoute.ADD -> ManualEntryRoute(userId = userId, fromUnreadable = false, onClose = { route = HomeRoute.HOME })
+        HomeRoute.ADD_AFTER_IMPORT ->
+            ManualEntryRoute(userId = userId, fromUnreadable = true, onClose = { route = HomeRoute.HOME })
+        HomeRoute.IMPORT -> StatementImportRoute(
+            userId = userId,
+            onClose = { route = HomeRoute.HOME },
+            onTypeInstead = { route = HomeRoute.ADD_AFTER_IMPORT },
+        )
     }
 }
 

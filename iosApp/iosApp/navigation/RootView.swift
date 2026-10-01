@@ -14,16 +14,19 @@ struct RootView: View {
     /// Manual entry's model, kept here like the wizard's so a draft outlives
     /// the view being rebuilt.
     @StateObject private var entryModel = ManualEntryViewModel()
-    /// Scene storage, so the app coming back after iOS reclaimed it reopens
-    /// the entry being typed rather than dropping the person on home.
-    @SceneStorage("manual_entry.open") private var addingTransaction = false
+    /// The statement import's model (#31), kept here for the same reason.
+    @StateObject private var importModel = StatementImportViewModel()
+    /// Where the signed-in, set-up person is: home, or one of the two ways
+    /// money gets in. Scene storage, so the app coming back after iOS
+    /// reclaimed it reopens that screen rather than dropping them on home.
+    @SceneStorage("home.route") private var homeRoute = HomeRoute.home.rawValue
     /// One coin loader for the whole app: centred, everything behind it blurred,
     /// for at least two seconds.
     @StateObject private var loader = AppLoader()
     @State private var changingRegion = false
 
     var body: some View {
-        LoaderHost(active: loaderActive, loader: loader) {
+        LoaderHost(active: loaderActive, caption: showingImport ? importModel.loaderCaption : nil, loader: loader) {
         Group {
             if let problemKey = model.configurationProblemKey {
                 NotConfiguredView(messageKey: problemKey)
@@ -58,16 +61,22 @@ struct RootView: View {
     private var loaderActive: Bool {
         model.busy || model.showLoadingCard || (showingSetup && setupModel.loading)
             || (showingEntry && entryModel.loading)
+            || (showingImport && (importModel.working || importModel.accountsLoading))
     }
 
-    private var showingEntry: Bool {
+    private var atHome: Bool {
         model.configurationProblemKey == nil
             && model.introFinished
             && !model.showLoadingCard
             && model.reset == nil
             && model.destination.screen == .home
-            && addingTransaction
     }
+
+    private var showingEntry: Bool {
+        atHome && (homeRoute == HomeRoute.add.rawValue || homeRoute == HomeRoute.addAfterImport.rawValue)
+    }
+
+    private var showingImport: Bool { atHome && homeRoute == HomeRoute.importStatement.rawValue }
 
     private var showingSetup: Bool {
         model.configurationProblemKey == nil
@@ -137,12 +146,28 @@ struct RootView: View {
         case .updateRequired:
             UpdateRequiredView()
         case .home:
-            if addingTransaction {
-                ManualEntryView(model: entryModel, userId: model.me?.user.id ?? "") {
-                    addingTransaction = false
+            switch HomeRoute(rawValue: homeRoute) ?? .home {
+            case .home:
+                HomeView(
+                    onImportStatement: { homeRoute = HomeRoute.importStatement.rawValue },
+                    onAddTransaction: { homeRoute = HomeRoute.add.rawValue },
+                    onSignOut: { model.signOut() }
+                )
+            case .add, .addAfterImport:
+                ManualEntryView(
+                    model: entryModel,
+                    userId: model.me?.user.id ?? "",
+                    fromUnreadable: homeRoute == HomeRoute.addAfterImport.rawValue
+                ) {
+                    homeRoute = HomeRoute.home.rawValue
                 }
-            } else {
-                HomeView(onAddTransaction: { addingTransaction = true }, onSignOut: { model.signOut() })
+            case .importStatement:
+                StatementImportView(
+                    model: importModel,
+                    userId: model.me?.user.id ?? "",
+                    onClose: { homeRoute = HomeRoute.home.rawValue },
+                    onTypeInstead: { homeRoute = HomeRoute.addAfterImport.rawValue }
+                )
             }
         case .failed:
             FailedView(
@@ -176,4 +201,13 @@ struct RootView: View {
             PhoneView(model: model)
         }
     }
+}
+
+/// Home, and the screens opened from it.
+private enum HomeRoute: String {
+    case home
+    case add
+    case importStatement = "import"
+    /// Manual entry opened because a statement could not be read (#31).
+    case addAfterImport = "add_after_import"
 }

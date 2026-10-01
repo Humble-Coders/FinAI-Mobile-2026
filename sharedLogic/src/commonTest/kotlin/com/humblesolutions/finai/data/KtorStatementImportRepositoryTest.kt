@@ -2,6 +2,8 @@ package com.humblesolutions.finai.data
 
 import com.humblesolutions.finai.config.StatementLimits
 import com.humblesolutions.finai.model.ApiException
+import com.humblesolutions.finai.model.RowToSave
+import com.humblesolutions.finai.model.RowsToSave
 import com.humblesolutions.finai.model.StatementUpload
 import com.humblesolutions.finai.repository.SessionTokenSource
 import io.ktor.client.engine.mock.MockEngine
@@ -16,6 +18,7 @@ import kotlinx.coroutines.test.runTest
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
@@ -99,5 +102,55 @@ class KtorStatementImportRepositoryTest {
         assertTrue(body.contains("\"page_count\":2"), body)
         assertTrue(body.contains("\"statement_period_start\":\"2026-08-01\""), body)
         assertTrue(body.contains("\"statement_period_end\":\"2026-08-31\""), body)
+    }
+
+    @Test
+    fun theDiagnosticFlagStaysOffTheWireUnlessItIsTrue() = runTest {
+        val repo = repository()
+
+        repo.parse(StatementUpload(sourceKind = "pdf_text", text = "14 Aug COFFEE 5.00"))
+        val plain = (assertNotNull(seen).body as TextContent).text
+        repo.parse(
+            StatementUpload(sourceKind = "pdf_text", text = "14 Aug COFFEE 5.00", keepTextForDiagnostics = true),
+        )
+        val offered = (assertNotNull(seen).body as TextContent).text
+
+        // Off by default and never sent as false: only an explicit yes from
+        // the person travels (#31).
+        assertFalse(plain.contains("keep_text_for_diagnostics"), plain)
+        assertTrue(offered.contains("\"keep_text_for_diagnostics\":true"), offered)
+    }
+
+    @Test
+    fun savingPostsTheRowsToTheImportWithTheAccount() = runTest {
+        val engine = MockEngine { request ->
+            seen = request
+            respond(
+                """{"import_id":"i-1","saved":2,"duplicates":1,"flagged":0,"needs_review":1}""",
+                HttpStatusCode.OK,
+                jsonHeaders,
+            )
+        }
+        val repo = KtorStatementImportRepository(
+            FinAiHttpClient.create("https://api.example.com", ImportTokens(), false, engine = engine),
+        )
+
+        val outcome = repo.save(
+            "i-1",
+            RowsToSave(
+                accountId = "acct-1",
+                rows = listOf(
+                    RowToSave("2026-08-14", "COFFEE", "5.00", "debit", 90),
+                ),
+            ),
+        )
+
+        val request = assertNotNull(seen)
+        assertEquals("/statements/i-1/transactions", request.url.encodedPath)
+        val body = (request.body as TextContent).text
+        assertTrue(body.contains("\"account_id\":\"acct-1\""), body)
+        assertTrue(body.contains("\"amount\":\"5.00\""), body)
+        assertEquals(2, outcome.saved)
+        assertEquals(1, outcome.needsReview)
     }
 }

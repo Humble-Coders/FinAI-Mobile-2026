@@ -13,15 +13,16 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.humblesolutions.finai.i18n.Strings
 import com.humblesolutions.finai.ui.components.GradientButton
+import com.humblesolutions.finai.ui.components.ProviderButton
 import com.humblesolutions.finai.ui.components.ScreenScaffold
 import com.humblesolutions.finai.ui.strings
 
 /**
- * A placeholder until the dashboard (M4), carrying the one thing that can be
- * done from it so far: typing in a transaction (#30).
+ * A placeholder until the dashboard (M4), carrying what can be done from it so
+ * far: importing a statement (#31) and typing in a transaction (#30).
  */
 @Composable
-fun HomeScreen(onAddTransaction: () -> Unit, onSignOut: () -> Unit) {
+fun HomeScreen(onImportStatement: () -> Unit, onAddTransaction: () -> Unit, onSignOut: () -> Unit) {
     ScreenScaffold(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
@@ -39,7 +40,10 @@ fun HomeScreen(onAddTransaction: () -> Unit, onSignOut: () -> Unit) {
             textAlign = TextAlign.Center,
         )
         Spacer(Modifier.height(24.dp))
-        GradientButton(text = strings(Strings.manual_entry_title), onClick = onAddTransaction)
+        // Importing is the main way in (#31); typing one in is the other.
+        GradientButton(text = strings(Strings.import_entry), onClick = onImportStatement)
+        Spacer(Modifier.height(8.dp))
+        ProviderButton(text = strings(Strings.manual_entry_title), onClick = onAddTransaction)
         Spacer(Modifier.height(8.dp))
         // Not green: the accent belongs to the one primary action above.
         TextButton(onClick = onSignOut) {

@@ -3,6 +3,8 @@ package com.humblesolutions.finai.data
 import com.humblesolutions.finai.config.StatementLimits
 import com.humblesolutions.finai.model.ApiException
 import com.humblesolutions.finai.model.ParsedStatement
+import com.humblesolutions.finai.model.RowsToSave
+import com.humblesolutions.finai.model.SaveOutcome
 import com.humblesolutions.finai.model.StatementUpload
 import com.humblesolutions.finai.repository.SessionTokenSource
 import com.humblesolutions.finai.repository.StatementImportRepository
@@ -40,6 +42,10 @@ class KtorStatementImportRepository internal constructor(
                 socketTimeoutMillis = StatementLimits.PARSE_TIMEOUT_MS
             }
         }
+
+    @Throws(ApiException::class, CancellationException::class)
+    override suspend fun save(importId: String, rows: RowsToSave): SaveOutcome =
+        http.postJson("statements/$importId/transactions", rows)
 
     override fun close() = http.close()
 }
