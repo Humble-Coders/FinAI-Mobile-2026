@@ -291,6 +291,7 @@ object Strings {
     const val import_done_title = "import_done_title" // "Statement imported"
     const val import_done = "import_done" // "Done"
     const val import_review_later = "import_review_later" // "The ones waiting for you are kept, and you can review them once review arrives in the app."
+    const val import_review_now = "import_review_now" // "Some of them need a look from you."
     const val import_failed_title = "import_failed_title" // "We couldn't import this statement"
     const val import_try_again = "import_try_again" // "Try again"
     const val import_choose_another = "import_choose_another" // "Choose another file"

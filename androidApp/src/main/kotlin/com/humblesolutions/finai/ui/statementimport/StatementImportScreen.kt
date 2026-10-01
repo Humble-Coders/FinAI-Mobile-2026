@@ -76,6 +76,7 @@ class StatementImportActions(
     val onRetry: () -> Unit,
     val onChooseAnother: () -> Unit,
     val onTypeInstead: () -> Unit,
+    val onReview: () -> Unit,
     val onDiagnosticsTicked: (Boolean) -> Unit,
     val onSendDiagnostics: () -> Unit,
 )
@@ -331,9 +332,14 @@ private fun DoneStep(state: StatementImportUiState, actions: StatementImportActi
     ) {
         state.summary.forEach { Body(it) }
     }
-    // The review screen (#32) is not built yet; say where the rows are.
-    if (state.needsReview > 0) Body(strings(Strings.import_review_later), muted = true)
-    GradientButton(text = strings(Strings.import_done), onClick = actions.onClose)
+    // Straight into the review queue when the import left rows waiting (#32).
+    if (state.needsReview > 0) {
+        Body(strings(Strings.import_review_now), muted = true)
+        GradientButton(text = strings(Strings.review_entry), onClick = actions.onReview)
+        ProviderButton(text = strings(Strings.import_done), onClick = actions.onClose)
+    } else {
+        GradientButton(text = strings(Strings.import_done), onClick = actions.onClose)
+    }
 }
 
 @Composable

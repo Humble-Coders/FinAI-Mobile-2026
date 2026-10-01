@@ -30,7 +30,12 @@ import java.io.File
  * the document picker (PDFs and images), the photo picker, and the camera.
  */
 @Composable
-internal fun StatementImportRoute(userId: String, onClose: () -> Unit, onTypeInstead: () -> Unit) {
+internal fun StatementImportRoute(
+    userId: String,
+    onClose: () -> Unit,
+    onTypeInstead: () -> Unit,
+    onReview: () -> Unit,
+) {
     val model: StatementImportViewModel = viewModel()
     val state by model.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
@@ -111,6 +116,11 @@ internal fun StatementImportRoute(userId: String, onClose: () -> Unit, onTypeIns
                 model.discard()
                 clearCaptures(context)
                 onTypeInstead()
+            },
+            onReview = {
+                model.discard()
+                clearCaptures(context)
+                onReview()
             },
             onDiagnosticsTicked = model::onDiagnosticsTicked,
             onSendDiagnostics = model::sendDiagnostics,
