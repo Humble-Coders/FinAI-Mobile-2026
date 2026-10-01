@@ -24,6 +24,9 @@ final class ReviewViewModel: ObservableObject {
     @Published private(set) var today = ManualEntry.shared.today()
     @Published private(set) var loading = true
     @Published private(set) var loadingMore = false
+    /// Re-reading after an action, not opening. The list stays on screen: a
+    /// refresh that blanks it and shows the coin reads as the app restarting.
+    @Published private(set) var refreshing = false
     @Published private(set) var nextCursor: String?
     @Published private(set) var loadFailed = false
     @Published private(set) var errorKey: String?
@@ -164,6 +167,7 @@ final class ReviewViewModel: ObservableObject {
         locale = ""
         loading = true
         loadingMore = false
+        refreshing = false
         nextCursor = nil
         loadFailed = false
         errorKey = nil
@@ -185,12 +189,16 @@ final class ReviewViewModel: ObservableObject {
 
     // MARK: - Reading the queue
 
-    func load() {
+    /// - Parameter refresh: re-reading after an action rather than opening
+    ///   the screen. Only a first load earns the coin, and a refresh that
+    ///   fails keeps the rows it already had.
+    func load(refresh: Bool = false) {
         guard let transactionsRepository else { return }
         let categoriesRepository = self.categoriesRepository
         let capabilitiesRepository = self.capabilitiesRepository
         let started = generation
-        loading = true
+        loading = !refresh
+        refreshing = refresh
         loadFailed = false
         errorKey = nil
         Task { [weak self] in
@@ -206,11 +214,15 @@ final class ReviewViewModel: ObservableObject {
                 if let locale = capabilities?.locale, !locale.isEmpty { self.locale = locale }
                 self.today = ManualEntry.shared.today()
                 self.loading = false
+                self.refreshing = false
                 self.restoreCorrection()
             } catch {
                 guard started == self.generation else { return }
                 self.loading = false
-                self.loadFailed = true
+                self.refreshing = false
+                // A refresh that fails leaves what is on screen alone; only a
+                // first load has nothing to fall back to.
+                self.loadFailed = !refresh
                 self.errorKey = Self.messageKey(error)
             }
         }
@@ -268,7 +280,7 @@ final class ReviewViewModel: ObservableObject {
                 ]
                 // The server may have kept rows that still need a category. It
                 // said how many, not which, so the queue is re-read.
-                if Int(outcome.confirmed) != ids.count { self.load() }
+                if Int(outcome.confirmed) != ids.count { self.load(refresh: true) }
             } catch {
                 guard started == self.generation else { return }
                 // Rolled back visibly: nothing was confirmed, so nothing goes.
@@ -374,7 +386,7 @@ final class ReviewViewModel: ObservableObject {
                 )
                 // Other rows took the new category. The server said how many,
                 // not which, so the queue is re-read — and only then.
-                if ReviewQueue.shared.mustReload(outcome: outcome) { self.load() }
+                if ReviewQueue.shared.mustReload(outcome: outcome) { self.load(refresh: true) }
             } catch {
                 guard started == self.generation else { return }
                 self.saving = false
@@ -425,7 +437,7 @@ final class ReviewViewModel: ObservableObject {
                     // it: thinking of another name would be busywork.
                     self.newCategoryName = nil
                     if let id = taken.categoryId { self.setDraft(categoryId: .some(id)) }
-                    self.announcements.append(L.t(taken.messageKey))
+                    self.announcements = [L.t(taken.messageKey)]
                 } else {
                     self.newCategoryErrorKey = Self.messageKey(error)
                 }
@@ -497,7 +509,9 @@ final class ReviewViewModel: ObservableObject {
         }
         busyRows.remove(id)
         rowErrors[id] = nil
-        announcements += aftermath
+        // Said once: each action replaces the last, rather than stacking
+        // lines above the button for the length of the queue.
+        announcements = aftermath
     }
 
     private static func kotlin(_ error: Error) -> KotlinThrowable? {

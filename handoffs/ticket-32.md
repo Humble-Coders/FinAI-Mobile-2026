@@ -24,7 +24,7 @@ A category correction teaches a rule, and when that moves other waiting rows the
 | `repository/CategoriesRepository.kt` + its client | `create(name)`. |
 | `data/FinAiHttpClient.kt` | `patchJson`, `deleteJson` and a bodyless `postEmpty`. |
 | `model/ApiException.kt`, `data/ApiErrorMapper.kt` | A category name already used (naming the one that exists), a name with no letters, and a correction that would duplicate an existing row. |
-| `i18n/*` | Every line on the screen, plus the shared taxonomy's names keyed by slug. The now-unused `import_review_later` is removed. |
+| `i18n/*` | Every line on the screen, plus the shared taxonomy's names keyed by slug (looked up by computed key, so they do not grep as used). The now-unused `import_review_later` is removed. |
 
 ### Android
 | File | Why |
@@ -42,7 +42,7 @@ A category correction teaches a rule, and when that moves other waiting rows the
 
 ### Tests
 - Shared **298** (32 new): `ReviewQueueTest` (20) and `KtorReviewRepositoryTest` (12).
-- Android **105** (24 new): `ReviewViewModelTest`.
+- Android **108** (27 new): `ReviewViewModelTest`.
 
 ## How to test
 
@@ -50,7 +50,7 @@ A category correction teaches a rule, and when that moves other waiting rows the
 ./gradlew :sharedLogic:testAndroidHostTest :androidApp:testDebugUnitTest :androidApp:assembleDebug
 ```
 
-Shared **298** and Android **105**, 0 failures.
+Shared **298** and Android **108**, 0 failures.
 
 ```bash
 cd iosApp && xcodebuild -workspace iosApp.xcworkspace -scheme iosApp -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
@@ -69,6 +69,9 @@ BUILD SUCCEEDED. No simulator was run; `:sharedLogic:iosSimulatorArm64Test` is l
 | A failed confirm all is not rolled back | `a failed confirm all rolls the rows back visibly` |
 | A row that still needs review is dropped | `confirming one uncategorized row leaves it asking for a category` |
 | The correction is not restored | `a half-typed correction comes back after the process is killed` |
+| Announcements append instead of replacing | `each action says its own thing rather than stacking lines` |
+| A refresh blanks the screen | `re-reading after an action keeps the list up instead of blanking it` (caught mid-flight; the end state looks the same either way) |
+| A failed refresh wipes the list | `a refresh that fails keeps the rows and says so` |
 
 **By hand, on a device,** against a **local backend** with synthetic data (production refuses imports until the no-training tier is on, though the queue itself works against anything with rows in it):
 1. Import a statement that leaves rows waiting, then tap **Review transactions** on the result. Home offers the same entry.
@@ -92,7 +95,7 @@ BUILD SUCCEEDED. No simulator was run; `:sharedLogic:iosSimulatorArm64Test` is l
 | A suspected duplicate shows what it matched before the user can act | **Met.** `aSuspectedDuplicateSaysWhatItMatched`, and the row draws it above its actions. |
 | Rotation, configuration change and process death lose neither the in-progress edit nor the scroll position | **Partly, by decision.** The edit survives all three (three tests). Scroll position is restored within the first page; a queue paged deep reloads from the top — see Deviations. |
 | Every derived rule is covered by UiState unit tests, not by inspecting the screen | **Met.** 24 view-model tests over the state, plus 20 on the shared rules. |
-| Android compiles and tests pass, `testAndroidHostTest` passes, iOS `xcodebuild` succeeds | **Met.** 298 / 105 / BUILD SUCCEEDED. |
+| Android compiles and tests pass, `testAndroidHostTest` passes, iOS `xcodebuild` succeeds | **Met.** 298 / 108 / BUILD SUCCEEDED. |
 
 ## Deviations / decisions
 
@@ -107,6 +110,12 @@ Also:
 - **One `Transaction` model** serves both a typed-in entry and a review row, now that it carries `duplicate_of` and `extraction_confidence`.
 - **Home always offers the queue**, rather than fetching a count first: home has no count to ask for, and the queue's own empty state ("nothing needs review") is a good answer either way.
 - **A category name already used selects the existing category** instead of refusing, since asking the person to think of another name is busywork.
+
+**From the manager review (PR #41):**
+- **Each action's message replaces the last.** They were appended, so working down a queue stacked lines above the Confirm-all button that nothing ever cleared (`dismissAnnouncements` existed and was wired, but no screen called it). On iOS the list was also keyed by the message text, which repeats verbatim — duplicate ids in a `ForEach` drop rows — so it is keyed by position now.
+- **A re-read after an action no longer blanks the screen.** `load(refresh = true)` keeps the list up and shows a thin progress line instead of the coin, and a refresh that fails keeps the rows it had rather than falling back to the error screen. Only opening the screen earns the coin.
+- **The paging cursor goes through Ktor's parameter** rather than being glued into the path. It is URL-safe base64 today; the day it is not, a `+` would reach the server as a space and paging would break silently.
+- **Four strings that were on no screen are gone** (`review_confirm_failed`, `review_needs_category_next`, `review_row_failed`, `review_delete_failed`). Row errors render the API's own message.
 
 ## Open questions / follow-ups
 

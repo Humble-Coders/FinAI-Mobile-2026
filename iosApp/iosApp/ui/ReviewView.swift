@@ -100,6 +100,9 @@ struct ReviewView: View {
 
     private var queue: some View {
         VStack(spacing: 0) {
+            // Re-reading after an action: a thin line, not the coin, so the
+            // list keeps its place.
+            if model.refreshing { ProgressView().progressViewStyle(.linear) }
             List {
                 Section {
                     Text(L.t(Strings.shared.review_intro))
@@ -130,7 +133,10 @@ struct ReviewView: View {
             .scrollDismissesKeyboard(.interactively)
 
             VStack(spacing: 8) {
-                ForEach(model.announcements, id: \.self) { message in
+                // Keyed by position, not by the text: two actions can
+                // produce the same sentence, and duplicate ids in a ForEach
+                // drop rows.
+                ForEach(Array(model.announcements.enumerated()), id: \.offset) { _, message in
                     Text(message)
                         .font(.subheadline)
                         .frame(maxWidth: .infinity, alignment: .leading)

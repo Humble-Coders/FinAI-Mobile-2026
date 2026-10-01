@@ -91,10 +91,17 @@ class ReviewViewModel(private val saved: SavedStateHandle) : ViewModel() {
 
     // ── Reading the queue ───────────────────────────────────────────────
 
-    fun load() {
+    /**
+     * @param refresh re-reading after an action rather than opening the
+     *   screen. The list stays up and keeps its place; only a first load earns
+     *   the coin, and a refresh that fails keeps the rows it already had.
+     */
+    fun load(refresh: Boolean = false) {
         val repos = repositories ?: return
         val started = generation
-        _uiState.update { it.copy(loading = true, loadFailed = false, errorKey = null) }
+        _uiState.update {
+            it.copy(loading = !refresh, refreshing = refresh, loadFailed = false, errorKey = null)
+        }
         viewModelScope.launch {
             try {
                 val page = repos.transactions.review()
@@ -104,6 +111,7 @@ class ReviewViewModel(private val saved: SavedStateHandle) : ViewModel() {
                 _uiState.update {
                     it.copy(
                         loading = false,
+                        refreshing = false,
                         rows = page.rows,
                         nextCursor = page.nextCursor,
                         categories = categories ?: it.categories,
@@ -116,7 +124,16 @@ class ReviewViewModel(private val saved: SavedStateHandle) : ViewModel() {
                 throw e
             } catch (e: ApiException) {
                 if (started != generation) return@launch
-                _uiState.update { it.copy(loading = false, loadFailed = true, errorKey = e.messageKey) }
+                _uiState.update {
+                    // A refresh that fails leaves what is on screen alone and
+                    // says so; only a first load has nothing to fall back to.
+                    it.copy(
+                        loading = false,
+                        refreshing = false,
+                        loadFailed = !refresh,
+                        errorKey = e.messageKey,
+                    )
+                }
             }
         }
     }
@@ -184,7 +201,7 @@ class ReviewViewModel(private val saved: SavedStateHandle) : ViewModel() {
                 }
                 // The server may have kept rows that still need a category.
                 // It said how many, not which, so the queue is re-read.
-                if (outcome.confirmed != ids.size) load()
+                if (outcome.confirmed != ids.size) load(refresh = true)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: ApiException) {
@@ -269,7 +286,7 @@ class ReviewViewModel(private val saved: SavedStateHandle) : ViewModel() {
                 applyOutcome(row.id, outcome.transaction, ReviewQueue.aftermath(outcome, row.merchant))
                 // Other rows took the new category. The server said how many,
                 // not which, so the queue is re-read — and only then.
-                if (ReviewQueue.mustReload(outcome)) load()
+                if (ReviewQueue.mustReload(outcome)) load(refresh = true)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: ApiException) {
@@ -323,7 +340,7 @@ class ReviewViewModel(private val saved: SavedStateHandle) : ViewModel() {
                         creatingCategory = false,
                         newCategoryName = null,
                         draft = it.draft.copy(categoryId = e.categoryId ?: it.draft.categoryId),
-                        announcements = it.announcements + e.messageKey,
+                        announcements = listOf(e.messageKey),
                     )
                 }
                 storeCorrection()
@@ -413,7 +430,7 @@ class ReviewViewModel(private val saved: SavedStateHandle) : ViewModel() {
                 rows = rows,
                 busyRows = state.busyRows - id,
                 rowErrors = state.rowErrors - id,
-                announcements = state.announcements + aftermath,
+                announcements = aftermath,
             )
         }
     }

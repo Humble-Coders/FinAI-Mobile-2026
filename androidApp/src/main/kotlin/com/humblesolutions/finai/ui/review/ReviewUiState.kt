@@ -28,6 +28,12 @@ data class ReviewUiState(
     val loading: Boolean = true,
     /** Another page is on its way; the list shows a footer, not the coin. */
     val loadingMore: Boolean = false,
+    /**
+     * The queue is being re-read after an action, not opened. The list stays
+     * on screen: a refresh that blanks the screen and shows the coin reads as
+     * the app starting over.
+     */
+    val refreshing: Boolean = false,
     val nextCursor: String? = null,
     val loadFailed: Boolean = false,
     val errorKey: String? = null,
@@ -37,7 +43,11 @@ data class ReviewUiState(
     val busyRows: Set<String> = emptySet(),
     /** What went wrong on one row, by id — shown on the row, not over the list. */
     val rowErrors: Map<String, String> = emptyMap(),
-    /** Said once, after an action: what was confirmed, what a correction moved. */
+    /**
+     * What the last action came to: what was confirmed, what a correction
+     * moved. **Said once** — each action replaces the last, rather than
+     * stacking lines above the button for the length of the queue.
+     */
     val announcements: List<String> = emptyList(),
     /** The row being corrected, with the draft as far as the person has got. */
     val editing: Transaction? = null,

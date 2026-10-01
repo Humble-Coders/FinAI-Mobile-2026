@@ -166,8 +166,10 @@ internal suspend inline fun <reified T> HttpResponse.decoded(): T = try {
     throw ApiException.Unexpected(status.value, e)
 }
 
-internal suspend inline fun <reified T> HttpClient.getJson(path: String): T =
-    sendMapped { get(path) }.decoded()
+internal suspend inline fun <reified T> HttpClient.getJson(
+    path: String,
+    crossinline configure: HttpRequestBuilder.() -> Unit = {},
+): T = sendMapped { get(path) { configure() } }.decoded()
 
 internal suspend inline fun <reified B, reified T> HttpClient.putJson(path: String, body: B): T =
     sendMapped { put(path) { contentType(ContentType.Application.Json); setBody(body) } }.decoded()

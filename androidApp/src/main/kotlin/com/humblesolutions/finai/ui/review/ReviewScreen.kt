@@ -27,6 +27,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
@@ -213,6 +214,9 @@ private fun Queue(state: ReviewUiState, actions: ReviewActions, modifier: Modifi
     }
 
     Column(modifier.widthIn(max = ContentMaxWidth).fillMaxWidth()) {
+        // Re-reading after an action: a thin line, not the coin, so the list
+        // keeps its place.
+        if (state.refreshing) LinearProgressIndicator(Modifier.fillMaxWidth())
         LazyColumn(
             modifier = Modifier.weight(1f).fillMaxWidth(),
             state = listState,

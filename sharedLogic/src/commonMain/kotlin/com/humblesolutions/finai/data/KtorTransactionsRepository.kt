@@ -12,6 +12,7 @@ import com.humblesolutions.finai.model.Transaction
 import com.humblesolutions.finai.repository.SessionTokenSource
 import com.humblesolutions.finai.repository.TransactionsRepository
 import io.ktor.client.HttpClient
+import io.ktor.client.request.parameter
 import kotlin.coroutines.cancellation.CancellationException
 
 /** The transaction endpoints over Ktor: typed-in entries (#38) and the review queue (#32). */
@@ -28,7 +29,11 @@ class KtorTransactionsRepository internal constructor(
 
     @Throws(ApiException::class, CancellationException::class)
     override suspend fun review(cursor: String?): ReviewPage =
-        http.getJson("transactions/review" + (cursor?.let { "?cursor=$it" } ?: ""))
+        // Through Ktor's parameter rather than glued into the path: the
+        // server's cursor is URL-safe base64 today, and the day it is not,
+        // a `+` would reach the handler as a space and paging would break
+        // without a word.
+        http.getJson("transactions/review") { if (cursor != null) parameter("cursor", cursor) }
 
     @Throws(ApiException::class, CancellationException::class)
     override suspend fun correct(id: String, patch: TransactionPatch): PatchOutcome =

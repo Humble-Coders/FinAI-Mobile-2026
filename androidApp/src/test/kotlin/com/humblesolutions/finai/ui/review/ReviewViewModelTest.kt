@@ -17,6 +17,7 @@ import com.humblesolutions.finai.repository.CapabilitiesRepository
 import com.humblesolutions.finai.repository.CategoriesRepository
 import com.humblesolutions.finai.repository.TransactionsRepository
 import com.humblesolutions.finai.usecase.CorrectionBlock
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -338,6 +339,89 @@ class ReviewViewModelTest {
         assertEquals(1, transactions.pagesRead)
     }
 
+    @Test
+    fun `each action says its own thing rather than stacking lines`() {
+        // Working down a queue must not leave a wall of text above the button.
+        val transactions = FakeTransactions(
+            pages = listOf(ReviewPage(rows = listOf(row("a"), row("b")))),
+            correction = PatchOutcome(transaction = row("a").copy(needsReview = false), recategorized = 2),
+            confirmOne = PatchOutcome(transaction = row("b").copy(needsReview = false), importFinished = true),
+        )
+        val model = model()
+        model.bind("alice") { repositories(transactions = transactions) }
+
+        model.edit("a")
+        model.onCategoryChosen("cat-2")
+        model.saveCorrection()
+        val afterCorrection = model.uiState.value.announcements
+        model.confirm("b")
+
+        assertEquals(listOf("Also applied to 2 other transactions waiting here."), afterCorrection)
+        assertEquals(
+            listOf("Statement finished — everything from it has been looked at."),
+            model.uiState.value.announcements,
+        )
+    }
+
+    @Test
+    fun `re-reading after an action keeps the list up instead of blanking it`() {
+        // A refresh is not a first load: the coin belongs to opening the
+        // screen, not to finishing a correction.
+        val gate = CompletableDeferred<Unit>()
+        val transactions = FakeTransactions(
+            pages = listOf(
+                ReviewPage(rows = listOf(row("a"), row("b"))),
+                ReviewPage(rows = listOf(row("b", categoryId = "cat-2"))),
+            ),
+            correction = PatchOutcome(transaction = row("a").copy(needsReview = false), recategorized = 1),
+            laterPageGate = gate,
+        )
+        val model = model()
+        model.bind("alice") { repositories(transactions = transactions) }
+
+        model.edit("a")
+        model.onCategoryChosen("cat-2")
+        model.saveCorrection()
+
+        // Caught while the re-read is still in flight — the end state looks
+        // the same either way, which is how a blanking refresh hides.
+        val mid = model.uiState.value
+        assertFalse(mid.loading, "a refresh blanked the screen and showed the coin")
+        assertTrue(mid.refreshing)
+        // The corrected row has left the queue; the rest are still on screen
+        // rather than replaced by an empty box.
+        assertEquals(listOf("b"), mid.rows.map { it.id }, "the list went away during the refresh")
+
+        gate.complete(Unit)
+
+        val state = model.uiState.value
+        assertFalse(state.loading)
+        assertFalse(state.refreshing)
+        assertEquals(2, transactions.pagesRead)
+        assertEquals(listOf("b"), state.rows.map { it.id })
+    }
+
+    @Test
+    fun `a refresh that fails keeps the rows and says so`() {
+        val transactions = FakeTransactions(
+            pages = listOf(ReviewPage(rows = listOf(row("a"), row("b")))),
+            correction = PatchOutcome(transaction = row("a").copy(needsReview = false), recategorized = 1),
+            failLaterPages = true,
+        )
+        val model = model()
+        model.bind("alice") { repositories(transactions = transactions) }
+
+        model.edit("a")
+        model.onCategoryChosen("cat-2")
+        model.saveCorrection()
+
+        val state = model.uiState.value
+        // Stale beats blank: the corrected row is gone, the rest remain.
+        assertEquals(listOf("b"), state.rows.map { it.id })
+        assertFalse(state.loadFailed)
+        assertNotNull(state.errorKey)
+    }
+
     // ── A category of their own ─────────────────────────────────────────
 
     @Test
@@ -520,6 +604,8 @@ class ReviewViewModelTest {
         private val confirmOne: PatchOutcome? = null,
         private val correction: PatchOutcome? = null,
         private val failFirstPage: Boolean = false,
+        private val failLaterPages: Boolean = false,
+        private val laterPageGate: CompletableDeferred<Unit>? = null,
         private val failConfirmAll: ApiException? = null,
         private val failConfirmOne: ApiException? = null,
         private val failDelete: ApiException? = null,
@@ -534,10 +620,11 @@ class ReviewViewModelTest {
 
         override suspend fun review(cursor: String?): ReviewPage {
             cursors += cursor
-            if (failFirstPage && pagesRead == 0) {
+            if ((failFirstPage && pagesRead == 0) || (failLaterPages && pagesRead > 0)) {
                 pagesRead++
                 throw ApiException.Network(RuntimeException("offline"))
             }
+            if (pagesRead > 0) laterPageGate?.await()
             val page = pages[pagesRead.coerceAtMost(pages.lastIndex)]
             pagesRead++
             return page
