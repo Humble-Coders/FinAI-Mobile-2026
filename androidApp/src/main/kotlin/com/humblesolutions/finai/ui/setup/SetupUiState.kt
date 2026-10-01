@@ -4,6 +4,7 @@ import com.humblesolutions.finai.usecase.ItemDraft
 import com.humblesolutions.finai.usecase.SetupBlock
 import com.humblesolutions.finai.usecase.SetupDraft
 import com.humblesolutions.finai.usecase.SetupStep
+import com.humblesolutions.finai.usecase.SetupWarning
 import com.humblesolutions.finai.usecase.SetupWizard
 import com.humblesolutions.finai.util.Money
 
@@ -66,6 +67,15 @@ data class SetupUiState(
 
     /** What the notice under Continue says — the same reason, with the shared timing. */
     val notice: SetupBlock? get() = SetupWizard.notice(step, draft, fractionDigits, touched)
+
+    /**
+     * Something worth saying that is not stopping Continue — today, itemised
+     * commitments adding up to more than the total they sit inside.
+     *
+     * Shown only when there is no error to show: two sentences under one
+     * button is one too many, and the error is the one that has to be acted on.
+     */
+    val warning: SetupWarning? get() = SetupWizard.warning(step, draft, fractionDigits)
 
     /** Skip is drawn only on the step that is optional in full. */
     val showsSkip: Boolean get() = step.isOptional

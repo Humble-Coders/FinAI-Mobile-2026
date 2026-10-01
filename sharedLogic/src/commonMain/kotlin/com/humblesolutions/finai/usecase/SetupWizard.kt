@@ -40,6 +40,28 @@ enum class SetupStep {
     }
 }
 
+/**
+ * Something worth telling the person that does not stop them continuing.
+ *
+ * Deliberately not a [SetupBlock]. A block says "this value is not usable";
+ * this says "these two numbers disagree", and the person may be right and we
+ * may be reading them wrong — somebody whose rent is paid by a partner could
+ * reasonably list it as a commitment and leave it out of their own spending.
+ * Refusing to let them finish onboarding over that would be the wizard
+ * insisting on its own model of a household.
+ *
+ * So it is shown and not enforced, and the API does not police it either: a
+ * disabled Continue must mean the save would be refused, and this one would
+ * not be.
+ */
+enum class SetupWarning(val messageKey: String) {
+    /**
+     * The itemised commitments add up to more than the total they are supposed
+     * to be part of, so at least one of the two figures is wrong.
+     */
+    OBLIGATIONS_OVER_EXPENSES(Strings.setup_obligations_over_expenses),
+}
+
 /** Why a step cannot be left yet — one reason, shown where it belongs. */
 enum class SetupBlock(val messageKey: String) {
     INCOME_MISSING(Strings.setup_income_missing),
@@ -145,6 +167,33 @@ object SetupWizard {
     fun notice(step: SetupStep, draft: SetupDraft, fractionDigits: Int = 2, touched: Boolean = false): SetupBlock? {
         val block = blockingReason(step, draft, fractionDigits) ?: return null
         return block.takeIf { touched || !it.isUnanswered || it.step != step }
+    }
+
+    /**
+     * What to warn about on [step], or null — the advisory counterpart to
+     * [notice], and the one place the expenses/commitments relationship is
+     * decided (kmp-arch-v2: both apps read this, neither re-derives it).
+     *
+     * **Obligations are a subset of the monthly expense figure, not an
+     * addition to it.** The screen says so; this catches the case where the
+     * numbers say otherwise. Nothing downstream may sum the two — a dashboard
+     * computing `income - expense - obligations` would subtract rent twice for
+     * anyone who filled the wizard in as instructed.
+     *
+     * Silent until both sides are real figures: an empty list has nothing to
+     * exceed, and a half-typed total ("1" on the way to "1500") would
+     * otherwise accuse the user mid-keystroke.
+     */
+    fun warning(step: SetupStep, draft: SetupDraft, fractionDigits: Int = 2): SetupWarning? {
+        if (step != SetupStep.EXPENSES) return null
+        // Normalizing is also the check: `isMoney` is defined as this returning
+        // non-null, so a blank or unreadable total leaves here and the error
+        // about that field is the only thing said. An explicit `expenseBlock`
+        // guard in front of this was redundant — removing it changed no test.
+        val expense = Money.normalize(draft.monthlyExpense, fractionDigits) ?: return null
+        val commitments = total(draft.obligations, fractionDigits) ?: return null
+        return SetupWarning.OBLIGATIONS_OVER_EXPENSES
+            .takeIf { Money.compare(commitments, expense) > 0 }
     }
 
     /**
