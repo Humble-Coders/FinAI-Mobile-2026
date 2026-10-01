@@ -12,6 +12,7 @@ import com.humblesolutions.finai.model.NewAccount
 import com.humblesolutions.finai.model.NewTransaction
 import com.humblesolutions.finai.model.ReviewReason
 import com.humblesolutions.finai.model.Transaction
+import com.humblesolutions.finai.model.TransactionPatch
 import com.humblesolutions.finai.model.TransactionDirection
 import com.humblesolutions.finai.repository.AccountsRepository
 import com.humblesolutions.finai.repository.CapabilitiesRepository
@@ -574,6 +575,8 @@ class ManualEntryViewModelTest {
             return listOf(groceries)
         }
 
+        override suspend fun create(name: String) = error("manual entry never makes a category")
+
         override fun close() = Unit
     }
 
@@ -591,6 +594,17 @@ class ManualEntryViewModelTest {
             answer?.let { return it(entry) }
             return Transaction(id = "t-new", accountId = entry.accountId, amount = entry.amount)
         }
+
+        // The review queue's half of this interface (#32), unused here.
+        override suspend fun review(cursor: String?) = error("manual entry never reads the queue")
+
+        override suspend fun correct(id: String, patch: TransactionPatch) = error("not manual entry")
+
+        override suspend fun confirm(id: String) = error("not manual entry")
+
+        override suspend fun confirmAll(ids: List<String>) = error("not manual entry")
+
+        override suspend fun delete(id: String) = error("not manual entry")
 
         override fun close() = Unit
     }

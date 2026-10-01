@@ -75,7 +75,10 @@ data class NewTransaction(
     val allowDuplicate: Boolean = false,
 )
 
-/** What `POST /transactions` returns: the row as saved. */
+/**
+ * A transaction as the API returns it — the row `POST /transactions` saved, and
+ * the row the review queue lists (#32). One type, because it is one thing.
+ */
 @Serializable
 data class Transaction(
     val id: String = "",
@@ -98,6 +101,13 @@ data class Transaction(
     val needsReview: Boolean = false,
     @SerialName("review_reason")
     val reviewReason: ReviewReason? = null,
+    // The two the review queue adds (#32). Null on a row typed in by hand,
+    // which never has a confidence and cannot arrive as a suspected duplicate.
+    @SerialName("extraction_confidence")
+    val extractionConfidence: Int? = null,
+    /** What a suspected duplicate matched — shown beside it, never guessed at. */
+    @SerialName("duplicate_of")
+    val duplicateOf: DuplicateMatch? = null,
 )
 
 /**

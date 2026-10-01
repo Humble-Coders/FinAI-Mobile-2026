@@ -20,6 +20,8 @@ import io.ktor.client.request.accept
 import io.ktor.client.request.bearerAuth
 import io.ktor.client.request.get
 import io.ktor.client.request.HttpRequestBuilder
+import io.ktor.client.request.delete
+import io.ktor.client.request.patch
 import io.ktor.client.request.post
 import io.ktor.client.request.put
 import io.ktor.client.request.setBody
@@ -164,8 +166,10 @@ internal suspend inline fun <reified T> HttpResponse.decoded(): T = try {
     throw ApiException.Unexpected(status.value, e)
 }
 
-internal suspend inline fun <reified T> HttpClient.getJson(path: String): T =
-    sendMapped { get(path) }.decoded()
+internal suspend inline fun <reified T> HttpClient.getJson(
+    path: String,
+    crossinline configure: HttpRequestBuilder.() -> Unit = {},
+): T = sendMapped { get(path) { configure() } }.decoded()
 
 internal suspend inline fun <reified B, reified T> HttpClient.putJson(path: String, body: B): T =
     sendMapped { put(path) { contentType(ContentType.Application.Json); setBody(body) } }.decoded()
@@ -182,3 +186,13 @@ internal suspend inline fun <reified B, reified T> HttpClient.postJson(
             configure()
         }
     }.decoded()
+
+internal suspend inline fun <reified B, reified T> HttpClient.patchJson(path: String, body: B): T =
+    sendMapped { patch(path) { contentType(ContentType.Application.Json); setBody(body) } }.decoded()
+
+internal suspend inline fun <reified T> HttpClient.deleteJson(path: String): T =
+    sendMapped { delete(path) }.decoded()
+
+/** A POST with nothing to say: the row it acts on is named in the path. */
+internal suspend inline fun <reified T> HttpClient.postEmpty(path: String): T =
+    sendMapped { post(path) }.decoded()

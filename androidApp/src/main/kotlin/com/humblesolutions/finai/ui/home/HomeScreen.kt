@@ -19,10 +19,16 @@ import com.humblesolutions.finai.ui.strings
 
 /**
  * A placeholder until the dashboard (M4), carrying what can be done from it so
- * far: importing a statement (#31) and typing in a transaction (#30).
+ * far: importing a statement (#31), typing in a transaction (#30), and the
+ * review queue (#32).
  */
 @Composable
-fun HomeScreen(onImportStatement: () -> Unit, onAddTransaction: () -> Unit, onSignOut: () -> Unit) {
+fun HomeScreen(
+    onImportStatement: () -> Unit,
+    onAddTransaction: () -> Unit,
+    onReview: () -> Unit,
+    onSignOut: () -> Unit,
+) {
     ScreenScaffold(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
@@ -44,6 +50,10 @@ fun HomeScreen(onImportStatement: () -> Unit, onAddTransaction: () -> Unit, onSi
         GradientButton(text = strings(Strings.import_entry), onClick = onImportStatement)
         Spacer(Modifier.height(8.dp))
         ProviderButton(text = strings(Strings.manual_entry_title), onClick = onAddTransaction)
+        Spacer(Modifier.height(8.dp))
+        // Always offered rather than counted first: home has no count to ask
+        // for, and the queue's own empty state is a good answer either way.
+        ProviderButton(text = strings(Strings.review_entry), onClick = onReview)
         Spacer(Modifier.height(8.dp))
         // Not green: the accent belongs to the one primary action above.
         TextButton(onClick = onSignOut) {

@@ -16,6 +16,8 @@ struct RootView: View {
     @StateObject private var entryModel = ManualEntryViewModel()
     /// The statement import's model (#31), kept here for the same reason.
     @StateObject private var importModel = StatementImportViewModel()
+    /// The review queue's model (#32), likewise.
+    @StateObject private var reviewModel = ReviewViewModel()
     /// Where the signed-in, set-up person is: home, or one of the two ways
     /// money gets in. Scene storage, so the app coming back after iOS
     /// reclaimed it reopens that screen rather than dropping them on home.
@@ -62,6 +64,7 @@ struct RootView: View {
         model.busy || model.showLoadingCard || (showingSetup && setupModel.loading)
             || (showingEntry && entryModel.loading)
             || (showingImport && (importModel.working || importModel.accountsLoading))
+            || (showingReview && reviewModel.loading)
     }
 
     private var atHome: Bool {
@@ -77,6 +80,8 @@ struct RootView: View {
     }
 
     private var showingImport: Bool { atHome && homeRoute == HomeRoute.importStatement.rawValue }
+
+    private var showingReview: Bool { atHome && homeRoute == HomeRoute.review.rawValue }
 
     private var showingSetup: Bool {
         model.configurationProblemKey == nil
@@ -151,6 +156,7 @@ struct RootView: View {
                 HomeView(
                     onImportStatement: { homeRoute = HomeRoute.importStatement.rawValue },
                     onAddTransaction: { homeRoute = HomeRoute.add.rawValue },
+                    onReview: { homeRoute = HomeRoute.review.rawValue },
                     onSignOut: { model.signOut() }
                 )
             case .add, .addAfterImport:
@@ -166,7 +172,14 @@ struct RootView: View {
                     model: importModel,
                     userId: model.me?.user.id ?? "",
                     onClose: { homeRoute = HomeRoute.home.rawValue },
-                    onTypeInstead: { homeRoute = HomeRoute.addAfterImport.rawValue }
+                    onTypeInstead: { homeRoute = HomeRoute.addAfterImport.rawValue },
+                    onReview: { homeRoute = HomeRoute.review.rawValue }
+                )
+            case .review:
+                ReviewView(
+                    model: reviewModel,
+                    userId: model.me?.user.id ?? "",
+                    onClose: { homeRoute = HomeRoute.home.rawValue }
                 )
             }
         case .failed:
@@ -210,4 +223,6 @@ private enum HomeRoute: String {
     case importStatement = "import"
     /// Manual entry opened because a statement could not be read (#31).
     case addAfterImport = "add_after_import"
+    /// The review queue (#32), from home or from an import that left rows.
+    case review
 }

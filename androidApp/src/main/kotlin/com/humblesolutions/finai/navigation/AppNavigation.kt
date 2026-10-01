@@ -33,6 +33,7 @@ import com.humblesolutions.finai.ui.home.HomeScreen
 import com.humblesolutions.finai.ui.manualentry.ManualEntryActions
 import com.humblesolutions.finai.ui.manualentry.ManualEntryScreen
 import com.humblesolutions.finai.ui.manualentry.ManualEntryViewModel
+import com.humblesolutions.finai.ui.review.ReviewRoute
 import com.humblesolutions.finai.ui.statementimport.StatementImportRoute
 import com.humblesolutions.finai.ui.onboarding.CodeScreen
 import com.humblesolutions.finai.ui.onboarding.ConsentScreen
@@ -244,11 +245,12 @@ private fun SetupRoute(userId: String, onFinished: () -> Unit) {
 }
 
 /** Where the signed-in, set-up person is: home, or one of the two ways money gets in. */
-private enum class HomeRoute { HOME, ADD, IMPORT, ADD_AFTER_IMPORT }
+private enum class HomeRoute { HOME, ADD, IMPORT, ADD_AFTER_IMPORT, REVIEW }
 
 /**
- * Home, the statement import opened from it (#31), or manual entry — from home
- * (#30), or from an import that could not be read, which says why it is there.
+ * Home and what opens from it: the statement import (#31), manual entry — from
+ * home (#30) or from an import that could not be read — and the review queue
+ * (#32), reached from home or from an import that left rows waiting.
  *
  * Saveable, so the app coming back after Android reclaimed it reopens the
  * screen the person was on rather than dropping them on home.
@@ -259,6 +261,7 @@ private fun HomeOrEntry(userId: String, onSignOut: () -> Unit) {
     when (route) {
         HomeRoute.HOME -> HomeScreen(
             onImportStatement = { route = HomeRoute.IMPORT },
+            onReview = { route = HomeRoute.REVIEW },
             onAddTransaction = { route = HomeRoute.ADD },
             onSignOut = onSignOut,
         )
@@ -269,7 +272,9 @@ private fun HomeOrEntry(userId: String, onSignOut: () -> Unit) {
             userId = userId,
             onClose = { route = HomeRoute.HOME },
             onTypeInstead = { route = HomeRoute.ADD_AFTER_IMPORT },
+            onReview = { route = HomeRoute.REVIEW },
         )
+        HomeRoute.REVIEW -> ReviewRoute(userId = userId, onClose = { route = HomeRoute.HOME })
     }
 }
 

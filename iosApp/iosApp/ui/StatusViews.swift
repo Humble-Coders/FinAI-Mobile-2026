@@ -179,6 +179,8 @@ struct HomeView: View {
     let onImportStatement: () -> Void
     /// Typing a transaction in (#30) — the other.
     let onAddTransaction: () -> Void
+    /// The review queue (#32).
+    let onReview: () -> Void
     let onSignOut: () -> Void
 
     var body: some View {
@@ -194,6 +196,13 @@ struct HomeView: View {
                 .padding(.top, 16)
             Button(action: onAddTransaction) {
                 Text(L.t(Strings.shared.manual_entry_title)).font(.headline).tappableRow(minHeight: 52)
+            }
+            .buttonStyle(.bordered)
+            .tint(.primary)
+            // Always offered rather than counted first: home has no count to
+            // ask for, and the queue's own empty state is a good answer.
+            Button(action: onReview) {
+                Text(L.t(Strings.shared.review_entry)).font(.headline).tappableRow(minHeight: 52)
             }
             .buttonStyle(.bordered)
             .tint(.primary)
