@@ -30,19 +30,17 @@ class ImportStatementTest {
             return ParsedStatement(importId = "import-1")
         }
 
-        override suspend fun save(importId: String, rows: RowsToSave): SaveOutcome =
-            error("these tests only parse")
+        override suspend fun save(importId: String, rows: RowsToSave): SaveOutcome = error("these tests only parse")
 
         override fun close() = Unit
     }
 
-    private fun statement(vararg lines: String, source: SourceKind = SourceKind.PDF_TEXT) =
-        ExtractedDocument(
-            pages = listOf(
-                ExtractedPage(index = 0, lines = lines.map { ExtractedLine(text = it) }),
-            ),
-            source = source,
-        )
+    private fun statement(vararg lines: String, source: SourceKind = SourceKind.PDF_TEXT) = ExtractedDocument(
+        pages = listOf(
+            ExtractedPage(index = 0, lines = lines.map { ExtractedLine(text = it) }),
+        ),
+        source = source,
+    )
 
     private val header = "Statement period: 1 Aug 2026 to 31 Aug 2026"
     private val transaction = "14 Aug  SPOTIFY P3A4B5C6  10.99"

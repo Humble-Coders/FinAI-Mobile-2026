@@ -73,11 +73,11 @@ enum class FeatureReason(val wire: String, val messageKey: String) {
     UNKNOWN_FEATURE("unknown_feature", Strings.feature_reason_unavailable),
 
     /** A reason this build does not know yet. */
-    UNKNOWN("", Strings.feature_reason_unavailable);
+    UNKNOWN("", Strings.feature_reason_unavailable),
+    ;
 
     companion object {
-        fun fromWire(value: String?): FeatureReason =
-            entries.firstOrNull { it != UNKNOWN && it.wire == value } ?: UNKNOWN
+        fun fromWire(value: String?): FeatureReason = entries.firstOrNull { it != UNKNOWN && it.wire == value } ?: UNKNOWN
     }
 }
 
@@ -100,11 +100,11 @@ enum class OnboardingStep(val wire: String) {
     FINANCIAL_SETUP("financial_setup"),
 
     /** A step this build does not know yet — kept, so the app still knows onboarding is incomplete. */
-    UNKNOWN("");
+    UNKNOWN(""),
+    ;
 
     companion object {
-        fun fromWire(value: String?): OnboardingStep =
-            entries.firstOrNull { it != UNKNOWN && it.wire == value } ?: UNKNOWN
+        fun fromWire(value: String?): OnboardingStep = entries.firstOrNull { it != UNKNOWN && it.wire == value } ?: UNKNOWN
     }
 }
 

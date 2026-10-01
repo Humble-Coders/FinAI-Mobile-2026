@@ -67,8 +67,7 @@ object DialCodes {
      */
     val fallback: DialCode = byRegion.getValue("CA")
 
-    fun forRegion(region: String?): DialCode? =
-        region?.takeIf { it.isNotBlank() }?.let { byRegion[it.trim().uppercase()] }
+    fun forRegion(region: String?): DialCode? = region?.takeIf { it.isNotBlank() }?.let { byRegion[it.trim().uppercase()] }
 
     /**
      * Which entry to pre-select, as a UX nicety only (PRD §4.6).
@@ -80,8 +79,7 @@ object DialCodes {
      * Both values come from the platform — `Locale` and `TimeZone` are native
      * APIs, and this module has no `expect`/`actual` (kmp-arch-v2).
      */
-    fun defaultFor(deviceRegion: String?, timeZoneId: String?): DialCode =
-        forRegion(deviceRegion) ?: forRegion(regionForTimeZone(timeZoneId)) ?: fallback
+    fun defaultFor(deviceRegion: String?, timeZoneId: String?): DialCode = forRegion(deviceRegion) ?: forRegion(regionForTimeZone(timeZoneId)) ?: fallback
 
     /**
      * A best-effort region for an IANA time zone id.

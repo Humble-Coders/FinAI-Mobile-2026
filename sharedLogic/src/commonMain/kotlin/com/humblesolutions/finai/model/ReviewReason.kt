@@ -24,11 +24,11 @@ enum class ReviewReason(val wire: String) {
      * A reason this build does not know. The row still needs review — only the
      * wording is unknown — so it is never read as "nothing to check".
      */
-    UNKNOWN("");
+    UNKNOWN(""),
+    ;
 
     companion object {
-        fun fromWire(value: String?): ReviewReason =
-            entries.firstOrNull { it != UNKNOWN && it.wire == value } ?: UNKNOWN
+        fun fromWire(value: String?): ReviewReason = entries.firstOrNull { it != UNKNOWN && it.wire == value } ?: UNKNOWN
     }
 }
 

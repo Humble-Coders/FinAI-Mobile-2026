@@ -20,8 +20,7 @@ import kotlin.test.assertTrue
  */
 class StatementImportFlowTest {
 
-    private fun failureFor(error: Throwable): ImportFailure =
-        assertNotNull(StatementImportFlow.problemFor(error), "$error").failure
+    private fun failureFor(error: Throwable): ImportFailure = assertNotNull(StatementImportFlow.problemFor(error), "$error").failure
 
     @Test
     fun everyServerRefusalTheTicketNamesHasItsOwnMessage() {

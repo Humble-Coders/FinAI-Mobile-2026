@@ -90,8 +90,7 @@ data class ReviewUiState(
 
     fun reasonKeyFor(row: Transaction): String = ReviewQueue.reasonKey(row)
 
-    fun duplicateTextFor(row: Transaction): String? =
-        row.duplicateOf?.let { ReviewQueue.duplicateOf(it, row.currency, locale) }
+    fun duplicateTextFor(row: Transaction): String? = row.duplicateOf?.let { ReviewQueue.duplicateOf(it, row.currency, locale) }
 
     /** The amount as a person reads it, through the shared formatter. */
     fun amountFor(row: Transaction): String = Money.format(row.amount, row.currency, locale)

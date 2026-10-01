@@ -301,8 +301,7 @@ class ReviewViewModel(private val saved: SavedStateHandle) : ViewModel() {
 
     fun openNewCategory() = _uiState.update { it.copy(newCategoryName = "", newCategoryErrorKey = null) }
 
-    fun onNewCategoryName(name: String) =
-        _uiState.update { it.copy(newCategoryName = name, newCategoryErrorKey = null) }
+    fun onNewCategoryName(name: String) = _uiState.update { it.copy(newCategoryName = name, newCategoryErrorKey = null) }
 
     fun cancelNewCategory() {
         if (_uiState.value.creatingCategory) return
@@ -469,9 +468,8 @@ class ReviewViewModel(private val saved: SavedStateHandle) : ViewModel() {
         saved[KEY_CATEGORY] = state.draft.categoryId
     }
 
-    private fun clearCorrection() =
-        listOf(KEY_EDITING, KEY_DATE, KEY_AMOUNT, KEY_DIRECTION, KEY_DESCRIPTION, KEY_CATEGORY)
-            .forEach { saved.remove<Any>(it) }
+    private fun clearCorrection() = listOf(KEY_EDITING, KEY_DATE, KEY_AMOUNT, KEY_DIRECTION, KEY_DESCRIPTION, KEY_CATEGORY)
+        .forEach { saved.remove<Any>(it) }
 
     /**
      * Put the half-typed correction back, once the queue has loaded and the

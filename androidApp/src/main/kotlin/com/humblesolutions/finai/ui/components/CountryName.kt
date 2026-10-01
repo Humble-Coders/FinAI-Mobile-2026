@@ -11,7 +11,6 @@ import java.util.Locale
  * that is the same everywhere (the dialling codes); the platform owns the
  * words.
  */
-fun countryName(region: String): String =
-    Locale.Builder().setRegion(region).build()
-        .getDisplayCountry(Locale.getDefault())
-        .ifBlank { region }
+fun countryName(region: String): String = Locale.Builder().setRegion(region).build()
+    .getDisplayCountry(Locale.getDefault())
+    .ifBlank { region }

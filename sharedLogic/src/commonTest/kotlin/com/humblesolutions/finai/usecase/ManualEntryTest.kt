@@ -29,8 +29,7 @@ class ManualEntryTest {
         description = "Tim Hortons",
     )
 
-    private fun reason(draft: ManualEntryDraft, currency: String? = "CAD") =
-        ManualEntry.blockingReason(draft, currency, today)
+    private fun reason(draft: ManualEntryDraft, currency: String? = "CAD") = ManualEntry.blockingReason(draft, currency, today)
 
     @Test
     fun aCompleteEntryIsNotBlocked() {

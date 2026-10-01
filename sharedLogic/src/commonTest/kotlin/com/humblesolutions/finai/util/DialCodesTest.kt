@@ -88,8 +88,14 @@ class DialCodesTest {
         // A zone pointing at a region with no dial code would fall through to
         // the fallback silently, which would look like the mapping working.
         for (zone in listOf(
-            "America/Toronto", "America/New_York", "Europe/London", "Asia/Kolkata",
-            "Australia/Sydney", "Africa/Lagos", "America/Sao_Paulo", "Pacific/Auckland",
+            "America/Toronto",
+            "America/New_York",
+            "Europe/London",
+            "Asia/Kolkata",
+            "Australia/Sydney",
+            "Africa/Lagos",
+            "America/Sao_Paulo",
+            "Pacific/Auckland",
         )) {
             val resolved = DialCodes.defaultFor(null, zone)
             assertNotNull(resolved, zone)

@@ -65,8 +65,7 @@ class KtorManualEntryRepositoriesTest {
         },
     )
 
-    private fun sentBody() =
-        Json.parseToJsonElement((assertNotNull(seen).body as TextContent).text).jsonObject
+    private fun sentBody() = Json.parseToJsonElement((assertNotNull(seen).body as TextContent).text).jsonObject
 
     @Test
     fun aTransactionIsPostedWithTheApiSFieldNames() = runTest {

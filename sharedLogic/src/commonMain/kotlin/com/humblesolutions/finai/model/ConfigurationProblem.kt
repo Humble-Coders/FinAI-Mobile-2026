@@ -8,13 +8,17 @@ import com.humblesolutions.finai.i18n.Strings
  * auth and render [messageKey], rather than crashing.
  */
 enum class ConfigurationProblem(val messageKey: String) {
-    SUPABASE_NOT_CONFIGURED(Strings.error_not_configured);
+    SUPABASE_NOT_CONFIGURED(Strings.error_not_configured),
+    ;
 
     companion object {
         /** Pure, so it can be tested without the generated build configuration. */
-        fun check(supabaseUrl: String, anonKey: String): ConfigurationProblem? =
-            if (supabaseUrl.isBlank() || anonKey.isBlank() ||
-                supabaseUrl.contains("REPLACE_ME") || anonKey.contains("REPLACE_ME")
-            ) SUPABASE_NOT_CONFIGURED else null
+        fun check(supabaseUrl: String, anonKey: String): ConfigurationProblem? = if (supabaseUrl.isBlank() || anonKey.isBlank() ||
+            supabaseUrl.contains("REPLACE_ME") || anonKey.contains("REPLACE_ME")
+        ) {
+            SUPABASE_NOT_CONFIGURED
+        } else {
+            null
+        }
     }
 }

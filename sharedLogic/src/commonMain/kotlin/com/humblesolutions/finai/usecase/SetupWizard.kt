@@ -115,19 +115,22 @@ object SetupWizard {
         val income = incomeBlock(draft, fractionDigits)
         return when (step) {
             SetupStep.INCOME -> income
-            SetupStep.EXPENSES -> income
-                ?: expenseBlock(draft, fractionDigits)
-                ?: draft.obligations.firstNotNullOfOrNull { itemBlock(it, fractionDigits) }
-            SetupStep.PORTFOLIO -> income
-                ?: expenseBlock(draft, fractionDigits)
-                ?: draft.debts.firstNotNullOfOrNull { itemBlock(it, fractionDigits, debt = true) }
-                ?: draft.investments.firstNotNullOfOrNull { itemBlock(it, fractionDigits) }
+
+            SetupStep.EXPENSES ->
+                income
+                    ?: expenseBlock(draft, fractionDigits)
+                    ?: draft.obligations.firstNotNullOfOrNull { itemBlock(it, fractionDigits) }
+
+            SetupStep.PORTFOLIO ->
+                income
+                    ?: expenseBlock(draft, fractionDigits)
+                    ?: draft.debts.firstNotNullOfOrNull { itemBlock(it, fractionDigits, debt = true) }
+                    ?: draft.investments.firstNotNullOfOrNull { itemBlock(it, fractionDigits) }
         }
     }
 
     /** Why the gate cannot clear yet — the two mandatory figures only — or null. */
-    fun mandatoryBlock(draft: SetupDraft, fractionDigits: Int = 2): SetupBlock? =
-        incomeBlock(draft, fractionDigits) ?: expenseBlock(draft, fractionDigits)
+    fun mandatoryBlock(draft: SetupDraft, fractionDigits: Int = 2): SetupBlock? = incomeBlock(draft, fractionDigits) ?: expenseBlock(draft, fractionDigits)
 
     /**
      * What the notice under Continue should say on [step], or null.
@@ -150,14 +153,11 @@ object SetupWizard {
      * lists and finishes the wizard, so a missing figure would finish it with
      * the gate still outstanding.
      */
-    fun canSkip(step: SetupStep, draft: SetupDraft, fractionDigits: Int = 2): Boolean =
-        step.isOptional && mandatoryBlock(draft, fractionDigits) == null
+    fun canSkip(step: SetupStep, draft: SetupDraft, fractionDigits: Int = 2): Boolean = step.isOptional && mandatoryBlock(draft, fractionDigits) == null
 
-    private fun incomeBlock(draft: SetupDraft, fractionDigits: Int): SetupBlock? =
-        amountBlock(draft.income, fractionDigits, SetupBlock.INCOME_MISSING, SetupBlock.INCOME_NOT_MONEY)
+    private fun incomeBlock(draft: SetupDraft, fractionDigits: Int): SetupBlock? = amountBlock(draft.income, fractionDigits, SetupBlock.INCOME_MISSING, SetupBlock.INCOME_NOT_MONEY)
 
-    private fun expenseBlock(draft: SetupDraft, fractionDigits: Int): SetupBlock? =
-        amountBlock(draft.monthlyExpense, fractionDigits, SetupBlock.EXPENSE_MISSING, SetupBlock.EXPENSE_NOT_MONEY)
+    private fun expenseBlock(draft: SetupDraft, fractionDigits: Int): SetupBlock? = amountBlock(draft.monthlyExpense, fractionDigits, SetupBlock.EXPENSE_MISSING, SetupBlock.EXPENSE_NOT_MONEY)
 
     /** Why a single row cannot be kept, or null. Used by the row's own editor. */
     fun itemBlock(item: ItemDraft, fractionDigits: Int = 2, debt: Boolean = false): SetupBlock? {

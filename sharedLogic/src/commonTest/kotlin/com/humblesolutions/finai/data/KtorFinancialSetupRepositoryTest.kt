@@ -39,15 +39,14 @@ private class SetupTokens : SessionTokenSource {
 /** The wizard's two calls: what comes back, what goes out, and how refusals read. */
 class KtorFinancialSetupRepositoryTest {
 
-    private fun repository(handler: MockRequestHandler) =
-        KtorFinancialSetupRepository(
-            FinAiHttpClient.create(
-                baseUrl = "https://api.example.com",
-                tokens = SetupTokens(),
-                logging = false,
-                engine = MockEngine(handler),
-            ),
-        )
+    private fun repository(handler: MockRequestHandler) = KtorFinancialSetupRepository(
+        FinAiHttpClient.create(
+            baseUrl = "https://api.example.com",
+            tokens = SetupTokens(),
+            logging = false,
+            engine = MockEngine(handler),
+        ),
+    )
 
     @Test
     fun `it reads what is saved`() = runTest {

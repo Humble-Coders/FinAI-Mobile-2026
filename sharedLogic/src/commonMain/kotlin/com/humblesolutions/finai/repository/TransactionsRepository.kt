@@ -6,8 +6,8 @@ import com.humblesolutions.finai.model.DeleteOutcome
 import com.humblesolutions.finai.model.NewTransaction
 import com.humblesolutions.finai.model.PatchOutcome
 import com.humblesolutions.finai.model.ReviewPage
-import com.humblesolutions.finai.model.TransactionPatch
 import com.humblesolutions.finai.model.Transaction
+import com.humblesolutions.finai.model.TransactionPatch
 import kotlin.coroutines.cancellation.CancellationException
 
 /**

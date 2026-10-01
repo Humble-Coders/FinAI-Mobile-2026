@@ -64,8 +64,7 @@ object StatementRedactor {
     private const val MASK = "••••"
 
     /** Whether a line reads as a transaction: a date and an amount together. */
-    fun looksLikeATransaction(line: String): Boolean =
-        AMOUNT.containsMatchIn(line) && DATE.containsMatchIn(line)
+    fun looksLikeATransaction(line: String): Boolean = AMOUNT.containsMatchIn(line) && DATE.containsMatchIn(line)
 
     /**
      * What redaction produced, and what it cost.
@@ -100,8 +99,11 @@ object StatementRedactor {
             // signal there is. Later pages repeat a short bank header, which the
             // identifier rules below handle on their own.
             val start =
-                if (page.index == 0) lines.indexOfFirst { looksLikeATransaction(it) }
-                else 0
+                if (page.index == 0) {
+                    lines.indexOfFirst { looksLikeATransaction(it) }
+                } else {
+                    0
+                }
 
             if (start < 0) {
                 dropped += lines.size
@@ -124,10 +126,9 @@ object StatementRedactor {
         return Redaction(text = kept.joinToString("\n").trim(), droppedLines = dropped)
     }
 
-    private fun carriesAnIdentifier(line: String): Boolean =
-        EMAIL.containsMatchIn(line) ||
-            PHONE.containsMatchIn(line) ||
-            POSTAL_CODE.containsMatchIn(line)
+    private fun carriesAnIdentifier(line: String): Boolean = EMAIL.containsMatchIn(line) ||
+        PHONE.containsMatchIn(line) ||
+        POSTAL_CODE.containsMatchIn(line)
 
     /** `06012-5004321` becomes `••••4321`: enough to recognise, not to use. */
     private fun mask(line: String): String {
@@ -150,11 +151,13 @@ object StatementRedactor {
         // CI builds iOS without running the shared tests on it, so a lookaround
         // that passed here could fail only on a user's phone.
         return TOKEN.replace(masked) { token ->
-            if (AMOUNT_TOKEN.matches(token.value)) token.value
-            else TOKEN_DIGIT_RUN.replace(token.value) { lastFour(it.value) }
+            if (AMOUNT_TOKEN.matches(token.value)) {
+                token.value
+            } else {
+                TOKEN_DIGIT_RUN.replace(token.value) { lastFour(it.value) }
+            }
         }
     }
 
-    private fun lastFour(run: String): String =
-        MASK + run.filter { it.isDigit() }.takeLast(4)
+    private fun lastFour(run: String): String = MASK + run.filter { it.isDigit() }.takeLast(4)
 }

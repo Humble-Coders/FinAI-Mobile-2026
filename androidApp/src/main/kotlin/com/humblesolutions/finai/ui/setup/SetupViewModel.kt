@@ -330,8 +330,7 @@ class SetupViewModel : ViewModel() {
         }.also { saver = it }
     }
 
-    private fun payloadOf(state: SetupUiState): FinancialSetup =
-        SetupWizard.payload(state.draft, state.currency, state.fractionDigits)
+    private fun payloadOf(state: SetupUiState): FinancialSetup = SetupWizard.payload(state.draft, state.currency, state.fractionDigits)
 
     private fun next(step: SetupStep): SetupStep = when (step) {
         SetupStep.INCOME -> SetupStep.EXPENSES

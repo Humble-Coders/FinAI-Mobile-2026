@@ -110,7 +110,6 @@ fun PhoneScreen(
         // is held here with no route back to the welcome screen.
         TextButton(onClick = onSignOut, enabled = !state.busy) { Text(strings(Strings.action_sign_out)) }
     }
-
 }
 
 /**

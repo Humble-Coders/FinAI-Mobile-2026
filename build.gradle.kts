@@ -10,7 +10,6 @@ plugins {
     alias(libs.plugins.kotlinSerialization) apply false
 }
 
-
 // ── Formatting ───────────────────────────────────────────────────────────────
 //
 // `./gradlew ktlintCheck` to see what is wrong, `ktlintFormat` to fix what can
@@ -41,29 +40,32 @@ private val ktlintTargets = listOf(
     "*.kts",
 )
 
-private fun Project.ktlintTask(name: String, format: Boolean) =
-    tasks.register<JavaExec>(name) {
-        group = "verification"
-        description = if (format) "Fixes what ktlint can fix." else "Checks formatting with ktlint."
-        classpath = ktlint
-        mainClass.set("com.pinterest.ktlint.Main")
-        // `--relative` so a failure names `androidApp/src/...` rather than an
-        // absolute path that differs between a laptop and a runner.
-        args = buildList {
-            if (format) add("--format")
-            add("--relative")
-            addAll(ktlintTargets)
-        }
-        // ktlint reads .editorconfig and the sources; Gradle needs to know, or
-        // the configuration cache will serve a stale result after an edit.
-        inputs.files(fileTree(rootDir) { include(ktlintTargets); exclude("**/build/**") })
-            .withPropertyName("sources")
-            .withPathSensitivity(PathSensitivity.RELATIVE)
-        inputs.file(rootProject.file(".editorconfig")).withPropertyName("editorconfig")
-        // JDK 17+ closed off the reflection ktlint's formatter uses.
-        jvmArgs("--add-opens=java.base/java.lang=ALL-UNNAMED")
+private fun Project.ktlintTask(name: String, format: Boolean) = tasks.register<JavaExec>(name) {
+    group = "verification"
+    description = if (format) "Fixes what ktlint can fix." else "Checks formatting with ktlint."
+    classpath = ktlint
+    mainClass.set("com.pinterest.ktlint.Main")
+    // `--relative` so a failure names `androidApp/src/...` rather than an
+    // absolute path that differs between a laptop and a runner.
+    args = buildList {
+        if (format) add("--format")
+        add("--relative")
+        addAll(ktlintTargets)
     }
+    // ktlint reads .editorconfig and the sources; Gradle needs to know, or
+    // the configuration cache will serve a stale result after an edit.
+    inputs.files(
+        fileTree(rootDir) {
+            include(ktlintTargets)
+            exclude("**/build/**")
+        },
+    )
+        .withPropertyName("sources")
+        .withPathSensitivity(PathSensitivity.RELATIVE)
+    inputs.file(rootProject.file(".editorconfig")).withPropertyName("editorconfig")
+    // JDK 17+ closed off the reflection ktlint's formatter uses.
+    jvmArgs("--add-opens=java.base/java.lang=ALL-UNNAMED")
+}
 
 ktlintTask("ktlintCheck", format = false)
 ktlintTask("ktlintFormat", format = true)
-

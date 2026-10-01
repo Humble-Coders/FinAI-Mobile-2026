@@ -27,7 +27,8 @@ enum class AccountKind(val wire: String) {
     CASH("cash"),
 
     /** A kind this build does not know yet. Never offered when creating one. */
-    UNKNOWN("");
+    UNKNOWN(""),
+    ;
 
     /** The string naming this kind, so both apps label it alike. Null for [UNKNOWN]. */
     val labelKey: String?
@@ -45,8 +46,7 @@ enum class AccountKind(val wire: String) {
         /** The kinds a person may choose from — everything but [UNKNOWN]. */
         val choosable: List<AccountKind> get() = entries.filter { it != UNKNOWN }
 
-        fun fromWire(value: String?): AccountKind =
-            entries.firstOrNull { it != UNKNOWN && it.wire == value } ?: UNKNOWN
+        fun fromWire(value: String?): AccountKind = entries.firstOrNull { it != UNKNOWN && it.wire == value } ?: UNKNOWN
     }
 }
 

@@ -22,11 +22,11 @@ enum class TransactionDirection(val wire: String) {
      * changes a balance. Never sent — [com.humblesolutions.finai.usecase.ManualEntry]
      * builds requests only from [DEBIT] or [CREDIT].
      */
-    UNKNOWN("");
+    UNKNOWN(""),
+    ;
 
     companion object {
-        fun fromWire(value: String?): TransactionDirection =
-            entries.firstOrNull { it != UNKNOWN && it.wire == value } ?: UNKNOWN
+        fun fromWire(value: String?): TransactionDirection = entries.firstOrNull { it != UNKNOWN && it.wire == value } ?: UNKNOWN
     }
 }
 

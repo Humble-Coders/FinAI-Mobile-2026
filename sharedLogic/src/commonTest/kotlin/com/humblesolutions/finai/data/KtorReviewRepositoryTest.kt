@@ -45,18 +45,17 @@ class KtorReviewRepositoryTest {
 
     private val seen = mutableListOf<HttpRequestData>()
 
-    private fun repository(status: HttpStatusCode = HttpStatusCode.OK, body: String = PAGE) =
-        KtorTransactionsRepository(
-            FinAiHttpClient.create(
-                "https://api.example.com",
-                ReviewTokens(),
-                false,
-                engine = MockEngine { request ->
-                    seen += request
-                    respond(body, status, reviewJson)
-                },
-            ),
-        )
+    private fun repository(status: HttpStatusCode = HttpStatusCode.OK, body: String = PAGE) = KtorTransactionsRepository(
+        FinAiHttpClient.create(
+            "https://api.example.com",
+            ReviewTokens(),
+            false,
+            engine = MockEngine { request ->
+                seen += request
+                respond(body, status, reviewJson)
+            },
+        ),
+    )
 
     private fun sent() = (assertNotNull(seen.lastOrNull()).body as TextContent).text
 

@@ -23,5 +23,4 @@ fun strings(key: String): String = LocalizationRegistry.get(key)
  */
 @Composable
 @ReadOnlyComposable
-fun strings(key: String, vararg args: String): String =
-    LocalizationRegistry.format(key, args.toList())
+fun strings(key: String, vararg args: String): String = LocalizationRegistry.format(key, args.toList())

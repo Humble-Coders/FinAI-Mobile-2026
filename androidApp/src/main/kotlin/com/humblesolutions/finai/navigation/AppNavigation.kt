@@ -33,8 +33,6 @@ import com.humblesolutions.finai.ui.home.HomeScreen
 import com.humblesolutions.finai.ui.manualentry.ManualEntryActions
 import com.humblesolutions.finai.ui.manualentry.ManualEntryScreen
 import com.humblesolutions.finai.ui.manualentry.ManualEntryViewModel
-import com.humblesolutions.finai.ui.review.ReviewRoute
-import com.humblesolutions.finai.ui.statementimport.StatementImportRoute
 import com.humblesolutions.finai.ui.onboarding.CodeScreen
 import com.humblesolutions.finai.ui.onboarding.ConsentScreen
 import com.humblesolutions.finai.ui.onboarding.FailedScreen
@@ -47,8 +45,10 @@ import com.humblesolutions.finai.ui.onboarding.ResetRequestScreen
 import com.humblesolutions.finai.ui.onboarding.SplashScreen
 import com.humblesolutions.finai.ui.onboarding.UpdateRequiredScreen
 import com.humblesolutions.finai.ui.onboarding.WelcomeScreen
+import com.humblesolutions.finai.ui.review.ReviewRoute
 import com.humblesolutions.finai.ui.setup.SetupScreen
 import com.humblesolutions.finai.ui.setup.SetupViewModel
+import com.humblesolutions.finai.ui.statementimport.StatementImportRoute
 import com.humblesolutions.finai.usecase.Destination
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
@@ -117,6 +117,7 @@ private fun AppContent(viewModel: OnboardingViewModel) {
             ResetRequestScreen(state, viewModel::onEmailChange, viewModel::requestResetCode, viewModel::cancelReset)
             return
         }
+
         ResetStage.CODE -> {
             BackHandler { viewModel.startReset() }
             CodeScreen(
@@ -130,11 +131,13 @@ private fun AppContent(viewModel: OnboardingViewModel) {
             )
             return
         }
+
         ResetStage.NEW_PASSWORD -> {
             BackHandler { viewModel.cancelReset() }
             NewPasswordScreen(state, viewModel::onPasswordChange, viewModel::saveNewPassword, viewModel::cancelReset)
             return
         }
+
         null -> Unit
     }
 
@@ -182,21 +185,27 @@ private fun AppContent(viewModel: OnboardingViewModel) {
 
         is Destination.Step -> when (destination.step) {
             OnboardingStep.PHONE -> PhoneOrCode(viewModel)
+
             OnboardingStep.REGION -> RegionScreen(state, viewModel::setRegion)
+
             OnboardingStep.CONSENT -> ConsentScreen(
                 state = state,
                 onChangeRegion = { changingRegion = true },
                 onAccept = viewModel::acceptTerms,
             )
+
             OnboardingStep.FINANCIAL_SETUP -> SetupRoute(
                 userId = state.me?.user?.id.orEmpty(),
                 onFinished = viewModel::loadMe,
             )
+
             OnboardingStep.UNKNOWN -> UpdateRequiredScreen()
         }
 
         Destination.UpdateRequired -> UpdateRequiredScreen()
+
         Destination.Home -> HomeOrEntry(userId = state.me?.user?.id.orEmpty(), onSignOut = viewModel::signOut)
+
         is Destination.Failed -> FailedScreen(
             messageKey = destination.error.messageKey,
             onRetry = viewModel::retry,
@@ -265,15 +274,19 @@ private fun HomeOrEntry(userId: String, onSignOut: () -> Unit) {
             onAddTransaction = { route = HomeRoute.ADD },
             onSignOut = onSignOut,
         )
+
         HomeRoute.ADD -> ManualEntryRoute(userId = userId, fromUnreadable = false, onClose = { route = HomeRoute.HOME })
+
         HomeRoute.ADD_AFTER_IMPORT ->
             ManualEntryRoute(userId = userId, fromUnreadable = true, onClose = { route = HomeRoute.HOME })
+
         HomeRoute.IMPORT -> StatementImportRoute(
             userId = userId,
             onClose = { route = HomeRoute.HOME },
             onTypeInstead = { route = HomeRoute.ADD_AFTER_IMPORT },
             onReview = { route = HomeRoute.REVIEW },
         )
+
         HomeRoute.REVIEW -> ReviewRoute(userId = userId, onClose = { route = HomeRoute.HOME })
     }
 }

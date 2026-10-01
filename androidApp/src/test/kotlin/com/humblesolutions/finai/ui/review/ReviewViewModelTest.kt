@@ -19,8 +19,8 @@ import com.humblesolutions.finai.repository.CategoriesRepository
 import com.humblesolutions.finai.repository.TransactionsRepository
 import com.humblesolutions.finai.usecase.CorrectionBlock
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceTimeBy
@@ -628,8 +628,7 @@ class ReviewViewModelTest {
 
     // ── Fakes ───────────────────────────────────────────────────────────
 
-    private fun restart(saved: SavedStateHandle) =
-        SavedStateHandle(saved.keys().associateWith { saved.get<Any?>(it) })
+    private fun restart(saved: SavedStateHandle) = SavedStateHandle(saved.keys().associateWith { saved.get<Any?>(it) })
 
     private fun repositories(
         transactions: FakeTransactions = FakeTransactions(pages = listOf(ReviewPage())),

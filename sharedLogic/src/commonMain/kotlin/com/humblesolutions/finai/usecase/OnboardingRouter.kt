@@ -38,9 +38,13 @@ sealed class Destination {
         override val screen: Screen
             get() = when (step) {
                 OnboardingStep.PHONE -> Screen.PHONE
+
                 OnboardingStep.REGION -> Screen.REGION
+
                 OnboardingStep.CONSENT -> Screen.CONSENT
+
                 OnboardingStep.FINANCIAL_SETUP -> Screen.FINANCIAL_SETUP
+
                 // The router never builds this, but the type allows it.
                 OnboardingStep.UNKNOWN -> Screen.UPDATE_REQUIRED
             }
@@ -110,7 +114,9 @@ object OnboardingRouter {
         failure: ApiException?,
     ): Destination = when (session) {
         SessionState.LOADING -> Destination.Splash
+
         SessionState.SIGNED_OUT -> Destination.Welcome
+
         // A failed refresh keeps the session and retries, so it routes like a
         // signed-in user. Whether anything can actually be loaded is the
         // failure's business, below.

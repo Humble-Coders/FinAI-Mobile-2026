@@ -88,10 +88,9 @@ data class SetupUiState(
      * The row shows the figure rather than how many rows are behind it: the
      * total is what the user came to check.
      */
-    fun totalOf(list: ItemList): String? =
-        SetupWizard.total(itemsOf(list), fractionDigits, debt = list == ItemList.DEBTS)
-            ?.let { Money.format(it, currency, locale) }
-            ?.ifBlank { null }
+    fun totalOf(list: ItemList): String? = SetupWizard.total(itemsOf(list), fractionDigits, debt = list == ItemList.DEBTS)
+        ?.let { Money.format(it, currency, locale) }
+        ?.ifBlank { null }
 
     /** A row still being filled in blocks keeping the list. */
     fun rowBlock(index: Int): SetupBlock? {

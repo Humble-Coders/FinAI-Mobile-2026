@@ -6,6 +6,5 @@ internal object TokenFreshness {
     /** Refresh this far ahead of expiry, so a token cannot lapse while a request is in flight. */
     const val MARGIN_SECONDS: Long = 30
 
-    fun isStale(expiresAtEpochSeconds: Long, nowEpochSeconds: Long, marginSeconds: Long = MARGIN_SECONDS): Boolean =
-        expiresAtEpochSeconds - marginSeconds <= nowEpochSeconds
+    fun isStale(expiresAtEpochSeconds: Long, nowEpochSeconds: Long, marginSeconds: Long = MARGIN_SECONDS): Boolean = expiresAtEpochSeconds - marginSeconds <= nowEpochSeconds
 }

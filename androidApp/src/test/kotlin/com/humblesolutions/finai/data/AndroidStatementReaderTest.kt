@@ -1,17 +1,17 @@
 package com.humblesolutions.finai.data
 
 import android.net.Uri
+import com.humblesolutions.finai.config.StatementLimits
 import com.humblesolutions.finai.model.SourceKind
 import com.humblesolutions.finai.repository.StatementReadException
 import com.humblesolutions.finai.usecase.StatementPeriod
 import com.humblesolutions.finai.usecase.StatementRedactor
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
-import com.humblesolutions.finai.config.StatementLimits
 import com.tom_roush.pdfbox.pdmodel.PDDocument
-import com.tom_roush.pdfbox.pdmodel.encryption.AccessPermission
-import com.tom_roush.pdfbox.pdmodel.encryption.StandardProtectionPolicy
 import com.tom_roush.pdfbox.pdmodel.PDPage
 import com.tom_roush.pdfbox.pdmodel.PDPageContentStream
+import com.tom_roush.pdfbox.pdmodel.encryption.AccessPermission
+import com.tom_roush.pdfbox.pdmodel.encryption.StandardProtectionPolicy
 import com.tom_roush.pdfbox.pdmodel.font.PDType1Font
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -22,13 +22,13 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
-import org.robolectric.annotation.Config
 import org.robolectric.RuntimeEnvironment
+import org.robolectric.annotation.Config
 import java.io.File
+import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
-import kotlin.test.assertEquals
 
 /**
  * The text-layer path, end to end on the JVM.

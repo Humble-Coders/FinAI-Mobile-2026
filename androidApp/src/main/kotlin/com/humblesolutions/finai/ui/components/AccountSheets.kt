@@ -56,7 +56,6 @@ import com.humblesolutions.finai.ui.strings
 import com.humblesolutions.finai.usecase.NewAccountBlock
 import com.humblesolutions.finai.usecase.NewAccountDraft
 
-
 /**
  * A chosen chip is drawn in the inverse surface — not the accent, which belongs
  * to Save alone — and both come from theme tokens defined for light and dark.

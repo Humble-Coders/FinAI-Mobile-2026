@@ -21,8 +21,7 @@ sealed class ApiException(message: String, cause: Throwable? = null) : Exception
     }
 
     /** The server refused [feature] for this household; [reason] says why. */
-    class FeatureUnavailable(val feature: String, val reason: FeatureReason) :
-        ApiException("feature unavailable: $feature (${reason.wire})") {
+    class FeatureUnavailable(val feature: String, val reason: FeatureReason) : ApiException("feature unavailable: $feature (${reason.wire})") {
         override val messageKey: String = Strings.error_feature_unavailable
     }
 
@@ -104,8 +103,7 @@ sealed class ApiException(message: String, cause: Throwable? = null) : Exception
      * `allow_duplicate`) or cancel. Null only if a server that predates the
      * amended 409 answers without the match.
      */
-    class DuplicateTransaction(val match: DuplicateMatch?) :
-        ApiException("transaction duplicates an existing one") {
+    class DuplicateTransaction(val match: DuplicateMatch?) : ApiException("transaction duplicates an existing one") {
         override val messageKey: String = Strings.manual_entry_duplicate_title
     }
 
@@ -150,8 +148,7 @@ sealed class ApiException(message: String, cause: Throwable? = null) : Exception
      * refused rather than recorded against text the user never read. Reload the
      * terms and ask again; [currentVersion] is the one now in force.
      */
-    class TermsChanged(val currentVersion: String?) :
-        ApiException("terms version mismatch") {
+    class TermsChanged(val currentVersion: String?) : ApiException("terms version mismatch") {
         override val messageKey: String = Strings.error_terms_changed
     }
 
@@ -202,8 +199,7 @@ sealed class ApiException(message: String, cause: Throwable? = null) : Exception
     }
 
     /** This month's imports are used up (429). [resetsAt] is an ISO instant, or null. */
-    class ImportQuotaExceeded(val limit: Int?, val resetsAt: String?) :
-        ApiException("import quota exceeded") {
+    class ImportQuotaExceeded(val limit: Int?, val resetsAt: String?) : ApiException("import quota exceeded") {
         override val messageKey: String = Strings.import_quota_exceeded
     }
 
@@ -235,8 +231,7 @@ sealed class ApiException(message: String, cause: Throwable? = null) : Exception
     }
 
     /** No response arrived: offline, timed out, DNS or TLS failure. */
-    class Network(cause: Throwable) :
-        ApiException("network failure: ${cause::class.simpleName}", cause) {
+    class Network(cause: Throwable) : ApiException("network failure: ${cause::class.simpleName}", cause) {
         override val messageKey: String = Strings.error_network
     }
 
@@ -246,8 +241,7 @@ sealed class ApiException(message: String, cause: Throwable? = null) : Exception
     }
 
     /** A response this build cannot interpret: an unexpected status, or a body that would not decode. */
-    class Unexpected(val status: Int?, cause: Throwable? = null) :
-        ApiException("unexpected response" + (status?.let { " $it" } ?: ""), cause) {
+    class Unexpected(val status: Int?, cause: Throwable? = null) : ApiException("unexpected response" + (status?.let { " $it" } ?: ""), cause) {
         override val messageKey: String = Strings.error_unexpected
     }
 }
