@@ -28,7 +28,7 @@ specific places (below).
 |---|---|
 | `.editorconfig` *(new)* | The whole configuration. Sets the code style, and disables two rules where the rule is wrong here, not the code. |
 | `gradle/libs.versions.toml` | Pins `ktlint = "1.8.0"` and adds `ktlint-cli`, so the formatter is versioned like every other dependency. |
-| `build.gradle.kts` | `ktlintCheck` / `ktlintFormat` as two `JavaExec` tasks over the CLI. |
+| `build.gradle.kts` | `ktlintCheck` / `ktlintFormat` as two `JavaExec` tasks over the CLI, covering `androidApp/src`, `sharedLogic/src` and every `**/*.kts`. |
 
 Two settings in `.editorconfig` carry the weight:
 
@@ -88,7 +88,9 @@ itself says.
 - **`.github/dependabot.yml`** — not in the ticket, added because pinning
   without it is a trap: a SHA never moves, so an upstream fix never arrives
   either. Monthly, grouped into one PR, actions only. Dependabot rewrites the
-  SHA and the comment together.
+  SHA and the comment together. Two `directories` entries, not one `directory`:
+  `/` covers `.github/workflows/` and a ROOT `action.yml` only, so the
+  composite action at `.github/actions/setup-build/` needs its own glob.
 - **actionlint, first step** — a wrong workflow is wrong before anything is
   built, and the check costs seconds. Installed from the release tarball with
   its SHA-256 verified, rather than via a third-party action: the step arguing
@@ -190,3 +192,30 @@ pass. A deliberately wrong digest aborts the step before the lint runs.
 - **The `# v7` comments are maintained by hand if Dependabot never runs.** A
   SHA with a stale comment is worse than no comment; whoever bumps one by hand
   should update both halves.
+
+## Review round 1 — what changed
+
+Four fixes, two of them cases of the PR only half doing its own job.
+
+- **ktlint was skipping two of the four build files.** `*.kts` is not
+  recursive; it matched the repository root and missed `androidApp/` and
+  `sharedLogic/`. Caught by planting a violation in
+  `androidApp/build.gradle.kts` and watching the check pass. Now `**/*.kts`
+  with `!**/build/**`. The two newly covered files needed formatting; that is
+  the whole of their diff.
+- **Dependabot was skipping the composite action.** `directory: "/"` means
+  `.github/workflows/` plus a ROOT `action.yml`, and ours is nested, so
+  `setup-java` and `setup-gradle` would never have been bumped — silently.
+  Now `directories` (only the plural globs) with `/` and
+  `/.github/actions/*`.
+- **`CLAUDE.md`'s done-rule and verification matrix now name `ktlintCheck`**,
+  so following the doc no longer ends in a red build.
+- **`ktlintCheck` is now up-to-date-able.** It had inputs but no outputs, so it
+  re-ran every time and the inputs bought nothing. A marker file fixes it:
+  second run is UP-TO-DATE in 378 ms against 4 s. Invalidation was verified,
+  not assumed — a `.kt` edit, a module `.kts` edit and an `.editorconfig`
+  touch each re-run it, and the first two catch a planted violation.
+
+Re-verified after the fixes: `ktlintCheck` passes, 298 shared + 109 Android
+tests with 0 failures, iOS `xcodebuild` succeeds, actionlint clean with
+shellcheck on `PATH`.
