@@ -15,6 +15,7 @@ struct StatementImportView: View {
     let userId: String
     let onClose: () -> Void
     let onTypeInstead: () -> Void
+    let onReview: () -> Void
 
     /// The account, the file and whether a read was under way, kept for the
     /// scene so the app coming back reads the same file again.
@@ -257,11 +258,18 @@ struct StatementImportView: View {
                 ForEach(model.summary, id: \.self) { Text($0) }
             }
             .onAppear { AccessibilityNotification.Announcement(model.summary.joined(separator: ". ")).post() }
-            // The review screen (#32) is not built yet; say where the rows are.
+            // Straight into the review queue when rows are waiting (#32).
             if model.needsReview > 0 {
-                Text(L.t(Strings.shared.import_review_later)).foregroundColor(Brand.textMuted)
+                Text(L.t(Strings.shared.import_review_now)).foregroundColor(Brand.textMuted)
+                GradientButton(title: L.t(Strings.shared.review_entry)) { review() }
+                Button { close() } label: {
+                    Text(L.t(Strings.shared.import_done)).font(.headline).tappableRow(minHeight: 52)
+                }
+                .buttonStyle(.bordered)
+                .tint(.primary)
+            } else {
+                GradientButton(title: L.t(Strings.shared.import_done)) { close() }
             }
-            GradientButton(title: L.t(Strings.shared.import_done)) { close() }
         }
     }
 
@@ -293,6 +301,12 @@ struct StatementImportView: View {
                 Text(thanks).foregroundColor(Brand.textMuted)
             }
         }
+    }
+
+    private func review() {
+        model.discard()
+        stored = model.snapshot
+        onReview()
     }
 
     private func typeInstead() {

@@ -245,7 +245,6 @@ val EnglishStrings: Map<String, String> = mapOf(
     Strings.import_saving to "Saving your transactions…",
     Strings.import_done_title to "Statement imported",
     Strings.import_done to "Done",
-    Strings.import_review_later to "The ones waiting for you are kept, and you can review them once review arrives in the app.",
     Strings.import_review_now to "Some of them need a look from you.",
     Strings.import_failed_title to "We couldn't import this statement",
     Strings.import_try_again to "Try again",
