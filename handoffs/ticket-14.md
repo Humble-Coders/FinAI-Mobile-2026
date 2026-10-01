@@ -111,7 +111,7 @@ git checkout build.gradle.kts
 
 # 3. The reformat changed no behaviour.
 ./gradlew :androidApp:assembleDebug :androidApp:testDebugUnitTest
-./gradlew :sharedLogic:jvmTest
+./gradlew :sharedLogic:testAndroidHostTest
 
 # 4. Blame looks through the reformat.
 git config blame.ignoreRevsFile .git-blame-ignore-revs
