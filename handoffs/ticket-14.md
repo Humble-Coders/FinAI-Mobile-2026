@@ -183,11 +183,16 @@ pass. A deliberately wrong digest aborts the step before the lint runs.
 
 ## Open questions / follow-ups
 
-- **Dependabot may be off at the org level.** The config is enough on its own
-  for a public repository; this one is private, so if no PRs appear in a month,
-  the switch is in the org's settings and belongs to the org owner. Worth
-  checking once, because the pins are only as good as the thing that bumps
-  them.
+- **Check Dependabot once after merge — nothing on this PR can.** Dependabot
+  reads its config only from the default branch, so neither CI nor any local
+  command exercises `.github/dependabot.yml` while it sits on a branch. After
+  merge: Insights → Dependency graph → Dependabot. A malformed `directories`
+  entry surfaces there and nowhere else, which is the same quiet-failure shape
+  the config was added to fix, one level up.
+  - If no PRs appear within the month, the cause is likelier to be that
+    Dependabot is off in the org's settings — this repository is private, and
+    that switch belongs to the org owner. Either way the pins are only as good
+    as the thing that bumps them.
 - **detekt**, if wanted — see above.
 - **The `# v7` comments are maintained by hand if Dependabot never runs.** A
   SHA with a stale comment is worse than no comment; whoever bumps one by hand
