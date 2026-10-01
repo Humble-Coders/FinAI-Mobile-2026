@@ -19,6 +19,10 @@ pdfboxAndroid = "2.0.27.0"
 mlkitText = "16.0.1"
 robolectric = "4.17"
 kotlin = "2.4.10"
+# Formatting, run by the `ktlintCheck` task in the root build (#14). The CLI
+# artifact rather than a third-party Gradle plugin: one fewer thing in the
+# build, pinned here like every other dependency.
+ktlint = "1.8.0"
 material3 = "1.11.0-alpha07"
 supabase = "3.7.0"
 skie = "0.10.14"
@@ -28,6 +32,7 @@ serialization = "1.11.0"
 datetime = "0.8.0"
 
 [libraries]
+ktlint-cli = { module = "com.pinterest.ktlint:ktlint-cli", version.ref = "ktlint" }
 kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
 kotlin-testJunit = { module = "org.jetbrains.kotlin:kotlin-test-junit", version.ref = "kotlin" }
 junit = { module = "junit:junit", version.ref = "junit" }

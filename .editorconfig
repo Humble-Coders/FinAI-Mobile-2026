@@ -1,0 +1,37 @@
+# Editor and ktlint settings, in one place so a developer's IDE and CI agree
+# about what the code should look like (#14).
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 4
+
+[*.{yml,yaml,json}]
+indent_size = 2
+
+[*.md]
+# Two trailing spaces are a line break in Markdown.
+trim_trailing_whitespace = false
+
+[*.{kt,kts}]
+# `intellij_idea`, not ktlint's own `ktlint_official`. The two differ by about
+# 1,500 findings on this codebase, almost all of them ktlint_official's opinions
+# about wrapping — where to break a long signature, where a multiline expression
+# must start. They are defensible and they are not ours, and a rule nobody
+# agrees with is a rule that gets suppressed.
+ktlint_code_style = intellij_idea
+
+# A @Composable function is PascalCase by Compose's own convention: it reads as
+# the thing it draws, not as a verb. ktlint would otherwise flag every screen.
+ktlint_function_naming_ignore_when_annotated_with = Composable
+
+[sharedLogic/src/commonMain/kotlin/com/humblesolutions/finai/i18n/*.kt]
+# `const val manual_entry_title = "manual_entry_title"` is lower case on
+# purpose: the constant's name *is* the wire key, so the two can be read
+# together and a typo in either is obvious. Screaming snake case would put the
+# name and its value out of step on all 300-odd of them.
+ktlint_standard_property-naming = disabled
