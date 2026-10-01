@@ -117,13 +117,6 @@ class ImportStatement(
 }
 
 /**
- * The redacted text is longer than `POST /statements/parse` accepts.
- *
- * Carries lengths, never the text. [messageKey] is the string a screen shows;
- * it tells the user what to do about it rather than quoting a character count
- * at them.
- */
-/**
  * Why the device did not send a statement, in a form a screen can act on.
  *
  * One type to catch for every local refusal, so a screen cannot handle two of
@@ -134,7 +127,13 @@ interface StatementRefusal {
     val messageKey: String
 }
 
-/** The redacted text is longer than `POST /statements/parse` accepts. */
+/**
+ * The redacted text is longer than `POST /statements/parse` accepts.
+ *
+ * Carries lengths, never the text. [messageKey] is the string a screen shows;
+ * it tells the user what to do about it rather than quoting a character count
+ * at them.
+ */
 class StatementTooLong(
     val characters: Int,
     val limit: Int = StatementLimits.MAX_TEXT_CHARS,
