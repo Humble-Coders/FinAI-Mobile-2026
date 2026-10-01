@@ -32,9 +32,7 @@ dependencies {
     ktlint(libs.ktlint.cli)
 }
 
-// Every Kotlin source we own. Generated code is not ours to format, and
-// `build/` holds plenty of it — hence the negation, which matters only for
-// the `.kts` pattern: the `.kt` ones are already confined to `src/`.
+// Every Kotlin source we own.
 //
 // `**/*.kts` rather than `*.kts`. The bare form is not recursive: it matched
 // the two build files at the root and silently skipped `androidApp/` and
@@ -44,8 +42,16 @@ private val ktlintTargets = listOf(
     "androidApp/src/**/*.kt",
     "sharedLogic/src/**/*.kt",
     "**/*.kts",
-    "!**/build/**",
 )
+
+// Generated code is not ours to format and `build/` holds plenty of it. One
+// constant, spelled out separately for each consumer below, because the two
+// do not share a pattern language: ktlint reads a leading `!` as a negation,
+// Gradle's Ant-style `include()` does not and would take it as a literal path
+// that matches nothing. Writing it once and letting each side say it its own
+// way is what stops the next edit from deleting one as "redundant".
+// (a plain `val`: a script body is not top level, so `const` is rejected there)
+private val ktlintExcluded = "**/build/**"
 
 private fun Project.ktlintTask(name: String, format: Boolean) = tasks.register<JavaExec>(name) {
     group = "verification"
@@ -58,6 +64,7 @@ private fun Project.ktlintTask(name: String, format: Boolean) = tasks.register<J
         if (format) add("--format")
         add("--relative")
         addAll(ktlintTargets)
+        add("!$ktlintExcluded")
     }
     // Declaring the inputs is only half of up-to-date checking — a task with
     // no outputs re-runs every time regardless. So give it one: an empty
@@ -66,7 +73,7 @@ private fun Project.ktlintTask(name: String, format: Boolean) = tasks.register<J
     // `build` is the kind of tax nobody attributes to the thing causing it.
     val sources = fileTree(rootDir) {
         include(ktlintTargets)
-        exclude("**/build/**")
+        exclude(ktlintExcluded)
     }
     inputs.files(sources)
         .withPropertyName("sources")

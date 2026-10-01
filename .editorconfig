@@ -17,6 +17,16 @@ indent_size = 2
 # Two trailing spaces are a line break in Markdown.
 trim_trailing_whitespace = false
 
+[*.pbxproj]
+# Xcode owns this file's formatting and rewrites it wholesale. An editor that
+# honours the rules above would trim and re-terminate it on open — churn in the
+# one file the team deliberately keeps out of commits. Xcode ignores
+# .editorconfig; Android Studio and VS Code do not.
+trim_trailing_whitespace = false
+insert_final_newline = false
+indent_style = unset
+indent_size = unset
+
 [*.{kt,kts}]
 # `intellij_idea`, not ktlint's own `ktlint_official`. The two differ by about
 # 1,500 findings on this codebase, almost all of them ktlint_official's opinions
