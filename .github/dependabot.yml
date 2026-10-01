@@ -1,0 +1,29 @@
+# Pinning every action to a commit SHA (see .github/workflows/ci.yml) buys
+# immutability at the cost of drift: a SHA never moves, so a fix published
+# upstream never arrives either. Pinning without a bump path is a trap — it
+# trades a supply-chain risk for a staleness one. This is the bump path.
+#
+# Dependabot understands the `uses: owner/repo@<sha> # v7` form: it rewrites
+# the SHA and the trailing comment together, so the pin stays readable.
+#
+# Scoped to actions only. Gradle and CocoaPods updates belong with a human
+# deciding them against the version catalog, not with a weekly PR.
+#
+# The config is enough on its own for a public repository. This one is private,
+# so if no Dependabot PRs appear, Dependabot is off in the org's settings —
+# that switch belongs to the org owner, not to this file.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    # Covers .github/workflows/ AND .github/actions/ — "/" means the repository
+    # root for this ecosystem, not only the workflows directory.
+    directory: "/"
+    schedule:
+      interval: monthly
+    # A pull request per action would be five; one grouped PR is one review.
+    groups:
+      actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: "ci"
+    open-pull-requests-limit: 3
