@@ -302,3 +302,23 @@ fun ErrorText(messageKey: String?, modifier: Modifier = Modifier) {
         color = MaterialTheme.colorScheme.error,
     )
 }
+
+/**
+ * Something the person should look at, which is not stopping them.
+ *
+ * Amber (`tertiary`), not red: red is reserved for a thing that is actually
+ * blocked, and spending it on advice teaches people to read past it. The
+ * distinction is not carried by colour alone — this sits in the same place as
+ * the error, and only one of the two is ever shown, so a reader who cannot
+ * tell the hues apart still gets one unambiguous sentence.
+ */
+@Composable
+fun WarningText(messageKey: String?, modifier: Modifier = Modifier) {
+    if (messageKey == null) return
+    Text(
+        text = strings(messageKey),
+        modifier = modifier.fillMaxWidth(),
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.tertiary,
+    )
+}

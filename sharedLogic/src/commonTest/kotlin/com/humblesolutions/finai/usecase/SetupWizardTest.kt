@@ -201,4 +201,94 @@ class SetupWizardTest {
         assertEquals(ItemDraft("Rent", "900.00"), draft.obligations.single())
         assertEquals(SetupWizard.payload(draft, "CAD"), saved)
     }
+
+    /**
+     * Obligations are a subset of the monthly expense figure. These pin that
+     * down, because nothing else in the codebase states it and a dashboard
+     * that assumed otherwise would double-count rent.
+     */
+    class CommitmentsAgainstTheTotal {
+
+        private fun draft(expense: String, vararg commitments: String) = SetupDraft(
+            income = "5000",
+            monthlyExpense = expense,
+            obligations = commitments.mapIndexed { index, amount ->
+                ItemDraft(name = "item $index", amount = amount)
+            },
+        )
+
+        @Test
+        fun commitments_within_the_total_say_nothing() {
+            assertNull(SetupWizard.warning(SetupStep.EXPENSES, draft("2000", "800", "400")))
+        }
+
+        @Test
+        fun commitments_equal_to_the_total_say_nothing() {
+            // The boundary belongs on the quiet side: spending exactly what you
+            // are committed to is austere, not a contradiction.
+            assertNull(SetupWizard.warning(SetupStep.EXPENSES, draft("1200", "800", "400")))
+        }
+
+        @Test
+        fun commitments_over_the_total_warn() {
+            assertEquals(
+                SetupWarning.OBLIGATIONS_OVER_EXPENSES,
+                SetupWizard.warning(SetupStep.EXPENSES, draft("1000", "800", "400")),
+            )
+        }
+
+        @Test
+        fun a_warning_never_blocks_continue() {
+            // The whole point of it being a warning and not a block.
+            val over = draft("1000", "800", "400")
+            assertNull(SetupWizard.blockingReason(SetupStep.EXPENSES, over))
+            assertTrue(SetupWizard.warning(SetupStep.EXPENSES, over) != null)
+        }
+
+        @Test
+        fun an_empty_list_has_nothing_to_exceed() {
+            assertNull(SetupWizard.warning(SetupStep.EXPENSES, draft("1000")))
+        }
+
+        @Test
+        fun a_half_typed_total_does_not_accuse_the_user() {
+            // "1" on the way to "1500", with rent already listed. Warning here
+            // would fire on a keystroke and clear itself two keystrokes later.
+            assertNull(SetupWizard.warning(SetupStep.EXPENSES, draft("", "800")))
+        }
+
+        @Test
+        fun a_half_typed_commitment_is_not_counted() {
+            val partial = SetupDraft(
+                income = "5000",
+                monthlyExpense = "1000",
+                obligations = listOf(ItemDraft(name = "rent", amount = "")),
+            )
+            assertNull(SetupWizard.warning(SetupStep.EXPENSES, partial))
+        }
+
+        @Test
+        fun an_unusable_total_is_left_to_the_error_about_it() {
+            // Two messages about one field is one too many.
+            val nonsense = draft("abc", "800")
+            assertEquals(SetupBlock.EXPENSE_NOT_MONEY, SetupWizard.blockingReason(SetupStep.EXPENSES, nonsense))
+            assertNull(SetupWizard.warning(SetupStep.EXPENSES, nonsense))
+        }
+
+        @Test
+        fun the_other_steps_stay_quiet() {
+            val over = draft("1000", "800", "400")
+            assertNull(SetupWizard.warning(SetupStep.INCOME, over))
+            assertNull(SetupWizard.warning(SetupStep.PORTFOLIO, over))
+        }
+
+        @Test
+        fun scale_is_respected() {
+            // A zero-decimal currency compares at its own scale.
+            assertEquals(
+                SetupWarning.OBLIGATIONS_OVER_EXPENSES,
+                SetupWizard.warning(SetupStep.EXPENSES, draft("1000", "1001"), fractionDigits = 0),
+            )
+        }
+    }
 }

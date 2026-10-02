@@ -305,6 +305,26 @@ struct ErrorText: View {
     }
 }
 
+/// Something the person should look at, which is not stopping them.
+///
+/// Amber, not red: red is reserved for a thing that is actually blocked, and
+/// spending it on advice teaches people to read past it. The distinction is
+/// not carried by colour alone — this occupies the same slot as the error and
+/// only one of the two is ever shown, so a reader who cannot tell the hues
+/// apart still gets one unambiguous sentence.
+struct WarningText: View {
+    let messageKey: String?
+
+    var body: some View {
+        if let messageKey {
+            Text(L.t(messageKey))
+                .font(.footnote)
+                .foregroundColor(Brand.amber)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+}
+
 /// A text field in the brand's filled style, with the keyboard it needs.
 struct FormField: View {
     let placeholder: String

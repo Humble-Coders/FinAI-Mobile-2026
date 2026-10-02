@@ -93,9 +93,13 @@ val EnglishStrings: Map<String, String> = mapOf(
     Strings.setup_income_label to "Monthly income (after tax)",
     Strings.setup_income_hint to "This helps us personalise your recommendations.",
     Strings.setup_expenses_title to "Your monthly expenses & obligations",
-    Strings.setup_expenses_body to "Tell us about your regular monthly outgoings.",
-    Strings.setup_expense_label to "Monthly expenses",
-    Strings.setup_obligations_label to "Obligations (e.g. rent, EMIs)",
+    Strings.setup_expenses_body to
+        "Start with everything you spend in a month. Then, if you like, name the fixed commitments inside that figure.",
+    Strings.setup_expense_label to "Total monthly expenses",
+    Strings.setup_obligations_label to "Of which, fixed commitments",
+    Strings.setup_obligations_hint to "Rent, EMIs, insurance — already counted above",
+    Strings.setup_obligations_over_expenses to
+        "Your fixed commitments come to more than your total. The total should include them.",
     Strings.setup_portfolio_title to "Your debts & investments",
     Strings.setup_portfolio_body to "Almost there. Add your existing debts and investments.",
     Strings.setup_debts_label to "Debts",
