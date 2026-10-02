@@ -115,6 +115,9 @@ class DashboardViewModel : ViewModel() {
         }
     }
 
+    /** Mask or unmask every figure on screen. */
+    fun toggleAmounts() = _uiState.update { it.copy(amountsHidden = !it.amountsHidden) }
+
     /** Step to the month before the one shown. */
     fun showPreviousMonth() = show(DashboardMonths.previous(_uiState.value.month))
 

@@ -1,7 +1,9 @@
 package com.humblesolutions.finai.ui.dashboard
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,7 +13,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -20,31 +24,38 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.humblesolutions.finai.i18n.Strings
+import com.humblesolutions.finai.ui.Vectors
 import com.humblesolutions.finai.ui.components.ErrorText
-import com.humblesolutions.finai.ui.components.GradientButton
+import com.humblesolutions.finai.ui.components.FinAiIcon
 import com.humblesolutions.finai.ui.components.ProviderButton
 import com.humblesolutions.finai.ui.components.ScreenScaffold
 import com.humblesolutions.finai.ui.strings
+import com.humblesolutions.finai.ui.theme.FinAiPalette
 
 /**
  * The dashboard (PRD F3): one month of what happened, against what was
  * expected of it.
  *
- * Every figure here arrives already decided — by the server, and then by
- * [DashboardUiState]. Nothing on this screen computes money, which is what
- * keeps Android and iOS from disagreeing about a number somebody is acting on.
+ * Every figure arrives already decided — by the server, then by
+ * [DashboardUiState]. Nothing here computes money, which is what keeps the two
+ * apps from disagreeing about a number somebody is acting on. The icons come
+ * from shared [Vectors] for the same reason: a native icon set per platform
+ * would give the two apps different shapes for the same idea.
  */
 @Composable
 fun DashboardScreen(
     state: DashboardUiState,
+    onToggleAmounts: () -> Unit,
     onPreviousMonth: () -> Unit,
     onNextMonth: () -> Unit,
     onRetry: () -> Unit,
@@ -53,110 +64,293 @@ fun DashboardScreen(
     onReview: () -> Unit,
     onSignOut: () -> Unit,
 ) {
-    ScreenScaffold {
-        Text(
-            text = strings(Strings.dashboard_greeting),
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.SemiBold,
-        )
-        Text(
-            text = strings(Strings.dashboard_subtitle),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+    Box(Modifier.fillMaxWidth()) {
+        Hills()
+        ScreenScaffold {
+            Header(state, onReview)
+            Spacer(Modifier.height(18.dp))
+            HeroCard(state, onToggleAmounts, onPreviousMonth, onNextMonth)
 
-        Spacer(Modifier.height(20.dp))
-        MonthStrip(state, onPreviousMonth, onNextMonth)
+            Spacer(Modifier.height(14.dp))
+            when {
+                state.loadFailed -> LoadFailed(state, onRetry)
+                state.showsEmptyState -> Unit
+                else -> Figures(state)
+            }
+
+            Spacer(Modifier.height(16.dp))
+            ActionPanel(state, onImportStatement, onAddTransaction, onReview)
+
+            Spacer(Modifier.height(10.dp))
+            TextButton(onClick = onSignOut, modifier = Modifier.align(Alignment.CenterHorizontally)) {
+                Text(strings(Strings.action_sign_out), color = MaterialTheme.colorScheme.onBackground)
+            }
+        }
+    }
+}
+
+// ── The header ──────────────────────────────────────────────────────────
+
+@Composable
+private fun Header(state: DashboardUiState, onReview: () -> Unit) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        // A silhouette, not an initial. We deliberately do not hold a name:
+        // the requirements forbid collecting one, and a letter would need it.
+        Box(
+            modifier = Modifier
+                .size(44.dp)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            FinAiIcon(Vectors.piggyBank, tint = MaterialTheme.colorScheme.primary, size = 24.dp)
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                text = strings(Strings.dashboard_greeting),
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(
+                text = strings(Strings.dashboard_subtitle),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        // The bell is the review queue, and its dot means something: rows are
+        // waiting. A decorative badge that never changes teaches people to
+        // ignore it.
+        Box(
+            modifier = Modifier
+                .size(44.dp)
+                .clip(CircleShape)
+                .clickable(onClick = onReview)
+                .semantics { contentDescription = state.notificationsLabel },
+            contentAlignment = Alignment.Center,
+        ) {
+            FinAiIcon(Vectors.bell, tint = MaterialTheme.colorScheme.onBackground, size = 22.dp)
+            if (state.hasPending) {
+                Box(
+                    Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(top = 10.dp, end = 10.dp)
+                        .size(8.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.error),
+                )
+            }
+        }
+    }
+}
+
+/**
+ * The soft hills behind the header, as in the design.
+ *
+ * Drawn rather than shipped as an asset so it tints with the theme and costs
+ * no image. Purely decorative, so it is hidden from screen readers.
+ */
+@Composable
+private fun Hills() {
+    val primary = MaterialTheme.colorScheme.primary
+    Canvas(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(240.dp)
+            .clearAndSetSemantics {},
+    ) {
+        val width = size.width
+        val height = size.height
+        fun ridge(startY: Float, peakY: Float, alpha: Float) {
+            val path = Path().apply {
+                moveTo(0f, height)
+                lineTo(0f, startY)
+                cubicTo(width * 0.25f, peakY, width * 0.55f, startY * 1.08f, width, peakY * 0.92f)
+                lineTo(width, height)
+                close()
+            }
+            drawPath(path, color = primary.copy(alpha = alpha))
+        }
+        ridge(startY = height * 0.62f, peakY = height * 0.40f, alpha = 0.06f)
+        ridge(startY = height * 0.74f, peakY = height * 0.56f, alpha = 0.05f)
+    }
+}
+
+// ── The hero ────────────────────────────────────────────────────────────
+
+@Composable
+private fun HeroCard(
+    state: DashboardUiState,
+    onToggleAmounts: () -> Unit,
+    onPreviousMonth: () -> Unit,
+    onNextMonth: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(24.dp))
+            .background(
+                Brush.linearGradient(
+                    listOf(FinAiPalette.Green, FinAiPalette.GreenDeep),
+                    start = Offset.Zero,
+                    end = Offset(Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY),
+                ),
+            )
+            .padding(20.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+            Text(
+                text = strings(Strings.dashboard_net_label),
+                style = MaterialTheme.typography.labelLarge,
+                color = FinAiPalette.OnGreen,
+            )
+            Spacer(Modifier.width(8.dp))
+            Box(
+                modifier = Modifier
+                    .size(28.dp)
+                    .clip(CircleShape)
+                    .clickable(onClick = onToggleAmounts)
+                    .semantics { contentDescription = state.hideToggleLabel },
+                contentAlignment = Alignment.Center,
+            ) {
+                FinAiIcon(
+                    icon = if (state.amountsHidden) Vectors.eyeOff else Vectors.eye,
+                    tint = FinAiPalette.OnGreen,
+                    size = 18.dp,
+                )
+            }
+            Spacer(Modifier.weight(1f))
+            MonthPill(state, onPreviousMonth, onNextMonth)
+        }
+
+        Spacer(Modifier.height(10.dp))
+        Text(
+            text = state.net,
+            style = MaterialTheme.typography.displaySmall,
+            fontWeight = FontWeight.Bold,
+            color = FinAiPalette.OnGreen,
+        )
 
         Spacer(Modifier.height(12.dp))
-        when {
-            state.loadFailed -> LoadFailed(state, onRetry)
-            state.showsEmptyState -> FirstSteps(onImportStatement, onAddTransaction)
-            else -> Figures(state)
-        }
-
-        Spacer(Modifier.height(24.dp))
-        GradientButton(text = strings(Strings.import_entry), onClick = onImportStatement)
-        Spacer(Modifier.height(8.dp))
-        ProviderButton(text = strings(Strings.manual_entry_title), onClick = onAddTransaction)
-        Spacer(Modifier.height(8.dp))
-        ProviderButton(text = strings(Strings.review_entry), onClick = onReview)
-        Spacer(Modifier.height(8.dp))
-        TextButton(onClick = onSignOut, modifier = Modifier.align(Alignment.CenterHorizontally)) {
-            Text(strings(Strings.action_sign_out), color = MaterialTheme.colorScheme.onBackground)
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
+            // Absent, not "+0%", when there is no month to compare against.
+            state.changeLabel?.let { ChangePill(it, state.netIsPositive) }
+            Spacer(Modifier.weight(1f))
+            if (state.showsTrend) HeroBars(state)
         }
     }
 }
 
 @Composable
-private fun MonthStrip(state: DashboardUiState, onPrevious: () -> Unit, onNext: () -> Unit) {
+private fun MonthPill(state: DashboardUiState, onPrevious: () -> Unit, onNext: () -> Unit) {
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .clip(RoundedCornerShape(14.dp))
+            .background(FinAiPalette.OnGreen.copy(alpha = 0.12f))
+            .padding(horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween,
     ) {
-        // Text glyphs rather than Material icons: the project carries no icon
-        // dependency, and two chevrons do not justify one. The label each
-        // carries is what a screen reader announces, so the glyph itself is
-        // hidden from it.
-        MonthStep(
-            glyph = "\u2039",
-            label = strings(Strings.dashboard_previous_month),
-            enabled = state.canGoBack,
-            onClick = onPrevious,
+        Step(Vectors.chevronLeft, strings(Strings.dashboard_previous_month), state.canGoBack, onPrevious)
+        Text(
+            text = state.monthLabel,
+            style = MaterialTheme.typography.labelLarge,
+            color = FinAiPalette.OnGreen,
         )
-        Text(text = state.monthLabel, style = MaterialTheme.typography.titleMedium)
         // Hidden rather than disabled on the month that is running: a month
-        // which has not happened holds nothing, so there is nothing to offer.
+        // that has not happened holds nothing to look at.
         if (state.canGoForward) {
-            MonthStep(
-                glyph = "\u203A",
-                label = strings(Strings.dashboard_next_month),
-                enabled = true,
-                onClick = onNext,
-            )
+            Step(Vectors.chevronRight, strings(Strings.dashboard_next_month), true, onNext)
         } else {
-            Spacer(Modifier.width(StepWidth))
+            Spacer(Modifier.width(32.dp))
         }
     }
 }
 
 @Composable
-private fun MonthStep(glyph: String, label: String, enabled: Boolean, onClick: () -> Unit) {
-    TextButton(
-        onClick = onClick,
-        enabled = enabled,
+private fun Step(icon: com.humblesolutions.finai.ui.IconPath, label: String, enabled: Boolean, onClick: () -> Unit) {
+    Box(
         modifier = Modifier
-            .width(StepWidth)
-            .heightIn(min = 48.dp)
+            .size(32.dp)
+            .clip(CircleShape)
+            .clickable(enabled = enabled, onClick = onClick)
             .semantics { contentDescription = label },
+        contentAlignment = Alignment.Center,
     ) {
-        Text(
-            text = glyph,
-            style = MaterialTheme.typography.titleLarge,
-            color = MaterialTheme.colorScheme.onBackground,
-            modifier = Modifier.clearAndSetSemantics {},
-        )
+        FinAiIcon(icon, tint = FinAiPalette.OnGreen, size = 14.dp)
     }
 }
+
+@Composable
+private fun ChangePill(label: String, rose: Boolean) {
+    Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(12.dp))
+            .background(FinAiPalette.OnGreen.copy(alpha = 0.12f))
+            .padding(horizontal = 10.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        // The same arrow either way, turned over for a fall — one shape, and
+        // the direction is unmistakable.
+        Box(Modifier.size(12.dp).then(if (rose) Modifier else Modifier.clip(CircleShape))) {
+            FinAiIcon(
+                icon = if (rose) Vectors.arrowUp else Vectors.chevronDown,
+                tint = FinAiPalette.OnGreen,
+                size = 12.dp,
+            )
+        }
+        Spacer(Modifier.width(6.dp))
+        Text(text = label, style = MaterialTheme.typography.labelSmall, color = FinAiPalette.OnGreen)
+    }
+}
+
+/** The bars inside the hero, as in the design: small, pale, and to the right. */
+@Composable
+private fun HeroBars(state: DashboardUiState) {
+    Row(
+        modifier = Modifier.width(132.dp).height(44.dp),
+        verticalAlignment = Alignment.Bottom,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        state.bars.forEach { bar ->
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .height(bar.fraction?.let { 44.dp * it } ?: 4.dp)
+                    .clip(RoundedCornerShape(3.dp))
+                    .then(
+                        if (bar.fraction == null) {
+                            // A month with nothing recorded is an outline, not
+                            // a short bar: a bar would be a figure nobody has.
+                            Modifier.border(1.dp, FinAiPalette.OnGreen.copy(alpha = 0.35f), RoundedCornerShape(3.dp))
+                        } else {
+                            Modifier.background(FinAiPalette.OnGreen.copy(alpha = if (bar.isNegative) 0.45f else 0.85f))
+                        },
+                    )
+                    .semantics { contentDescription = bar.description },
+            )
+        }
+    }
+}
+
+// ── The four cards ──────────────────────────────────────────────────────
 
 @Composable
 private fun Figures(state: DashboardUiState) {
-    NetCard(state)
-
-    Spacer(Modifier.height(12.dp))
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         FigureCard(
+            icon = Vectors.wallet,
+            accent = FinAiPalette.Green,
             label = strings(Strings.dashboard_income),
             amount = state.incomeAmount,
             detail = state.incomeExpectation,
             modifier = Modifier.weight(1f),
         )
         FigureCard(
+            icon = Vectors.card,
+            accent = FinAiPalette.Red,
             label = strings(Strings.dashboard_expenses),
             amount = state.expensesAmount,
             detail = state.expensesExpectation,
-            // Only expenses: earning more than expected is good news.
             detailIsWarning = state.expensesAreOver,
             modifier = Modifier.weight(1f),
         )
@@ -164,12 +358,16 @@ private fun Figures(state: DashboardUiState) {
     Spacer(Modifier.height(12.dp))
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         FigureCard(
+            icon = Vectors.piggyBank,
+            accent = FinAiPalette.Purple,
             label = strings(Strings.dashboard_investments),
             amount = state.investmentsAmount,
             detail = state.investmentsMovement,
             modifier = Modifier.weight(1f),
         )
         FigureCard(
+            icon = Vectors.document,
+            accent = FinAiPalette.Amber,
             label = strings(Strings.dashboard_debts),
             amount = state.debtsAmount,
             detail = state.debtsMovement,
@@ -177,61 +375,16 @@ private fun Figures(state: DashboardUiState) {
         )
     }
 
-    state.pendingReviewLabel?.let {
-        Spacer(Modifier.height(12.dp))
-        Text(
-            text = it,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.tertiary,
-        )
-    }
-
-    if (state.showsTrend) {
-        Spacer(Modifier.height(24.dp))
-        Trend(state)
-    }
-
     if (state.commitments.isNotEmpty()) {
-        Spacer(Modifier.height(24.dp))
+        Spacer(Modifier.height(20.dp))
         Commitments(state)
     }
 }
 
 @Composable
-private fun NetCard(state: DashboardUiState) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(20.dp))
-            .background(MaterialTheme.colorScheme.primary)
-            .padding(20.dp),
-    ) {
-        Text(
-            text = strings(Strings.dashboard_net_label),
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.onPrimary,
-        )
-        Spacer(Modifier.height(6.dp))
-        Text(
-            text = state.net,
-            style = MaterialTheme.typography.headlineLarge,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onPrimary,
-        )
-        // Absent, not "+0%", when there is no month to compare against.
-        state.changeLabel?.let {
-            Spacer(Modifier.height(6.dp))
-            Text(
-                text = it,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onPrimary,
-            )
-        }
-    }
-}
-
-@Composable
 private fun FigureCard(
+    icon: com.humblesolutions.finai.ui.IconPath,
+    accent: Color,
     label: String,
     amount: String,
     detail: String?,
@@ -240,22 +393,37 @@ private fun FigureCard(
 ) {
     Column(
         modifier = modifier
-            .clip(RoundedCornerShape(16.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant)
-            .padding(16.dp),
+            .clip(RoundedCornerShape(18.dp))
+            .background(accent.copy(alpha = 0.08f))
+            .padding(14.dp),
     ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Spacer(Modifier.height(4.dp))
-        Text(text = amount, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(accent.copy(alpha = 0.18f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                FinAiIcon(icon, tint = accent, size = 20.dp)
+            }
+            Spacer(Modifier.width(10.dp))
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelMedium,
+                color = accent,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.weight(1f),
+            )
+            FinAiIcon(Vectors.chevronRight, tint = accent.copy(alpha = 0.5f), size = 14.dp)
+        }
+        Spacer(Modifier.height(10.dp))
+        Text(text = amount, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
         detail?.let {
             Spacer(Modifier.height(4.dp))
             Text(
                 text = it,
-                style = MaterialTheme.typography.bodySmall,
+                style = MaterialTheme.typography.labelSmall,
                 color = if (detailIsWarning) {
                     MaterialTheme.colorScheme.tertiary
                 } else {
@@ -266,63 +434,7 @@ private fun FigureCard(
     }
 }
 
-@Composable
-private fun Trend(state: DashboardUiState) {
-    Text(
-        text = strings(Strings.dashboard_trend_title),
-        style = MaterialTheme.typography.titleSmall,
-        fontWeight = FontWeight.SemiBold,
-    )
-    Spacer(Modifier.height(12.dp))
-    Row(
-        modifier = Modifier.fillMaxWidth().height(BarHeight),
-        verticalAlignment = Alignment.Bottom,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        state.bars.forEach { bar ->
-            Column(
-                modifier = Modifier.weight(1f).semantics { contentDescription = bar.description },
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Bottom,
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        // A month with no rows is drawn as an outline. A
-                        // zero-height bar would state a fact nobody observed.
-                        .height(bar.fraction?.let { BarHeight * it } ?: EmptyBarHeight)
-                        .clip(RoundedCornerShape(4.dp))
-                        .then(
-                            if (bar.fraction == null) {
-                                Modifier.border(
-                                    1.dp,
-                                    MaterialTheme.colorScheme.outlineVariant,
-                                    RoundedCornerShape(4.dp),
-                                )
-                            } else {
-                                Modifier.background(
-                                    if (bar.isNegative) {
-                                        MaterialTheme.colorScheme.error
-                                    } else {
-                                        MaterialTheme.colorScheme.primary
-                                    },
-                                )
-                            },
-                        ),
-                )
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    text = bar.shortLabel,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    // The label repeats what the bar's description already
-                    // says, so a screen reader hears it once.
-                    modifier = Modifier.clearAndSetSemantics {},
-                )
-            }
-        }
-    }
-}
+// ── Commitments ─────────────────────────────────────────────────────────
 
 @Composable
 private fun Commitments(state: DashboardUiState) {
@@ -359,32 +471,125 @@ private fun Commitments(state: DashboardUiState) {
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            Spacer(Modifier.width(8.dp))
-            // The tick is decorative; `detail` already says it in words, so a
-            // screen reader is not told twice.
-            Text(
-                text = if (row.wasSeen) "✓" else "–",
-                color = if (row.wasSeen) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
-                modifier = Modifier.clearAndSetSemantics {},
-            )
+            Spacer(Modifier.width(10.dp))
+            // Decorative: `detail` already says this in words.
+            Box(
+                modifier = Modifier
+                    .size(22.dp)
+                    .clip(CircleShape)
+                    .background(
+                        if (row.wasSeen) {
+                            FinAiPalette.Green.copy(alpha = 0.18f)
+                        } else {
+                            MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)
+                        },
+                    )
+                    .clearAndSetSemantics {},
+                contentAlignment = Alignment.Center,
+            ) {
+                if (row.wasSeen) {
+                    FinAiIcon(Vectors.arrowUp, tint = FinAiPalette.Green, size = 12.dp)
+                }
+            }
         }
     }
 }
 
+// ── The action panel ────────────────────────────────────────────────────
+
 @Composable
-private fun FirstSteps(onImportStatement: () -> Unit, onAddTransaction: () -> Unit) {
-    Column(Modifier.fillMaxWidth()) {
+private fun ActionPanel(
+    state: DashboardUiState,
+    onImportStatement: () -> Unit,
+    onAddTransaction: () -> Unit,
+    onReview: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(22.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+            .padding(18.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(FinAiPalette.Green.copy(alpha = 0.18f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                FinAiIcon(Vectors.bolt, tint = FinAiPalette.Green, size = 20.dp)
+            }
+            Spacer(Modifier.width(12.dp))
+            Column {
+                Text(
+                    text = strings(
+                        if (state.showsEmptyState) Strings.dashboard_empty_title else Strings.dashboard_quick_actions_title,
+                    ),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                )
+                if (state.showsEmptyState) {
+                    Text(
+                        text = strings(Strings.dashboard_empty_body),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+
+        Spacer(Modifier.height(14.dp))
+        ActionRow(
+            icon = Vectors.importStatement,
+            label = strings(Strings.import_entry),
+            primary = true,
+            onClick = onImportStatement,
+        )
+        Spacer(Modifier.height(8.dp))
+        ActionRow(icon = Vectors.plus, label = strings(Strings.manual_entry_title), onClick = onAddTransaction)
+        Spacer(Modifier.height(8.dp))
+        ActionRow(icon = Vectors.list, label = strings(Strings.review_entry), onClick = onReview)
+    }
+}
+
+@Composable
+private fun ActionRow(
+    icon: com.humblesolutions.finai.ui.IconPath,
+    label: String,
+    onClick: () -> Unit,
+    primary: Boolean = false,
+) {
+    val content = if (primary) FinAiPalette.OnGreen else MaterialTheme.colorScheme.onBackground
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 56.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .then(
+                if (primary) {
+                    Modifier.background(
+                        Brush.linearGradient(listOf(FinAiPalette.Green, FinAiPalette.GreenDeep)),
+                    )
+                } else {
+                    Modifier.background(MaterialTheme.colorScheme.surface)
+                },
+            )
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        FinAiIcon(icon, tint = content, size = 20.dp)
+        Spacer(Modifier.width(12.dp))
         Text(
-            text = strings(Strings.dashboard_empty_title),
-            style = MaterialTheme.typography.titleMedium,
+            text = label,
+            style = MaterialTheme.typography.titleSmall,
             fontWeight = FontWeight.SemiBold,
+            color = content,
+            modifier = Modifier.weight(1f),
         )
-        Spacer(Modifier.height(6.dp))
-        Text(
-            text = strings(Strings.dashboard_empty_body),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        FinAiIcon(Vectors.chevronRight, tint = content, size = 16.dp)
     }
 }
 
@@ -396,11 +601,3 @@ private fun LoadFailed(state: DashboardUiState, onRetry: () -> Unit) {
         ProviderButton(text = strings(Strings.dashboard_retry), onClick = onRetry)
     }
 }
-
-/** Wide enough for a comfortable touch target on both sides of the label. */
-private val StepWidth = 56.dp
-
-private val BarHeight = 96.dp
-
-/** A month with nothing recorded still leaves a mark, so the gap is visible. */
-private val EmptyBarHeight = 6.dp

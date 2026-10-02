@@ -238,6 +238,12 @@ object Strings {
     const val dashboard_trend_month = "dashboard_trend_month" // "{0}: {1}"
     const val dashboard_empty_title = "dashboard_empty_title" // "Nothing here yet"
     const val dashboard_empty_body = "dashboard_empty_body" // "Import a statement or add a transaction, and this fills in."
+    const val dashboard_hide_amounts = "dashboard_hide_amounts" // "Hide amounts"
+    const val dashboard_show_amounts = "dashboard_show_amounts" // "Show amounts"
+    const val dashboard_hidden_amount = "dashboard_hidden_amount" // "••••••"
+    const val dashboard_notifications = "dashboard_notifications" // "Things waiting for you"
+    const val dashboard_notifications_none = "dashboard_notifications_none" // "Nothing waiting for you"
+    const val dashboard_quick_actions_title = "dashboard_quick_actions_title" // "What would you like to do?"
     const val dashboard_retry = "dashboard_retry" // "Try again"
 
     const val import_entry = "import_entry" // "Import a statement"

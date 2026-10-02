@@ -31,6 +31,7 @@ internal fun DashboardRoute(
 
     DashboardScreen(
         state = state,
+        onToggleAmounts = model::toggleAmounts,
         onPreviousMonth = model::showPreviousMonth,
         onNextMonth = model::showNextMonth,
         onRetry = { model.load() },

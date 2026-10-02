@@ -36,6 +36,10 @@ final class DashboardViewModel: ObservableObject {
     @Published private(set) var refreshing = false
     @Published private(set) var loadFailed = false
     @Published private(set) var errorKey: String?
+    /// Whether figures are masked. Session-only and deliberately not saved: it
+    /// is for the moment somebody is on a train, not a setting, and a dashboard
+    /// that opens blank because of a tap days ago is a bug report.
+    @Published private(set) var amountsHidden = false
 
     private var dashboardRepository: DashboardRepository?
     private var capabilitiesRepository: CapabilitiesRepository?
@@ -127,6 +131,9 @@ final class DashboardViewModel: ObservableObject {
         (kotlin(error) as? ApiException)?.messageKey ?? Strings.shared.error_unexpected
     }
 
+    /// Mask or unmask every figure on screen.
+    func toggleAmounts() { amountsHidden.toggle() }
+
     func showPreviousMonth() {
         show(DashboardMonths.shared.previous(month: month))
     }
@@ -147,6 +154,18 @@ final class DashboardViewModel: ObservableObject {
 
     var canGoBack: Bool { !loading }
 
+    /// The label for the eye, which says what tapping it will do.
+    var hideToggleLabel: String {
+        L.t(amountsHidden ? Strings.shared.dashboard_show_amounts : Strings.shared.dashboard_hide_amounts)
+    }
+
+    /// Whether anything is waiting, which is what the bell's dot means.
+    var hasPending: Bool { data.pendingReview > 0 }
+
+    var notificationsLabel: String {
+        L.t(hasPending ? Strings.shared.dashboard_notifications : Strings.shared.dashboard_notifications_none)
+    }
+
     var canGoForward: Bool {
         !loading && DashboardMonths.shared.canGoForward(
             month: month,
@@ -163,7 +182,9 @@ final class DashboardViewModel: ObservableObject {
     private var digits: Int32 { data.fractionDigits }
 
     private func money(_ amount: String) -> String {
-        Money.shared.format(amount: amount, currency: data.currency, locale: locale)
+        amountsHidden
+            ? L.t(Strings.shared.dashboard_hidden_amount)
+            : Money.shared.format(amount: amount, currency: data.currency, locale: locale)
     }
 
     var net: String { money(data.net) }

@@ -31,10 +31,17 @@ data class DashboardUiState(
     /** Only when there is nothing to show: a failed refresh keeps the month it had. */
     val loadFailed: Boolean = false,
     val errorKey: String? = null,
+
+    /**
+     * Whether figures are masked. Session-only and deliberately not saved: it
+     * is for the moment somebody is on a train, not a setting, and a dashboard
+     * that opens blank because of a tap days ago is a bug report.
+     */
+    val amountsHidden: Boolean = false,
 ) {
     private val digits: Int get() = data.fractionDigits
 
-    private fun money(amount: String): String = Money.format(amount, data.currency, locale)
+    private fun money(amount: String): String = if (amountsHidden) text(Strings.dashboard_hidden_amount) else Money.format(amount, data.currency, locale)
 
     private fun text(key: String): String = LocalizationRegistry.get(key, locale)
 
@@ -46,6 +53,16 @@ data class DashboardUiState(
         Dates.monthShort(month, locale),
         month.year.toString(),
     )
+
+    /** The label for the eye, which says what tapping it will do. */
+    val hideToggleLabel: String get() =
+        text(if (amountsHidden) Strings.dashboard_show_amounts else Strings.dashboard_hide_amounts)
+
+    /** Whether anything is waiting, which is what the bell's dot means. */
+    val hasPending: Boolean get() = data.pendingReview > 0
+
+    val notificationsLabel: String get() =
+        text(if (hasPending) Strings.dashboard_notifications else Strings.dashboard_notifications_none)
 
     val canGoBack: Boolean get() = !loading
     val canGoForward: Boolean get() = !loading && DashboardMonths.canGoForward(month)
