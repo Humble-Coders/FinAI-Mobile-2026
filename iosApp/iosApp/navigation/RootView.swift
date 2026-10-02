@@ -18,6 +18,9 @@ struct RootView: View {
     @StateObject private var importModel = StatementImportViewModel()
     /// The review queue's model (#32), likewise.
     @StateObject private var reviewModel = ReviewViewModel()
+
+    /// The dashboard, which is home (PRD F3).
+    @StateObject private var dashboardModel = DashboardViewModel()
     /// Where the signed-in, set-up person is: home, or one of the two ways
     /// money gets in. Scene storage, so the app coming back after iOS
     /// reclaimed it reopens that screen rather than dropping them on home.
@@ -153,7 +156,9 @@ struct RootView: View {
         case .home:
             switch HomeRoute(rawValue: homeRoute) ?? .home {
             case .home:
-                HomeView(
+                DashboardView(
+                    model: dashboardModel,
+                    userId: model.me?.user.id ?? "",
                     onImportStatement: { homeRoute = HomeRoute.importStatement.rawValue },
                     onAddTransaction: { homeRoute = HomeRoute.add.rawValue },
                     onReview: { homeRoute = HomeRoute.review.rawValue },

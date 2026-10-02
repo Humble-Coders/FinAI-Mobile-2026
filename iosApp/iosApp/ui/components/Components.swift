@@ -9,6 +9,8 @@ enum Brand {
     /// The dark end of the logo's gradient, used for the primary button.
     static let greenDeep = Color(red: 0x15 / 255, green: 0x80 / 255, blue: 0x3D / 255)
     static let onGreen = Color(red: 0x05 / 255, green: 0x2E / 255, blue: 0x16 / 255)
+    /// Advice that is not an error. Mirrors `FinAiPalette.Amber`.
+    static let amber = Color(red: 0xFB / 255, green: 0xBF / 255, blue: 0x24 / 255)
 
     static let ground = Color("Ground")
     /// The auth sheet's card: white on light, a lifted grey on dark.

@@ -105,6 +105,81 @@ object Money {
         return padded.dropLast(fractionDigits) + "." + padded.takeLast(fractionDigits)
     }
 
+    /**
+     * `a - b`, **signed**, as a decimal string — the one subtraction this app
+     * does.
+     *
+     * Separate from [add] and deliberately signed, because the only thing that
+     * needs it is a comparison between two months and one of them can be the
+     * larger. Everything else here stays unsigned: a price, a balance and a
+     * payment cannot go below zero, and a subtraction that clamped would turn
+     * "£200 worse than last month" into "£0 worse", which is a wrong number
+     * that reads as reassurance.
+     *
+     * Null when either side is not money at this scale, for [add]'s reason: a
+     * figure that could not be read must not come out as a difference of zero.
+     */
+    fun difference(a: String, b: String, fractionDigits: Int = 2): String? {
+        val leftSign = signOf(a, fractionDigits)
+        val rightSign = signOf(b, fractionDigits)
+        val left = magnitudeOf(a, fractionDigits) ?: return null
+        val right = magnitudeOf(b, fractionDigits) ?: return null
+
+        // Opposite sides of zero: the magnitudes add, and the answer takes the
+        // sign of whichever side `a` is on. Zero counts as the same side as
+        // whatever it is compared with, so `0 - (-5)` is `5`.
+        if (leftSign != 0 && rightSign != 0 && leftSign != rightSign) {
+            val total = add(left, right, fractionDigits) ?: return null
+            return if (leftSign < 0) "-$total" else total
+        }
+
+        val negative = leftSign < 0 || rightSign < 0
+        val order = compare(left, right, fractionDigits)
+        if (order == 0) return scaled("0", fractionDigits)
+        val magnitude = if (order > 0) {
+            subtractDigitsAt(left, right, fractionDigits)
+        } else {
+            subtractDigitsAt(right, left, fractionDigits)
+        } ?: return null
+        // On the negative side the larger magnitude is the smaller number, so
+        // the result's sign flips relative to which magnitude won.
+        val resultIsNegative = if (negative) order > 0 else order < 0
+        return if (resultIsNegative) "-$magnitude" else magnitude
+    }
+
+    /** `larger - smaller`, both unsigned and normalized, re-pointed at [fractionDigits]. */
+    private fun subtractDigitsAt(larger: String, smaller: String, fractionDigits: Int): String? {
+        val left = normalize(larger, fractionDigits) ?: return null
+        val right = normalize(smaller, fractionDigits) ?: return null
+        val difference = subtractDigits(left.filter { it.isDigit() }, right.filter { it.isDigit() })
+        if (fractionDigits == 0) return difference
+        val padded = difference.padStart(fractionDigits + 1, '0')
+        return padded.dropLast(fractionDigits) + "." + padded.takeLast(fractionDigits)
+    }
+
+    /** `"0"` written at [fractionDigits], e.g. `"0.00"`. */
+    private fun scaled(raw: String, fractionDigits: Int): String = normalize(raw, fractionDigits) ?: raw
+
+    /** Schoolbook subtraction, right to left. [a] must be the larger. */
+    private fun subtractDigits(a: String, b: String): String {
+        val width = maxOf(a.length, b.length)
+        val left = a.padStart(width, '0')
+        val right = b.padStart(width, '0')
+        val digits = StringBuilder()
+        var borrow = 0
+        for (index in width - 1 downTo 0) {
+            var step = (left[index] - '0') - (right[index] - '0') - borrow
+            if (step < 0) {
+                step += 10
+                borrow = 1
+            } else {
+                borrow = 0
+            }
+            digits.append(('0' + step))
+        }
+        return digits.reverse().toString().trimStart('0').ifEmpty { "0" }
+    }
+
     /** Schoolbook addition of two digit strings, right to left. */
     private fun addDigits(a: String, b: String): String {
         val width = maxOf(a.length, b.length)
@@ -135,6 +210,34 @@ object Money {
     fun isPositive(raw: String, fractionDigits: Int = 2): Boolean = isMoney(raw, fractionDigits) && compare(raw, "0", fractionDigits) > 0
 
     /**
+     * `-1` below zero, `0` at zero or unreadable, `1` above — the one place the
+     * sign of an amount is decided.
+     *
+     * Everything else here is unsigned on purpose: a price, a balance and a
+     * payment cannot be negative, and [normalize] rejects a leading `-` so a
+     * stray one is caught rather than silently changing a total. But a month's
+     * net genuinely can be below zero, so the sign has to be readable
+     * somewhere, and that somewhere is here rather than re-derived per screen.
+     *
+     * Unreadable reads as `0`, for the same reason blank does elsewhere: a
+     * figure we cannot parse must not be drawn as a loss.
+     */
+    fun signOf(raw: String, fractionDigits: Int = 2): Int {
+        val trimmed = raw.trim()
+        val negative = trimmed.startsWith('-')
+        val magnitude = normalize(trimmed.removePrefix("-"), fractionDigits) ?: return 0
+        if (compare(magnitude, "0", fractionDigits) == 0) return 0
+        return if (negative) -1 else 1
+    }
+
+    /**
+     * [raw] without its sign, or null when it is not money either way. The
+     * companion to [signOf]: read the sign once, then work with the magnitude
+     * through the unsigned functions above.
+     */
+    fun magnitudeOf(raw: String, fractionDigits: Int = 2): String? = normalize(raw.trim().removePrefix("-"), fractionDigits)
+
+    /**
      * For display: `"1200.5"` in CAD becomes `"$1,200.50"`.
      *
      * The separators follow the language the server sent, not the device, so
@@ -144,7 +247,13 @@ object Money {
      */
     fun format(amount: String, currency: String, locale: String = "en"): String {
         val digits = fractionDigits(currency)
-        val normalized = normalize(amount, digits) ?: return ""
+        // The sign is carried around the formatting, not through it: grouping
+        // "-1200" would put a separator inside the run the minus starts.
+        // Leading in every locale this app ships — a trailing minus and
+        // parentheses are accounting conventions, and neither is what somebody
+        // reading their own month expects.
+        val negative = signOf(amount, digits) < 0
+        val normalized = magnitudeOf(amount, digits) ?: return ""
         val french = locale.take(2).lowercase() == "fr"
         val group = if (french) " " else ","
         val point = if (french) "," else "."
@@ -155,11 +264,12 @@ object Money {
         val body = if (fraction.isEmpty()) grouped else grouped + point + fraction
 
         val symbol = SYMBOLS[currency.uppercase()]
-        return when {
+        val written = when {
             symbol == null -> body + " " + currency.uppercase()
             french -> body + " " + symbol
             else -> symbol + body
         }
+        return if (negative) "-" + written else written
     }
 
     /**

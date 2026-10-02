@@ -19,6 +19,14 @@ object Dates {
         listOf(LocalizationRegistry.get(MONTHS[date.month.ordinal]), date.day.toString(), date.year.toString()),
     )
 
+    /**
+     * `Aug` for August — the month's own name, without a day.
+     *
+     * The dashboard labels a month, and [display] would add a 1st that is not
+     * part of what is being said.
+     */
+    fun monthShort(date: LocalDate, language: String = "en"): String = LocalizationRegistry.get(MONTHS[date.month.ordinal], language)
+
     /** An ISO date from the wire or from saved state, or null when it is not one. */
     fun parse(iso: String?): LocalDate? = iso?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
 

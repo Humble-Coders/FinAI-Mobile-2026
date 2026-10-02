@@ -1,0 +1,225 @@
+package com.humblesolutions.finai.ui.dashboard
+
+import com.humblesolutions.finai.model.ApiException
+import com.humblesolutions.finai.model.Capabilities
+import com.humblesolutions.finai.model.Dashboard
+import com.humblesolutions.finai.model.Flow
+import com.humblesolutions.finai.repository.CapabilitiesRepository
+import com.humblesolutions.finai.repository.DashboardRepository
+import com.humblesolutions.finai.usecase.DashboardMonths
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.test.setMain
+import kotlin.test.AfterTest
+import kotlin.test.BeforeTest
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
+
+@OptIn(ExperimentalCoroutinesApi::class)
+class DashboardViewModelTest {
+
+    @BeforeTest fun setUp() = Dispatchers.setMain(UnconfinedTestDispatcher())
+
+    @AfterTest fun tearDown() = Dispatchers.resetMain()
+
+    private class FakeDashboard(
+        var answer: Dashboard = Dashboard(currency = "CAD", net = "100.00"),
+    ) : DashboardRepository {
+        val asked = mutableListOf<String?>()
+        var fail: ApiException? = null
+        var gate: CompletableDeferred<Unit>? = null
+
+        /** When set, only this month's request waits on [gate]. */
+        var gateFor: String? = null
+
+        /** Per-month answers, so a superseded request can return something recognisable. */
+        val answers = mutableMapOf<String?, Dashboard>()
+        var closed = false
+
+        override suspend fun read(month: String?): Dashboard {
+            asked += month
+            if (gateFor == null || gateFor == month) gate?.await()
+            fail?.let { throw it }
+            return answers[month] ?: answer
+        }
+
+        override fun close() {
+            closed = true
+        }
+    }
+
+    private class FakeCapabilities(private val locale: String = "en") : CapabilitiesRepository {
+        override suspend fun fetch(): Capabilities = Capabilities(locale = locale, currency = "CAD")
+        override fun close() = Unit
+    }
+
+    private fun model(
+        dashboard: FakeDashboard,
+        capabilities: CapabilitiesRepository = FakeCapabilities(),
+    ): DashboardViewModel {
+        val model = DashboardViewModel()
+        model.bind("alice") { DashboardRepositories(dashboard, capabilities) }
+        return model
+    }
+
+    @Test
+    fun binding_reads_the_month_that_is_running() = runTest {
+        val repo = FakeDashboard()
+        val model = model(repo)
+
+        assertEquals(listOf<String?>(DashboardMonths.wire(DashboardMonths.current())), repo.asked.toList())
+        assertFalse(model.uiState.value.loading)
+        assertEquals("100.00", model.uiState.value.data.net)
+    }
+
+    @Test
+    fun binding_again_as_the_same_person_does_not_re_read() = runTest {
+        val repo = FakeDashboard()
+        val model = model(repo)
+        model.bind("alice") { DashboardRepositories(repo, FakeCapabilities()) }
+
+        assertEquals(1, repo.asked.size)
+    }
+
+    @Test
+    fun stepping_back_asks_for_the_month_before() = runTest {
+        val repo = FakeDashboard()
+        val model = model(repo)
+        val expected = DashboardMonths.wire(DashboardMonths.previous(DashboardMonths.current()))
+
+        model.showPreviousMonth()
+
+        assertEquals(expected, repo.asked.last())
+        assertEquals(DashboardMonths.previous(DashboardMonths.current()), model.uiState.value.month)
+    }
+
+    @Test
+    fun there_is_no_stepping_forward_from_the_month_that_is_running() = runTest {
+        val repo = FakeDashboard()
+        val model = model(repo)
+
+        model.showNextMonth()
+
+        assertEquals(1, repo.asked.size, "a month that has not happened holds nothing")
+    }
+
+    @Test
+    fun stepping_forward_works_once_there_is_somewhere_to_go() = runTest {
+        val repo = FakeDashboard()
+        val model = model(repo)
+
+        model.showPreviousMonth()
+        model.showNextMonth()
+
+        assertEquals(DashboardMonths.current(), model.uiState.value.month)
+        assertEquals(3, repo.asked.size)
+    }
+
+    @Test
+    fun changing_month_keeps_the_figures_up_while_the_next_ones_arrive() = runTest {
+        // The #32 mistake, not repeated: asserting the state AFTER the load
+        // looks identical whether or not the screen blanked in between, so
+        // this holds the request open and looks mid-flight.
+        val repo = FakeDashboard(Dashboard(currency = "CAD", net = "100.00", income = Flow("900.00")))
+        val model = model(repo)
+        assertEquals("900.00", model.uiState.value.data.income.actual)
+
+        repo.gate = CompletableDeferred()
+        model.showPreviousMonth()
+
+        val during = model.uiState.value
+        assertTrue(during.refreshing, "a month change refreshes")
+        assertFalse(during.loading, "and must not blank the screen")
+        assertEquals("900.00", during.data.income.actual, "the old figures stay up")
+
+        repo.gate?.complete(Unit)
+    }
+
+    @Test
+    fun a_first_load_that_fails_says_so() = runTest {
+        val repo = FakeDashboard().apply { fail = ApiException.Network(RuntimeException("offline")) }
+        val model = model(repo)
+
+        val state = model.uiState.value
+        assertTrue(state.loadFailed)
+        assertFalse(state.loading)
+        assertFalse(state.showsEmptyState, "an error is not an empty account")
+    }
+
+    @Test
+    fun a_refresh_that_fails_keeps_the_month_it_had() = runTest {
+        val repo = FakeDashboard(Dashboard(currency = "CAD", net = "100.00", income = Flow("900.00")))
+        val model = model(repo)
+
+        repo.fail = ApiException.Network(RuntimeException("offline"))
+        model.showPreviousMonth()
+
+        val state = model.uiState.value
+        assertEquals("900.00", state.data.income.actual, "a failed refresh must not blank a good month")
+        assertFalse(state.loadFailed)
+        assertTrue(state.errorKey != null, "but it still has to say something went wrong")
+    }
+
+    @Test
+    fun an_answer_for_a_month_the_user_has_left_never_lands() = runTest {
+        // Asserting the month here would prove nothing: `show` sets it
+        // synchronously, so it is right whether or not the stale answer is
+        // dropped. What the guard actually protects is the DATA, so that is
+        // what this holds open and checks.
+        val now = DashboardMonths.current()
+        val oneBack = DashboardMonths.wire(DashboardMonths.previous(now))
+        val twoBack = DashboardMonths.wire(DashboardMonths.previous(DashboardMonths.previous(now)))
+
+        val repo = FakeDashboard(Dashboard(currency = "CAD", net = "100.00"))
+        repo.answers[oneBack] = Dashboard(currency = "CAD", net = "7777.77")
+        repo.answers[twoBack] = Dashboard(currency = "CAD", net = "2222.22")
+        val model = model(repo)
+
+        // Hold the month the user is about to leave.
+        repo.gate = CompletableDeferred()
+        repo.gateFor = oneBack
+        model.showPreviousMonth()
+
+        // They move on; this one answers immediately.
+        model.showPreviousMonth()
+        assertEquals("2222.22", model.uiState.value.data.net)
+
+        // Now the abandoned month finally answers.
+        repo.gate?.complete(Unit)
+
+        assertEquals(
+            "2222.22",
+            model.uiState.value.data.net,
+            "a superseded answer landed on top of the month being looked at",
+        )
+    }
+
+    @Test
+    fun capabilities_failing_does_not_fail_the_month() = runTest {
+        // The locale is a nicety; the figures are the screen.
+        val failing = object : CapabilitiesRepository {
+            override suspend fun fetch(): Capabilities = throw ApiException.Network(RuntimeException("offline"))
+            override fun close() = Unit
+        }
+        val repo = FakeDashboard()
+        val model = model(repo, failing)
+
+        assertFalse(model.uiState.value.loadFailed)
+        assertEquals("100.00", model.uiState.value.data.net)
+    }
+
+    @Test
+    fun a_blank_user_binds_to_nothing() = runTest {
+        val repo = FakeDashboard()
+        DashboardViewModel().bind("") { DashboardRepositories(repo, FakeCapabilities()) }
+
+        assertTrue(repo.asked.isEmpty())
+    }
+}
