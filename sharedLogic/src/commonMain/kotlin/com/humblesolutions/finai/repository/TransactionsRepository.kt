@@ -33,6 +33,26 @@ interface TransactionsRepository {
     suspend fun review(cursor: String? = null): ReviewPage
 
     /**
+     * A page of this household's rows — **filed ones included** (#F3).
+     *
+     * [review] answers "what still needs me". This answers "what did you do",
+     * which the import result screen asks the moment a statement lands: a row
+     * the model filed with confidence is saved and otherwise shown to nobody,
+     * so "imported 24" could not be opened to see the 24.
+     *
+     * @param statementImportId scopes to one import, which is how the result
+     *   screen asks for exactly the rows it just created.
+     * @param needsReview filters within that; null returns both kinds, and
+     *   each row says which it is.
+     */
+    @Throws(ApiException::class, CancellationException::class)
+    suspend fun list(
+        statementImportId: String? = null,
+        needsReview: Boolean? = null,
+        cursor: String? = null,
+    ): ReviewPage
+
+    /**
      * Fix a row. Whatever changed, the row has been looked at, so it leaves
      * the queue — unless it still has no category, in which case the server
      * keeps it, asking for one (Finance-backend #48).

@@ -326,6 +326,9 @@ final class ManualEntryViewModel: ObservableObject {
                 guard started == self.generation, typed == self.entry else { return }
                 self.saving = false
                 self.saved = ManualEntry.shared.savedAs(saved: stored)
+                // One transaction moves the month's figures too. After the
+                // server returned the stored row, never on send.
+                LedgerChanged.announce()
                 self.touched = false
                 // The account stays chosen for the next line of the same
                 // statement; everything else starts unanswered again.

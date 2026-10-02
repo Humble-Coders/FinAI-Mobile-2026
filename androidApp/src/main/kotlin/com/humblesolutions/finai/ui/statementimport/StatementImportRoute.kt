@@ -124,6 +124,7 @@ internal fun StatementImportRoute(
                 clearCaptures(context)
                 onReview()
             },
+            onReloadImported = model::reloadImported,
             onDiagnosticsTicked = model::onDiagnosticsTicked,
             onSendDiagnostics = model::sendDiagnostics,
         ),

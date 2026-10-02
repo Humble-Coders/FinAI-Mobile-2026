@@ -11,6 +11,7 @@ import com.humblesolutions.finai.model.ApiException
 import com.humblesolutions.finai.repository.CapabilitiesRepository
 import com.humblesolutions.finai.repository.DashboardRepository
 import com.humblesolutions.finai.usecase.DashboardMonths
+import com.humblesolutions.finai.util.LedgerChanged
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -45,6 +46,9 @@ class DashboardViewModel : ViewModel() {
      */
     private var generation = 0
 
+    /** One collector for the model's life; see [listenForChanges]. */
+    private var listening = false
+
     fun bind(userId: String, logging: Boolean) = bind(userId) {
         Supabase.clientOrNull()?.let { client ->
             val tokens = SupabaseTokenSource(client)
@@ -62,7 +66,27 @@ class DashboardViewModel : ViewModel() {
         boundTo = userId
         _uiState.value = DashboardUiState()
         repositories = build() ?: return
+        listenForChanges()
         load()
+    }
+
+    /**
+     * Re-read whenever something changed the ledger.
+     *
+     * A refresh, not a load: the figures already on screen stay up while the
+     * new ones arrive, so coming back from an import does not flash an empty
+     * dashboard on the way to a full one.
+     *
+     * Collected once per bind. A second collector would re-read the month
+     * twice for every write, which is invisible on a fast connection and a
+     * doubled bill on a slow one.
+     */
+    private fun listenForChanges() {
+        if (listening) return
+        listening = true
+        viewModelScope.launch {
+            LedgerChanged.events.collect { load(refresh = true) }
+        }
     }
 
     override fun onCleared() {

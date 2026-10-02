@@ -12,12 +12,16 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -32,9 +36,11 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
@@ -44,6 +50,8 @@ import androidx.compose.ui.unit.dp
 import com.humblesolutions.finai.R
 import com.humblesolutions.finai.i18n.Strings
 import com.humblesolutions.finai.model.AccountKind
+import com.humblesolutions.finai.model.Transaction
+import com.humblesolutions.finai.model.TransactionDirection
 import com.humblesolutions.finai.ui.components.AccountSheet
 import com.humblesolutions.finai.ui.components.ErrorText
 import com.humblesolutions.finai.ui.components.GradientButton
@@ -52,7 +60,9 @@ import com.humblesolutions.finai.ui.components.PasswordField
 import com.humblesolutions.finai.ui.components.PickerField
 import com.humblesolutions.finai.ui.components.ProviderButton
 import com.humblesolutions.finai.ui.strings
+import com.humblesolutions.finai.ui.theme.FinAiPalette
 import com.humblesolutions.finai.usecase.ImportStep
+import com.humblesolutions.finai.usecase.ImportedRows
 
 /** What the screen can ask for; the pickers are the platform's, so the route supplies them. */
 class StatementImportActions(
@@ -77,6 +87,8 @@ class StatementImportActions(
     val onChooseAnother: () -> Unit,
     val onTypeInstead: () -> Unit,
     val onReview: () -> Unit,
+    /** Try the extracted list again; the import itself already succeeded. */
+    val onReloadImported: () -> Unit,
     val onDiagnosticsTicked: (Boolean) -> Unit,
     val onSendDiagnostics: () -> Unit,
 )
@@ -338,6 +350,10 @@ private fun DoneStep(state: StatementImportUiState, actions: StatementImportActi
     ) {
         state.summary.forEach { Body(it) }
     }
+    // What it actually read. "Imported 24" is a claim the person cannot check,
+    // and the one question they have is whether the categories are right.
+    ImportedRowsSection(state, actions)
+
     // Straight into the review queue when the import left rows waiting (#32).
     if (state.needsReview > 0) {
         Body(strings(Strings.import_review_now), muted = true)
@@ -401,4 +417,173 @@ private fun DiagnosticsOffer(state: StatementImportUiState, actions: StatementIm
             )
         }
     }
+}
+
+// ── What the import read ────────────────────────────────────────────────
+
+/**
+ * The rows the import produced, grouped by the day they fell on.
+ *
+ * Arranged by shared [ImportedRows] so iOS shows the same list in the same
+ * order; this draws it. A failure to load leaves the import succeeded — the
+ * summary above still stands, and the offer to try the list again is a line,
+ * not an error screen.
+ */
+@Composable
+private fun ImportedRowsSection(state: StatementImportUiState, actions: StatementImportActions) {
+    if (state.importedLoading) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center,
+        ) {
+            CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+        }
+        return
+    }
+    if (state.importedErrorKey != null) {
+        Body(strings(Strings.import_extracted_failed), muted = true)
+        ProviderButton(text = strings(Strings.import_extracted_retry), onClick = actions.onReloadImported)
+        return
+    }
+    if (state.imported.isEmpty()) return
+
+    Spacer(Modifier.height(4.dp))
+    Text(
+        text = strings(Strings.import_extracted_title),
+        style = MaterialTheme.typography.titleSmall,
+        fontWeight = FontWeight.SemiBold,
+    )
+    ImportedTotals(state)
+    Spacer(Modifier.height(4.dp))
+
+    ImportedRows.byDate(state.imported).forEach { day ->
+        Text(
+            text = state.dateLabel(day.date),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 10.dp, bottom = 4.dp),
+        )
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp),
+            color = MaterialTheme.colorScheme.surface,
+            tonalElevation = 1.dp,
+        ) {
+            Column {
+                day.rows.forEachIndexed { index, row ->
+                    ImportedRow(state, row)
+                    if (index != day.rows.lastIndex) {
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** Money out, money in, and how many still want a person. */
+@Composable
+private fun ImportedTotals(state: StatementImportUiState) {
+    val chips = buildList<Pair<String, Boolean>> {
+        // Each omitted when there is none, rather than shown as zero: "0.00 in"
+        // reads as a fact about the statement rather than an absence of rows.
+        state.totalOut?.let { add(strings(Strings.import_extracted_out, it) to false) }
+        state.totalIn?.let { add(strings(Strings.import_extracted_in, it) to false) }
+        state.waitingLabel?.let { add(it to true) }
+    }
+    if (chips.isEmpty()) return
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        chips.forEach { (text, warning) ->
+            Text(
+                text = text,
+                style = MaterialTheme.typography.labelSmall,
+                color = if (warning) {
+                    MaterialTheme.colorScheme.tertiary
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                },
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(
+                        if (warning) {
+                            MaterialTheme.colorScheme.tertiary.copy(alpha = 0.12f)
+                        } else {
+                            MaterialTheme.colorScheme.surfaceVariant
+                        },
+                    )
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun ImportedRow(state: StatementImportUiState, row: Transaction) {
+    val isDebit = row.direction == TransactionDirection.DEBIT
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 56.dp)
+            .padding(horizontal = 14.dp, vertical = 10.dp)
+            // One announcement per row: the name, what it was filed as, and
+            // the amount, rather than three separate stops.
+            .semantics(mergeDescendants = true) {
+                contentDescription = state.rowDescription(row)
+            },
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(
+                text = ImportedRows.titleOf(row),
+                style = MaterialTheme.typography.bodyMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Spacer(Modifier.height(2.dp))
+            CategoryChip(state, row)
+        }
+        Spacer(Modifier.width(10.dp))
+        Text(
+            text = state.amountLabel(row),
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.SemiBold,
+            // Green for money in; money out stays plain. Colouring both makes
+            // every row shout and the direction stops registering.
+            color = if (isDebit) {
+                MaterialTheme.colorScheme.onBackground
+            } else {
+                FinAiPalette.Green
+            },
+        )
+    }
+}
+
+/** What it was filed as — or that nothing filed it, which is the useful case. */
+@Composable
+private fun CategoryChip(state: StatementImportUiState, row: Transaction) {
+    val category = ImportedRows.categoryOf(row, state.categories)
+    val filed = category != null
+    Text(
+        text = category?.name ?: strings(Strings.import_extracted_uncategorised),
+        style = MaterialTheme.typography.labelSmall,
+        color = if (filed) {
+            MaterialTheme.colorScheme.onSurfaceVariant
+        } else {
+            MaterialTheme.colorScheme.tertiary
+        },
+        modifier = Modifier
+            .clip(RoundedCornerShape(6.dp))
+            .background(
+                if (filed) {
+                    MaterialTheme.colorScheme.surfaceVariant
+                } else {
+                    MaterialTheme.colorScheme.tertiary.copy(alpha = 0.12f)
+                },
+            )
+            .padding(horizontal = 6.dp, vertical = 2.dp),
+    )
 }

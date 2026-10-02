@@ -7,6 +7,7 @@ import com.humblesolutions.finai.model.Flow
 import com.humblesolutions.finai.repository.CapabilitiesRepository
 import com.humblesolutions.finai.repository.DashboardRepository
 import com.humblesolutions.finai.usecase.DashboardMonths
+import com.humblesolutions.finai.util.LedgerChanged
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -221,5 +222,70 @@ class DashboardViewModelTest {
         DashboardViewModel().bind("") { DashboardRepositories(repo, FakeCapabilities()) }
 
         assertTrue(repo.asked.isEmpty())
+    }
+
+    // ── Staying current with the ledger ─────────────────────────────────
+
+    @Test
+    fun a_write_elsewhere_brings_the_month_up_to_date() = runTest {
+        // The whole point: import a statement or type a transaction in, come
+        // back, and home shows what just happened rather than what it said
+        // before.
+        val repo = FakeDashboard(Dashboard(currency = "CAD", net = "100.00"))
+        val model = model(repo)
+        assertEquals(1, repo.asked.size)
+
+        repo.answer = Dashboard(currency = "CAD", net = "900.00")
+        LedgerChanged.announce()
+
+        assertEquals(2, repo.asked.size)
+        assertEquals("900.00", model.uiState.value.data.net)
+    }
+
+    @Test
+    fun coming_up_to_date_does_not_blank_the_screen() = runTest {
+        // A refresh, not a load. Flashing an empty dashboard on the way back
+        // from an import reads as the import having wiped something.
+        val repo = FakeDashboard(Dashboard(currency = "CAD", net = "100.00", income = Flow("900.00")))
+        val model = model(repo)
+
+        repo.gate = CompletableDeferred()
+        LedgerChanged.announce()
+
+        val during = model.uiState.value
+        assertTrue(during.refreshing)
+        assertFalse(during.loading)
+        assertEquals("900.00", during.data.income.actual, "the figures already there stay up")
+        repo.gate?.complete(Unit)
+    }
+
+    @Test
+    fun the_month_being_looked_at_is_the_one_re_read() = runTest {
+        // Not snapped back to today: somebody checking August should not be
+        // thrown to October because a write landed.
+        val repo = FakeDashboard()
+        val model = model(repo)
+        model.showPreviousMonth()
+        val looking = DashboardMonths.wire(DashboardMonths.previous(DashboardMonths.current()))
+
+        LedgerChanged.announce()
+
+        assertEquals(looking, repo.asked.last())
+    }
+
+    @Test
+    fun only_one_re_read_happens_per_change() = runTest {
+        // A second collector would double every read — invisible on a fast
+        // connection and a doubled bill on a slow one. Binding the SAME user
+        // cannot reach the guard, because bind early-returns; a different user
+        // is the way a second collector would ever be started.
+        val repo = FakeDashboard()
+        val model = model(repo)
+        model.bind("bob") { DashboardRepositories(repo, FakeCapabilities()) }
+        val readsBefore = repo.asked.size
+
+        LedgerChanged.announce()
+
+        assertEquals(readsBefore + 1, repo.asked.size, "one read per announcement, whoever is bound")
     }
 }

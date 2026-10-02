@@ -48,6 +48,9 @@ final class DashboardViewModel: ObservableObject {
     /// the user has left cannot land on the one they are looking at.
     private var generation = 0
 
+    /// One observer for the model's life; see `listenForChanges`.
+    private var listener: Task<Void, Never>?
+
     #if DEBUG
     private let logging = true
     #else
@@ -65,10 +68,13 @@ final class DashboardViewModel: ObservableObject {
         let base = ApiConfig.shared.BASE_URL
         dashboardRepository = KtorDashboardRepository(baseUrl: base, tokens: tokens, logging: logging)
         capabilitiesRepository = KtorCapabilitiesRepository(baseUrl: base, tokens: tokens, logging: logging)
+        listenForChanges()
         load()
     }
 
     func unbind() {
+        listener?.cancel()
+        listener = nil
         dashboardRepository?.close()
         dashboardRepository = nil
         capabilitiesRepository?.close()
@@ -142,6 +148,27 @@ final class DashboardViewModel: ObservableObject {
     func showNextMonth() {
         guard canGoForward else { return }
         show(DashboardMonths.shared.next(month: month))
+    }
+
+    /**
+     Re-read whenever something changed the ledger.
+
+     A refresh, not a load: the figures already on screen stay up while the new
+     ones arrive, so coming back from an import does not flash an empty
+     dashboard on the way to a full one.
+
+     One observer per model. A second would re-read the month twice for every
+     write, which is invisible on a fast connection and a doubled bill on a
+     slow one.
+     */
+    private func listenForChanges() {
+        guard listener == nil else { return }
+        listener = Task { [weak self] in
+            for await _ in LedgerChanged.events {
+                guard let self, !Task.isCancelled else { return }
+                self.load(refresh: true)
+            }
+        }
     }
 
     private func show(_ next: Kotlinx_datetimeLocalDate) {

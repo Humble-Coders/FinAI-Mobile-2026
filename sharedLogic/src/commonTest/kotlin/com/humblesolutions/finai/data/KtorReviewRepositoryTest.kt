@@ -232,4 +232,51 @@ class KtorReviewRepositoryTest {
             ).create("!!!")
         }
     }
+
+    // ── GET /transactions, which the import result screen reads ─────────
+
+    @Test
+    fun anImportIsAskedForByItsOwnId() = runTest {
+        repository().list(statementImportId = "imp-7")
+
+        val request = assertNotNull(seen.single())
+        assertEquals("/transactions", request.url.encodedPath)
+        assertEquals("imp-7", request.url.parameters["statement_import_id"])
+    }
+
+    @Test
+    fun anUnfilteredListSendsNoFiltersAtAll() = runTest {
+        // Not `needs_review=false`: that is a filter, and it would hide
+        // exactly the confidently-filed rows the result screen exists to show.
+        repository().list()
+
+        val names = assertNotNull(seen.single()).url.parameters.names()
+        assertEquals(emptySet(), names)
+    }
+
+    @Test
+    fun askingForOnlyTheSettledRowsSaysSo() = runTest {
+        repository().list(statementImportId = "imp-7", needsReview = false)
+
+        val request = assertNotNull(seen.single())
+        assertEquals("false", request.url.parameters["needs_review"])
+    }
+
+    @Test
+    fun aListPageDecodesLikeTheQueuesDoes() = runTest {
+        // The same shape on the wire, so a row carries what it needs either
+        // way round and the screens can share a row renderer.
+        val page = repository().list(statementImportId = "imp-7")
+
+        val row = page.rows.single()
+        assertEquals(ReviewReason.UNKNOWN_CATEGORY, row.reviewReason)
+        assertEquals(62, row.extractionConfidence)
+    }
+
+    @Test
+    fun aListFollowsItsCursorLikeTheQueueDoes() = runTest {
+        repository().list(statementImportId = "imp-7", cursor = "abc+/=")
+
+        assertEquals("abc+/=", assertNotNull(seen.single()).url.parameters["cursor"])
+    }
 }

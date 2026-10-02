@@ -647,6 +647,12 @@ class ReviewViewModelTest {
         private val failConfirmOne: ApiException? = null,
         private val failDelete: ApiException? = null,
     ) : TransactionsRepository {
+        override suspend fun list(
+            statementImportId: String?,
+            needsReview: Boolean?,
+            cursor: String?,
+        ): ReviewPage = ReviewPage()
+
         var pagesRead = 0
         val cursors = mutableListOf<String?>()
         val confirmedAll = mutableListOf<List<String>>()

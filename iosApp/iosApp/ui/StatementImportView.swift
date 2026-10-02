@@ -258,6 +258,12 @@ struct StatementImportView: View {
                 ForEach(model.summary, id: \.self) { Text($0) }
             }
             .onAppear { AccessibilityNotification.Announcement(model.summary.joined(separator: ". ")).post() }
+
+            // What it actually read. "Imported 24" is a claim the person
+            // cannot check, and the one question they have is whether the
+            // categories are right.
+            importedRows
+
             // Straight into the review queue when rows are waiting (#32).
             if model.needsReview > 0 {
                 Text(L.t(Strings.shared.import_review_now)).foregroundColor(Brand.textMuted)
@@ -331,6 +337,102 @@ struct StatementImportView: View {
         }
         .padding(16)
         .background(Brand.sheet, in: RoundedRectangle(cornerRadius: 16))
+    }
+
+    // MARK: - What the import read
+
+    /// The rows the import produced, grouped by the day they fell on.
+    ///
+    /// Arranged by shared `ImportedRows` so Android shows the same list in the
+    /// same order; this draws it. A failure to load leaves the import
+    /// succeeded — the summary above still stands, and the offer to try again
+    /// is a line, not an error screen.
+    @ViewBuilder
+    private var importedRows: some View {
+        if model.importedLoading {
+            ProgressView().frame(maxWidth: .infinity).padding(.vertical, 8)
+        } else if model.importedErrorKey != nil {
+            VStack(alignment: .leading, spacing: 8) {
+                Text(L.t(Strings.shared.import_extracted_failed)).foregroundColor(Brand.textMuted)
+                Button { model.reloadImported() } label: {
+                    Text(L.t(Strings.shared.import_extracted_retry)).font(.headline).tappableRow(minHeight: 52)
+                }
+                .buttonStyle(.bordered)
+                .tint(.primary)
+            }
+        } else if !model.imported.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                Text(L.t(Strings.shared.import_extracted_title)).font(.subheadline.weight(.semibold))
+                importedTotals
+                ForEach(model.importedDays, id: \.date) { day in
+                    Text(model.dateLabel(day.date))
+                        .font(.caption)
+                        .foregroundColor(Brand.textMuted)
+                        .padding(.top, 6)
+                    VStack(spacing: 0) {
+                        ForEach(Array(day.rows.enumerated()), id: \.element.id) { index, row in
+                            importedRow(row)
+                            if index != day.rows.count - 1 {
+                                Divider().overlay(Brand.border)
+                            }
+                        }
+                    }
+                    .background(Brand.surface)
+                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                }
+            }
+        }
+    }
+
+    /// Money out, money in, and how many still want a person.
+    @ViewBuilder
+    private var importedTotals: some View {
+        HStack(spacing: 6) {
+            // Each omitted when there is none, rather than shown as zero:
+            // "0.00 in" reads as a fact about the statement rather than an
+            // absence of rows.
+            if let out = model.totalOut { chip(L.t(Strings.shared.import_extracted_out, out), warning: false) }
+            if let money = model.totalIn { chip(L.t(Strings.shared.import_extracted_in, money), warning: false) }
+            if let waiting = model.waitingLabel { chip(waiting, warning: true) }
+        }
+    }
+
+    private func chip(_ text: String, warning: Bool) -> some View {
+        Text(text)
+            .font(.caption2)
+            .foregroundColor(warning ? Brand.amber : Brand.textMuted)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(warning ? Brand.amber.opacity(0.12) : Brand.surface)
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+
+    private func importedRow(_ row: SharedLogic.Transaction) -> some View {
+        HStack(alignment: .center, spacing: 10) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(model.titleOf(row)).font(.body).lineLimit(1).truncationMode(.tail)
+                Text(model.categoryLabel(row))
+                    .font(.caption2)
+                    .foregroundColor(model.isFiled(row) ? Brand.textMuted : Brand.amber)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(model.isFiled(row) ? Brand.surfaceField : Brand.amber.opacity(0.12))
+                    .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+            }
+            Spacer()
+            Text(model.amountLabel(row))
+                .font(.body.weight(.semibold))
+                // Green for money in; money out stays plain. Colouring both
+                // makes every row shout and the direction stops registering.
+                .foregroundColor(row.direction == .credit ? Brand.green : .primary)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .frame(minHeight: 56)
+        // One announcement per row: the name, what it was filed as and the
+        // amount, rather than three separate stops.
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(model.rowDescription(row))
     }
 }
 
