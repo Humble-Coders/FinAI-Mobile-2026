@@ -17,6 +17,24 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.automirrored.filled.ReceiptLong
+import androidx.compose.material.icons.filled.AccountBalanceWallet
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.CreditCard
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Savings
+import androidx.compose.material.icons.filled.UploadFile
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -28,13 +46,13 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.humblesolutions.finai.i18n.Strings
-import com.humblesolutions.finai.ui.Vectors
 import com.humblesolutions.finai.ui.components.ErrorText
 import com.humblesolutions.finai.ui.components.FinAiIcon
 import com.humblesolutions.finai.ui.components.ProviderButton
@@ -48,9 +66,12 @@ import com.humblesolutions.finai.ui.theme.FinAiPalette
  *
  * Every figure arrives already decided — by the server, then by
  * [DashboardUiState]. Nothing here computes money, which is what keeps the two
- * apps from disagreeing about a number somebody is acting on. The icons come
- * from shared [Vectors] for the same reason: a native icon set per platform
- * would give the two apps different shapes for the same idea.
+ * apps from disagreeing about a number somebody is acting on.
+ *
+ * The icons are Material's, with SF Symbols' equivalents on iOS. The two
+ * differ slightly in shape, which nobody sees side by side, and in exchange
+ * each app gets icons drawn for its own platform that scale with the reader's
+ * text size.
  */
 @Composable
 fun DashboardScreen(
@@ -103,7 +124,7 @@ private fun Header(state: DashboardUiState, onReview: () -> Unit) {
                 .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)),
             contentAlignment = Alignment.Center,
         ) {
-            FinAiIcon(Vectors.piggyBank, tint = MaterialTheme.colorScheme.primary, size = 24.dp)
+            FinAiIcon(Icons.Filled.Person, tint = MaterialTheme.colorScheme.primary, size = 24.dp)
         }
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
@@ -129,7 +150,7 @@ private fun Header(state: DashboardUiState, onReview: () -> Unit) {
                 .semantics { contentDescription = state.notificationsLabel },
             contentAlignment = Alignment.Center,
         ) {
-            FinAiIcon(Vectors.bell, tint = MaterialTheme.colorScheme.onBackground, size = 22.dp)
+            FinAiIcon(Icons.Filled.Notifications, tint = MaterialTheme.colorScheme.onBackground, size = 22.dp)
             if (state.hasPending) {
                 Box(
                     Modifier
@@ -214,7 +235,7 @@ private fun HeroCard(
                 contentAlignment = Alignment.Center,
             ) {
                 FinAiIcon(
-                    icon = if (state.amountsHidden) Vectors.eyeOff else Vectors.eye,
+                    icon = if (state.amountsHidden) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
                     tint = FinAiPalette.OnGreen,
                     size = 18.dp,
                 )
@@ -250,7 +271,7 @@ private fun MonthPill(state: DashboardUiState, onPrevious: () -> Unit, onNext: (
             .padding(horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Step(Vectors.chevronLeft, strings(Strings.dashboard_previous_month), state.canGoBack, onPrevious)
+        Step(Icons.AutoMirrored.Filled.KeyboardArrowLeft, strings(Strings.dashboard_previous_month), state.canGoBack, onPrevious)
         Text(
             text = state.monthLabel,
             style = MaterialTheme.typography.labelLarge,
@@ -259,7 +280,7 @@ private fun MonthPill(state: DashboardUiState, onPrevious: () -> Unit, onNext: (
         // Hidden rather than disabled on the month that is running: a month
         // that has not happened holds nothing to look at.
         if (state.canGoForward) {
-            Step(Vectors.chevronRight, strings(Strings.dashboard_next_month), true, onNext)
+            Step(Icons.AutoMirrored.Filled.KeyboardArrowRight, strings(Strings.dashboard_next_month), true, onNext)
         } else {
             Spacer(Modifier.width(32.dp))
         }
@@ -267,7 +288,7 @@ private fun MonthPill(state: DashboardUiState, onPrevious: () -> Unit, onNext: (
 }
 
 @Composable
-private fun Step(icon: com.humblesolutions.finai.ui.IconPath, label: String, enabled: Boolean, onClick: () -> Unit) {
+private fun Step(icon: ImageVector, label: String, enabled: Boolean, onClick: () -> Unit) {
     Box(
         modifier = Modifier
             .size(32.dp)
@@ -293,7 +314,7 @@ private fun ChangePill(label: String, rose: Boolean) {
         // the direction is unmistakable.
         Box(Modifier.size(12.dp).then(if (rose) Modifier else Modifier.clip(CircleShape))) {
             FinAiIcon(
-                icon = if (rose) Vectors.arrowUp else Vectors.chevronDown,
+                icon = if (rose) Icons.Filled.ArrowUpward else Icons.Filled.KeyboardArrowDown,
                 tint = FinAiPalette.OnGreen,
                 size = 12.dp,
             )
@@ -338,7 +359,7 @@ private fun HeroBars(state: DashboardUiState) {
 private fun Figures(state: DashboardUiState) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         FigureCard(
-            icon = Vectors.wallet,
+            icon = Icons.Filled.AccountBalanceWallet,
             accent = FinAiPalette.Green,
             label = strings(Strings.dashboard_income),
             amount = state.incomeAmount,
@@ -346,7 +367,7 @@ private fun Figures(state: DashboardUiState) {
             modifier = Modifier.weight(1f),
         )
         FigureCard(
-            icon = Vectors.card,
+            icon = Icons.Filled.CreditCard,
             accent = FinAiPalette.Red,
             label = strings(Strings.dashboard_expenses),
             amount = state.expensesAmount,
@@ -358,7 +379,7 @@ private fun Figures(state: DashboardUiState) {
     Spacer(Modifier.height(12.dp))
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         FigureCard(
-            icon = Vectors.piggyBank,
+            icon = Icons.Filled.Savings,
             accent = FinAiPalette.Purple,
             label = strings(Strings.dashboard_investments),
             amount = state.investmentsAmount,
@@ -366,7 +387,7 @@ private fun Figures(state: DashboardUiState) {
             modifier = Modifier.weight(1f),
         )
         FigureCard(
-            icon = Vectors.document,
+            icon = Icons.AutoMirrored.Filled.ReceiptLong,
             accent = FinAiPalette.Amber,
             label = strings(Strings.dashboard_debts),
             amount = state.debtsAmount,
@@ -383,7 +404,7 @@ private fun Figures(state: DashboardUiState) {
 
 @Composable
 private fun FigureCard(
-    icon: com.humblesolutions.finai.ui.IconPath,
+    icon: ImageVector,
     accent: Color,
     label: String,
     amount: String,
@@ -415,7 +436,7 @@ private fun FigureCard(
                 fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.weight(1f),
             )
-            FinAiIcon(Vectors.chevronRight, tint = accent.copy(alpha = 0.5f), size = 14.dp)
+            FinAiIcon(Icons.AutoMirrored.Filled.KeyboardArrowRight, tint = accent.copy(alpha = 0.5f), size = 14.dp)
         }
         Spacer(Modifier.height(10.dp))
         Text(text = amount, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
@@ -488,7 +509,7 @@ private fun Commitments(state: DashboardUiState) {
                 contentAlignment = Alignment.Center,
             ) {
                 if (row.wasSeen) {
-                    FinAiIcon(Vectors.arrowUp, tint = FinAiPalette.Green, size = 12.dp)
+                    FinAiIcon(Icons.Filled.Check, tint = FinAiPalette.Green, size = 12.dp)
                 }
             }
         }
@@ -519,7 +540,7 @@ private fun ActionPanel(
                     .background(FinAiPalette.Green.copy(alpha = 0.18f)),
                 contentAlignment = Alignment.Center,
             ) {
-                FinAiIcon(Vectors.bolt, tint = FinAiPalette.Green, size = 20.dp)
+                FinAiIcon(Icons.Filled.Bolt, tint = FinAiPalette.Green, size = 20.dp)
             }
             Spacer(Modifier.width(12.dp))
             Column {
@@ -542,21 +563,21 @@ private fun ActionPanel(
 
         Spacer(Modifier.height(14.dp))
         ActionRow(
-            icon = Vectors.importStatement,
+            icon = Icons.Filled.UploadFile,
             label = strings(Strings.import_entry),
             primary = true,
             onClick = onImportStatement,
         )
         Spacer(Modifier.height(8.dp))
-        ActionRow(icon = Vectors.plus, label = strings(Strings.manual_entry_title), onClick = onAddTransaction)
+        ActionRow(icon = Icons.Filled.Add, label = strings(Strings.manual_entry_title), onClick = onAddTransaction)
         Spacer(Modifier.height(8.dp))
-        ActionRow(icon = Vectors.list, label = strings(Strings.review_entry), onClick = onReview)
+        ActionRow(icon = Icons.AutoMirrored.Filled.List, label = strings(Strings.review_entry), onClick = onReview)
     }
 }
 
 @Composable
 private fun ActionRow(
-    icon: com.humblesolutions.finai.ui.IconPath,
+    icon: ImageVector,
     label: String,
     onClick: () -> Unit,
     primary: Boolean = false,
@@ -589,7 +610,7 @@ private fun ActionRow(
             color = content,
             modifier = Modifier.weight(1f),
         )
-        FinAiIcon(Vectors.chevronRight, tint = content, size = 16.dp)
+        FinAiIcon(Icons.AutoMirrored.Filled.KeyboardArrowRight, tint = content, size = 16.dp)
     }
 }
 

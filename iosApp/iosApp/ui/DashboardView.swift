@@ -7,9 +7,12 @@ import SwiftUI
 
  Every figure arrives already decided, by the server and then by the view
  model. Nothing here computes money, which is what keeps the two apps from
- disagreeing about a number somebody is acting on. The icons come from shared
- `Vectors` for the same reason: SF Symbols here and Material there would be the
- same idea drawn two ways.
+ disagreeing about a number somebody is acting on.
+
+ The icons are SF Symbols, with Material's equivalents on Android. The two
+ differ slightly in shape, which nobody sees side by side, and in exchange
+ each app gets icons drawn for its own platform that scale with the reader's
+ text size.
  */
 struct DashboardView: View {
     @ObservedObject var model: DashboardViewModel
@@ -57,7 +60,7 @@ struct DashboardView: View {
             // need it.
             ZStack {
                 Circle().fill(Brand.green.opacity(0.15))
-                FinAiIcon(icon: Vectors.shared.piggyBank, tint: Brand.green, size: 24)
+                FinAiIcon(symbol: "person.fill", tint: Brand.green, size: 24)
             }
             .frame(width: 44, height: 44)
 
@@ -74,7 +77,7 @@ struct DashboardView: View {
             // it.
             Button(action: onReview) {
                 ZStack(alignment: .topTrailing) {
-                    FinAiIcon(icon: Vectors.shared.bell, tint: .primary, size: 22)
+                    FinAiIcon(symbol: "bell.fill", tint: .primary, size: 22)
                         .frame(width: 44, height: 44)
                     if model.hasPending {
                         Circle().fill(Color.red).frame(width: 8, height: 8).offset(x: -10, y: 10)
@@ -128,7 +131,7 @@ struct DashboardView: View {
                     .foregroundColor(Brand.onGreen)
                 Button(action: model.toggleAmounts) {
                     FinAiIcon(
-                        icon: model.amountsHidden ? Vectors.shared.eyeOff : Vectors.shared.eye,
+                        symbol: model.amountsHidden ? "eye.slash.fill" : "eye.fill",
                         tint: Brand.onGreen,
                         size: 18
                     )
@@ -168,13 +171,13 @@ struct DashboardView: View {
 
     private var monthPill: some View {
         HStack(spacing: 0) {
-            step(Vectors.shared.chevronLeft, L.t(Strings.shared.dashboard_previous_month), model.canGoBack) {
+            step("chevron.left", L.t(Strings.shared.dashboard_previous_month), model.canGoBack) {
                 model.showPreviousMonth()
             }
             Text(model.monthLabel).font(.subheadline.weight(.medium)).foregroundColor(Brand.onGreen)
             // Hidden rather than disabled on the month that is running.
             if model.canGoForward {
-                step(Vectors.shared.chevronRight, L.t(Strings.shared.dashboard_next_month), true) {
+                step("chevron.right", L.t(Strings.shared.dashboard_next_month), true) {
                     model.showNextMonth()
                 }
             } else {
@@ -187,10 +190,10 @@ struct DashboardView: View {
     }
 
     private func step(
-        _ icon: IconPath, _ label: String, _ enabled: Bool, action: @escaping () -> Void
+        _ symbol: String, _ label: String, _ enabled: Bool, action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
-            FinAiIcon(icon: icon, tint: Brand.onGreen, size: 14).frame(width: 32, height: 32)
+            FinAiIcon(symbol: symbol, tint: Brand.onGreen, size: 14).frame(width: 32, height: 32)
         }
         .disabled(!enabled)
         .accessibilityLabel(label)
@@ -199,7 +202,7 @@ struct DashboardView: View {
     private func changePill(_ label: String, rose: Bool) -> some View {
         HStack(spacing: 6) {
             // The same arrow either way, turned over for a fall.
-            FinAiIcon(icon: Vectors.shared.arrowUp, tint: Brand.onGreen, size: 12)
+            FinAiIcon(symbol: "arrow.up", tint: Brand.onGreen, size: 12)
                 .rotationEffect(.degrees(rose ? 0 : 180))
             Text(label).font(.caption2).foregroundColor(Brand.onGreen)
         }
@@ -240,12 +243,12 @@ struct DashboardView: View {
         VStack(spacing: 12) {
             HStack(alignment: .top, spacing: 12) {
                 FigureCard(
-                    icon: Vectors.shared.wallet, accent: Brand.green,
+                    symbol: "banknote.fill", accent: Brand.green,
                     label: L.t(Strings.shared.dashboard_income),
                     amount: model.incomeAmount, detail: model.incomeExpectation
                 )
                 FigureCard(
-                    icon: Vectors.shared.card, accent: Brand.red,
+                    symbol: "creditcard.fill", accent: Brand.red,
                     label: L.t(Strings.shared.dashboard_expenses),
                     amount: model.expensesAmount, detail: model.expensesExpectation,
                     detailIsWarning: model.expensesAreOver
@@ -253,12 +256,12 @@ struct DashboardView: View {
             }
             HStack(alignment: .top, spacing: 12) {
                 FigureCard(
-                    icon: Vectors.shared.piggyBank, accent: Brand.purple,
+                    symbol: "chart.line.uptrend.xyaxis", accent: Brand.purple,
                     label: L.t(Strings.shared.dashboard_investments),
                     amount: model.investmentsAmount, detail: model.investmentsMovement
                 )
                 FigureCard(
-                    icon: Vectors.shared.document, accent: Brand.amber,
+                    symbol: "doc.text.fill", accent: Brand.amber,
                     label: L.t(Strings.shared.dashboard_debts),
                     amount: model.debtsAmount, detail: model.debtsMovement
                 )
@@ -286,7 +289,7 @@ struct DashboardView: View {
                     ZStack {
                         Circle().fill(row.wasSeen ? Brand.green.opacity(0.18) : Color.gray.opacity(0.12))
                         if row.wasSeen {
-                            FinAiIcon(icon: Vectors.shared.arrowUp, tint: Brand.green, size: 12)
+                            FinAiIcon(symbol: "checkmark", tint: Brand.green, size: 12)
                         }
                     }
                     .frame(width: 22, height: 22)
@@ -306,7 +309,7 @@ struct DashboardView: View {
             HStack(spacing: 12) {
                 ZStack {
                     Circle().fill(Brand.green.opacity(0.18))
-                    FinAiIcon(icon: Vectors.shared.bolt, tint: Brand.green, size: 20)
+                    FinAiIcon(symbol: "bolt.fill", tint: Brand.green, size: 20)
                 }
                 .frame(width: 40, height: 40)
                 VStack(alignment: .leading, spacing: 2) {
@@ -325,17 +328,17 @@ struct DashboardView: View {
 
             VStack(spacing: 8) {
                 ActionRow(
-                    icon: Vectors.shared.importStatement,
+                    symbol: "square.and.arrow.down",
                     label: L.t(Strings.shared.import_entry),
                     primary: true, action: onImportStatement
                 )
                 ActionRow(
-                    icon: Vectors.shared.plus,
+                    symbol: "plus",
                     label: L.t(Strings.shared.manual_entry_title),
                     action: onAddTransaction
                 )
                 ActionRow(
-                    icon: Vectors.shared.list,
+                    symbol: "list.bullet",
                     label: L.t(Strings.shared.review_entry),
                     action: onReview
                 )
@@ -363,7 +366,7 @@ struct DashboardView: View {
 /// One of the four cards: a tinted icon tile, a label, a figure, and what it
 /// is measured against.
 private struct FigureCard: View {
-    let icon: IconPath
+    let symbol: String
     let accent: Color
     let label: String
     let amount: String
@@ -375,12 +378,12 @@ private struct FigureCard: View {
             HStack(spacing: 10) {
                 ZStack {
                     RoundedRectangle(cornerRadius: 12, style: .continuous).fill(accent.opacity(0.18))
-                    FinAiIcon(icon: icon, tint: accent, size: 20)
+                    FinAiIcon(symbol: symbol, tint: accent, size: 20)
                 }
                 .frame(width: 36, height: 36)
                 Text(label).font(.caption.weight(.semibold)).foregroundColor(accent)
                 Spacer()
-                FinAiIcon(icon: Vectors.shared.chevronRight, tint: accent.opacity(0.5), size: 14)
+                FinAiIcon(symbol: "chevron.right", tint: accent.opacity(0.5), size: 14)
             }
             Text(amount).font(.title3.weight(.bold)).padding(.top, 10)
             if let detail {
@@ -398,7 +401,7 @@ private struct FigureCard: View {
 }
 
 private struct ActionRow: View {
-    let icon: IconPath
+    let symbol: String
     let label: String
     var primary = false
     let action: () -> Void
@@ -406,10 +409,10 @@ private struct ActionRow: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 12) {
-                FinAiIcon(icon: icon, tint: content, size: 20)
+                FinAiIcon(symbol: symbol, tint: content, size: 20)
                 Text(label).font(.subheadline.weight(.semibold)).foregroundColor(content)
                 Spacer()
-                FinAiIcon(icon: Vectors.shared.chevronRight, tint: content, size: 16)
+                FinAiIcon(symbol: "chevron.right", tint: content, size: 16)
             }
             .padding(.horizontal, 16)
             .frame(maxWidth: .infinity, minHeight: 56, alignment: .leading)
