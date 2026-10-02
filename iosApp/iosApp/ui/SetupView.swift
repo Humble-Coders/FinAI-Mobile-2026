@@ -98,6 +98,11 @@ struct SetupView: View {
                 // The same rule the button reads, said out loud.
                 ErrorText(messageKey: model.notice?.messageKey)
             }
+            // Advice, and only when nothing is actually wrong: a warning under
+            // a blocked Continue would compete with the reason it is blocked.
+            if model.errorKey == nil, model.notice == nil {
+                WarningText(messageKey: model.warning?.messageKey)
+            }
             // Skip sits above Continue, so the main action stays last and under
             // the thumb.
             if model.showsSkip {
@@ -179,7 +184,10 @@ struct SetupView: View {
             ListRow(
                 label: L.t(Strings.shared.setup_obligations_label),
                 total: model.total(of: .obligations),
-                hint: L.t(Strings.shared.setup_amount_hint)
+                // Not the generic "Enter amount": this is the one list whose
+                // relationship to the field above it is not obvious, and
+                // leaving it unsaid is what let rent be counted twice.
+                hint: L.t(Strings.shared.setup_obligations_hint)
             ) { model.openList(.obligations) }
         }
     }

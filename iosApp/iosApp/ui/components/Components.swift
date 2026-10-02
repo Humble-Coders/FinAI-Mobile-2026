@@ -9,6 +9,8 @@ enum Brand {
     /// The dark end of the logo's gradient, used for the primary button.
     static let greenDeep = Color(red: 0x15 / 255, green: 0x80 / 255, blue: 0x3D / 255)
     static let onGreen = Color(red: 0x05 / 255, green: 0x2E / 255, blue: 0x16 / 255)
+    /// Advice that is not an error. Mirrors `FinAiPalette.Amber`.
+    static let amber = Color(red: 0xFB / 255, green: 0xBF / 255, blue: 0x24 / 255)
 
     static let ground = Color("Ground")
     /// The auth sheet's card: white on light, a lifted grey on dark.
@@ -294,6 +296,26 @@ struct ErrorText: View {
             Text(L.t(messageKey))
                 .font(.footnote)
                 .foregroundColor(.red)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+}
+
+/// Something the person should look at, which is not stopping them.
+///
+/// Amber, not red: red is reserved for a thing that is actually blocked, and
+/// spending it on advice teaches people to read past it. The distinction is
+/// not carried by colour alone — this occupies the same slot as the error and
+/// only one of the two is ever shown, so a reader who cannot tell the hues
+/// apart still gets one unambiguous sentence.
+struct WarningText: View {
+    let messageKey: String?
+
+    var body: some View {
+        if let messageKey {
+            Text(L.t(messageKey))
+                .font(.footnote)
+                .foregroundColor(Brand.amber)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
     }

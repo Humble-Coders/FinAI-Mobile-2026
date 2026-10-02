@@ -83,6 +83,13 @@ final class SetupViewModel: ObservableObject {
         SetupWizard.shared.notice(step: step, draft: draft, fractionDigits: fractionDigits, touched: touched)
     }
 
+    /// Something worth saying that is not stopping Continue — today, itemised
+    /// commitments adding up to more than the total they sit inside. The rule
+    /// is shared; this only hands it to the view.
+    var warning: SetupWarning? {
+        SetupWizard.shared.warning(step: step, draft: draft, fractionDigits: fractionDigits)
+    }
+
     /// Skip is drawn only on the step that is optional in full…
     var showsSkip: Bool { step.isOptional }
 

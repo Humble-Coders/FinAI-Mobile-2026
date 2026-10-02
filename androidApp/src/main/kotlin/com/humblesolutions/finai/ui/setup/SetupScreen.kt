@@ -64,6 +64,7 @@ import com.humblesolutions.finai.i18n.Strings
 import com.humblesolutions.finai.ui.components.AmountField
 import com.humblesolutions.finai.ui.components.ErrorText
 import com.humblesolutions.finai.ui.components.GradientButton
+import com.humblesolutions.finai.ui.components.WarningText
 import com.humblesolutions.finai.ui.components.WizardField
 import com.humblesolutions.finai.ui.components.fieldFrame
 import com.humblesolutions.finai.ui.strings
@@ -183,6 +184,12 @@ fun SetupScreen(
                 ErrorText(state.errorKey)
                 // The same rule the button reads, said out loud.
                 if (state.errorKey == null) ErrorText(state.notice?.messageKey)
+                // Advice, and only when nothing is actually wrong: a warning
+                // under a blocked Continue would compete with the reason it is
+                // blocked.
+                if (state.errorKey == null && state.notice == null) {
+                    WarningText(state.warning?.messageKey)
+                }
                 // Skip sits above Continue, so the main action stays last and
                 // under the thumb.
                 if (state.showsSkip) {
@@ -466,7 +473,10 @@ private fun ExpensesStep(
     ListRow(
         label = strings(Strings.setup_obligations_label),
         total = state.totalOf(ItemList.OBLIGATIONS),
-        hint = strings(Strings.setup_amount_hint),
+        // Not the generic "Enter amount": this is the one list whose
+        // relationship to the field above it is not obvious, and leaving it
+        // unsaid is what let rent be counted twice.
+        hint = strings(Strings.setup_obligations_hint),
         onClick = { onOpenList(ItemList.OBLIGATIONS) },
     )
 }
