@@ -29,7 +29,7 @@ import com.humblesolutions.finai.ui.components.AppLoader
 import com.humblesolutions.finai.ui.components.LoaderHost
 import com.humblesolutions.finai.ui.components.LoaderSignal
 import com.humblesolutions.finai.ui.components.LoadingCard
-import com.humblesolutions.finai.ui.home.HomeScreen
+import com.humblesolutions.finai.ui.dashboard.DashboardRoute
 import com.humblesolutions.finai.ui.manualentry.ManualEntryActions
 import com.humblesolutions.finai.ui.manualentry.ManualEntryScreen
 import com.humblesolutions.finai.ui.manualentry.ManualEntryViewModel
@@ -268,7 +268,8 @@ private enum class HomeRoute { HOME, ADD, IMPORT, ADD_AFTER_IMPORT, REVIEW }
 private fun HomeOrEntry(userId: String, onSignOut: () -> Unit) {
     var route by rememberSaveable { mutableStateOf(HomeRoute.HOME) }
     when (route) {
-        HomeRoute.HOME -> HomeScreen(
+        HomeRoute.HOME -> DashboardRoute(
+            userId = userId,
             onImportStatement = { route = HomeRoute.IMPORT },
             onReview = { route = HomeRoute.REVIEW },
             onAddTransaction = { route = HomeRoute.ADD },

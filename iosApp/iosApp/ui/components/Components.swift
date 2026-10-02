@@ -11,6 +11,10 @@ enum Brand {
     static let onGreen = Color(red: 0x05 / 255, green: 0x2E / 255, blue: 0x16 / 255)
     /// Advice that is not an error. Mirrors `FinAiPalette.Amber`.
     static let amber = Color(red: 0xFB / 255, green: 0xBF / 255, blue: 0x24 / 255)
+    /// The expenses accent. Mirrors `FinAiPalette.Red`.
+    static let red = Color(red: 0xEF / 255, green: 0x44 / 255, blue: 0x44 / 255)
+    /// The investments accent. Mirrors `FinAiPalette.Purple`.
+    static let purple = Color(red: 0x8B / 255, green: 0x5C / 255, blue: 0xF6 / 255)
 
     static let ground = Color("Ground")
     /// The auth sheet's card: white on light, a lifted grey on dark.

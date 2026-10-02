@@ -24,6 +24,11 @@ kotlin = "2.4.10"
 # build, pinned here like every other dependency.
 ktlint = "1.8.0"
 material3 = "1.11.0-alpha07"
+# Material Icons, for the dashboard (F3). The AndroidX artifact rather than a
+# JetBrains one: `org.jetbrains.compose.material:material-icons-extended` does
+# not exist for Compose Multiplatform 1.11, and this module is an Android app,
+# so AndroidX resolves. R8 strips every icon the app does not reference.
+materialIcons = "1.7.8"
 supabase = "3.7.0"
 skie = "0.10.14"
 ktor = "3.5.1"
@@ -52,6 +57,7 @@ androidx-lifecycle-runtimeCompose = { module = "org.jetbrains.androidx.lifecycle
 compose-runtime = { module = "org.jetbrains.compose.runtime:runtime", version.ref = "composeMultiplatform" }
 compose-foundation = { module = "org.jetbrains.compose.foundation:foundation", version.ref = "composeMultiplatform" }
 compose-material3 = { module = "org.jetbrains.compose.material3:material3", version.ref = "material3" }
+androidx-material-icons = { module = "androidx.compose.material:material-icons-extended", version.ref = "materialIcons" }
 compose-ui = { module = "org.jetbrains.compose.ui:ui", version.ref = "composeMultiplatform" }
 compose-components-resources = { module = "org.jetbrains.compose.components:components-resources", version.ref = "composeMultiplatform" }
 compose-uiToolingPreview = { module = "org.jetbrains.compose.ui:ui-tooling-preview", version.ref = "composeMultiplatform" }

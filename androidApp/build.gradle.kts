@@ -38,6 +38,7 @@ dependencies {
     implementation(libs.compose.runtime)
     implementation(libs.compose.foundation)
     implementation(libs.compose.material3)
+    implementation(libs.androidx.material.icons)
     implementation(libs.compose.ui)
 
     implementation(libs.compose.uiToolingPreview)
