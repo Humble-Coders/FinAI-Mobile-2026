@@ -2,11 +2,22 @@ package com.humblesolutions.finai.ui.dashboard
 
 import com.humblesolutions.finai.model.ApiException
 import com.humblesolutions.finai.model.Capabilities
+import com.humblesolutions.finai.model.Category
+import com.humblesolutions.finai.model.ConfirmOutcome
 import com.humblesolutions.finai.model.Dashboard
+import com.humblesolutions.finai.model.DeleteOutcome
 import com.humblesolutions.finai.model.Flow
+import com.humblesolutions.finai.model.NewTransaction
+import com.humblesolutions.finai.model.PatchOutcome
+import com.humblesolutions.finai.model.ReviewPage
+import com.humblesolutions.finai.model.Transaction
+import com.humblesolutions.finai.model.TransactionPatch
 import com.humblesolutions.finai.repository.CapabilitiesRepository
+import com.humblesolutions.finai.repository.CategoriesRepository
 import com.humblesolutions.finai.repository.DashboardRepository
+import com.humblesolutions.finai.repository.TransactionsRepository
 import com.humblesolutions.finai.usecase.DashboardMonths
+import com.humblesolutions.finai.util.LedgerChanged
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -221,5 +232,150 @@ class DashboardViewModelTest {
         DashboardViewModel().bind("") { DashboardRepositories(repo, FakeCapabilities()) }
 
         assertTrue(repo.asked.isEmpty())
+    }
+
+    // ── Staying current with the ledger ─────────────────────────────────
+
+    @Test
+    fun a_write_elsewhere_brings_the_month_up_to_date() = runTest {
+        // The whole point: import a statement or type a transaction in, come
+        // back, and home shows what just happened rather than what it said
+        // before.
+        val repo = FakeDashboard(Dashboard(currency = "CAD", net = "100.00"))
+        val model = model(repo)
+        assertEquals(1, repo.asked.size)
+
+        repo.answer = Dashboard(currency = "CAD", net = "900.00")
+        LedgerChanged.announce()
+
+        assertEquals(2, repo.asked.size)
+        assertEquals("900.00", model.uiState.value.data.net)
+    }
+
+    @Test
+    fun coming_up_to_date_does_not_blank_the_screen() = runTest {
+        // A refresh, not a load. Flashing an empty dashboard on the way back
+        // from an import reads as the import having wiped something.
+        val repo = FakeDashboard(Dashboard(currency = "CAD", net = "100.00", income = Flow("900.00")))
+        val model = model(repo)
+
+        repo.gate = CompletableDeferred()
+        LedgerChanged.announce()
+
+        val during = model.uiState.value
+        assertTrue(during.refreshing)
+        assertFalse(during.loading)
+        assertEquals("900.00", during.data.income.actual, "the figures already there stay up")
+        repo.gate?.complete(Unit)
+    }
+
+    @Test
+    fun the_month_being_looked_at_is_the_one_re_read() = runTest {
+        // Not snapped back to today: somebody checking August should not be
+        // thrown to October because a write landed.
+        val repo = FakeDashboard()
+        val model = model(repo)
+        model.showPreviousMonth()
+        val looking = DashboardMonths.wire(DashboardMonths.previous(DashboardMonths.current()))
+
+        LedgerChanged.announce()
+
+        assertEquals(looking, repo.asked.last())
+    }
+
+    @Test
+    fun only_one_re_read_happens_per_change() = runTest {
+        // A second collector would double every read — invisible on a fast
+        // connection and a doubled bill on a slow one. Binding the SAME user
+        // cannot reach the guard, because bind early-returns; a different user
+        // is the way a second collector would ever be started.
+        val repo = FakeDashboard()
+        val model = model(repo)
+        model.bind("bob") { DashboardRepositories(repo, FakeCapabilities()) }
+        val readsBefore = repo.asked.size
+
+        LedgerChanged.announce()
+
+        assertEquals(readsBefore + 1, repo.asked.size, "one read per announcement, whoever is bound")
+    }
+
+    // ── The recent list ─────────────────────────────────────────────────
+
+    private class FakeRecent(var rows: List<Transaction> = listOf(Transaction(id = "r1"))) : TransactionsRepository {
+        val asked = mutableListOf<Int>()
+        var fail: ApiException? = null
+
+        override suspend fun recent(count: Int): List<Transaction> {
+            asked += count
+            fail?.let { throw it }
+            return rows
+        }
+
+        override suspend fun list(statementImportId: String?, month: String?, needsReview: Boolean?, cursor: String?): ReviewPage = error("not called")
+        override suspend fun create(entry: NewTransaction): Transaction = error("not called")
+        override suspend fun review(cursor: String?): ReviewPage = error("not called")
+        override suspend fun correct(id: String, patch: TransactionPatch): PatchOutcome = error("not called")
+        override suspend fun confirm(id: String): PatchOutcome = error("not called")
+        override suspend fun confirmAll(ids: List<String>): ConfirmOutcome = error("not called")
+        override suspend fun delete(id: String): DeleteOutcome = error("not called")
+        override fun close() = Unit
+    }
+
+    private class FakeCategories : CategoriesRepository {
+        override suspend fun list(): List<Category> = listOf(Category(id = "c1", name = "Groceries"))
+        override suspend fun create(name: String): Category = error("not called")
+        override fun close() = Unit
+    }
+
+    private fun withRecent(dashboard: FakeDashboard, recent: FakeRecent): DashboardViewModel {
+        val model = DashboardViewModel()
+        model.bind("alice") { DashboardRepositories(dashboard, FakeCapabilities(), recent, FakeCategories()) }
+        return model
+    }
+
+    @Test
+    fun binding_reads_the_newest_rows_as_many_as_the_design_shows() = runTest {
+        val recent = FakeRecent()
+        val model = withRecent(FakeDashboard(), recent)
+
+        assertEquals(listOf(RECENT_COUNT), recent.asked)
+        assertEquals(listOf("r1"), model.uiState.value.recent.map { it.id })
+        assertEquals("Groceries", model.uiState.value.categories.single().name)
+    }
+
+    @Test
+    fun a_recent_list_that_will_not_load_leaves_the_month_standing() = runTest {
+        // The figures are the screen; a list that could not load is simply
+        // not drawn rather than turning home into an error.
+        val recent = FakeRecent().apply { fail = ApiException.Network(RuntimeException("offline")) }
+        val model = withRecent(FakeDashboard(), recent)
+
+        val state = model.uiState.value
+        assertFalse(state.loadFailed)
+        assertNull(state.errorKey)
+        assertTrue(state.recent.isEmpty())
+    }
+
+    @Test
+    fun a_write_elsewhere_brings_the_recent_list_up_to_date() = runTest {
+        val recent = FakeRecent()
+        val model = withRecent(FakeDashboard(), recent)
+
+        recent.rows = listOf(Transaction(id = "r2"))
+        LedgerChanged.announce()
+
+        assertEquals(listOf("r2"), model.uiState.value.recent.map { it.id })
+    }
+
+    @Test
+    fun stepping_between_months_does_not_re_read_the_recent_list() = runTest {
+        // Recent means most recent, whatever month is in view.
+        val recent = FakeRecent()
+        val model = withRecent(FakeDashboard(), recent)
+
+        model.showPreviousMonth()
+
+        assertEquals(1, recent.asked.size)
+        assertEquals(listOf("r1"), model.uiState.value.recent.map { it.id })
     }
 }

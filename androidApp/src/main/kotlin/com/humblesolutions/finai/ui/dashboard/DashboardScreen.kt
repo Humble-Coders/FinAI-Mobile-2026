@@ -4,61 +4,100 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.TextAutoSize
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.automirrored.filled.ReceiptLong
 import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CreditCard
-import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Savings
 import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.layout.SubcomposeLayout
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextMeasurer
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.TextUnit
+import androidx.compose.ui.unit.constrainWidth
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.core.view.WindowCompat
 import com.humblesolutions.finai.i18n.Strings
 import com.humblesolutions.finai.ui.components.ErrorText
 import com.humblesolutions.finai.ui.components.FinAiIcon
 import com.humblesolutions.finai.ui.components.ProviderButton
-import com.humblesolutions.finai.ui.components.ScreenScaffold
 import com.humblesolutions.finai.ui.strings
 import com.humblesolutions.finai.ui.theme.FinAiPalette
+import com.humblesolutions.finai.usecase.DashboardTrend
 
 /**
  * The dashboard (PRD F3): one month of what happened, against what was
@@ -68,10 +107,9 @@ import com.humblesolutions.finai.ui.theme.FinAiPalette
  * [DashboardUiState]. Nothing here computes money, which is what keeps the two
  * apps from disagreeing about a number somebody is acting on.
  *
- * The icons are Material's, with SF Symbols' equivalents on iOS. The two
- * differ slightly in shape, which nobody sees side by side, and in exchange
- * each app gets icons drawn for its own platform that scale with the reader's
- * text size.
+ * Laid out as the approved design: a green field holding the month, its four
+ * figures and the ways in, and a sheet rising over it with the most recent
+ * rows. The icons are Material's, with SF Symbols' equivalents on iOS.
  */
 @Composable
 fun DashboardScreen(
@@ -83,30 +121,150 @@ fun DashboardScreen(
     onImportStatement: () -> Unit,
     onAddTransaction: () -> Unit,
     onReview: () -> Unit,
+    onViewAll: () -> Unit,
     onSignOut: () -> Unit,
 ) {
-    Box(Modifier.fillMaxWidth()) {
-        Hills()
-        ScreenScaffold {
-            Header(state, onReview)
-            Spacer(Modifier.height(18.dp))
-            HeroCard(state, onToggleAmounts, onPreviousMonth, onNextMonth)
+    val dark = isSystemInDarkTheme()
+    LightStatusBarIcons(dark)
 
-            Spacer(Modifier.height(14.dp))
-            when {
-                state.loadFailed -> LoadFailed(state, onRetry)
-                state.showsEmptyState -> Unit
-                else -> Figures(state)
-            }
-
-            Spacer(Modifier.height(16.dp))
-            ActionPanel(state, onImportStatement, onAddTransaction, onReview)
-
-            Spacer(Modifier.height(10.dp))
-            TextButton(onClick = onSignOut, modifier = Modifier.align(Alignment.CenterHorizontally)) {
-                Text(strings(Strings.action_sign_out), color = MaterialTheme.colorScheme.onBackground)
+    Column(
+        Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+            .verticalScroll(rememberScrollState()),
+    ) {
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .background(Field.brush(dark)),
+        ) {
+            Waves(Modifier.matchParentSize())
+            Column(
+                Modifier
+                    .align(Alignment.TopCenter)
+                    .widthIn(max = 560.dp)
+                    .fillMaxWidth()
+                    // The field runs under the status bar, as in the design;
+                    // its contents do not.
+                    .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
+                    .padding(horizontal = 20.dp)
+                    .padding(top = 12.dp, bottom = SHEET_OVERLAP + 28.dp),
+            ) {
+                Header(state, onReview)
+                Spacer(Modifier.height(26.dp))
+                Hero(state, onToggleAmounts, onPreviousMonth, onNextMonth)
+                Spacer(Modifier.height(22.dp))
+                when {
+                    state.loadFailed -> LoadFailed(state, onRetry)
+                    state.showsEmptyState -> Unit
+                    else -> Figures(state, dark)
+                }
+                Spacer(Modifier.height(26.dp))
+                Actions(state, dark, onImportStatement, onAddTransaction, onReview)
             }
         }
+
+        Sheet(state, onViewAll, onSignOut)
+    }
+}
+
+// ── The field ───────────────────────────────────────────────────────────
+
+/**
+ * The green the top half sits on.
+ *
+ * Darker than the brand green on purpose: white text on `#22C55E` is about
+ * 2.3:1, unreadable for the small print here. These keep every white line at
+ * 4.5:1 or better, with a lighter glow behind the chart, where nothing small
+ * is written.
+ */
+private object Field {
+    private val LightTop = Color(0xFF0F5A30)
+    private val LightBottom = Color(0xFF18804A)
+    private val DarkTop = Color(0xFF0A3A20)
+    private val DarkBottom = Color(0xFF07170E)
+
+    fun brush(dark: Boolean): Brush = Brush.verticalGradient(
+        if (dark) listOf(DarkTop, DarkBottom) else listOf(LightTop, LightBottom),
+    )
+
+    /** White at a strength, for everything written on the field. */
+    fun ink(alpha: Float = 1f): Color = Color.White.copy(alpha = alpha)
+
+    /** Frosted glass: the pills and the bell sit on this. */
+    val Glass = Color.White.copy(alpha = 0.14f)
+    val GlassEdge = Color.White.copy(alpha = 0.22f)
+}
+
+/** How far the sheet rises over the field. */
+private val SHEET_OVERLAP = 28.dp
+
+/**
+ * On a green field the status bar's icons must be white, in either theme. The
+ * theme sets them dark for light mode everywhere else, so this flips them
+ * while home is showing and puts them back when it goes.
+ */
+@Composable
+private fun LightStatusBarIcons(dark: Boolean) {
+    val view = LocalView.current
+    if (view.isInEditMode) return
+    DisposableEffect(dark) {
+        val window = (view.context as? android.app.Activity)?.window
+        val controller = window?.let { WindowCompat.getInsetsController(it, view) }
+        controller?.isAppearanceLightStatusBars = false
+        onDispose { controller?.isAppearanceLightStatusBars = !dark }
+    }
+}
+
+/**
+ * The soft hills across the field, as in the design. Drawn rather than shipped
+ * as an asset so it costs no image; decorative, so hidden from screen readers.
+ */
+@Composable
+private fun Waves(modifier: Modifier) {
+    Canvas(modifier.clearAndSetSemantics {}) {
+        val w = size.width
+        val h = size.height
+
+        // A glow behind the chart, top right — where the design is brightest.
+        drawCircle(
+            brush = Brush.radialGradient(
+                listOf(Color(0xFF34D27F).copy(alpha = 0.32f), Color.Transparent),
+                center = Offset(w * 0.86f, h * 0.2f),
+                radius = w * 0.75f,
+            ),
+            radius = w * 0.75f,
+            center = Offset(w * 0.86f, h * 0.2f),
+        )
+
+        fun hill(base: Float, lift: Float, phase: Float, alpha: Float) {
+            val path = Path().apply {
+                moveTo(0f, h)
+                lineTo(0f, h * base)
+                cubicTo(
+                    w * (0.18f + phase),
+                    h * (base - lift),
+                    w * (0.42f + phase),
+                    h * (base + lift * 0.6f),
+                    w * 0.62f,
+                    h * (base - lift * 0.35f),
+                )
+                cubicTo(
+                    w * 0.78f,
+                    h * (base - lift * 0.9f),
+                    w * 0.9f,
+                    h * (base + lift * 0.2f),
+                    w,
+                    h * (base - lift * 0.5f),
+                )
+                lineTo(w, h)
+                close()
+            }
+            drawPath(path, Color.White.copy(alpha = alpha))
+        }
+        hill(base = 0.30f, lift = 0.06f, phase = 0f, alpha = 0.035f)
+        hill(base = 0.58f, lift = 0.07f, phase = 0.06f, alpha = 0.04f)
+        hill(base = 0.80f, lift = 0.05f, phase = -0.04f, alpha = 0.05f)
     }
 }
 
@@ -119,24 +277,25 @@ private fun Header(state: DashboardUiState, onReview: () -> Unit) {
         // the requirements forbid collecting one, and a letter would need it.
         Box(
             modifier = Modifier
-                .size(44.dp)
+                .size(52.dp)
                 .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)),
+                .background(Field.ink(0.94f)),
             contentAlignment = Alignment.Center,
         ) {
-            FinAiIcon(Icons.Filled.Person, tint = MaterialTheme.colorScheme.primary, size = 24.dp)
+            FinAiIcon(Icons.Filled.Person, tint = FinAiPalette.GreenDeep, size = 28.dp)
         }
-        Spacer(Modifier.width(12.dp))
+        Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
             Text(
                 text = strings(Strings.dashboard_greeting),
-                style = MaterialTheme.typography.titleLarge,
+                style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold,
+                color = Field.ink(),
             )
             Text(
                 text = strings(Strings.dashboard_subtitle),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodyMedium,
+                color = Field.ink(0.82f),
             )
         }
         // The bell is the review queue, and its dot means something: rows are
@@ -144,120 +303,87 @@ private fun Header(state: DashboardUiState, onReview: () -> Unit) {
         // ignore it.
         Box(
             modifier = Modifier
-                .size(44.dp)
+                .size(48.dp)
                 .clip(CircleShape)
+                .background(Field.Glass)
+                .border(1.dp, Field.GlassEdge, CircleShape)
                 .clickable(onClick = onReview)
                 .semantics { contentDescription = state.notificationsLabel },
             contentAlignment = Alignment.Center,
         ) {
-            FinAiIcon(Icons.Filled.Notifications, tint = MaterialTheme.colorScheme.onBackground, size = 22.dp)
+            FinAiIcon(Icons.Filled.Notifications, tint = Field.ink(), size = 22.dp)
             if (state.hasPending) {
                 Box(
                     Modifier
                         .align(Alignment.TopEnd)
-                        .padding(top = 10.dp, end = 10.dp)
-                        .size(8.dp)
+                        .padding(top = 11.dp, end = 12.dp)
+                        .size(9.dp)
                         .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.error),
+                        .background(FinAiPalette.Red)
+                        .border(1.5.dp, Field.ink(), CircleShape),
                 )
             }
         }
-    }
-}
-
-/**
- * The soft hills behind the header, as in the design.
- *
- * Drawn rather than shipped as an asset so it tints with the theme and costs
- * no image. Purely decorative, so it is hidden from screen readers.
- */
-@Composable
-private fun Hills() {
-    val primary = MaterialTheme.colorScheme.primary
-    Canvas(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(240.dp)
-            .clearAndSetSemantics {},
-    ) {
-        val width = size.width
-        val height = size.height
-        fun ridge(startY: Float, peakY: Float, alpha: Float) {
-            val path = Path().apply {
-                moveTo(0f, height)
-                lineTo(0f, startY)
-                cubicTo(width * 0.25f, peakY, width * 0.55f, startY * 1.08f, width, peakY * 0.92f)
-                lineTo(width, height)
-                close()
-            }
-            drawPath(path, color = primary.copy(alpha = alpha))
-        }
-        ridge(startY = height * 0.62f, peakY = height * 0.40f, alpha = 0.06f)
-        ridge(startY = height * 0.74f, peakY = height * 0.56f, alpha = 0.05f)
     }
 }
 
 // ── The hero ────────────────────────────────────────────────────────────
 
 @Composable
-private fun HeroCard(
+private fun Hero(
     state: DashboardUiState,
     onToggleAmounts: () -> Unit,
     onPreviousMonth: () -> Unit,
     onNextMonth: () -> Unit,
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(24.dp))
-            .background(
-                Brush.linearGradient(
-                    listOf(FinAiPalette.Green, FinAiPalette.GreenDeep),
-                    start = Offset.Zero,
-                    end = Offset(Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY),
-                ),
-            )
-            .padding(20.dp),
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-            Text(
-                text = strings(Strings.dashboard_net_label),
-                style = MaterialTheme.typography.labelLarge,
-                color = FinAiPalette.OnGreen,
-            )
-            Spacer(Modifier.width(8.dp))
-            Box(
+    Box(Modifier.fillMaxWidth()) {
+        // Behind the words, across the right of the hero and out to the
+        // screen's edge, as in the design.
+        state.chart?.let { chart ->
+            TrendChart(
+                chart = chart,
+                state = state,
                 modifier = Modifier
-                    .size(28.dp)
-                    .clip(CircleShape)
-                    .clickable(onClick = onToggleAmounts)
-                    .semantics { contentDescription = state.hideToggleLabel },
-                contentAlignment = Alignment.Center,
-            ) {
-                FinAiIcon(
-                    icon = if (state.amountsHidden) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
-                    tint = FinAiPalette.OnGreen,
-                    size = 18.dp,
-                )
-            }
-            Spacer(Modifier.weight(1f))
-            MonthPill(state, onPreviousMonth, onNextMonth)
+                    .matchParentSize()
+                    .bleedEnd(20.dp),
+            )
         }
-
-        Spacer(Modifier.height(10.dp))
-        Text(
-            text = state.net,
-            style = MaterialTheme.typography.displaySmall,
-            fontWeight = FontWeight.Bold,
-            color = FinAiPalette.OnGreen,
-        )
-
-        Spacer(Modifier.height(12.dp))
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
+        // Tall enough to give the line room between the pills — but only
+        // when there is a line, or an empty month opens with a hole in it.
+        Column(Modifier.fillMaxWidth().heightIn(min = if (state.chart != null) 156.dp else 0.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    text = strings(Strings.dashboard_net_label),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = Field.ink(0.9f),
+                )
+                Spacer(Modifier.width(4.dp))
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .clickable(onClick = onToggleAmounts)
+                        .semantics { contentDescription = state.hideToggleLabel },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    FinAiIcon(
+                        icon = if (state.amountsHidden) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                        tint = Field.ink(0.85f),
+                        size = 20.dp,
+                    )
+                }
+                Spacer(Modifier.weight(1f))
+                MonthPill(state, onPreviousMonth, onNextMonth)
+            }
+            FittedAmount(
+                text = state.net,
+                style = MaterialTheme.typography.displaySmall.copy(fontWeight = FontWeight.Bold, color = Field.ink()),
+                sizes = HERO_SIZES,
+                modifier = Modifier.fillMaxWidth(if (state.chart != null) 0.6f else 1f),
+            )
+            Spacer(Modifier.weight(1f, fill = false).heightIn(min = 14.dp))
             // Absent, not "+0%", when there is no month to compare against.
             state.changeLabel?.let { ChangePill(it, state.netIsPositive) }
-            Spacer(Modifier.weight(1f))
-            if (state.showsTrend) HeroBars(state)
         }
     }
 }
@@ -266,23 +392,24 @@ private fun HeroCard(
 private fun MonthPill(state: DashboardUiState, onPrevious: () -> Unit, onNext: () -> Unit) {
     Row(
         modifier = Modifier
-            .clip(RoundedCornerShape(14.dp))
-            .background(FinAiPalette.OnGreen.copy(alpha = 0.12f))
-            .padding(horizontal = 4.dp),
+            .clip(RoundedCornerShape(20.dp))
+            .background(Field.Glass)
+            .border(1.dp, Field.GlassEdge, RoundedCornerShape(20.dp))
+            .padding(horizontal = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Step(Icons.AutoMirrored.Filled.KeyboardArrowLeft, strings(Strings.dashboard_previous_month), state.canGoBack, onPrevious)
         Text(
             text = state.monthLabel,
             style = MaterialTheme.typography.labelLarge,
-            color = FinAiPalette.OnGreen,
+            color = Field.ink(),
         )
         // Hidden rather than disabled on the month that is running: a month
         // that has not happened holds nothing to look at.
         if (state.canGoForward) {
             Step(Icons.AutoMirrored.Filled.KeyboardArrowRight, strings(Strings.dashboard_next_month), true, onNext)
         } else {
-            Spacer(Modifier.width(32.dp))
+            Spacer(Modifier.width(14.dp))
         }
     }
 }
@@ -291,13 +418,13 @@ private fun MonthPill(state: DashboardUiState, onPrevious: () -> Unit, onNext: (
 private fun Step(icon: ImageVector, label: String, enabled: Boolean, onClick: () -> Unit) {
     Box(
         modifier = Modifier
-            .size(32.dp)
+            .size(40.dp)
             .clip(CircleShape)
             .clickable(enabled = enabled, onClick = onClick)
             .semantics { contentDescription = label },
         contentAlignment = Alignment.Center,
     ) {
-        FinAiIcon(icon, tint = FinAiPalette.OnGreen, size = 14.dp)
+        FinAiIcon(icon, tint = Field.ink(if (enabled) 1f else 0.4f), size = 18.dp)
     }
 }
 
@@ -305,151 +432,582 @@ private fun Step(icon: ImageVector, label: String, enabled: Boolean, onClick: ()
 private fun ChangePill(label: String, rose: Boolean) {
     Row(
         modifier = Modifier
-            .clip(RoundedCornerShape(12.dp))
-            .background(FinAiPalette.OnGreen.copy(alpha = 0.12f))
-            .padding(horizontal = 10.dp, vertical = 6.dp),
+            .clip(RoundedCornerShape(16.dp))
+            .background(Field.Glass)
+            .border(1.dp, Field.GlassEdge, RoundedCornerShape(16.dp))
+            .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // The same arrow either way, turned over for a fall — one shape, and
-        // the direction is unmistakable.
-        Box(Modifier.size(12.dp).then(if (rose) Modifier else Modifier.clip(CircleShape))) {
-            FinAiIcon(
-                icon = if (rose) Icons.Filled.ArrowUpward else Icons.Filled.KeyboardArrowDown,
-                tint = FinAiPalette.OnGreen,
-                size = 12.dp,
-            )
-        }
+        FinAiIcon(
+            icon = if (rose) Icons.Filled.ArrowUpward else Icons.Filled.ArrowDownward,
+            tint = Field.ink(),
+            size = 14.dp,
+        )
         Spacer(Modifier.width(6.dp))
-        Text(text = label, style = MaterialTheme.typography.labelSmall, color = FinAiPalette.OnGreen)
+        Text(text = label, style = MaterialTheme.typography.labelMedium, color = Field.ink())
     }
 }
 
-/** The bars inside the hero, as in the design: small, pale, and to the right. */
+/** Widens a child past the end padding of its parent, leaving its start put. */
+private fun Modifier.bleedEnd(by: Dp): Modifier = layout { measurable, constraints ->
+    val extra = by.roundToPx()
+    val widened = if (constraints.hasBoundedWidth) {
+        constraints.copy(minWidth = constraints.minWidth + extra, maxWidth = constraints.maxWidth + extra)
+    } else {
+        constraints
+    }
+    val placeable = measurable.measure(widened)
+    layout(constraints.constrainWidth(placeable.width), placeable.height) { placeable.place(0, 0) }
+}
+
+/**
+ * The months as a soft line, as in the design, with the month in view marked.
+ *
+ * The geometry is shared ([DashboardTrend]): a gap is never drawn through, so
+ * no line invents a value for a month nobody recorded, and a loss sits below a
+ * gain. It occupies the right of the hero, fading in from the left so the
+ * words in front stay readable, and keeps below the month pill and above the
+ * change pill. The caption sits beside the marker — the month in view, always
+ * the right-hand end — rather than above it, where the month pill is.
+ */
 @Composable
-private fun HeroBars(state: DashboardUiState) {
-    Row(
-        modifier = Modifier.width(132.dp).height(44.dp),
-        verticalAlignment = Alignment.Bottom,
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
+private fun TrendChart(chart: DashboardTrend.Chart, state: DashboardUiState, modifier: Modifier) {
+    val description = strings(Strings.dashboard_trend_label) + ": " + state.trendDescriptions.joinToString("; ")
+    Canvas(
+        modifier
+            .semantics { contentDescription = description }
+            .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+            .drawWithContent {
+                drawContent()
+                // Fade in from the left: the line begins under the figure and
+                // must not cross it at full strength.
+                drawRect(
+                    Brush.horizontalGradient(
+                        0f to Color.Transparent,
+                        CHART_START to Color.Transparent,
+                        (CHART_START + 0.22f) to Color.Black,
+                    ),
+                    blendMode = BlendMode.DstIn,
+                )
+            },
     ) {
-        state.bars.forEach { bar ->
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .height(bar.fraction?.let { 44.dp * it } ?: 4.dp)
-                    .clip(RoundedCornerShape(3.dp))
-                    .then(
-                        if (bar.fraction == null) {
-                            // A month with nothing recorded is an outline, not
-                            // a short bar: a bar would be a figure nobody has.
-                            Modifier.border(1.dp, FinAiPalette.OnGreen.copy(alpha = 0.35f), RoundedCornerShape(3.dp))
-                        } else {
-                            Modifier.background(FinAiPalette.OnGreen.copy(alpha = if (bar.isNegative) 0.45f else 0.85f))
-                        },
-                    )
-                    .semantics { contentDescription = bar.description },
+        val area = ChartArea(size.width, size.height, this)
+        chart.segments.forEach { run ->
+            val pts = run.map { area.at(chart.points[it]) }
+            if (pts.size == 1) {
+                drawCircle(Field.ink(0.9f), radius = 3.dp.toPx(), center = pts.single())
+                return@forEach
+            }
+            val line = Path().apply {
+                moveTo(pts.first().x, pts.first().y)
+                // Control points level with each end, so the curve never
+                // overshoots a month above or below its value.
+                pts.zipWithNext { a, b ->
+                    val mid = (a.x + b.x) / 2
+                    cubicTo(mid, a.y, mid, b.y, b.x, b.y)
+                }
+            }
+            val fill = Path().apply {
+                addPath(line)
+                lineTo(pts.last().x, size.height)
+                lineTo(pts.first().x, size.height)
+                close()
+            }
+            drawPath(
+                fill,
+                // Fades well before the bottom, so where a gap ends a run the
+                // fill does not stand as a hard-edged column.
+                Brush.verticalGradient(
+                    listOf(Field.ink(0.18f), Field.ink(0f)),
+                    startY = area.top,
+                    endY = area.top + (size.height - area.top) * 0.7f,
+                ),
             )
+            drawPath(line, Field.ink(0.95f), style = Stroke(width = 2.5.dp.toPx(), cap = StrokeCap.Round))
+        }
+        // The month in view, which the server always puts at the right-hand
+        // end. Its figure is the large one beside the chart, so it carries no
+        // caption of its own.
+        chart.markerIndex?.let { index ->
+            val dot = area.at(chart.points[index])
+            drawLine(
+                Field.ink(0.6f),
+                start = dot,
+                end = Offset(dot.x, size.height),
+                strokeWidth = 1.5.dp.toPx(),
+                pathEffect = PathEffect.dashPathEffect(floatArrayOf(6f, 6f)),
+            )
+            drawCircle(Field.ink(0.3f), radius = 10.dp.toPx(), center = dot)
+            drawCircle(Field.ink(), radius = 5.5.dp.toPx(), center = dot)
         }
     }
 }
+
+/** Where the line may go inside the chart's box. */
+private class ChartArea(width: Float, height: Float, density: Density) {
+    private val left = width * CHART_START + with(density) { 24.dp.toPx() }
+    private val right = width - with(density) { CHART_INSET.toPx() }
+    val top = with(density) { CHART_TOP.toPx() }
+    private val bottom = height - with(density) { CHART_BOTTOM.toPx() }
+
+    fun at(point: DashboardTrend.Point) = Offset(
+        left + (point.x * (right - left)).toFloat(),
+        bottom - ((point.y ?: 0.0) * (bottom - top)).toFloat(),
+    )
+}
+
+/** Where the line begins, as a fraction of the hero's width. */
+private const val CHART_START = 0.38f
+
+/** Below the month pill. */
+private val CHART_TOP = 58.dp
+
+/** Above the change pill. */
+private val CHART_BOTTOM = 52.dp
+
+/** Keeps the marker off the screen's edge. */
+private val CHART_INSET = 28.dp
 
 // ── The four cards ──────────────────────────────────────────────────────
 
-@Composable
-private fun Figures(state: DashboardUiState) {
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        FigureCard(
-            icon = Icons.Filled.AccountBalanceWallet,
-            accent = FinAiPalette.Green,
-            label = strings(Strings.dashboard_income),
-            amount = state.incomeAmount,
-            detail = state.incomeExpectation,
-            modifier = Modifier.weight(1f),
-        )
-        FigureCard(
-            icon = Icons.Filled.CreditCard,
-            accent = FinAiPalette.Red,
-            label = strings(Strings.dashboard_expenses),
-            amount = state.expensesAmount,
-            detail = state.expensesExpectation,
-            detailIsWarning = state.expensesAreOver,
-            modifier = Modifier.weight(1f),
-        )
-    }
-    Spacer(Modifier.height(12.dp))
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        FigureCard(
-            icon = Icons.Filled.Savings,
-            accent = FinAiPalette.Purple,
-            label = strings(Strings.dashboard_investments),
-            amount = state.investmentsAmount,
-            detail = state.investmentsMovement,
-            modifier = Modifier.weight(1f),
-        )
-        FigureCard(
-            icon = Icons.AutoMirrored.Filled.ReceiptLong,
-            accent = FinAiPalette.Amber,
-            label = strings(Strings.dashboard_debts),
-            amount = state.debtsAmount,
-            detail = state.debtsMovement,
-            modifier = Modifier.weight(1f),
-        )
-    }
+/** One card's colours: the icon, its tile, and a label dark enough to read. */
+private class Accent(val icon: Color, val label: Color, val darkLabel: Color) {
+    fun labelFor(dark: Boolean) = if (dark) darkLabel else label
+}
 
-    if (state.commitments.isNotEmpty()) {
-        Spacer(Modifier.height(20.dp))
-        Commitments(state)
+// Labels use the deeper tone of each accent on a white card: the bright ones
+// read at under 3:1 there (amber at 1.7:1). Dark cards take the bright tone.
+private val IncomeAccent = Accent(FinAiPalette.Green, Color(0xFF15803D), FinAiPalette.Green)
+private val ExpensesAccent = Accent(FinAiPalette.Red, Color(0xFFDC2626), Color(0xFFF87171))
+private val InvestmentsAccent = Accent(FinAiPalette.Blue, Color(0xFF2563EB), Color(0xFF60A5FA))
+private val DebtsAccent = Accent(FinAiPalette.Amber, Color(0xFFB45309), FinAiPalette.Amber)
+
+@Composable
+private fun Figures(state: DashboardUiState, dark: Boolean) {
+    EqualGrid(spacing = 12.dp) {
+        FigureCard(Icons.Filled.AccountBalanceWallet, IncomeAccent, dark, strings(Strings.dashboard_income), state.incomeAmount, state.incomeExpectation)
+        FigureCard(
+            Icons.Filled.CreditCard,
+            ExpensesAccent,
+            dark,
+            strings(Strings.dashboard_expenses),
+            state.expensesAmount,
+            state.expensesExpectation,
+            detailIsWarning = state.expensesAreOver,
+        )
+        FigureCard(Icons.Filled.Savings, InvestmentsAccent, dark, strings(Strings.dashboard_investments), state.investmentsAmount, state.investmentsMovement)
+        FigureCard(Icons.AutoMirrored.Filled.ReceiptLong, DebtsAccent, dark, strings(Strings.dashboard_debts), state.debtsAmount, state.debtsMovement)
+    }
+}
+
+/**
+ * Two columns of cells that are all the same size: the tallest card's height
+ * is every card's height, so the four read as one set however their text
+ * wraps — including at a large font size, where a fixed height would clip.
+ *
+ * Measured, not estimated: each card is composed once to learn its real
+ * height and once more at the shared one. Intrinsic heights were tried first
+ * and came out short for wrapped text at a large font size, which clipped the
+ * last line of a card.
+ */
+@Composable
+private fun EqualGrid(spacing: Dp, content: @Composable () -> Unit) {
+    SubcomposeLayout { constraints ->
+        val gap = spacing.roundToPx()
+        val cell = (constraints.maxWidth - gap) / 2
+        val height = subcompose("measure", content)
+            .maxOf { it.measure(Constraints(maxWidth = cell)).height }
+        val placeables = subcompose("place", content).map { it.measure(Constraints.fixed(cell, height)) }
+        val rows = (placeables.size + 1) / 2
+        layout(constraints.maxWidth, rows * height + (rows - 1).coerceAtLeast(0) * gap) {
+            placeables.forEachIndexed { index, placeable ->
+                placeable.place((index % 2) * (cell + gap), (index / 2) * (height + gap))
+            }
+        }
     }
 }
 
 @Composable
 private fun FigureCard(
     icon: ImageVector,
-    accent: Color,
+    accent: Accent,
+    dark: Boolean,
     label: String,
     amount: String,
     detail: String?,
-    modifier: Modifier = Modifier,
     detailIsWarning: Boolean = false,
 ) {
-    Column(
-        modifier = modifier
-            .clip(RoundedCornerShape(18.dp))
-            .background(accent.copy(alpha = 0.08f))
+    val surface = if (dark) FinAiPalette.DarkSurface else Color.White
+    val amountStyle = MaterialTheme.typography.titleLarge.copy(
+        fontWeight = FontWeight.Bold,
+        color = MaterialTheme.colorScheme.onSurface,
+    )
+    BoxWithConstraints(
+        modifier = Modifier
+            .clip(RoundedCornerShape(22.dp))
+            .background(surface)
+            .background(accent.icon.copy(alpha = if (dark) 0.10f else 0.05f))
+            .border(1.dp, Color.White.copy(alpha = if (dark) 0.06f else 0.7f), RoundedCornerShape(22.dp))
             .padding(14.dp),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-            Box(
-                modifier = Modifier
-                    .size(36.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(accent.copy(alpha = 0.18f)),
-                contentAlignment = Alignment.Center,
-            ) {
-                FinAiIcon(icon, tint = accent, size = 20.dp)
-            }
-            Spacer(Modifier.width(10.dp))
-            Text(
-                text = label,
-                style = MaterialTheme.typography.labelMedium,
-                color = accent,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.weight(1f),
-            )
-            FinAiIcon(Icons.AutoMirrored.Filled.KeyboardArrowRight, tint = accent.copy(alpha = 0.5f), size = 14.dp)
+        // The design sets the figure beside the icon, which leaves it about
+        // 80dp. When it cannot sit there at a readable size — a large font, or
+        // a seven-figure balance — it moves to its own full-width line rather
+        // than shrinking past reading or losing digits.
+        val measurer = rememberTextMeasurer()
+        val besidePx = constraints.maxWidth - with(LocalDensity.current) { BESIDE_TAKEN.roundToPx() }
+        val besideSize = if (LocalDensity.current.fontScale >= LARGE_FONT) {
+            null
+        } else {
+            measurer.largestFitting(amount, amountStyle, CARD_BESIDE_SIZES, besidePx)
         }
-        Spacer(Modifier.height(10.dp))
-        Text(text = amount, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-        detail?.let {
-            Spacer(Modifier.height(4.dp))
+        val stacked = besideSize == null
+
+        Column {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+                IconTile(icon, accent)
+                Spacer(Modifier.width(10.dp))
+                Column(Modifier.weight(1f)) {
+                    if (!stacked) {
+                        CardLabel(label, accent, dark)
+                        Spacer(Modifier.height(2.dp))
+                        Text(amount, style = amountStyle.copy(fontSize = besideSize), maxLines = 1, softWrap = false)
+                    }
+                }
+                FinAiIcon(
+                    Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                    size = 18.dp,
+                )
+            }
+            if (stacked) {
+                Spacer(Modifier.height(10.dp))
+                CardLabel(label, accent, dark)
+                Spacer(Modifier.height(2.dp))
+                FittedAmount(amount, amountStyle, CARD_STACKED_SIZES, Modifier.fillMaxWidth())
+            }
+            detail?.let {
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    text = it,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = if (detailIsWarning) accent.labelFor(dark) else MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontWeight = if (detailIsWarning) FontWeight.SemiBold else FontWeight.Normal,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun IconTile(icon: ImageVector, accent: Accent) {
+    Box(
+        modifier = Modifier
+            .size(42.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .background(accent.icon.copy(alpha = 0.16f)),
+        contentAlignment = Alignment.Center,
+    ) {
+        FinAiIcon(icon, tint = accent.icon, size = 22.dp)
+    }
+}
+
+/** "Investments" is the longest; it shrinks a little rather than losing its end. */
+@Composable
+private fun CardLabel(label: String, accent: Accent, dark: Boolean) {
+    Text(
+        text = label,
+        style = MaterialTheme.typography.titleSmall,
+        color = accent.labelFor(dark),
+        fontWeight = FontWeight.SemiBold,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        autoSize = TextAutoSize.StepBased(minFontSize = 10.sp, maxFontSize = 14.sp, stepSize = 0.5.sp),
+    )
+}
+
+/**
+ * A figure at the largest of [sizes] that fits on one line, or — when even the
+ * smallest does not — wrapped at that smallest size.
+ *
+ * Never clipped. Automatic text sizing stops at its minimum and cuts off
+ * whatever is left, and an amount with its last digits missing is a different
+ * amount. A wrapped figure is ugly; a truncated one is wrong.
+ */
+@Composable
+private fun FittedAmount(text: String, style: TextStyle, sizes: List<TextUnit>, modifier: Modifier = Modifier) {
+    BoxWithConstraints(modifier) {
+        val size = rememberTextMeasurer().largestFitting(text, style, sizes, constraints.maxWidth)
+        if (size != null) {
+            Text(text, style = style.copy(fontSize = size), maxLines = 1, softWrap = false)
+        } else {
+            Text(text, style = style.copy(fontSize = sizes.last()))
+        }
+    }
+}
+
+/** The first of [sizes] at which [text] fits in [widthPx] on one line, or null. */
+private fun TextMeasurer.largestFitting(text: String, style: TextStyle, sizes: List<TextUnit>, widthPx: Int): TextUnit? = sizes.firstOrNull { size ->
+    measure(text, style.copy(fontSize = size), maxLines = 1, softWrap = false).size.width <= widthPx
+}
+
+/** Icon tile, the gap after it, and the chevron: what sits beside a figure. */
+private val BESIDE_TAKEN = 42.dp + 10.dp + 18.dp
+
+/** Beside the icon, nothing smaller than this: below it, stack instead. */
+private val CARD_BESIDE_SIZES = listOf(20.sp, 19.sp, 18.sp, 17.sp, 16.sp, 15.sp, 14.sp)
+
+private val CARD_STACKED_SIZES = listOf(22.sp, 20.sp, 18.sp, 16.sp, 14.sp, 12.sp, 10.sp)
+
+private val HERO_SIZES = listOf(38.sp, 34.sp, 30.sp, 27.sp, 24.sp, 21.sp, 18.sp)
+
+/** From here up the cards stack their figures; see [FigureCard]. */
+private const val LARGE_FONT = 1.3f
+
+// ── The ways in ─────────────────────────────────────────────────────────
+
+@Composable
+private fun Actions(
+    state: DashboardUiState,
+    dark: Boolean,
+    onImportStatement: () -> Unit,
+    onAddTransaction: () -> Unit,
+    onReview: () -> Unit,
+) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(
+            modifier = Modifier
+                .size(48.dp)
+                .clip(RoundedCornerShape(16.dp))
+                .background(Field.ink(0.94f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            FinAiIcon(Icons.Filled.Bolt, tint = FinAiPalette.GreenDeep, size = 24.dp)
+        }
+        Spacer(Modifier.width(14.dp))
+        Column {
             Text(
-                text = it,
-                style = MaterialTheme.typography.labelSmall,
-                color = if (detailIsWarning) {
-                    MaterialTheme.colorScheme.tertiary
-                } else {
-                    MaterialTheme.colorScheme.onSurfaceVariant
-                },
+                text = strings(if (state.showsEmptyState) Strings.dashboard_empty_title else Strings.dashboard_quick_actions_title),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = Field.ink(),
+                modifier = Modifier.semantics { heading() },
+            )
+            if (state.showsEmptyState) {
+                Text(
+                    text = strings(Strings.dashboard_empty_body),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Field.ink(0.85f),
+                )
+            }
+        }
+    }
+
+    Spacer(Modifier.height(16.dp))
+    val surface = if (dark) FinAiPalette.DarkSurface else Color.White
+    ActionRow(
+        tile = FinAiPalette.Green.copy(alpha = 0.16f),
+        icon = Icons.Filled.UploadFile,
+        iconTint = if (dark) FinAiPalette.Green else FinAiPalette.GreenDeep,
+        label = strings(Strings.import_entry),
+        surface = surface,
+        onClick = onImportStatement,
+    )
+    Spacer(Modifier.height(10.dp))
+    ActionRow(
+        tile = MaterialTheme.colorScheme.onSurface,
+        icon = Icons.Filled.Add,
+        iconTint = MaterialTheme.colorScheme.surface,
+        label = strings(Strings.manual_entry_title),
+        surface = surface,
+        onClick = onAddTransaction,
+    )
+    Spacer(Modifier.height(10.dp))
+    ActionRow(
+        tile = Color.Transparent,
+        icon = Icons.AutoMirrored.Filled.List,
+        iconTint = MaterialTheme.colorScheme.onSurface,
+        label = strings(Strings.review_entry),
+        surface = surface,
+        onClick = onReview,
+    )
+}
+
+@Composable
+private fun ActionRow(
+    tile: Color,
+    icon: ImageVector,
+    iconTint: Color,
+    label: String,
+    surface: Color,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 60.dp)
+            .clip(RoundedCornerShape(18.dp))
+            .background(surface)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(36.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(tile),
+            contentAlignment = Alignment.Center,
+        ) {
+            FinAiIcon(icon, tint = iconTint, size = 22.dp)
+        }
+        Spacer(Modifier.width(14.dp))
+        Text(
+            text = label,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Medium,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.weight(1f),
+        )
+        FinAiIcon(Icons.AutoMirrored.Filled.ArrowForward, tint = MaterialTheme.colorScheme.onSurfaceVariant, size = 20.dp)
+    }
+}
+
+@Composable
+private fun LoadFailed(state: DashboardUiState, onRetry: () -> Unit) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(22.dp))
+            .background(MaterialTheme.colorScheme.background)
+            .padding(18.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        ErrorText(state.errorKey)
+        Spacer(Modifier.height(8.dp))
+        ProviderButton(text = strings(Strings.dashboard_retry), onClick = onRetry)
+    }
+}
+
+// ── The sheet ───────────────────────────────────────────────────────────
+
+/** Rising over the field with the newest rows, and the month's commitments. */
+@Composable
+private fun Sheet(state: DashboardUiState, onViewAll: () -> Unit, onSignOut: () -> Unit) {
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .pullUp(SHEET_OVERLAP)
+            .clip(RoundedCornerShape(topStart = 30.dp, topEnd = 30.dp))
+            .background(MaterialTheme.colorScheme.background),
+        contentAlignment = Alignment.TopCenter,
+    ) {
+        Column(
+            Modifier
+                .widthIn(max = 560.dp)
+                .fillMaxWidth()
+                .windowInsetsPadding(WindowInsets.navigationBars.only(WindowInsetsSides.Bottom))
+                .padding(horizontal = 20.dp)
+                .padding(top = 24.dp, bottom = 16.dp),
+        ) {
+            val rows = state.recentRows
+            // Shown once there is anything at all: its header carries View all,
+            // which is the way into every transaction.
+            val showsRecent = rows.isNotEmpty() || !state.showsEmptyState
+            if (showsRecent) Recent(rows, onViewAll)
+            if (state.commitments.isNotEmpty()) {
+                if (showsRecent) Spacer(Modifier.height(28.dp))
+                Commitments(state)
+            }
+            Spacer(Modifier.height(12.dp))
+            TextButton(onClick = onSignOut, modifier = Modifier.align(Alignment.CenterHorizontally)) {
+                Text(strings(Strings.action_sign_out), color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+}
+
+/** Moves a child up over what is above it, and takes that much off its height. */
+private fun Modifier.pullUp(by: Dp): Modifier = layout { measurable, constraints ->
+    val placeable = measurable.measure(constraints)
+    val dy = by.roundToPx()
+    layout(placeable.width, (placeable.height - dy).coerceAtLeast(0)) { placeable.place(0, -dy) }
+}
+
+@Composable
+private fun Recent(rows: List<RecentRow>, onViewAll: () -> Unit) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            text = strings(Strings.dashboard_recent_title),
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier
+                .weight(1f)
+                .semantics { heading() },
+        )
+        Row(
+            modifier = Modifier
+                .heightIn(min = 48.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .clickable(onClick = onViewAll)
+                .padding(start = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = strings(Strings.dashboard_recent_view_all),
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            FinAiIcon(Icons.AutoMirrored.Filled.KeyboardArrowRight, tint = MaterialTheme.colorScheme.onSurfaceVariant, size = 20.dp)
+        }
+    }
+    Spacer(Modifier.height(4.dp))
+    rows.forEachIndexed { index, row ->
+        RecentLine(row)
+        if (index != rows.lastIndex) {
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f))
+        }
+    }
+}
+
+@Composable
+private fun RecentLine(row: RecentRow) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 64.dp)
+            .padding(vertical = 10.dp)
+            .semantics(mergeDescendants = true) { contentDescription = row.description },
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(
+                text = row.title,
+                style = MaterialTheme.typography.titleMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(row.date, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(horizontalAlignment = Alignment.End) {
+            Text(
+                text = row.amount,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                // Green for money in; money out stays plain, and the sign says
+                // it in words, so colour is never the only cue.
+                color = if (row.isCredit) IncomeAccent.labelFor(isSystemInDarkTheme()) else MaterialTheme.colorScheme.onSurface,
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                text = row.category,
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (row.isFiled) MaterialTheme.colorScheme.onSurfaceVariant else DebtsAccent.labelFor(isSystemInDarkTheme()),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.widthIn(max = 160.dp),
             )
         }
     }
@@ -461,164 +1019,43 @@ private fun FigureCard(
 private fun Commitments(state: DashboardUiState) {
     Text(
         text = strings(Strings.dashboard_commitments_title),
-        style = MaterialTheme.typography.titleSmall,
-        fontWeight = FontWeight.SemiBold,
+        style = MaterialTheme.typography.titleLarge,
+        fontWeight = FontWeight.Bold,
+        modifier = Modifier.semantics { heading() },
     )
     state.commitmentsSummary?.let {
-        Text(
-            text = it,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
-    Spacer(Modifier.height(8.dp))
-    state.commitments.forEach { row ->
+    Spacer(Modifier.height(4.dp))
+    state.commitments.forEachIndexed { index, row ->
         Row(
-            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(vertical = 6.dp),
+            modifier = Modifier.fillMaxWidth().heightIn(min = 60.dp).padding(vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Column(Modifier.weight(1f)) {
-                Text(text = row.name, style = MaterialTheme.typography.bodyMedium)
-                Text(
-                    text = row.detail,
-                    style = MaterialTheme.typography.bodySmall,
-                    // Not red when unseen: we do not know it is unpaid, only
-                    // that we did not find it.
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            Text(
-                text = row.expected,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Spacer(Modifier.width(10.dp))
             // Decorative: `detail` already says this in words.
             Box(
                 modifier = Modifier
-                    .size(22.dp)
+                    .size(28.dp)
                     .clip(CircleShape)
                     .background(
-                        if (row.wasSeen) {
-                            FinAiPalette.Green.copy(alpha = 0.18f)
-                        } else {
-                            MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)
-                        },
+                        if (row.wasSeen) FinAiPalette.Green.copy(alpha = 0.18f) else MaterialTheme.colorScheme.outline.copy(alpha = 0.25f),
                     )
                     .clearAndSetSemantics {},
                 contentAlignment = Alignment.Center,
             ) {
-                if (row.wasSeen) {
-                    FinAiIcon(Icons.Filled.Check, tint = FinAiPalette.Green, size = 12.dp)
-                }
+                if (row.wasSeen) FinAiIcon(Icons.Filled.Check, tint = FinAiPalette.GreenDeep, size = 16.dp)
             }
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
+                Text(row.name, style = MaterialTheme.typography.titleMedium)
+                // Not red when unseen: we do not know it is unpaid, only that
+                // we did not find it.
+                Text(row.detail, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Text(row.expected, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-    }
-}
-
-// ── The action panel ────────────────────────────────────────────────────
-
-@Composable
-private fun ActionPanel(
-    state: DashboardUiState,
-    onImportStatement: () -> Unit,
-    onAddTransaction: () -> Unit,
-    onReview: () -> Unit,
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(22.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-            .padding(18.dp),
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                modifier = Modifier
-                    .size(40.dp)
-                    .clip(CircleShape)
-                    .background(FinAiPalette.Green.copy(alpha = 0.18f)),
-                contentAlignment = Alignment.Center,
-            ) {
-                FinAiIcon(Icons.Filled.Bolt, tint = FinAiPalette.Green, size = 20.dp)
-            }
-            Spacer(Modifier.width(12.dp))
-            Column {
-                Text(
-                    text = strings(
-                        if (state.showsEmptyState) Strings.dashboard_empty_title else Strings.dashboard_quick_actions_title,
-                    ),
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold,
-                )
-                if (state.showsEmptyState) {
-                    Text(
-                        text = strings(Strings.dashboard_empty_body),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
+        if (index != state.commitments.lastIndex) {
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f))
         }
-
-        Spacer(Modifier.height(14.dp))
-        ActionRow(
-            icon = Icons.Filled.UploadFile,
-            label = strings(Strings.import_entry),
-            primary = true,
-            onClick = onImportStatement,
-        )
-        Spacer(Modifier.height(8.dp))
-        ActionRow(icon = Icons.Filled.Add, label = strings(Strings.manual_entry_title), onClick = onAddTransaction)
-        Spacer(Modifier.height(8.dp))
-        ActionRow(icon = Icons.AutoMirrored.Filled.List, label = strings(Strings.review_entry), onClick = onReview)
-    }
-}
-
-@Composable
-private fun ActionRow(
-    icon: ImageVector,
-    label: String,
-    onClick: () -> Unit,
-    primary: Boolean = false,
-) {
-    val content = if (primary) FinAiPalette.OnGreen else MaterialTheme.colorScheme.onBackground
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .heightIn(min = 56.dp)
-            .clip(RoundedCornerShape(16.dp))
-            .then(
-                if (primary) {
-                    Modifier.background(
-                        Brush.linearGradient(listOf(FinAiPalette.Green, FinAiPalette.GreenDeep)),
-                    )
-                } else {
-                    Modifier.background(MaterialTheme.colorScheme.surface)
-                },
-            )
-            .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        FinAiIcon(icon, tint = content, size = 20.dp)
-        Spacer(Modifier.width(12.dp))
-        Text(
-            text = label,
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = FontWeight.SemiBold,
-            color = content,
-            modifier = Modifier.weight(1f),
-        )
-        FinAiIcon(Icons.AutoMirrored.Filled.KeyboardArrowRight, tint = content, size = 16.dp)
-    }
-}
-
-@Composable
-private fun LoadFailed(state: DashboardUiState, onRetry: () -> Unit) {
-    Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-        ErrorText(state.errorKey)
-        Spacer(Modifier.height(8.dp))
-        ProviderButton(text = strings(Strings.dashboard_retry), onClick = onRetry)
     }
 }

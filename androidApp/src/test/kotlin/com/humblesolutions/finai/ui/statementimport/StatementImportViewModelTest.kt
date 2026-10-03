@@ -6,21 +6,32 @@ import com.humblesolutions.finai.model.AccountKind
 import com.humblesolutions.finai.model.AiConsentStatus
 import com.humblesolutions.finai.model.AiPolicy
 import com.humblesolutions.finai.model.ApiException
+import com.humblesolutions.finai.model.Category
+import com.humblesolutions.finai.model.ConfirmOutcome
+import com.humblesolutions.finai.model.DeleteOutcome
 import com.humblesolutions.finai.model.ExtractedDocument
 import com.humblesolutions.finai.model.ExtractedLine
 import com.humblesolutions.finai.model.ExtractedPage
 import com.humblesolutions.finai.model.FeatureReason
 import com.humblesolutions.finai.model.NewAccount
+import com.humblesolutions.finai.model.NewTransaction
 import com.humblesolutions.finai.model.ParsedRow
 import com.humblesolutions.finai.model.ParsedStatement
+import com.humblesolutions.finai.model.PatchOutcome
+import com.humblesolutions.finai.model.ReviewPage
 import com.humblesolutions.finai.model.RowsToSave
 import com.humblesolutions.finai.model.SaveOutcome
+import com.humblesolutions.finai.model.StatementImports
 import com.humblesolutions.finai.model.StatementUpload
+import com.humblesolutions.finai.model.Transaction
+import com.humblesolutions.finai.model.TransactionPatch
 import com.humblesolutions.finai.repository.AccountsRepository
 import com.humblesolutions.finai.repository.AiConsentRepository
+import com.humblesolutions.finai.repository.CategoriesRepository
 import com.humblesolutions.finai.repository.StatementImportRepository
 import com.humblesolutions.finai.repository.StatementReadException
 import com.humblesolutions.finai.repository.StatementReader
+import com.humblesolutions.finai.repository.TransactionsRepository
 import com.humblesolutions.finai.usecase.ImportFailure
 import com.humblesolutions.finai.usecase.ImportStep
 import kotlinx.coroutines.Dispatchers
@@ -459,9 +470,59 @@ class StatementImportViewModelTest {
         consent: FakeConsent = FakeConsent(agreed = "ai-v1"),
         reader: FakeReader = FakeReader(),
         files: FakeFiles = FakeFiles(),
+        transactions: FakeImportedTransactions = FakeImportedTransactions(),
+        categories: FakeImportCategories = FakeImportCategories(),
     ): ImportRepositories {
         lastReader = reader
-        return ImportRepositories(accounts, imports, consent, reader, files)
+        lastTransactions = transactions
+        return ImportRepositories(accounts, imports, consent, reader, files, transactions, categories)
+    }
+
+    private var lastTransactions: FakeImportedTransactions? = null
+
+    /** Only `list` is reachable from the import; the rest belong to the queue. */
+    class FakeImportedTransactions(
+        var page: ReviewPage = ReviewPage(),
+        var fail: ApiException? = null,
+    ) : TransactionsRepository {
+        val askedFor = mutableListOf<String?>()
+
+        override suspend fun list(
+            statementImportId: String?,
+            month: String?,
+            needsReview: Boolean?,
+            cursor: String?,
+        ): ReviewPage {
+            askedFor += statementImportId
+            fail?.let { throw it }
+            return page
+        }
+
+        override suspend fun create(entry: NewTransaction): Transaction = unreachable()
+
+        override suspend fun review(cursor: String?): ReviewPage = unreachable()
+
+        override suspend fun correct(id: String, patch: TransactionPatch): PatchOutcome = unreachable()
+
+        override suspend fun confirm(id: String): PatchOutcome = unreachable()
+
+        override suspend fun confirmAll(ids: List<String>): ConfirmOutcome = unreachable()
+
+        override suspend fun delete(id: String): DeleteOutcome = unreachable()
+
+        override fun close() = Unit
+
+        private fun unreachable(): Nothing = error("the import screen does not call this")
+    }
+
+    class FakeImportCategories(
+        private val categories: List<Category> = emptyList(),
+    ) : CategoriesRepository {
+        override suspend fun list(): List<Category> = categories
+
+        override suspend fun create(name: String): Category = error("not called")
+
+        override fun close() = Unit
     }
 
     private class FakeFiles : PickedFiles {
@@ -508,6 +569,8 @@ class StatementImportViewModelTest {
     }
 
     private class FakeImports(private val parse: (StatementUpload) -> ParsedStatement) : StatementImportRepository {
+        override suspend fun list(): StatementImports = StatementImports()
+
         val uploads = mutableListOf<StatementUpload>()
         val saved = mutableListOf<Pair<String, RowsToSave>>()
 
@@ -537,5 +600,84 @@ class StatementImportViewModelTest {
         override suspend fun status() = AiConsentStatus(consented = agreed != null, version = "ai-v1")
 
         override fun close() = Unit
+    }
+
+    /** A whole import, carried through to DONE, reading rows from [transactions]. */
+    private fun importedThrough(
+        transactions: FakeImportedTransactions,
+        categories: CategoriesRepository = FakeImportCategories(),
+    ): StatementImportViewModel {
+        val model = model()
+        model.bind("alice") {
+            repositories(transactions = transactions).let {
+                ImportRepositories(it.accounts, it.imports, it.consent, it.reader, it.files, transactions, categories)
+            }
+        }
+        model.upToFile()
+        model.onFilePicked(file)
+        return model
+    }
+
+    // ── What the import read ────────────────────────────────────────────
+
+    @Test
+    fun `a finished import asks for the rows it just created`() {
+        val transactions = FakeImportedTransactions(
+            page = ReviewPage(rows = listOf(Transaction(id = "r1", occurredOn = "2026-08-02"))),
+        )
+        val model = importedThrough(transactions)
+
+        assertEquals(listOf<String?>("i-1"), transactions.askedFor.toList())
+        assertEquals(listOf("r1"), model.uiState.value.imported.map { it.id })
+    }
+
+    @Test
+    fun `a list that will not load leaves the import succeeded`() {
+        // The import worked. Turning a finished import into an error screen
+        // because a follow-up read failed would be a lie about what happened.
+        val model = importedThrough(
+            FakeImportedTransactions(fail = ApiException.Network(RuntimeException("offline"))),
+        )
+
+        val state = model.uiState.value
+        assertEquals(ImportStep.DONE, state.step)
+        assertTrue(state.summary.isNotEmpty())
+        assertTrue(state.imported.isEmpty())
+        assertNotNull(state.importedErrorKey)
+    }
+
+    @Test
+    fun `the list can be asked for again without redoing the import`() {
+        val transactions = FakeImportedTransactions(
+            fail = ApiException.Network(RuntimeException("offline")),
+        )
+        val model = importedThrough(transactions)
+        assertNotNull(model.uiState.value.importedErrorKey)
+
+        transactions.fail = null
+        transactions.page = ReviewPage(rows = listOf(Transaction(id = "r9")))
+        model.reloadImported()
+
+        assertEquals(listOf("r9"), model.uiState.value.imported.map { it.id })
+        assertNull(model.uiState.value.importedErrorKey)
+        assertEquals(2, transactions.askedFor.size, "the same import, asked for twice")
+    }
+
+    @Test
+    fun `categories failing still shows the rows`() {
+        // A name beside each row is a nicety; the rows are the point.
+        val model = importedThrough(
+            FakeImportedTransactions(page = ReviewPage(rows = listOf(Transaction(id = "r1")))),
+            categories = object : CategoriesRepository {
+                override suspend fun list(): List<Category> = throw ApiException.Network(RuntimeException("offline"))
+
+                override suspend fun create(name: String): Category = error("not called")
+
+                override fun close() = Unit
+            },
+        )
+
+        assertEquals(listOf("r1"), model.uiState.value.imported.map { it.id })
+        assertNull(model.uiState.value.importedErrorKey)
     }
 }
