@@ -23,6 +23,9 @@ struct DashboardView: View {
     let onAddTransaction: () -> Void
     /// The review queue (#32).
     let onReview: () -> Void
+    /// Everything the household has, as opposed to the queue, which is only
+    /// what still needs a person.
+    let onViewAll: () -> Void
     let onSignOut: () -> Void
 
     var body: some View {
@@ -341,6 +344,11 @@ struct DashboardView: View {
                     symbol: "list.bullet",
                     label: L.t(Strings.shared.review_entry),
                     action: onReview
+                )
+                ActionRow(
+                    symbol: "doc.text.magnifyingglass",
+                    label: L.t(Strings.shared.dashboard_view_all),
+                    action: onViewAll
                 )
             }
             .padding(.top, 14)

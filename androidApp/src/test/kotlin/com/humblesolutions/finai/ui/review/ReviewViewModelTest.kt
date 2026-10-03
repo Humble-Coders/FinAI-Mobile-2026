@@ -649,6 +649,7 @@ class ReviewViewModelTest {
     ) : TransactionsRepository {
         override suspend fun list(
             statementImportId: String?,
+            month: String?,
             needsReview: Boolean?,
             cursor: String?,
         ): ReviewPage = ReviewPage()

@@ -276,7 +276,7 @@ final class StatementImportViewModel: ObservableObject, NewAccountHost {
             guard let self else { return }
             do {
                 let page = try await transactionsRepository.list(
-                    statementImportId: importId, needsReview: nil, cursor: nil
+                    statementImportId: importId, month: nil, needsReview: nil, cursor: nil
                 )
                 // A name beside each row is a nicety; the rows are the point.
                 let categories = try? await categoriesRepository?.list()

@@ -21,6 +21,7 @@ import com.humblesolutions.finai.model.PatchOutcome
 import com.humblesolutions.finai.model.ReviewPage
 import com.humblesolutions.finai.model.RowsToSave
 import com.humblesolutions.finai.model.SaveOutcome
+import com.humblesolutions.finai.model.StatementImports
 import com.humblesolutions.finai.model.StatementUpload
 import com.humblesolutions.finai.model.Transaction
 import com.humblesolutions.finai.model.TransactionPatch
@@ -488,6 +489,7 @@ class StatementImportViewModelTest {
 
         override suspend fun list(
             statementImportId: String?,
+            month: String?,
             needsReview: Boolean?,
             cursor: String?,
         ): ReviewPage {
@@ -567,6 +569,8 @@ class StatementImportViewModelTest {
     }
 
     private class FakeImports(private val parse: (StatementUpload) -> ParsedStatement) : StatementImportRepository {
+        override suspend fun list(): StatementImports = StatementImports()
+
         val uploads = mutableListOf<StatementUpload>()
         val saved = mutableListOf<Pair<String, RowsToSave>>()
 

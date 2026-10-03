@@ -8,6 +8,7 @@ import com.humblesolutions.finai.model.ParsedStatement
 import com.humblesolutions.finai.model.RowsToSave
 import com.humblesolutions.finai.model.SaveOutcome
 import com.humblesolutions.finai.model.SourceKind
+import com.humblesolutions.finai.model.StatementImports
 import com.humblesolutions.finai.model.StatementUpload
 import com.humblesolutions.finai.repository.StatementImportRepository
 import kotlinx.coroutines.test.runTest
@@ -23,6 +24,8 @@ class ImportStatementTest {
 
     /** Records what was sent, and whether anything was sent at all. */
     private class FakeImports : StatementImportRepository {
+        override suspend fun list(): StatementImports = StatementImports()
+
         var sent: StatementUpload? = null
 
         override suspend fun parse(upload: StatementUpload): ParsedStatement {

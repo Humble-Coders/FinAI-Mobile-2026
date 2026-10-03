@@ -36,6 +36,7 @@ class KtorTransactionsRepository internal constructor(
     @Throws(ApiException::class, CancellationException::class)
     override suspend fun list(
         statementImportId: String?,
+        month: String?,
         needsReview: Boolean?,
         cursor: String?,
     ): ReviewPage = http.getJson("transactions") {
@@ -43,6 +44,10 @@ class KtorTransactionsRepository internal constructor(
         // missing filter as "no filter", and `needs_review=false` is a filter
         // that would hide exactly the rows the result screen exists to show.
         if (statementImportId != null) parameter("statement_import_id", statementImportId)
+        // A malformed month is refused by the server rather than ignored, so a
+        // blank one must never be sent: it would come back 422 rather than as
+        // "every month", which is what omitting it means.
+        if (month != null) parameter("month", month)
         if (needsReview != null) parameter("needs_review", needsReview)
         if (cursor != null) parameter("cursor", cursor)
     }

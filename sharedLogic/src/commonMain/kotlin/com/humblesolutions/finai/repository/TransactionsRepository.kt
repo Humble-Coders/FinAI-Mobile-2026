@@ -42,12 +42,16 @@ interface TransactionsRepository {
      *
      * @param statementImportId scopes to one import, which is how the result
      *   screen asks for exactly the rows it just created.
+     * @param month `YYYY-MM`, filtering by the date on the statement rather
+     *   than when the row was written — the months a person recognises from
+     *   their own statements. Combines with [statementImportId].
      * @param needsReview filters within that; null returns both kinds, and
      *   each row says which it is.
      */
     @Throws(ApiException::class, CancellationException::class)
     suspend fun list(
         statementImportId: String? = null,
+        month: String? = null,
         needsReview: Boolean? = null,
         cursor: String? = null,
     ): ReviewPage

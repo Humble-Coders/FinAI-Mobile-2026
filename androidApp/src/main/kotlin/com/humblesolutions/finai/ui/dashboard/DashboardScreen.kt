@@ -83,6 +83,7 @@ fun DashboardScreen(
     onImportStatement: () -> Unit,
     onAddTransaction: () -> Unit,
     onReview: () -> Unit,
+    onViewAll: () -> Unit,
     onSignOut: () -> Unit,
 ) {
     Box(Modifier.fillMaxWidth()) {
@@ -100,7 +101,7 @@ fun DashboardScreen(
             }
 
             Spacer(Modifier.height(16.dp))
-            ActionPanel(state, onImportStatement, onAddTransaction, onReview)
+            ActionPanel(state, onImportStatement, onAddTransaction, onReview, onViewAll)
 
             Spacer(Modifier.height(10.dp))
             TextButton(onClick = onSignOut, modifier = Modifier.align(Alignment.CenterHorizontally)) {
@@ -524,6 +525,7 @@ private fun ActionPanel(
     onImportStatement: () -> Unit,
     onAddTransaction: () -> Unit,
     onReview: () -> Unit,
+    onViewAll: () -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -572,6 +574,14 @@ private fun ActionPanel(
         ActionRow(icon = Icons.Filled.Add, label = strings(Strings.manual_entry_title), onClick = onAddTransaction)
         Spacer(Modifier.height(8.dp))
         ActionRow(icon = Icons.AutoMirrored.Filled.List, label = strings(Strings.review_entry), onClick = onReview)
+        Spacer(Modifier.height(8.dp))
+        // Everything the household has, as opposed to the queue above,
+        // which is only what still needs a person.
+        ActionRow(
+            icon = Icons.AutoMirrored.Filled.ReceiptLong,
+            label = strings(Strings.dashboard_view_all),
+            onClick = onViewAll,
+        )
     }
 }
 

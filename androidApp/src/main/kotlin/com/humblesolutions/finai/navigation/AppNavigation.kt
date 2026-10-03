@@ -49,6 +49,7 @@ import com.humblesolutions.finai.ui.review.ReviewRoute
 import com.humblesolutions.finai.ui.setup.SetupScreen
 import com.humblesolutions.finai.ui.setup.SetupViewModel
 import com.humblesolutions.finai.ui.statementimport.StatementImportRoute
+import com.humblesolutions.finai.ui.transactions.TransactionsRoute
 import com.humblesolutions.finai.usecase.Destination
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
@@ -254,7 +255,7 @@ private fun SetupRoute(userId: String, onFinished: () -> Unit) {
 }
 
 /** Where the signed-in, set-up person is: home, or one of the two ways money gets in. */
-private enum class HomeRoute { HOME, ADD, IMPORT, ADD_AFTER_IMPORT, REVIEW }
+private enum class HomeRoute { HOME, ADD, IMPORT, ADD_AFTER_IMPORT, REVIEW, TRANSACTIONS }
 
 /**
  * Home and what opens from it: the statement import (#31), manual entry — from
@@ -273,6 +274,7 @@ private fun HomeOrEntry(userId: String, onSignOut: () -> Unit) {
             onImportStatement = { route = HomeRoute.IMPORT },
             onReview = { route = HomeRoute.REVIEW },
             onAddTransaction = { route = HomeRoute.ADD },
+            onViewAll = { route = HomeRoute.TRANSACTIONS },
             onSignOut = onSignOut,
         )
 
@@ -289,6 +291,8 @@ private fun HomeOrEntry(userId: String, onSignOut: () -> Unit) {
         )
 
         HomeRoute.REVIEW -> ReviewRoute(userId = userId, onClose = { route = HomeRoute.HOME })
+
+        HomeRoute.TRANSACTIONS -> TransactionsRoute(userId = userId, onClose = { route = HomeRoute.HOME })
     }
 }
 

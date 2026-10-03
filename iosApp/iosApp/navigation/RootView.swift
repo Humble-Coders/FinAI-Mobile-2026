@@ -21,6 +21,9 @@ struct RootView: View {
 
     /// The dashboard, which is home (PRD F3).
     @StateObject private var dashboardModel = DashboardViewModel()
+
+    /// Everything the household has (#F3).
+    @StateObject private var transactionsModel = TransactionsViewModel()
     /// Where the signed-in, set-up person is: home, or one of the two ways
     /// money gets in. Scene storage, so the app coming back after iOS
     /// reclaimed it reopens that screen rather than dropping them on home.
@@ -162,6 +165,7 @@ struct RootView: View {
                     onImportStatement: { homeRoute = HomeRoute.importStatement.rawValue },
                     onAddTransaction: { homeRoute = HomeRoute.add.rawValue },
                     onReview: { homeRoute = HomeRoute.review.rawValue },
+                    onViewAll: { homeRoute = HomeRoute.transactions.rawValue },
                     onSignOut: { model.signOut() }
                 )
             case .add, .addAfterImport:
@@ -180,6 +184,13 @@ struct RootView: View {
                     onTypeInstead: { homeRoute = HomeRoute.addAfterImport.rawValue },
                     onReview: { homeRoute = HomeRoute.review.rawValue }
                 )
+            case .transactions:
+                TransactionsView(
+                    model: transactionsModel,
+                    userId: model.me?.user.id ?? ""
+                ) {
+                    homeRoute = HomeRoute.home.rawValue
+                }
             case .review:
                 ReviewView(
                     model: reviewModel,
@@ -230,4 +241,6 @@ private enum HomeRoute: String {
     case addAfterImport = "add_after_import"
     /// The review queue (#32), from home or from an import that left rows.
     case review
+    /// Everything the household has, by statement or by month (#F3).
+    case transactions
 }

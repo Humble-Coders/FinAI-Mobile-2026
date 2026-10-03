@@ -20,6 +20,7 @@ internal fun DashboardRoute(
     onImportStatement: () -> Unit,
     onAddTransaction: () -> Unit,
     onReview: () -> Unit,
+    onViewAll: () -> Unit,
     onSignOut: () -> Unit,
 ) {
     val model: DashboardViewModel = viewModel()
@@ -38,6 +39,7 @@ internal fun DashboardRoute(
         onImportStatement = onImportStatement,
         onAddTransaction = onAddTransaction,
         onReview = onReview,
+        onViewAll = onViewAll,
         onSignOut = onSignOut,
     )
 }
