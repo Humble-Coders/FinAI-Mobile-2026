@@ -57,6 +57,16 @@ interface TransactionsRepository {
     ): ReviewPage
 
     /**
+     * The household's newest [count] rows, for the dashboard's recent list.
+     *
+     * A default built on [list] so a fake gets it for free; the network
+     * implementation overrides it to ask the server for only [count], rather
+     * than a full page on every refresh of home to show three of them.
+     */
+    @Throws(ApiException::class, CancellationException::class)
+    suspend fun recent(count: Int): List<Transaction> = list().rows.take(count)
+
+    /**
      * Fix a row. Whatever changed, the row has been looked at, so it leaves
      * the queue — unless it still has no category, in which case the server
      * keeps it, asking for one (Finance-backend #48).

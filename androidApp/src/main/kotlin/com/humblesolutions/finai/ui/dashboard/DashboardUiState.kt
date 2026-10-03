@@ -2,8 +2,13 @@ package com.humblesolutions.finai.ui.dashboard
 
 import com.humblesolutions.finai.i18n.LocalizationRegistry
 import com.humblesolutions.finai.i18n.Strings
+import com.humblesolutions.finai.model.Category
 import com.humblesolutions.finai.model.Dashboard
+import com.humblesolutions.finai.model.Transaction
+import com.humblesolutions.finai.model.TransactionDirection
 import com.humblesolutions.finai.usecase.DashboardMonths
+import com.humblesolutions.finai.usecase.DashboardTrend
+import com.humblesolutions.finai.usecase.ImportedRows
 import com.humblesolutions.finai.util.Dates
 import com.humblesolutions.finai.util.Money
 import kotlinx.datetime.LocalDate
@@ -38,6 +43,10 @@ data class DashboardUiState(
      * that opens blank because of a tap days ago is a bug report.
      */
     val amountsHidden: Boolean = false,
+
+    /** The newest few rows, whatever month is in view; see `loadRecent`. */
+    val recent: List<Transaction> = emptyList(),
+    val categories: List<Category> = emptyList(),
 ) {
     private val digits: Int get() = data.fractionDigits
 
@@ -150,56 +159,46 @@ data class DashboardUiState(
     }
 
     /**
-     * The bars, each as a fraction of the tallest month in view.
-     *
-     * Scaled by magnitude, so a heavy loss draws as tall as a heavy gain and
-     * the direction is carried by colour rather than by height — a month that
-     * went badly should not look like a quiet one.
+     * Where each month sits on the chart — shared geometry, so the two apps
+     * draw the same line. Null until some month in the window holds anything.
      */
-    val bars: List<Bar> get() {
-        val magnitudes = data.trend.associate { point ->
-            point.month to point.net?.let { Money.magnitudeOf(it, digits) }
-        }
-        val tallest = magnitudes.values.filterNotNull()
-            .maxWithOrNull { a, b -> Money.compare(a, b, digits) }
-
-        return data.trend.map { point ->
-            val magnitude = magnitudes[point.month]
-            val label = Dates.parse(point.month)?.let { Dates.monthShort(it, locale) }.orEmpty()
-            Bar(
-                month = point.month,
-                shortLabel = label,
-                // Null is a gap, not a zero: the screen outlines it rather
-                // than drawing a bar for a month nobody recorded.
-                fraction = magnitude?.let { fractionOf(it, tallest) },
-                isNegative = point.net?.let { Money.signOf(it, digits) < 0 } ?: false,
-                description = point.net?.let { text(Strings.dashboard_trend_month, label, money(it)) }
-                    ?: text(Strings.dashboard_trend_no_data_month, label),
-            )
-        }
-    }
+    val chart: DashboardTrend.Chart? get() = DashboardTrend.chart(data.trend)
 
     /**
-     * [magnitude] against the tallest bar, floored so a real but tiny month is
-     * still a visible mark rather than nothing at all.
+     * Each month in words, for a screen reader: the line itself says nothing
+     * to somebody who cannot see it, and a gap must be heard as a gap.
      */
-    private fun fractionOf(magnitude: String, tallest: String?): Float {
-        if (tallest == null || Money.compare(tallest, "0", digits) == 0) return MINIMUM_BAR
-        val ratio = (magnitude.toFloatOrNull() ?: return MINIMUM_BAR) /
-            (tallest.toFloatOrNull()?.takeIf { it > 0f } ?: return MINIMUM_BAR)
-        return ratio.coerceIn(MINIMUM_BAR, 1f)
+    val trendDescriptions: List<String> get() = data.trend.map { point ->
+        val label = Dates.parse(point.month)?.let { Dates.monthShort(it, locale) }.orEmpty()
+        point.net?.let { text(Strings.dashboard_trend_month, label, money(it)) }
+            ?: text(Strings.dashboard_trend_no_data_month, label)
+    }
+
+    /** The recent list, worded. Empty when there is nothing to show. */
+    val recentRows: List<RecentRow> get() = recent.map { row ->
+        val isCredit = row.direction == TransactionDirection.CREDIT
+        val amount = text(
+            if (isCredit) Strings.dashboard_recent_credit else Strings.dashboard_recent_debit,
+            money(row.amount),
+        )
+        val category = ImportedRows.categoryOf(row, categories)
+        val categoryName = category?.name ?: text(Strings.import_extracted_uncategorised)
+        val date = Dates.parse(row.occurredOn)?.let { Dates.display(it) } ?: row.occurredOn
+        val title = ImportedRows.titleOf(row)
+        RecentRow(
+            id = row.id,
+            title = title,
+            date = date,
+            amount = amount,
+            isCredit = isCredit,
+            category = categoryName,
+            isFiled = category != null,
+            description = text(Strings.dashboard_recent_row, title, date, amount, categoryName),
+        )
     }
 
     /** Nothing recorded at all, so the screen offers a first step instead of zeroes. */
     val showsEmptyState: Boolean get() = !loading && !loadFailed && data.isEmpty
-
-    /** Drawn only once a month in view holds something. */
-    val showsTrend: Boolean get() = data.trend.any { it.hasData }
-
-    private companion object {
-        /** Floor for a bar, so a £2 month is a mark and not an absence. */
-        const val MINIMUM_BAR = 0.06f
-    }
 }
 
 /** One commitment as a row: its name, what was expected, and what we saw. */
@@ -210,16 +209,17 @@ data class CommitmentRow(
     val detail: String,
 )
 
-/**
- * One bar of the trend.
- *
- * [fraction] is null for a month with no rows at all. The screen draws those
- * as an outline — a zero-height bar states a fact nobody observed.
- */
-data class Bar(
-    val month: String,
-    val shortLabel: String,
-    val fraction: Float?,
-    val isNegative: Boolean,
+/** One row of the recent list, already worded. */
+data class RecentRow(
+    val id: String,
+    val title: String,
+    val date: String,
+    /** Signed in words — "+ $5.00" or "− $5.00" — so colour is never the only cue. */
+    val amount: String,
+    val isCredit: Boolean,
+    val category: String,
+    /** False for a row nothing filed, which is drawn as needing attention. */
+    val isFiled: Boolean,
+    /** The whole row as one sentence, read once by a screen reader. */
     val description: String,
 )

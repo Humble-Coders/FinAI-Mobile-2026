@@ -1,12 +1,15 @@
 package com.humblesolutions.finai.ui.dashboard
 
 import com.humblesolutions.finai.i18n.LocalizationRegistry
+import com.humblesolutions.finai.model.Category
 import com.humblesolutions.finai.model.Commitment
 import com.humblesolutions.finai.model.CommitmentMatch
 import com.humblesolutions.finai.model.Dashboard
 import com.humblesolutions.finai.model.Flow
 import com.humblesolutions.finai.model.MonthPoint
 import com.humblesolutions.finai.model.Stock
+import com.humblesolutions.finai.model.Transaction
+import com.humblesolutions.finai.model.TransactionDirection
 import kotlinx.datetime.LocalDate
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -192,8 +195,9 @@ class DashboardUiStateTest {
     }
 
     @Test
-    fun a_month_with_no_rows_is_a_gap_in_the_chart() {
-        val bars = state(
+    fun a_month_with_no_rows_is_heard_as_a_gap() {
+        // The line says nothing to somebody who cannot see it.
+        val descriptions = state(
             august(
                 trend = listOf(
                     MonthPoint("2026-06-01", "300.00"),
@@ -201,42 +205,81 @@ class DashboardUiStateTest {
                     MonthPoint("2026-08-01", "1500.00"),
                 ),
             ),
-        ).bars
+        ).trendDescriptions
 
-        assertNull(bars[1].fraction, "July has no bar height, because July has no data")
-        assertEquals("Jul: nothing recorded", bars[1].description)
-        assertEquals(1f, bars[2].fraction, "the tallest month fills the chart")
+        assertEquals("Jul: nothing recorded", descriptions[1])
+        assertEquals(3, descriptions.size)
     }
 
     @Test
-    fun a_loss_is_as_tall_as_a_gain_and_differs_by_direction() {
-        // Otherwise a bad month draws as a quiet one.
-        val bars = state(
-            august(
-                trend = listOf(MonthPoint("2026-07-01", "-1500.00"), MonthPoint("2026-08-01", "1500.00")),
-            ),
-        ).bars
+    fun there_is_no_chart_until_a_month_holds_something() {
+        assertNull(state(august(trend = listOf(MonthPoint("2026-07-01", null)))).chart)
+    }
 
-        assertEquals(bars[0].fraction, bars[1].fraction)
-        assertTrue(bars[0].isNegative)
-        assertFalse(bars[1].isNegative)
+    // ── The recent list ─────────────────────────────────────────────────
+
+    private val groceries = Category(id = "c1", name = "Groceries")
+
+    private fun row(
+        amount: String = "86.40",
+        credit: Boolean = false,
+        categoryId: String? = "c1",
+        merchant: String? = "Loblaws",
+    ) = Transaction(
+        id = "t1",
+        occurredOn = "2026-08-02",
+        amount = amount,
+        currency = "CAD",
+        direction = if (credit) TransactionDirection.CREDIT else TransactionDirection.DEBIT,
+        merchant = merchant,
+        categoryId = categoryId,
+    )
+
+    @Test
+    fun money_out_and_money_in_are_signed_in_words_not_just_colour() {
+        val rows = state(august()).copy(
+            recent = listOf(row(amount = "86.40"), row(amount = "4100.00", credit = true)),
+            categories = listOf(groceries),
+        ).recentRows
+
+        assertEquals("− $86.40", rows[0].amount)
+        assertFalse(rows[0].isCredit)
+        assertEquals("+ $4,100.00", rows[1].amount)
+        assertTrue(rows[1].isCredit)
     }
 
     @Test
-    fun a_tiny_month_still_leaves_a_mark() {
-        val bars = state(
-            august(
-                trend = listOf(MonthPoint("2026-07-01", "2.00"), MonthPoint("2026-08-01", "5000.00")),
-            ),
-        ).bars
+    fun a_row_says_what_it_was_filed_as() {
+        val line = state(august()).copy(recent = listOf(row()), categories = listOf(groceries)).recentRows.single()
 
-        assertTrue(bars[0].fraction!! > 0f, "a real month must not vanish")
+        assertEquals("Groceries", line.category)
+        assertTrue(line.isFiled)
+        assertEquals("Loblaws", line.title)
     }
 
     @Test
-    fun the_chart_is_hidden_until_a_month_in_view_holds_something() {
-        assertFalse(state(august(trend = listOf(MonthPoint("2026-07-01", null)))).showsTrend)
-        assertTrue(state(august(trend = listOf(MonthPoint("2026-07-01", "1.00")))).showsTrend)
+    fun a_row_nothing_filed_says_so_rather_than_leaving_a_blank() {
+        val line = state(august()).copy(recent = listOf(row(categoryId = null))).recentRows.single()
+
+        assertEquals("Not filed yet", line.category)
+        assertFalse(line.isFiled)
+    }
+
+    @Test
+    fun hiding_amounts_hides_them_in_the_recent_list_too() {
+        val hidden = state(august()).copy(recent = listOf(row()), amountsHidden = true)
+        val line = hidden.recentRows.single()
+
+        assertFalse(line.amount.contains("86"), "a masked screen must not leak a figure: ${line.amount}")
+    }
+
+    @Test
+    fun a_row_is_read_as_one_sentence() {
+        val line = state(august()).copy(recent = listOf(row()), categories = listOf(groceries)).recentRows.single()
+
+        assertTrue(line.description.contains("Loblaws"))
+        assertTrue(line.description.contains("− $86.40"))
+        assertTrue(line.description.contains("Groceries"))
     }
 
     @Test
@@ -293,7 +336,7 @@ class DashboardUiStateTest {
             month.commitmentsSummary,
             month.pendingReviewLabel,
             month.commitments.single().detail,
-            month.bars.single().description,
+            month.trendDescriptions.single(),
         )
         shown.forEach { assertEquals(it, LocalizationRegistry.get(it), "raw key reached the screen: $it") }
     }

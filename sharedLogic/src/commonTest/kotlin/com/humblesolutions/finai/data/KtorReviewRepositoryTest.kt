@@ -279,4 +279,18 @@ class KtorReviewRepositoryTest {
 
         assertEquals("abc+/=", assertNotNull(seen.single()).url.parameters["cursor"])
     }
+
+    // ── The dashboard's recent list ────────────────────────────────────
+
+    @Test
+    fun recentAsksTheServerForOnlyWhatItShows() = runTest {
+        // Not a full page on every refresh of home to show three of them.
+        val rows = repository().recent(3)
+
+        val request = assertNotNull(seen.single())
+        assertEquals("/transactions", request.url.encodedPath)
+        assertEquals("3", request.url.parameters["limit"])
+        assertEquals(setOf("limit"), request.url.parameters.names(), "and no filter: recent means all of them")
+        assertEquals(1, rows.size)
+    }
 }

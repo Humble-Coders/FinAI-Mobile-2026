@@ -53,6 +53,9 @@ class KtorTransactionsRepository internal constructor(
     }
 
     @Throws(ApiException::class, CancellationException::class)
+    override suspend fun recent(count: Int): List<Transaction> = http.getJson<ReviewPage>("transactions") { parameter("limit", count) }.rows
+
+    @Throws(ApiException::class, CancellationException::class)
     override suspend fun correct(id: String, patch: TransactionPatch): PatchOutcome = http.patchJson("transactions/$id", patch)
 
     @Throws(ApiException::class, CancellationException::class)

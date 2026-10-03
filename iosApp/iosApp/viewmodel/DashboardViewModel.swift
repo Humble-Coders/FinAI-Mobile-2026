@@ -40,10 +40,18 @@ final class DashboardViewModel: ObservableObject {
     /// is for the moment somebody is on a train, not a setting, and a dashboard
     /// that opens blank because of a tap days ago is a bug report.
     @Published private(set) var amountsHidden = false
+    /// The newest few rows, whatever month is in view; see `loadRecent`.
+    @Published private(set) var recent: [SharedLogic.Transaction] = []
+    @Published private(set) var categories: [SharedLogic.Category] = []
 
     private var dashboardRepository: DashboardRepository?
     private var capabilitiesRepository: CapabilitiesRepository?
+    private var transactionsRepository: TransactionsRepository?
+    private var categoriesRepository: CategoriesRepository?
     private var owner: String?
+    /// The recent list's own counter: it does not follow the month, so a step
+    /// back to August must not cancel a read of what happened most recently.
+    private var recentGeneration = 0
     /// Rises on every bind and every month change, so a slow answer for a month
     /// the user has left cannot land on the one they are looking at.
     private var generation = 0
@@ -68,8 +76,11 @@ final class DashboardViewModel: ObservableObject {
         let base = ApiConfig.shared.BASE_URL
         dashboardRepository = KtorDashboardRepository(baseUrl: base, tokens: tokens, logging: logging)
         capabilitiesRepository = KtorCapabilitiesRepository(baseUrl: base, tokens: tokens, logging: logging)
+        transactionsRepository = KtorTransactionsRepository(baseUrl: base, tokens: tokens, logging: logging)
+        categoriesRepository = KtorCategoriesRepository(baseUrl: base, tokens: tokens, logging: logging)
         listenForChanges()
         load()
+        loadRecent()
     }
 
     func unbind() {
@@ -79,7 +90,12 @@ final class DashboardViewModel: ObservableObject {
         dashboardRepository = nil
         capabilitiesRepository?.close()
         capabilitiesRepository = nil
+        transactionsRepository?.close()
+        transactionsRepository = nil
+        categoriesRepository?.close()
+        categoriesRepository = nil
         generation += 1
+        recentGeneration += 1
     }
 
     private func reset() {
@@ -90,6 +106,7 @@ final class DashboardViewModel: ObservableObject {
         refreshing = false
         loadFailed = false
         errorKey = nil
+        recent = []
         owner = nil
         generation += 1
     }
@@ -137,6 +154,31 @@ final class DashboardViewModel: ObservableObject {
         (kotlin(error) as? ApiException)?.messageKey ?? Strings.shared.error_unexpected
     }
 
+    /// As many as the design shows; the rest are one tap away under View all.
+    static let recentCount: Int32 = 3
+
+    /**
+     The newest few rows, for the list under the figures.
+
+     Fails quietly: the figures are the screen, and a list that could not load
+     is simply not drawn rather than turning home into an error.
+     */
+    private func loadRecent() {
+        guard let transactionsRepository else { return }
+        let categoriesRepository = self.categoriesRepository
+        recentGeneration += 1
+        let started = recentGeneration
+        Task { [weak self] in
+            guard let self else { return }
+            guard let rows = try? await transactionsRepository.recent(count: Self.recentCount) else { return }
+            // A name beside each row is a nicety; the rows are the point.
+            let categories = try? await categoriesRepository?.list()
+            guard started == self.recentGeneration else { return }
+            self.recent = rows
+            if let categories { self.categories = categories }
+        }
+    }
+
     /// Mask or unmask every figure on screen.
     func toggleAmounts() { amountsHidden.toggle() }
 
@@ -167,6 +209,7 @@ final class DashboardViewModel: ObservableObject {
             for await _ in LedgerChanged.events {
                 guard let self, !Task.isCancelled else { return }
                 self.load(refresh: true)
+                self.loadRecent()
             }
         }
     }
@@ -295,48 +338,50 @@ final class DashboardViewModel: ObservableObject {
         return L.t(Strings.shared.dashboard_pending_review, String(pending))
     }
 
-    /// Scaled by magnitude, so a heavy loss draws as tall as a heavy gain and
-    /// the direction is carried by colour — a bad month must not look quiet.
-    var bars: [Bar] {
-        let magnitudes = data.trend.map { point in
-            point.net.flatMap { Money.shared.magnitudeOf(raw: $0, fractionDigits: digits) }
-        }
-        let tallest = magnitudes.compactMap { $0 }.max {
-            Money.shared.compare(a: $0, b: $1, fractionDigits: digits) < 0
-        }
-        return data.trend.enumerated().map { index, point in
+    /// Where each month sits on the chart — shared geometry, so both apps
+    /// draw the same line. Nil until some month in the window holds anything.
+    var chart: DashboardTrend.Chart? { DashboardTrend.shared.chart(trend: data.trend) }
+
+    /// Each month in words, for VoiceOver: the line says nothing to somebody
+    /// who cannot see it, and a gap must be heard as a gap.
+    var trendDescriptions: [String] {
+        data.trend.map { point in
             let label = Dates.shared.parse(iso: point.month)
                 .map { Dates.shared.monthShort(date: $0, language: locale) } ?? ""
-            return Bar(
-                id: index,
-                shortLabel: label,
-                // Nil is a gap, not a zero: the view outlines it rather than
-                // drawing a bar for a month nobody recorded.
-                fraction: magnitudes[index].map { fraction(of: $0, against: tallest) },
-                isNegative: point.net.map {
-                    Money.shared.signOf(raw: $0, fractionDigits: digits) < 0
-                } ?? false,
-                description: point.net.map {
-                    L.t(Strings.shared.dashboard_trend_month, label, money($0))
-                } ?? L.t(Strings.shared.dashboard_trend_no_data_month, label)
+            return point.net.map { L.t(Strings.shared.dashboard_trend_month, label, money($0)) }
+                ?? L.t(Strings.shared.dashboard_trend_no_data_month, label)
+        }
+    }
+
+    /// The recent list, worded. Signed in words — "+ $5.00" or "− $5.00" — so
+    /// colour is never the only cue.
+    var recentRows: [RecentRow] {
+        recent.map { row in
+            let isCredit = row.direction == .credit
+            let amount = L.t(
+                isCredit ? Strings.shared.dashboard_recent_credit : Strings.shared.dashboard_recent_debit,
+                money(row.amount)
+            )
+            let category = ImportedRows.shared.categoryOf(row: row, categories: categories)
+            let categoryName = category?.name ?? L.t(Strings.shared.import_extracted_uncategorised)
+            let date = Dates.shared.parse(iso: row.occurredOn).map { Dates.shared.display(date: $0) }
+                ?? row.occurredOn
+            let title = ImportedRows.shared.titleOf(row: row)
+            return RecentRow(
+                id: row.id,
+                title: title,
+                date: date,
+                amount: amount,
+                isCredit: isCredit,
+                category: categoryName,
+                isFiled: category != nil,
+                description: L.t(Strings.shared.dashboard_recent_row, title, date, amount, categoryName)
             )
         }
     }
 
-    private func fraction(of magnitude: String, against tallest: String?) -> Double {
-        guard let tallest,
-              let top = Double(tallest), top > 0,
-              let value = Double(magnitude)
-        else { return Self.minimumBar }
-        return min(max(value / top, Self.minimumBar), 1)
-    }
-
-    /// Floor for a bar, so a small but real month is a mark and not an absence.
-    private static let minimumBar = 0.06
-
     var showsEmptyState: Bool { !loading && !loadFailed && data.isEmpty }
 
-    var showsTrend: Bool { data.trend.contains { $0.hasData } }
 }
 
 /// One commitment as a row: its name, what was expected, and what we saw.
@@ -348,11 +393,16 @@ struct CommitmentRow: Identifiable {
     let detail: String
 }
 
-/// One bar of the trend. `fraction` is nil for a month with no rows at all.
-struct Bar: Identifiable {
-    let id: Int
-    let shortLabel: String
-    let fraction: Double?
-    let isNegative: Bool
+/// One row of the recent list, already worded.
+struct RecentRow: Identifiable {
+    let id: String
+    let title: String
+    let date: String
+    let amount: String
+    let isCredit: Bool
+    let category: String
+    /// False for a row nothing filed, which is drawn as needing attention.
+    let isFiled: Bool
+    /// The whole row as one sentence, read once by VoiceOver.
     let description: String
 }

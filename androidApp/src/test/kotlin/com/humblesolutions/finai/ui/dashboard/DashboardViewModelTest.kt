@@ -2,10 +2,20 @@ package com.humblesolutions.finai.ui.dashboard
 
 import com.humblesolutions.finai.model.ApiException
 import com.humblesolutions.finai.model.Capabilities
+import com.humblesolutions.finai.model.Category
+import com.humblesolutions.finai.model.ConfirmOutcome
 import com.humblesolutions.finai.model.Dashboard
+import com.humblesolutions.finai.model.DeleteOutcome
 import com.humblesolutions.finai.model.Flow
+import com.humblesolutions.finai.model.NewTransaction
+import com.humblesolutions.finai.model.PatchOutcome
+import com.humblesolutions.finai.model.ReviewPage
+import com.humblesolutions.finai.model.Transaction
+import com.humblesolutions.finai.model.TransactionPatch
 import com.humblesolutions.finai.repository.CapabilitiesRepository
+import com.humblesolutions.finai.repository.CategoriesRepository
 import com.humblesolutions.finai.repository.DashboardRepository
+import com.humblesolutions.finai.repository.TransactionsRepository
 import com.humblesolutions.finai.usecase.DashboardMonths
 import com.humblesolutions.finai.util.LedgerChanged
 import kotlinx.coroutines.CompletableDeferred
@@ -287,5 +297,85 @@ class DashboardViewModelTest {
         LedgerChanged.announce()
 
         assertEquals(readsBefore + 1, repo.asked.size, "one read per announcement, whoever is bound")
+    }
+
+    // ── The recent list ─────────────────────────────────────────────────
+
+    private class FakeRecent(var rows: List<Transaction> = listOf(Transaction(id = "r1"))) : TransactionsRepository {
+        val asked = mutableListOf<Int>()
+        var fail: ApiException? = null
+
+        override suspend fun recent(count: Int): List<Transaction> {
+            asked += count
+            fail?.let { throw it }
+            return rows
+        }
+
+        override suspend fun list(statementImportId: String?, month: String?, needsReview: Boolean?, cursor: String?): ReviewPage = error("not called")
+        override suspend fun create(entry: NewTransaction): Transaction = error("not called")
+        override suspend fun review(cursor: String?): ReviewPage = error("not called")
+        override suspend fun correct(id: String, patch: TransactionPatch): PatchOutcome = error("not called")
+        override suspend fun confirm(id: String): PatchOutcome = error("not called")
+        override suspend fun confirmAll(ids: List<String>): ConfirmOutcome = error("not called")
+        override suspend fun delete(id: String): DeleteOutcome = error("not called")
+        override fun close() = Unit
+    }
+
+    private class FakeCategories : CategoriesRepository {
+        override suspend fun list(): List<Category> = listOf(Category(id = "c1", name = "Groceries"))
+        override suspend fun create(name: String): Category = error("not called")
+        override fun close() = Unit
+    }
+
+    private fun withRecent(dashboard: FakeDashboard, recent: FakeRecent): DashboardViewModel {
+        val model = DashboardViewModel()
+        model.bind("alice") { DashboardRepositories(dashboard, FakeCapabilities(), recent, FakeCategories()) }
+        return model
+    }
+
+    @Test
+    fun binding_reads_the_newest_rows_as_many_as_the_design_shows() = runTest {
+        val recent = FakeRecent()
+        val model = withRecent(FakeDashboard(), recent)
+
+        assertEquals(listOf(RECENT_COUNT), recent.asked)
+        assertEquals(listOf("r1"), model.uiState.value.recent.map { it.id })
+        assertEquals("Groceries", model.uiState.value.categories.single().name)
+    }
+
+    @Test
+    fun a_recent_list_that_will_not_load_leaves_the_month_standing() = runTest {
+        // The figures are the screen; a list that could not load is simply
+        // not drawn rather than turning home into an error.
+        val recent = FakeRecent().apply { fail = ApiException.Network(RuntimeException("offline")) }
+        val model = withRecent(FakeDashboard(), recent)
+
+        val state = model.uiState.value
+        assertFalse(state.loadFailed)
+        assertNull(state.errorKey)
+        assertTrue(state.recent.isEmpty())
+    }
+
+    @Test
+    fun a_write_elsewhere_brings_the_recent_list_up_to_date() = runTest {
+        val recent = FakeRecent()
+        val model = withRecent(FakeDashboard(), recent)
+
+        recent.rows = listOf(Transaction(id = "r2"))
+        LedgerChanged.announce()
+
+        assertEquals(listOf("r2"), model.uiState.value.recent.map { it.id })
+    }
+
+    @Test
+    fun stepping_between_months_does_not_re_read_the_recent_list() = runTest {
+        // Recent means most recent, whatever month is in view.
+        val recent = FakeRecent()
+        val model = withRecent(FakeDashboard(), recent)
+
+        model.showPreviousMonth()
+
+        assertEquals(1, recent.asked.size)
+        assertEquals(listOf("r1"), model.uiState.value.recent.map { it.id })
     }
 }
