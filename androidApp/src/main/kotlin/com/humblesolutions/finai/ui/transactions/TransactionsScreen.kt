@@ -205,13 +205,12 @@ private fun Wallet(
     onEdit: (String) -> Unit,
     onPick: () -> Unit,
 ) {
+    val sections = if (!state.loading && !state.loadFailed && !state.showsEmpty) state.sections else emptyList()
     val pieces = buildList {
         add(Piece.BLOCK)
-        if (!state.loading && !state.loadFailed && !state.showsEmpty) {
-            state.monthGroups.forEach { group ->
-                add(Piece.HEADING)
-                repeat(group.rows.size) { add(Piece.CARD) }
-            }
+        sections.forEach { section ->
+            add(Piece.HEADING)
+            repeat(section.rows.size) { add(Piece.CARD) }
         }
         add(Piece.BLOCK)
     }
@@ -220,11 +219,9 @@ private fun Wallet(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
         content = {
             Top(state, onMode, onStatement, onMonth, onPick)
-            if (!state.loading && !state.loadFailed && !state.showsEmpty) {
-                state.monthGroups.forEach { group ->
-                    Heading(state.monthHeading(group.month))
-                    group.rows.forEach { row -> Card(state, row) { onEdit(row.id) } }
-                }
+            sections.forEach { section ->
+                Heading(section)
+                section.rows.forEach { row -> Card(state, row) { onEdit(row.id) } }
             }
             Bottom(state, onLoadMore, onRetry)
         },
@@ -317,7 +314,8 @@ private fun Top(
             modifier = Modifier.semantics { heading() },
         )
         ModeToggle(state, onMode)
-        SliceRow(state, onStatement, onMonth, onPick)
+        // By category there is nothing to choose between: it is everything.
+        if (!state.browsingByCategory) SliceRow(state, onStatement, onMonth, onPick)
         Totals(state)
     }
 }
@@ -333,11 +331,14 @@ private fun ModeToggle(state: TransactionsUiState, onMode: (TransactionBrowsing.
             .border(1.dp, Field.GlassEdge, CircleShape)
             .padding(4.dp),
     ) {
-        Segment(strings(Strings.transactions_by_month), !state.browsingByStatement, Modifier.weight(1f)) {
+        Segment(strings(Strings.transactions_by_month), state.mode == TransactionBrowsing.Mode.BY_MONTH, Modifier.weight(1f)) {
             onMode(TransactionBrowsing.Mode.BY_MONTH)
         }
         Segment(strings(Strings.transactions_by_statement), state.browsingByStatement, Modifier.weight(1f)) {
             onMode(TransactionBrowsing.Mode.BY_STATEMENT)
+        }
+        Segment(strings(Strings.transactions_by_category), state.browsingByCategory, Modifier.weight(1f)) {
+            onMode(TransactionBrowsing.Mode.BY_CATEGORY)
         }
     }
 }
@@ -358,6 +359,9 @@ private fun Segment(label: String, selected: Boolean, modifier: Modifier, onClic
             style = MaterialTheme.typography.titleSmall,
             fontWeight = FontWeight.SemiBold,
             color = if (selected) FinAiPalette.GreenDeep else Field.ink(0.9f),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(horizontal = 6.dp),
         )
     }
 }
@@ -482,15 +486,31 @@ private fun Total(label: String, value: String, icon: ImageVector, accent: Color
 
 // ── In the stack ────────────────────────────────────────────────────────
 
+/** A month, or a category with what went through it. */
 @Composable
-private fun Heading(text: String) {
-    Text(
-        text = text,
-        style = MaterialTheme.typography.titleMedium,
-        fontWeight = FontWeight.Medium,
-        color = Field.ink(0.92f),
-        modifier = Modifier.padding(start = 4.dp).semantics { heading() },
-    )
+private fun Heading(section: Section) {
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 4.dp).semantics(mergeDescendants = true) { heading() },
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = section.title,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Medium,
+            color = Field.ink(0.92f),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+        section.total?.let {
+            Text(
+                text = it,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = if (section.totalIsIn) Color(0xFF86EFAC) else Field.ink(),
+            )
+        }
+    }
 }
 
 /** One transaction as a card; its bottom padding is what the next card covers. */

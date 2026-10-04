@@ -4,6 +4,7 @@ import com.humblesolutions.finai.model.Category
 import com.humblesolutions.finai.model.StatementImportSummary
 import com.humblesolutions.finai.model.Transaction
 import com.humblesolutions.finai.usecase.CategoryIcon
+import com.humblesolutions.finai.usecase.TransactionBrowsing
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -24,8 +25,10 @@ class TransactionsUiStateTest {
     }
 
     @Test
-    fun the_list_is_headed_by_month_in_words() {
+    fun a_statement_spanning_two_months_is_headed_by_each() {
+        // By month there is only ever one heading: the month in view.
         val state = TransactionsUiState(
+            mode = TransactionBrowsing.Mode.BY_STATEMENT,
             rows = listOf(Transaction(id = "a", occurredOn = "2026-10-02"), Transaction(id = "b", occurredOn = "2026-08-31")),
         )
         assertEquals(listOf("Oct 2026", "Aug 2026"), state.monthGroups.map { state.monthHeading(it.month) })

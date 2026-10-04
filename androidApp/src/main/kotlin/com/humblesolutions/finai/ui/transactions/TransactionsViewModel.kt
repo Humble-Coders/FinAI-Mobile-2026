@@ -154,14 +154,28 @@ class TransactionsViewModel : ViewModel() {
         }
         viewModelScope.launch {
             try {
-                val page = repos.transactions.list(
+                var page = repos.transactions.list(
                     statementImportId = query.statementImportId,
                     month = query.month,
                 )
+                val rows = page.rows.toMutableList()
+                // By category, every page: a category's total over half the
+                // ledger is a wrong total, and the headings would move as
+                // more loaded. Capped, so a vast ledger stops and offers
+                // "Show more" rather than reading forever.
+                if (state.mode == TransactionBrowsing.Mode.BY_CATEGORY) {
+                    var pages = 1
+                    while (page.nextCursor != null && pages < CATEGORY_PAGES) {
+                        page = repos.transactions.list(cursor = page.nextCursor)
+                        if (started != generation) return@launch
+                        rows += page.rows
+                        pages++
+                    }
+                }
                 if (started != generation) return@launch
                 _uiState.update {
                     it.copy(
-                        rows = page.rows,
+                        rows = rows,
                         nextCursor = page.nextCursor,
                         loading = false,
                         refreshing = false,
@@ -340,3 +354,6 @@ internal class TransactionsRepositories(
         categories.close()
     }
 }
+
+/** Pages read up front when browsing by category; see `load`. */
+internal const val CATEGORY_PAGES = 20

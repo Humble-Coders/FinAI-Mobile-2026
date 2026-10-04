@@ -254,6 +254,8 @@ val EnglishStrings: Map<String, String> = mapOf(
     Strings.transactions_total_out to "Total out",
     Strings.transactions_pick_month to "Choose a month",
     Strings.transactions_pick_statement to "Choose a statement",
+    Strings.transactions_by_category to "By category",
+    Strings.transactions_empty_category to "No transactions yet.",
     Strings.dashboard_retry to "Try again",
     Strings.import_entry to "Import a statement",
     Strings.review_entry to "Review transactions",

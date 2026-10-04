@@ -167,14 +167,29 @@ final class TransactionsViewModel: ObservableObject {
         Task { [weak self] in
             guard let self else { return }
             do {
-                let page = try await transactionsRepository.list(
+                var page = try await transactionsRepository.list(
                     statementImportId: query.statementImportId,
                     month: query.month,
                     needsReview: nil,
                     cursor: nil
                 )
+                var rows = page.rows
+                // By category, every page: a category's total over half the
+                // ledger is a wrong total. Capped, so a vast ledger stops and
+                // offers "Show more" rather than reading forever.
+                if self.mode == TransactionBrowsing.Mode.byCategory {
+                    var pages = 1
+                    while let cursor = page.nextCursor, pages < Self.categoryPages {
+                        page = try await transactionsRepository.list(
+                            statementImportId: nil, month: nil, needsReview: nil, cursor: cursor
+                        )
+                        guard started == self.generation else { return }
+                        rows += page.rows
+                        pages += 1
+                    }
+                }
                 guard started == self.generation else { return }
-                self.rows = page.rows
+                self.rows = rows
                 self.nextCursor = page.nextCursor
                 self.loading = false
                 self.refreshing = false
@@ -230,7 +245,27 @@ final class TransactionsViewModel: ObservableObject {
     var browsingByStatement: Bool { mode == TransactionBrowsing.Mode.byStatement }
 
     /// The rows under a heading per month, newest first.
-    var monthGroups: [TransactionBrowsing.MonthGroup] { TransactionBrowsing.shared.byMonth(rows: rows) }
+    var monthGroups: [TransactionBrowsing.MonthGroup] { TransactionBrowsing.shared.byMonth(rows: visibleRows) }
+
+    var browsingByCategory: Bool { mode == TransactionBrowsing.Mode.byCategory }
+
+    /// The list in sections, whichever way it is sliced: by category, one per
+    /// category with its total; otherwise one per month.
+    var sections: [TransactionSection] {
+        if browsingByCategory {
+            return TransactionBrowsing.shared.byCategory(rows: visibleRows, categories: categories, fractionDigits: digits)
+                .map { group in
+                    TransactionSection(
+                        title: categories.first { $0.id == group.categoryId }?.name
+                            ?? L.t(Strings.shared.import_extracted_uncategorised),
+                        total: money(group.headline),
+                        totalIsIn: group.headlineIsIn,
+                        rows: group.rows
+                    )
+                }
+        }
+        return monthGroups.map { TransactionSection(title: monthHeading($0.month), total: nil, totalIsIn: false, rows: $0.rows) }
+    }
 
     /// "Aug 2026", for a heading.
     func monthHeading(_ month: String) -> String {
@@ -255,14 +290,23 @@ final class TransactionsViewModel: ObservableObject {
 
     private var digits: Int32 { Money.shared.fractionDigits(currency: listCurrency) }
 
-    var days: [ImportedRows.Day] { ImportedRows.shared.byDate(rows: rows) }
+    /// Pages read up front when browsing by category; see `load`.
+    static let categoryPages = 20
+
+    /// The rows to draw. By month, only the month being looked at's — whatever
+    /// the server sent; see `TransactionBrowsing.inMonth`.
+    var visibleRows: [SharedLogic.Transaction] {
+        mode == TransactionBrowsing.Mode.byMonth ? TransactionBrowsing.shared.inMonth(rows: rows, month: month) : rows
+    }
+
+    var days: [ImportedRows.Day] { ImportedRows.shared.byDate(rows: visibleRows) }
 
     var totalOut: String? {
-        ImportedRows.shared.totalOut(rows: rows, fractionDigits: digits).map(money)
+        ImportedRows.shared.totalOut(rows: visibleRows, fractionDigits: digits).map(money)
     }
 
     var totalIn: String? {
-        ImportedRows.shared.totalIn(rows: rows, fractionDigits: digits).map(money)
+        ImportedRows.shared.totalIn(rows: visibleRows, fractionDigits: digits).map(money)
     }
 
     private func money(_ amount: String) -> String {
@@ -314,7 +358,7 @@ final class TransactionsViewModel: ObservableObject {
         return L.t(Strings.shared.transactions_statement_option, on, String(statement.saved))
     }
 
-    var showsEmpty: Bool { !loading && !loadFailed && rows.isEmpty }
+    var showsEmpty: Bool { !loading && !loadFailed && visibleRows.isEmpty }
 
     /// Names the slice, because "nothing here" alone leaves somebody unsure
     /// whether the filter or the data is at fault.
@@ -322,6 +366,7 @@ final class TransactionsViewModel: ObservableObject {
         if browsingByStatement && statements.isEmpty {
             return L.t(Strings.shared.transactions_no_statements)
         }
+        if browsingByCategory { return L.t(Strings.shared.transactions_empty_category) }
         return L.t(
             browsingByStatement
                 ? Strings.shared.transactions_empty_statement
@@ -481,4 +526,14 @@ final class TransactionsViewModel: ObservableObject {
 }
 
 extension TransactionsViewModel: TransactionEditing {}
+
+/// One heading of the list and the rows under it.
+struct TransactionSection {
+    let title: String
+    /// A category's total; nil under a month heading.
+    let total: String?
+    /// The total is money in, drawn green.
+    let totalIsIn: Bool
+    let rows: [SharedLogic.Transaction]
+}
 

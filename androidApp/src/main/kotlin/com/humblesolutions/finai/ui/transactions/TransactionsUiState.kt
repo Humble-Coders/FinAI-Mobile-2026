@@ -65,12 +65,19 @@ data class TransactionsUiState(
         LocalizationRegistry.format(key, args.toList(), locale)
     }
 
+    /**
+     * The rows to draw. By month, only the month being looked at's — whatever
+     * the server sent; see [TransactionBrowsing.inMonth].
+     */
+    val visibleRows: List<Transaction>
+        get() = if (mode == TransactionBrowsing.Mode.BY_MONTH) TransactionBrowsing.inMonth(rows, month) else rows
+
     /** The days in view, newest first — the same arrangement as the import result. */
-    val days: List<ImportedRows.Day> get() = ImportedRows.byDate(rows)
+    val days: List<ImportedRows.Day> get() = ImportedRows.byDate(visibleRows)
 
-    val totalOut: String? get() = ImportedRows.totalOut(rows, digits)?.let { money(it) }
+    val totalOut: String? get() = ImportedRows.totalOut(visibleRows, digits)?.let { money(it) }
 
-    val totalIn: String? get() = ImportedRows.totalIn(rows, digits)?.let { money(it) }
+    val totalIn: String? get() = ImportedRows.totalIn(visibleRows, digits)?.let { money(it) }
 
     private fun money(amount: String): String = Money.format(amount, currency, locale)
 
@@ -111,7 +118,33 @@ data class TransactionsUiState(
     }
 
     /** The rows under a heading per month, newest first. */
-    val monthGroups: List<TransactionBrowsing.MonthGroup> get() = TransactionBrowsing.byMonth(rows)
+    val monthGroups: List<TransactionBrowsing.MonthGroup> get() = TransactionBrowsing.byMonth(visibleRows)
+
+    val browsingByCategory: Boolean get() = mode == TransactionBrowsing.Mode.BY_CATEGORY
+
+    /** Every row under its category, most money first, unfiled last. */
+    val categoryGroups: List<TransactionBrowsing.CategoryGroup>
+        get() = TransactionBrowsing.byCategory(visibleRows, categories, digits)
+
+    /** A category heading's name: the category's, or "Not filed yet". */
+    fun categoryHeading(group: TransactionBrowsing.CategoryGroup): String = categories.firstOrNull { it.id == group.categoryId }?.name ?: text(Strings.import_extracted_uncategorised)
+
+    /**
+     * The list in sections, whichever way it is sliced: by category, one per
+     * category with its total; otherwise one per month.
+     */
+    val sections: List<Section>
+        get() = if (browsingByCategory) {
+            categoryGroups.map { Section(categoryHeading(it), categoryTotal(it), it.headlineIsIn, it.rows) }
+        } else {
+            monthGroups.map { Section(monthHeading(it.month), null, false, it.rows) }
+        }
+
+    /** A category heading's figure, in the list's currency. */
+    fun categoryTotal(group: TransactionBrowsing.CategoryGroup): String = money(group.headline)
+
+    /** The picture for a category heading. */
+    fun categoryIcon(group: TransactionBrowsing.CategoryGroup): CategoryIcon = CategoryIcons.forSlug(categories.firstOrNull { it.id == group.categoryId }?.slug)
 
     /** "Aug 2026", for a heading. */
     fun monthHeading(month: String): String = Dates.parse(month)?.let { monthLabel(it) } ?: month
@@ -127,7 +160,7 @@ data class TransactionsUiState(
     val browsingByStatement: Boolean get() = mode == TransactionBrowsing.Mode.BY_STATEMENT
 
     /** True once the server has answered and the slice holds nothing. */
-    val showsEmpty: Boolean get() = !loading && !loadFailed && rows.isEmpty()
+    val showsEmpty: Boolean get() = !loading && !loadFailed && visibleRows.isEmpty()
 
     /**
      * What an empty slice says. By statement it names the statement; by month
@@ -137,6 +170,7 @@ data class TransactionsUiState(
     val emptyMessage: String get() = when {
         browsingByStatement && statements.isEmpty() -> text(Strings.transactions_no_statements)
         browsingByStatement -> text(Strings.transactions_empty_statement)
+        browsingByCategory -> text(Strings.transactions_empty_category)
         else -> text(Strings.transactions_empty_month)
     }
 
@@ -173,3 +207,13 @@ data class TransactionsUiState(
             )
         }
 }
+
+/** One heading of the list and the rows under it. */
+data class Section(
+    val title: String,
+    /** A category's total; null under a month heading. */
+    val total: String?,
+    /** The total is money in, drawn green. */
+    val totalIsIn: Boolean,
+    val rows: List<Transaction>,
+)

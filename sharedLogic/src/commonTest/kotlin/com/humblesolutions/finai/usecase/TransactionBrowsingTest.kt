@@ -1,7 +1,9 @@
 package com.humblesolutions.finai.usecase
 
+import com.humblesolutions.finai.model.Category
 import com.humblesolutions.finai.model.StatementImportSummary
 import com.humblesolutions.finai.model.Transaction
+import com.humblesolutions.finai.model.TransactionDirection
 import kotlinx.datetime.LocalDate
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -169,5 +171,79 @@ class TransactionBrowsingTest {
     fun a_category_of_their_own_is_a_tag_and_nothing_filed_says_so() {
         assertEquals(CategoryIcon.TAG, CategoryIcons.forSlug("my-pets"))
         assertEquals(CategoryIcon.UNFILED, CategoryIcons.forSlug(null))
+    }
+
+    // ── One month only ──────────────────────────────────────────────────
+
+    @Test
+    fun a_month_shows_only_its_own_rows_whatever_the_server_sent() {
+        // A server without the month filter returns every month.
+        val rows = listOf(row("oct", "2026-10-02"), row("aug", "2026-08-31"), row("oct2", "2026-10-30"))
+        assertEquals(listOf("oct", "oct2"), TransactionBrowsing.inMonth(rows, LocalDate(2026, 10, 1)).map { it.id })
+    }
+
+    // ── By category ─────────────────────────────────────────────────────
+
+    private val shopping = Category(id = "s", slug = "shopping", name = "Shopping")
+    private val rent = Category(id = "r", slug = "rent", name = "Rent")
+    private val income = Category(id = "i", slug = "income", name = "Income")
+
+    private fun spent(id: String, amount: String, category: String?, credit: Boolean = false) = Transaction(
+        id = id,
+        occurredOn = "2026-08-01",
+        amount = amount,
+        categoryId = category,
+        direction = if (credit) TransactionDirection.CREDIT else TransactionDirection.DEBIT,
+    )
+
+    @Test
+    fun by_category_asks_the_server_for_everything() {
+        val query = TransactionBrowsing.query(TransactionBrowsing.Mode.BY_CATEGORY, "imp-7", LocalDate(2026, 8, 1))
+        assertNull(query.month)
+        assertNull(query.statementImportId)
+    }
+
+    @Test
+    fun rows_are_grouped_under_their_category_most_money_first() {
+        val groups = TransactionBrowsing.byCategory(
+            listOf(spent("a", "40.00", "s"), spent("b", "1800.00", "r"), spent("c", "60.00", "s")),
+            listOf(shopping, rent),
+        )
+
+        assertEquals(listOf("r", "s"), groups.map { it.categoryId })
+        assertEquals("100.00", groups[1].totalOut)
+        assertEquals(listOf("a", "c"), groups[1].rows.map { it.id }, "the order within is the server's")
+    }
+
+    @Test
+    fun the_rows_nothing_filed_come_last() {
+        val groups = TransactionBrowsing.byCategory(
+            listOf(spent("u", "9999.00", null), spent("a", "1.00", "s")),
+            listOf(shopping),
+        )
+        assertEquals(listOf("s", null), groups.map { it.categoryId })
+    }
+
+    @Test
+    fun a_category_the_household_no_longer_has_is_grouped_as_unfiled_not_dropped() {
+        val groups = TransactionBrowsing.byCategory(listOf(spent("x", "5.00", "gone")), listOf(shopping))
+        assertEquals(listOf<String?>(null), groups.map { it.categoryId })
+        assertEquals(1, groups.single().rows.size)
+    }
+
+    @Test
+    fun a_category_of_money_in_is_headed_by_what_came_in() {
+        val group = TransactionBrowsing.byCategory(listOf(spent("p", "4100.00", "i", credit = true)), listOf(income)).single()
+        assertEquals("4100.00", group.headline)
+        assertTrue(group.headlineIsIn)
+    }
+
+    @Test
+    fun spending_comes_before_income_however_large_the_income() {
+        val groups = TransactionBrowsing.byCategory(
+            listOf(spent("p", "4100.00", "i", credit = true), spent("a", "40.00", "s")),
+            listOf(shopping, income),
+        )
+        assertEquals(listOf("s", "i"), groups.map { it.categoryId })
     }
 }

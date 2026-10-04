@@ -86,7 +86,8 @@ struct TransactionsView: View {
                 .foregroundColor(Field.ink())
                 .accessibilityAddTraits(.isHeader)
             modeToggle
-            sliceRow
+            // By category there is nothing to choose between: it is everything.
+            if !model.browsingByCategory { sliceRow }
             totals
         }
     }
@@ -94,11 +95,14 @@ struct TransactionsView: View {
     /// The two ways of slicing, as a pill with the chosen half lit.
     private var modeToggle: some View {
         HStack(spacing: 0) {
-            segment(L.t(Strings.shared.transactions_by_month), selected: !model.browsingByStatement) {
+            segment(L.t(Strings.shared.transactions_by_month), selected: model.mode == TransactionBrowsing.Mode.byMonth) {
                 model.show(mode: TransactionBrowsing.Mode.byMonth)
             }
             segment(L.t(Strings.shared.transactions_by_statement), selected: model.browsingByStatement) {
                 model.show(mode: TransactionBrowsing.Mode.byStatement)
+            }
+            segment(L.t(Strings.shared.transactions_by_category), selected: model.browsingByCategory) {
+                model.show(mode: TransactionBrowsing.Mode.byCategory)
             }
         }
         .padding(4)
@@ -111,6 +115,9 @@ struct TransactionsView: View {
             Text(label)
                 .font(.subheadline.weight(.semibold))
                 .foregroundColor(selected ? Brand.greenDeep : Field.ink(0.9))
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+                .padding(.horizontal, 6)
                 .frame(maxWidth: .infinity, minHeight: 44)
                 .background(Capsule().fill(selected ? Color.white : .clear))
                 .contentShape(Capsule())
@@ -212,32 +219,42 @@ struct TransactionsView: View {
     // MARK: - The stack
 
     private var stack: some View {
-        let groups = model.monthGroups
-        // A running number across the groups, so a later card is always in
+        let sections = model.sections
+        // A running number across the sections, so a later card is always in
         // front of an earlier one wherever the headings fall.
         var starts: [Int] = []
         var running = 0
-        for group in groups {
+        for section in sections {
             starts.append(running)
-            running += group.rows.count
+            running += section.rows.count
         }
         return VStack(alignment: .leading, spacing: 0) {
-            ForEach(Array(groups.enumerated()), id: \.element.month) { g, group in
-                heading(group.month)
-                ForEach(Array(group.rows.enumerated()), id: \.element.id) { i, row in
-                    stackedCard(row, first: i == 0, order: starts[g] + i)
+            ForEach(Array(sections.enumerated()), id: \.offset) { s, section in
+                heading(section)
+                ForEach(Array(section.rows.enumerated()), id: \.element.id) { i, row in
+                    stackedCard(row, first: i == 0, order: starts[s] + i)
                 }
             }
         }
     }
 
-    /// A month's heading. It goes as the stack reaches it — the stacked card in
-    /// front is about a card tall — rather than showing beneath it.
-    private func heading(_ month: String) -> some View {
-        Text(model.monthHeading(month))
-            .font(.headline.weight(.medium))
-            .foregroundColor(Field.ink(0.92))
-            .padding(.leading, 4)
+    /// A month, or a category with what went through it. It goes as the stack
+    /// reaches it — the stacked card in front is about a card tall — rather
+    /// than showing beneath it.
+    private func heading(_ section: TransactionSection) -> some View {
+        HStack {
+            Text(section.title)
+                .font(.headline.weight(.medium))
+                .foregroundColor(Field.ink(0.92))
+                .lineLimit(1)
+            Spacer(minLength: 8)
+            if let total = section.total {
+                Text(total)
+                    .font(.headline.weight(.semibold))
+                    .foregroundColor(section.totalIsIn ? Color(red: 0x86 / 255, green: 0xEF / 255, blue: 0xAC / 255) : Field.ink())
+            }
+        }
+            .padding(.horizontal, 4)
             .padding(.top, 16)
             .padding(.bottom, 8)
             .accessibilityAddTraits(.isHeader)

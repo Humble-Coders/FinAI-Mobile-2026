@@ -297,6 +297,8 @@ object Strings {
     const val transactions_total_out = "transactions_total_out" // "Total out"
     const val transactions_pick_month = "transactions_pick_month" // "Choose a month"
     const val transactions_pick_statement = "transactions_pick_statement" // "Choose a statement"
+    const val transactions_by_category = "transactions_by_category" // "By category"
+    const val transactions_empty_category = "transactions_empty_category" // "No transactions yet."
     const val dashboard_retry = "dashboard_retry" // "Try again"
 
     const val import_entry = "import_entry" // "Import a statement"

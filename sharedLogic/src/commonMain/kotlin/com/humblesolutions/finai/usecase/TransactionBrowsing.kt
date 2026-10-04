@@ -1,8 +1,10 @@
 package com.humblesolutions.finai.usecase
 
+import com.humblesolutions.finai.model.Category
 import com.humblesolutions.finai.model.StatementImportSummary
 import com.humblesolutions.finai.model.Transaction
 import com.humblesolutions.finai.util.Dates
+import com.humblesolutions.finai.util.Money
 import kotlinx.datetime.LocalDate
 
 /**
@@ -26,6 +28,9 @@ object TransactionBrowsing {
 
         /** One calendar month at a time, whatever it came from. */
         BY_MONTH,
+
+        /** Everything, under a heading per category. */
+        BY_CATEGORY,
     }
 
     /**
@@ -43,7 +48,68 @@ object TransactionBrowsing {
 
     fun query(mode: Mode, statementImportId: String?, month: LocalDate?): Query = when (mode) {
         Mode.BY_STATEMENT -> Query(statementImportId = statementImportId)
+
         Mode.BY_MONTH -> Query(month = month?.let { DashboardMonths.wire(it) })
+
+        // Every row: grouping by category is done here, over all of them.
+        Mode.BY_CATEGORY -> Query()
+    }
+
+    /**
+     * Only the rows of [month] — the month being looked at — and none from
+     * another, whatever the server sent.
+     *
+     * The server filters by month too, once it has the filter (Finance-backend
+     * #53). A server without it ignores the parameter and returns every
+     * month, which drew the whole ledger under a single month's chip; this is
+     * what keeps the list honest either way.
+     */
+    fun inMonth(rows: List<Transaction>, month: LocalDate): List<Transaction> {
+        val prefix = DashboardMonths.wire(month)
+        return rows.filter { it.occurredOn.startsWith(prefix) }
+    }
+
+    /** One category's rows, with what went out and came in under it. */
+    data class CategoryGroup(
+        /** Null for the rows nothing has filed yet. */
+        val categoryId: String?,
+        val rows: List<Transaction>,
+        /** Money out, as a decimal string; "0" when none. */
+        val totalOut: String,
+        /** Money in, as a decimal string; "0" when none. */
+        val totalIn: String,
+    ) {
+        /** Money out when there is any — what a category is mostly asked about — else money in. */
+        val headline: String get() = if (Money.signOf(totalOut) != 0) totalOut else totalIn
+        val headlineIsIn: Boolean get() = Money.signOf(totalOut) == 0 && Money.signOf(totalIn) != 0
+    }
+
+    /**
+     * Every row under its category: spending categories first, the most spent
+     * first; then categories of money in; then the rows nothing filed.
+     *
+     * Last rather than first: they are the ones still needing a person, but
+     * the review queue is where that is done, and here they would push the
+     * answer to "where did it go" below the fold. A category the household no
+     * longer has is grouped as unfiled rather than dropped.
+     */
+    fun byCategory(rows: List<Transaction>, categories: List<Category>, fractionDigits: Int = 2): List<CategoryGroup> {
+        val known = categories.map { it.id }.toSet()
+        val grouped = rows.groupBy { row -> row.categoryId?.takeIf { it in known } }
+        val groups = grouped.map { (id, inCategory) ->
+            CategoryGroup(
+                categoryId = id,
+                rows = inCategory,
+                totalOut = ImportedRows.totalOut(inCategory, fractionDigits) ?: "0",
+                totalIn = ImportedRows.totalIn(inCategory, fractionDigits) ?: "0",
+            )
+        }
+        val (filed, unfiled) = groups.partition { it.categoryId != null }
+        val (incoming, outgoing) = filed.partition { it.headlineIsIn }
+        val largestFirst = Comparator<CategoryGroup> { a, b -> Money.compare(b.headline, a.headline, fractionDigits) }
+        // Spending first, which is what a category is mostly asked about;
+        // income after it, so a salary does not top a list of where it went.
+        return outgoing.sortedWith(largestFirst) + incoming.sortedWith(largestFirst) + unfiled
     }
 
     /**

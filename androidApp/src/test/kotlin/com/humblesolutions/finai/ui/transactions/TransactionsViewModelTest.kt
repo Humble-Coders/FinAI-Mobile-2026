@@ -51,6 +51,9 @@ class TransactionsViewModelTest {
         val asks = mutableListOf<Ask>()
         var fail: ApiException? = null
 
+        /** Pages by the cursor asked with, for paging tests; null uses [page]. */
+        var pagesByCursor: Map<String?, ReviewPage>? = null
+
         override suspend fun list(
             statementImportId: String?,
             month: String?,
@@ -59,7 +62,7 @@ class TransactionsViewModelTest {
         ): ReviewPage {
             asks += Ask(statementImportId, month, cursor)
             fail?.let { throw it }
-            return page
+            return pagesByCursor?.get(cursor) ?: page
         }
 
         override suspend fun create(entry: NewTransaction): Transaction = error("not called")
@@ -353,5 +356,56 @@ class TransactionsViewModelTest {
         val editor = assertNotNull(model.uiState.value.editor)
         assertEquals("mine", editor.draft.categoryId)
         assertNull(editor.newCategoryName)
+    }
+
+    // ── By category ─────────────────────────────────────────────────────
+
+    @Test
+    fun by_category_reads_every_page_before_grouping() = runTest {
+        // A category's total over half the ledger is a wrong total.
+        val repo = FakeTransactions()
+        val model = model(repo)
+        repo.pagesByCursor = mapOf(
+            null to ReviewPage(rows = listOf(Transaction(id = "a")), nextCursor = "c1"),
+            "c1" to ReviewPage(rows = listOf(Transaction(id = "b")), nextCursor = "c2"),
+            "c2" to ReviewPage(rows = listOf(Transaction(id = "c")), nextCursor = null),
+        )
+
+        model.showMode(TransactionBrowsing.Mode.BY_CATEGORY)
+
+        assertEquals(listOf("a", "b", "c"), model.uiState.value.rows.map { it.id })
+        assertNull(model.uiState.value.nextCursor)
+        assertNull(repo.asks.last { it.cursor == null }.month, "by category asks for every month")
+    }
+
+    @Test
+    fun by_category_stops_at_its_cap_and_offers_more() = runTest {
+        val repo = FakeTransactions()
+        val model = model(repo)
+        // Every page points at another: the cap is what stops it.
+        repo.page = ReviewPage(rows = listOf(Transaction(id = "x")), nextCursor = "again")
+
+        model.showMode(TransactionBrowsing.Mode.BY_CATEGORY)
+
+        assertEquals(CATEGORY_PAGES, model.uiState.value.rows.size)
+        assertTrue(model.uiState.value.canLoadMore)
+    }
+
+    @Test
+    fun a_month_shows_only_its_own_rows_even_when_the_server_sends_more() = runTest {
+        // A server without the month filter returns every month.
+        val now = DashboardMonths.current()
+        val elsewhere = DashboardMonths.previous(now)
+        val repo = FakeTransactions(
+            ReviewPage(
+                rows = listOf(
+                    Transaction(id = "here", occurredOn = DashboardMonths.wire(now) + "-01"),
+                    Transaction(id = "there", occurredOn = DashboardMonths.wire(elsewhere) + "-01"),
+                ),
+            ),
+        )
+        val model = model(repo)
+
+        assertEquals(listOf("here"), model.uiState.value.visibleRows.map { it.id })
     }
 }
