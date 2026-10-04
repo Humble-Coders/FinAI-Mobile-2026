@@ -20,6 +20,8 @@ struct TransactionsView: View {
     @ObservedObject var model: TransactionsViewModel
     let userId: String
     let onClose: () -> Void
+    /// False as a tab, where the bar is the way out and an arrow would point nowhere.
+    var showsBack: Bool = true
 
     @Environment(\.colorScheme) private var scheme
     @State private var picking = false
@@ -38,18 +40,22 @@ struct TransactionsView: View {
             .ignoresSafeArea()
 
             VStack(spacing: 0) {
-                HStack {
-                    Button(action: onClose) {
-                        Image(systemName: "chevron.left")
-                            .font(.body.weight(.semibold))
-                            .foregroundColor(Field.ink())
-                            .tappableArea()
+                if showsBack {
+                    HStack {
+                        Button(action: onClose) {
+                            Image(systemName: "chevron.left")
+                                .font(.body.weight(.semibold))
+                                .foregroundColor(Field.ink())
+                                .tappableArea()
+                        }
+                        .accessibilityLabel(L.t(Strings.shared.action_back))
+                        Spacer()
                     }
-                    .accessibilityLabel(L.t(Strings.shared.action_back))
-                    Spacer()
+                    .padding(.horizontal, 8)
+                    .frame(height: 52)
+                } else {
+                    Spacer().frame(height: 12)
                 }
-                .padding(.horizontal, 8)
-                .frame(height: 52)
 
                 ScrollView {
                     VStack(alignment: .leading, spacing: 0) {

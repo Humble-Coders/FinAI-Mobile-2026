@@ -12,7 +12,7 @@ import com.humblesolutions.finai.ui.edit.TransactionEditorActions
 
 /** Everything the household has, with its own view model (#F3). */
 @Composable
-internal fun TransactionsRoute(userId: String, onClose: () -> Unit) {
+internal fun TransactionsRoute(userId: String, onClose: () -> Unit, showsBack: Boolean = true) {
     val model: TransactionsViewModel = viewModel()
     val state by model.uiState.collectAsStateWithLifecycle()
     LaunchedEffect(userId) { model.bind(userId, logging = BuildConfig.DEBUG) }
@@ -28,6 +28,7 @@ internal fun TransactionsRoute(userId: String, onClose: () -> Unit) {
         onLoadMore = model::loadMore,
         onRetry = { model.load() },
         onClose = onClose,
+        showsBack = showsBack,
         onEdit = model::edit,
         editor = TransactionEditorActions(
             onCancel = model::cancelEdit,

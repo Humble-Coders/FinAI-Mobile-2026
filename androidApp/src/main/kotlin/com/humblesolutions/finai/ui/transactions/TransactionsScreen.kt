@@ -108,6 +108,8 @@ fun TransactionsScreen(
     onEdit: (String) -> Unit,
     editor: TransactionEditorActions,
     scroll: ScrollState = rememberScrollState(),
+    /** False as a tab, where the bar is the way out and an arrow would point nowhere. */
+    showsBack: Boolean = true,
 ) {
     val dark = isSystemInDarkTheme()
     LightStatusBarIcons(dark)
@@ -117,14 +119,18 @@ fun TransactionsScreen(
         Waves(Modifier.fillMaxSize())
         FieldVectors(Modifier.fillMaxSize())
         Column(Modifier.fillMaxSize().safeDrawingPadding(), horizontalAlignment = Alignment.CenterHorizontally) {
-            Box(Modifier.fillMaxWidth().height(52.dp).padding(horizontal = 8.dp)) {
-                IconButton(onClick = onClose, modifier = Modifier.align(Alignment.CenterStart)) {
-                    Icon(
-                        painter = painterResource(R.drawable.ic_back),
-                        contentDescription = strings(Strings.action_back),
-                        tint = Field.ink(),
-                    )
+            if (showsBack) {
+                Box(Modifier.fillMaxWidth().height(52.dp).padding(horizontal = 8.dp)) {
+                    IconButton(onClick = onClose, modifier = Modifier.align(Alignment.CenterStart)) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_back),
+                            contentDescription = strings(Strings.action_back),
+                            tint = Field.ink(),
+                        )
+                    }
                 }
+            } else {
+                Spacer(Modifier.height(12.dp))
             }
             Box(
                 Modifier

@@ -13,7 +13,22 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ReceiptLong
+import androidx.compose.material.icons.automirrored.outlined.ReceiptLong
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.TaskAlt
+import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.TaskAlt
+import androidx.compose.material3.Icon
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -59,6 +74,7 @@ import com.humblesolutions.finai.ui.review.ReviewRoute
 import com.humblesolutions.finai.ui.setup.SetupScreen
 import com.humblesolutions.finai.ui.setup.SetupViewModel
 import com.humblesolutions.finai.ui.statementimport.StatementImportRoute
+import com.humblesolutions.finai.ui.strings
 import com.humblesolutions.finai.ui.transactions.TransactionsRoute
 import com.humblesolutions.finai.usecase.Destination
 import kotlinx.coroutines.CoroutineScope
@@ -267,10 +283,17 @@ private fun SetupRoute(userId: String, onFinished: () -> Unit) {
 /** Where the signed-in, set-up person is: home, or one of the two ways money gets in. */
 private enum class HomeRoute { HOME, ADD, IMPORT, ADD_AFTER_IMPORT, REVIEW, TRANSACTIONS }
 
+/** The three places the bar moves between; everything else is a flow over them. */
+private val TABS = listOf(HomeRoute.HOME, HomeRoute.TRANSACTIONS, HomeRoute.REVIEW)
+
 /**
  * Home and what opens from it: the statement import (#31), manual entry — from
  * home (#30) or from an import that could not be read — and the review queue
  * (#32), reached from home or from an import that left rows waiting.
+ *
+ * Home, every transaction and the review queue are tabs on a bottom bar. The
+ * import and manual entry are flows with a start and an end, so they cover
+ * the bar while open and give it back when they close.
  *
  * Saveable, so the app coming back after Android reclaimed it reopens the
  * screen the person was on rather than dropping them on home.
@@ -278,36 +301,77 @@ private enum class HomeRoute { HOME, ADD, IMPORT, ADD_AFTER_IMPORT, REVIEW, TRAN
 @Composable
 private fun HomeOrEntry(userId: String, onSignOut: () -> Unit) {
     var route by rememberSaveable { mutableStateOf(HomeRoute.HOME) }
-    AnimatedContent(
-        targetState = route,
-        transitionSpec = { homeTransition(initialState, targetState) },
-        label = "homeRoute",
-    ) { shown ->
-        when (shown) {
-            HomeRoute.HOME -> DashboardRoute(
-                userId = userId,
-                onImportStatement = { route = HomeRoute.IMPORT },
-                onReview = { route = HomeRoute.REVIEW },
-                onAddTransaction = { route = HomeRoute.ADD },
-                onViewAll = { route = HomeRoute.TRANSACTIONS },
-                onSignOut = onSignOut,
+    val tabbed = route in TABS
+    Column(Modifier.fillMaxSize()) {
+        Box(
+            Modifier
+                .weight(1f)
+                // The bar sits over the navigation bar's inset, so the screen
+                // above it must not leave room for that inset a second time.
+                .then(if (tabbed) Modifier.consumeWindowInsets(WindowInsets.navigationBars) else Modifier),
+        ) {
+            AnimatedContent(
+                targetState = route,
+                transitionSpec = { homeTransition(initialState, targetState) },
+                label = "homeRoute",
+            ) { shown ->
+                when (shown) {
+                    HomeRoute.HOME -> DashboardRoute(
+                        userId = userId,
+                        onImportStatement = { route = HomeRoute.IMPORT },
+                        onReview = { route = HomeRoute.REVIEW },
+                        onAddTransaction = { route = HomeRoute.ADD },
+                        onViewAll = { route = HomeRoute.TRANSACTIONS },
+                        onSignOut = onSignOut,
+                    )
+
+                    HomeRoute.ADD -> ManualEntryRoute(userId = userId, fromUnreadable = false, onClose = { route = HomeRoute.HOME })
+
+                    HomeRoute.ADD_AFTER_IMPORT ->
+                        ManualEntryRoute(userId = userId, fromUnreadable = true, onClose = { route = HomeRoute.HOME })
+
+                    HomeRoute.IMPORT -> StatementImportRoute(
+                        userId = userId,
+                        onClose = { route = HomeRoute.HOME },
+                        onTypeInstead = { route = HomeRoute.ADD_AFTER_IMPORT },
+                        onReview = { route = HomeRoute.REVIEW },
+                    )
+
+                    // Back from a tab goes home, as the bar would.
+                    HomeRoute.REVIEW -> ReviewRoute(userId = userId, onClose = { route = HomeRoute.HOME }, showsBack = false)
+
+                    HomeRoute.TRANSACTIONS ->
+                        TransactionsRoute(userId = userId, onClose = { route = HomeRoute.HOME }, showsBack = false)
+                }
+            }
+        }
+        if (tabbed) HomeBar(route) { route = it }
+    }
+}
+
+/** The bottom bar: Material's own, so it looks and behaves as Android's do. */
+@Composable
+private fun HomeBar(current: HomeRoute, onSelect: (HomeRoute) -> Unit) {
+    NavigationBar {
+        TABS.forEach { tab ->
+            val selected = tab == current
+            val (filled, outlined, label) = when (tab) {
+                HomeRoute.HOME -> Triple(Icons.Filled.Home, Icons.Outlined.Home, Strings.tab_home)
+
+                HomeRoute.TRANSACTIONS -> Triple(
+                    Icons.AutoMirrored.Filled.ReceiptLong,
+                    Icons.AutoMirrored.Outlined.ReceiptLong,
+                    Strings.tab_transactions,
+                )
+
+                else -> Triple(Icons.Filled.TaskAlt, Icons.Outlined.TaskAlt, Strings.tab_review)
+            }
+            NavigationBarItem(
+                selected = selected,
+                onClick = { if (!selected) onSelect(tab) },
+                icon = { Icon(if (selected) filled else outlined, contentDescription = null) },
+                label = { Text(strings(label)) },
             )
-
-            HomeRoute.ADD -> ManualEntryRoute(userId = userId, fromUnreadable = false, onClose = { route = HomeRoute.HOME })
-
-            HomeRoute.ADD_AFTER_IMPORT ->
-                ManualEntryRoute(userId = userId, fromUnreadable = true, onClose = { route = HomeRoute.HOME })
-
-            HomeRoute.IMPORT -> StatementImportRoute(
-                userId = userId,
-                onClose = { route = HomeRoute.HOME },
-                onTypeInstead = { route = HomeRoute.ADD_AFTER_IMPORT },
-                onReview = { route = HomeRoute.REVIEW },
-            )
-
-            HomeRoute.REVIEW -> ReviewRoute(userId = userId, onClose = { route = HomeRoute.HOME })
-
-            HomeRoute.TRANSACTIONS -> TransactionsRoute(userId = userId, onClose = { route = HomeRoute.HOME })
         }
     }
 }
@@ -315,8 +379,8 @@ private fun HomeOrEntry(userId: String, onSignOut: () -> Unit) {
 /**
  * Home and "Your transactions" share one green field, so between them only
  * the content moves: it fades and lifts while the ground carries across, as
- * if the list rose out of home. Every other route changes as it always has —
- * at once.
+ * if the list rose out of home. Other tab changes cross-fade, quickly; a flow
+ * opening or closing changes at once, as it always has.
  */
 private fun homeTransition(from: HomeRoute, to: HomeRoute): ContentTransform = when {
     from == HomeRoute.HOME && to == HomeRoute.TRANSACTIONS ->
@@ -324,6 +388,8 @@ private fun homeTransition(from: HomeRoute, to: HomeRoute): ContentTransform = w
 
     from == HomeRoute.TRANSACTIONS && to == HomeRoute.HOME ->
         fadeIn(tween(240)) togetherWith (fadeOut(tween(220)) + slideOutVertically(tween(260)) { it / 12 })
+
+    from in TABS && to in TABS -> fadeIn(tween(220)) togetherWith fadeOut(tween(160))
 
     else -> EnterTransition.None togetherWith ExitTransition.None
 }

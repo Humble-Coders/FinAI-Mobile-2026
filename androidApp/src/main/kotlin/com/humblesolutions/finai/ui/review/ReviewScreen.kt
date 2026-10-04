@@ -135,7 +135,7 @@ class ReviewActions(
  * confirming is one tap and fixing is two.
  */
 @Composable
-fun ReviewScreen(state: ReviewUiState, actions: ReviewActions) {
+fun ReviewScreen(state: ReviewUiState, actions: ReviewActions, showsBack: Boolean = true) {
     val ground = MaterialTheme.colorScheme.background
 
     // The app's coin loader covers the first load; underneath it, just ground.
@@ -148,7 +148,7 @@ fun ReviewScreen(state: ReviewUiState, actions: ReviewActions) {
         modifier = Modifier.fillMaxSize().background(ground).safeDrawingPadding(),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Header(onClose = actions.onClose)
+        Header(onClose = actions.onClose, showsBack = showsBack)
         when {
             state.loadFailed -> LoadFailed(state.errorKey, actions.onRetry)
             state.isEmpty -> Empty(onClose = actions.onClose)
@@ -162,14 +162,17 @@ fun ReviewScreen(state: ReviewUiState, actions: ReviewActions) {
 private val ContentMaxWidth = 560.dp
 
 @Composable
-private fun Header(onClose: () -> Unit) {
+private fun Header(onClose: () -> Unit, showsBack: Boolean) {
     Box(Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 8.dp)) {
-        IconButton(onClick = onClose, modifier = Modifier.align(Alignment.CenterStart)) {
-            Icon(
-                painter = painterResource(R.drawable.ic_back),
-                contentDescription = strings(Strings.action_back),
-                tint = MaterialTheme.colorScheme.onBackground,
-            )
+        // Not as a tab: the bar is the way out there.
+        if (showsBack) {
+            IconButton(onClick = onClose, modifier = Modifier.align(Alignment.CenterStart)) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_back),
+                    contentDescription = strings(Strings.action_back),
+                    tint = MaterialTheme.colorScheme.onBackground,
+                )
+            }
         }
         Text(
             text = strings(Strings.review_title),

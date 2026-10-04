@@ -12,6 +12,8 @@ struct ReviewView: View {
     @ObservedObject var model: ReviewViewModel
     let userId: String
     let onClose: () -> Void
+    /// False as a tab, where the bar is the way out and an arrow would point nowhere.
+    var showsBack: Bool = true
 
     /// A correction in progress, kept for the scene so the app coming back
     /// after iOS reclaimed it still has what was typed.
@@ -55,15 +57,17 @@ struct ReviewView: View {
                 .lineLimit(1)
                 .padding(.horizontal, 56)
                 .accessibilityAddTraits(.isHeader)
-            HStack {
-                Button { close() } label: {
-                    Image(systemName: "chevron.left").font(.body.weight(.semibold)).tappableArea()
+            if showsBack {
+                HStack {
+                    Button { close() } label: {
+                        Image(systemName: "chevron.left").font(.body.weight(.semibold)).tappableArea()
+                    }
+                    .accessibilityLabel(L.t(Strings.shared.action_back))
+                    .foregroundColor(.primary)
+                    Spacer()
                 }
-                .accessibilityLabel(L.t(Strings.shared.action_back))
-                .foregroundColor(.primary)
-                Spacer()
+                .padding(.horizontal, 8)
             }
-            .padding(.horizontal, 8)
         }
         .frame(height: 52)
         .background(Brand.ground)

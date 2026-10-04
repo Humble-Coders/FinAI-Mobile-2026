@@ -16,7 +16,7 @@ import com.humblesolutions.finai.ui.components.LoaderSignal
  * killed (#32).
  */
 @Composable
-internal fun ReviewRoute(userId: String, onClose: () -> Unit) {
+internal fun ReviewRoute(userId: String, onClose: () -> Unit, showsBack: Boolean = true) {
     val model: ReviewViewModel = viewModel()
     val state by model.uiState.collectAsStateWithLifecycle()
     LaunchedEffect(userId) { model.bind(userId, logging = BuildConfig.DEBUG) }
@@ -55,5 +55,6 @@ internal fun ReviewRoute(userId: String, onClose: () -> Unit) {
             onCreateCategory = model::createCategory,
             onCancelNewCategory = model::cancelNewCategory,
         ),
+        showsBack = showsBack,
     )
 }
