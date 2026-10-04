@@ -325,4 +325,24 @@ class ImportStatementTest {
 
         assertTrue(assertNotNull(imports.sent).text.contains("₹70"))
     }
+
+    @Test
+    fun a_screenshots_dates_are_sent_with_their_year() = runTest {
+        val imports = FakeImports()
+
+        ImportStatement(imports) { today }.execute(ScreenshotFixture.document())
+
+        val text = assertNotNull(imports.sent).text
+        assertTrue(text.contains("Aug 14, 2026"), text)
+        assertFalse(text.contains("Aug 14\n"), text)
+    }
+
+    @Test
+    fun a_pdfs_dates_are_sent_as_printed() = runTest {
+        val imports = FakeImports()
+
+        ImportStatement(imports) { today }.execute(statement(header, transaction))
+
+        assertTrue(assertNotNull(imports.sent).text.contains("14 Aug  SPOTIFY"), "a statement's year comes from its period")
+    }
 }

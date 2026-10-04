@@ -82,7 +82,9 @@ class ImportStatement(
         val rows = OcrRows.of(document)
         val period = StatementPeriod.find(rows) ?: recentYear(rows)
         val redaction = StatementRedactor.of(rows)
-        val text = redaction.text
+        // A screenshot's dates carry no year; the year is decided here, not
+        // left to the model. See YearlessDates.
+        val text = if (rows.fromImage) YearlessDates.complete(redaction.text, today()) else redaction.text
         onRedacted(redaction)
 
         tooManyPages(document.pages.size)?.let { throw it }
