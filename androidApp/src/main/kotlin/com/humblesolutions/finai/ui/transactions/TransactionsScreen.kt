@@ -89,6 +89,7 @@ import com.humblesolutions.finai.i18n.Strings
 import com.humblesolutions.finai.model.Transaction
 import com.humblesolutions.finai.ui.components.ErrorText
 import com.humblesolutions.finai.ui.components.Field
+import com.humblesolutions.finai.ui.components.FieldVectors
 import com.humblesolutions.finai.ui.components.FinAiIcon
 import com.humblesolutions.finai.ui.components.LightStatusBarIcons
 import com.humblesolutions.finai.ui.components.SheetRow
@@ -136,6 +137,7 @@ fun TransactionsScreen(
 
     Box(Modifier.fillMaxSize().background(Field.brush(dark))) {
         Waves(Modifier.fillMaxSize())
+        FieldVectors(Modifier.fillMaxSize())
         Column(Modifier.fillMaxSize().safeDrawingPadding(), horizontalAlignment = Alignment.CenterHorizontally) {
             Box(Modifier.fillMaxWidth().height(52.dp).padding(horizontal = 8.dp)) {
                 IconButton(onClick = onClose, modifier = Modifier.align(Alignment.CenterStart)) {

@@ -1017,3 +1017,61 @@ private struct CommitmentEditor: View {
     }
 }
 
+
+/// The faint pictures on the field, as in the design: a tilted card in the top
+/// corner, a rising bar chart with its arrow down the right side, and soft
+/// rounds lower down. White at a few percent, so they read as texture and never
+/// compete with a figure. Fixed to the screen, not the scroll; decorative.
+/// Mirrors Android's `FieldVectors`.
+struct FieldVectors: View {
+    var body: some View {
+        Canvas { context, size in
+            let w = size.width
+            let h = size.height
+            func ink(_ alpha: Double) -> GraphicsContext.Shading { .color(.white.opacity(alpha)) }
+
+            // A card, tilted, half off the top right.
+            var card = context
+            let centre = CGPoint(x: w * 0.78, y: 110)
+            card.translateBy(x: centre.x, y: centre.y)
+            card.rotate(by: .degrees(-16))
+            let rect = CGRect(x: -105, y: -67, width: 210, height: 134)
+            let shape = Path(roundedRect: rect, cornerRadius: 20)
+            card.fill(shape, with: ink(0.08))
+            card.stroke(shape, with: ink(0.13), lineWidth: 1.5)
+            card.fill(Path(CGRect(x: rect.minX, y: rect.minY + 30, width: rect.width, height: 22)), with: ink(0.07))
+            card.fill(
+                Path(roundedRect: CGRect(x: rect.minX + 22, y: rect.minY + 68, width: 34, height: 26), cornerRadius: 6),
+                with: ink(0.10)
+            )
+
+            // A bar chart down the right side, rising, with its arrow.
+            let base = h * 0.46
+            for (index, height) in [34.0, 56.0, 82.0, 112.0].enumerated() {
+                let x = w - 118 + CGFloat(index) * 26
+                context.fill(
+                    Path(roundedRect: CGRect(x: x, y: base - height, width: 18, height: height), cornerRadius: 5),
+                    with: ink(0.06 + Double(index) * 0.01)
+                )
+            }
+            var arrow = Path()
+            arrow.move(to: CGPoint(x: w - 130, y: base - 40))
+            arrow.addLine(to: CGPoint(x: w - 92, y: base - 76))
+            arrow.addLine(to: CGPoint(x: w - 70, y: base - 64))
+            arrow.addLine(to: CGPoint(x: w - 30, y: base - 128))
+            arrow.move(to: CGPoint(x: w - 30, y: base - 128))
+            arrow.addLine(to: CGPoint(x: w - 46, y: base - 122))
+            arrow.move(to: CGPoint(x: w - 30, y: base - 128))
+            arrow.addLine(to: CGPoint(x: w - 33, y: base - 111))
+            context.stroke(arrow, with: ink(0.12), style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
+
+            // Soft rounds lower down.
+            context.fill(Path(ellipseIn: CGRect(x: -170, y: h * 0.78 - 150, width: 300, height: 300)), with: ink(0.04))
+            context.fill(Path(ellipseIn: CGRect(x: w * 0.92 - 110, y: h * 0.9 - 110, width: 220, height: 220)), with: ink(0.035))
+            context.fill(Path(ellipseIn: CGRect(x: w * 0.18 - 7, y: h * 0.36 - 7, width: 14, height: 14)), with: ink(0.05))
+            context.fill(Path(ellipseIn: CGRect(x: w * 0.62 - 4, y: h * 0.62 - 4, width: 8, height: 8)), with: ink(0.05))
+        }
+        .accessibilityHidden(true)
+        .allowsHitTesting(false)
+    }
+}

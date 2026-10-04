@@ -33,6 +33,7 @@ struct TransactionsView: View {
             ZStack {
                 Field.gradient(dark)
                 Waves()
+                FieldVectors()
             }
             .ignoresSafeArea()
 
