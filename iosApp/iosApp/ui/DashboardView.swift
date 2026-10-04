@@ -465,7 +465,7 @@ struct DashboardView: View {
  text on `#22C55E` is about 2.3:1, unreadable for the small print here. These
  keep every white line at 4.5:1 or better. Mirrors Android's `Field`.
  */
-private enum Field {
+enum Field {
     static let sheetOverlap: CGFloat = 28
 
     private static let lightTop = Color(red: 0x0F / 255, green: 0x5A / 255, blue: 0x30 / 255)
@@ -492,7 +492,7 @@ private enum Field {
 }
 
 /// The soft hills across the field, with a glow behind the chart. Decorative.
-private struct Waves: View {
+struct Waves: View {
     var body: some View {
         GeometryReader { geometry in
             let w = geometry.size.width

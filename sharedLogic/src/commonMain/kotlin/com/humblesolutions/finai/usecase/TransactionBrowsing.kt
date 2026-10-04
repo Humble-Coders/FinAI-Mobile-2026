@@ -1,6 +1,7 @@
 package com.humblesolutions.finai.usecase
 
 import com.humblesolutions.finai.model.StatementImportSummary
+import com.humblesolutions.finai.model.Transaction
 import com.humblesolutions.finai.util.Dates
 import kotlinx.datetime.LocalDate
 
@@ -78,4 +79,25 @@ object TransactionBrowsing {
      * month, and that is the one worth opening.
      */
     fun hasAnythingToOffer(imports: List<StatementImportSummary>): Boolean = statementsFrom(imports).isNotEmpty()
+
+    /** One calendar month of the list, with its rows in the server's order. */
+    data class MonthGroup(
+        /** The first of the month, `YYYY-MM-01`, for a heading like "Aug 2026". */
+        val month: String,
+        val rows: List<Transaction>,
+    )
+
+    /**
+     * The rows under a heading per month, newest month first.
+     *
+     * By the month on the statement, as browsing by month means. Within a
+     * month the server's order is kept — newest first — so a heading never
+     * reorders what is under it. A statement that spans two months shows two
+     * headings, which is the point: it says where the month boundary fell.
+     */
+    fun byMonth(rows: List<Transaction>): List<MonthGroup> = rows
+        .groupBy { it.occurredOn.take(7) }
+        .filterKeys { it.length == 7 }
+        .map { (month, inMonth) -> MonthGroup(month = "$month-01", rows = inMonth) }
+        .sortedByDescending { it.month }
 }

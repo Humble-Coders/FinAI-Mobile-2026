@@ -293,6 +293,10 @@ object Strings {
     const val import_selected_account = "import_selected_account" // "Selected account"
     const val import_change_account = "import_change_account" // "Change"
     const val manual_entry_date_today_value = "manual_entry_date_today_value" // "Today, {0}"
+    const val transactions_total_in = "transactions_total_in" // "Total in"
+    const val transactions_total_out = "transactions_total_out" // "Total out"
+    const val transactions_pick_month = "transactions_pick_month" // "Choose a month"
+    const val transactions_pick_statement = "transactions_pick_statement" // "Choose a statement"
     const val dashboard_retry = "dashboard_retry" // "Try again"
 
     const val import_entry = "import_entry" // "Import a statement"

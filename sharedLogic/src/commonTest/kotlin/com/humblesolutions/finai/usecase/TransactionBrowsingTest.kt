@@ -1,6 +1,7 @@
 package com.humblesolutions.finai.usecase
 
 import com.humblesolutions.finai.model.StatementImportSummary
+import com.humblesolutions.finai.model.Transaction
 import kotlinx.datetime.LocalDate
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -127,5 +128,46 @@ class TransactionBrowsingTest {
         assertFalse(TransactionBrowsing.hasAnythingToOffer(emptyList()))
         assertFalse(TransactionBrowsing.hasAnythingToOffer(listOf(import(saved = 0))))
         assertTrue(TransactionBrowsing.hasAnythingToOffer(listOf(import(saved = 1))))
+    }
+
+    // ── Headings by month ───────────────────────────────────────────────
+
+    private fun row(id: String, date: String) = Transaction(id = id, occurredOn = date)
+
+    @Test
+    fun rows_are_headed_by_month_newest_first() {
+        val groups = TransactionBrowsing.byMonth(
+            listOf(row("a", "2026-10-02"), row("b", "2026-08-31"), row("c", "2026-08-22")),
+        )
+
+        assertEquals(listOf("2026-10-01", "2026-08-01"), groups.map { it.month })
+        assertEquals(listOf("b", "c"), groups.last().rows.map { it.id })
+    }
+
+    @Test
+    fun a_heading_never_reorders_what_is_under_it() {
+        // The server's order within the month, even if it is not by date.
+        val groups = TransactionBrowsing.byMonth(listOf(row("x", "2026-08-01"), row("y", "2026-08-30")))
+        assertEquals(listOf("x", "y"), groups.single().rows.map { it.id })
+    }
+
+    @Test
+    fun a_row_with_no_readable_date_is_left_out_of_the_headings() {
+        assertEquals(emptyList(), TransactionBrowsing.byMonth(listOf(row("z", ""))))
+    }
+
+    // ── Category icons ──────────────────────────────────────────────────
+
+    @Test
+    fun seeded_categories_have_their_own_pictures() {
+        assertEquals(CategoryIcon.HOME, CategoryIcons.forSlug("rent"))
+        assertEquals(CategoryIcon.DINING, CategoryIcons.forSlug("dining"))
+        assertEquals(CategoryIcon.TRANSFER, CategoryIcons.forSlug("transfers"))
+    }
+
+    @Test
+    fun a_category_of_their_own_is_a_tag_and_nothing_filed_says_so() {
+        assertEquals(CategoryIcon.TAG, CategoryIcons.forSlug("my-pets"))
+        assertEquals(CategoryIcon.UNFILED, CategoryIcons.forSlug(null))
     }
 }

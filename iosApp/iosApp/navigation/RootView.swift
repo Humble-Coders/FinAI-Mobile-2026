@@ -165,9 +165,13 @@ struct RootView: View {
                     onImportStatement: { homeRoute = HomeRoute.importStatement.rawValue },
                     onAddTransaction: { homeRoute = HomeRoute.add.rawValue },
                     onReview: { homeRoute = HomeRoute.review.rawValue },
-                    onViewAll: { homeRoute = HomeRoute.transactions.rawValue },
+                    // Animated, and only this route: home and "Your
+                    // transactions" share one green field, so the content
+                    // fades and lifts while the ground carries across.
+                    onViewAll: { withAnimation(.easeOut(duration: 0.3)) { homeRoute = HomeRoute.transactions.rawValue } },
                     onSignOut: { model.signOut() }
                 )
+                .transition(.opacity)
             case .add, .addAfterImport:
                 ManualEntryView(
                     model: entryModel,
@@ -189,8 +193,9 @@ struct RootView: View {
                     model: transactionsModel,
                     userId: model.me?.user.id ?? ""
                 ) {
-                    homeRoute = HomeRoute.home.rawValue
+                    withAnimation(.easeOut(duration: 0.25)) { homeRoute = HomeRoute.home.rawValue }
                 }
+                .transition(.opacity.combined(with: .offset(y: 40)))
             case .review:
                 ReviewView(
                     model: reviewModel,

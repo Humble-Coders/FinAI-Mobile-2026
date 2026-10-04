@@ -5,7 +5,10 @@ import com.humblesolutions.finai.i18n.Strings
 import com.humblesolutions.finai.model.Category
 import com.humblesolutions.finai.model.StatementImportSummary
 import com.humblesolutions.finai.model.Transaction
+import com.humblesolutions.finai.model.TransactionDirection
 import com.humblesolutions.finai.ui.edit.TransactionEditorState
+import com.humblesolutions.finai.usecase.CategoryIcon
+import com.humblesolutions.finai.usecase.CategoryIcons
 import com.humblesolutions.finai.usecase.CorrectionBlock
 import com.humblesolutions.finai.usecase.CorrectionDraft
 import com.humblesolutions.finai.usecase.DashboardMonths
@@ -106,6 +109,20 @@ data class TransactionsUiState(
             text(Strings.transactions_statement_option, on, statement.saved.toString())
         }
     }
+
+    /** The rows under a heading per month, newest first. */
+    val monthGroups: List<TransactionBrowsing.MonthGroup> get() = TransactionBrowsing.byMonth(rows)
+
+    /** "Aug 2026", for a heading. */
+    fun monthHeading(month: String): String = Dates.parse(month)?.let { monthLabel(it) } ?: month
+
+    /** The picture for a row: its category's, or the unfiled mark. */
+    fun iconFor(row: Transaction): CategoryIcon = CategoryIcons.forSlug(ImportedRows.categoryOf(row, categories)?.slug)
+
+    fun isCredit(row: Transaction): Boolean = row.direction == TransactionDirection.CREDIT
+
+    /** A statement's chip: just when it was imported. The sheet says the rest. */
+    fun statementChip(statement: StatementImportSummary): String = Dates.parse(statement.createdAt.take(10))?.let { Dates.display(it) } ?: statement.createdAt.take(10)
 
     val browsingByStatement: Boolean get() = mode == TransactionBrowsing.Mode.BY_STATEMENT
 

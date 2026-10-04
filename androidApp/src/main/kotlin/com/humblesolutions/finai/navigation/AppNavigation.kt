@@ -2,6 +2,16 @@ package com.humblesolutions.finai.navigation
 
 import android.content.Context
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.ContentTransform
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
@@ -268,32 +278,54 @@ private enum class HomeRoute { HOME, ADD, IMPORT, ADD_AFTER_IMPORT, REVIEW, TRAN
 @Composable
 private fun HomeOrEntry(userId: String, onSignOut: () -> Unit) {
     var route by rememberSaveable { mutableStateOf(HomeRoute.HOME) }
-    when (route) {
-        HomeRoute.HOME -> DashboardRoute(
-            userId = userId,
-            onImportStatement = { route = HomeRoute.IMPORT },
-            onReview = { route = HomeRoute.REVIEW },
-            onAddTransaction = { route = HomeRoute.ADD },
-            onViewAll = { route = HomeRoute.TRANSACTIONS },
-            onSignOut = onSignOut,
-        )
+    AnimatedContent(
+        targetState = route,
+        transitionSpec = { homeTransition(initialState, targetState) },
+        label = "homeRoute",
+    ) { shown ->
+        when (shown) {
+            HomeRoute.HOME -> DashboardRoute(
+                userId = userId,
+                onImportStatement = { route = HomeRoute.IMPORT },
+                onReview = { route = HomeRoute.REVIEW },
+                onAddTransaction = { route = HomeRoute.ADD },
+                onViewAll = { route = HomeRoute.TRANSACTIONS },
+                onSignOut = onSignOut,
+            )
 
-        HomeRoute.ADD -> ManualEntryRoute(userId = userId, fromUnreadable = false, onClose = { route = HomeRoute.HOME })
+            HomeRoute.ADD -> ManualEntryRoute(userId = userId, fromUnreadable = false, onClose = { route = HomeRoute.HOME })
 
-        HomeRoute.ADD_AFTER_IMPORT ->
-            ManualEntryRoute(userId = userId, fromUnreadable = true, onClose = { route = HomeRoute.HOME })
+            HomeRoute.ADD_AFTER_IMPORT ->
+                ManualEntryRoute(userId = userId, fromUnreadable = true, onClose = { route = HomeRoute.HOME })
 
-        HomeRoute.IMPORT -> StatementImportRoute(
-            userId = userId,
-            onClose = { route = HomeRoute.HOME },
-            onTypeInstead = { route = HomeRoute.ADD_AFTER_IMPORT },
-            onReview = { route = HomeRoute.REVIEW },
-        )
+            HomeRoute.IMPORT -> StatementImportRoute(
+                userId = userId,
+                onClose = { route = HomeRoute.HOME },
+                onTypeInstead = { route = HomeRoute.ADD_AFTER_IMPORT },
+                onReview = { route = HomeRoute.REVIEW },
+            )
 
-        HomeRoute.REVIEW -> ReviewRoute(userId = userId, onClose = { route = HomeRoute.HOME })
+            HomeRoute.REVIEW -> ReviewRoute(userId = userId, onClose = { route = HomeRoute.HOME })
 
-        HomeRoute.TRANSACTIONS -> TransactionsRoute(userId = userId, onClose = { route = HomeRoute.HOME })
+            HomeRoute.TRANSACTIONS -> TransactionsRoute(userId = userId, onClose = { route = HomeRoute.HOME })
+        }
     }
+}
+
+/**
+ * Home and "Your transactions" share one green field, so between them only
+ * the content moves: it fades and lifts while the ground carries across, as
+ * if the list rose out of home. Every other route changes as it always has —
+ * at once.
+ */
+private fun homeTransition(from: HomeRoute, to: HomeRoute): ContentTransform = when {
+    from == HomeRoute.HOME && to == HomeRoute.TRANSACTIONS ->
+        (fadeIn(tween(280)) + slideInVertically(tween(320)) { it / 12 }) togetherWith fadeOut(tween(200))
+
+    from == HomeRoute.TRANSACTIONS && to == HomeRoute.HOME ->
+        fadeIn(tween(240)) togetherWith (fadeOut(tween(220)) + slideOutVertically(tween(260)) { it / 12 })
+
+    else -> EnterTransition.None togetherWith ExitTransition.None
 }
 
 /**

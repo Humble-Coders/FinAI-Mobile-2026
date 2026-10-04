@@ -229,6 +229,27 @@ final class TransactionsViewModel: ObservableObject {
 
     var browsingByStatement: Bool { mode == TransactionBrowsing.Mode.byStatement }
 
+    /// The rows under a heading per month, newest first.
+    var monthGroups: [TransactionBrowsing.MonthGroup] { TransactionBrowsing.shared.byMonth(rows: rows) }
+
+    /// "Aug 2026", for a heading.
+    func monthHeading(_ month: String) -> String {
+        Dates.shared.parse(iso: month).map { monthLabel($0) } ?? month
+    }
+
+    /// The picture for a row: its category's, or the unfiled mark.
+    func iconFor(_ row: SharedLogic.Transaction) -> CategoryIcon {
+        CategoryIcons.shared.forSlug(slug: ImportedRows.shared.categoryOf(row: row, categories: categories)?.slug)
+    }
+
+    func isCredit(_ row: SharedLogic.Transaction) -> Bool { row.direction == .credit }
+
+    /// A statement's chip: just when it was imported. The sheet says the rest.
+    func statementChip(_ statement: StatementImportSummary) -> String {
+        let day = String(statement.createdAt.prefix(10))
+        return Dates.shared.parse(iso: day).map { Dates.shared.display(date: $0) } ?? day
+    }
+
     /// The list's currency, for its totals. `currency` is the editor's.
     private var listCurrency: String { rows.first?.currency ?? "" }
 

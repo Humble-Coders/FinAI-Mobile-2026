@@ -1,54 +1,121 @@
 package com.humblesolutions.finai.ui.transactions
 
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.HelpOutline
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.filled.Label
+import androidx.compose.material.icons.automirrored.filled.ReceiptLong
+import androidx.compose.material.icons.filled.ArrowDownward
+import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.CardGiftcard
+import androidx.compose.material.icons.filled.CreditCard
+import androidx.compose.material.icons.filled.DirectionsCar
+import androidx.compose.material.icons.filled.Flight
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.LocalGroceryStore
+import androidx.compose.material.icons.filled.LocalHospital
+import androidx.compose.material.icons.filled.Payments
+import androidx.compose.material.icons.filled.PhoneAndroid
+import androidx.compose.material.icons.filled.Restaurant
+import androidx.compose.material.icons.filled.Savings
+import androidx.compose.material.icons.filled.School
+import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.ShoppingBag
+import androidx.compose.material.icons.filled.Spa
+import androidx.compose.material.icons.filled.Subscriptions
+import androidx.compose.material.icons.filled.SwapHoriz
+import androidx.compose.material.icons.filled.TheaterComedy
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
+import com.humblesolutions.finai.R
 import com.humblesolutions.finai.i18n.Strings
 import com.humblesolutions.finai.model.Transaction
-import com.humblesolutions.finai.model.TransactionDirection
 import com.humblesolutions.finai.ui.components.ErrorText
-import com.humblesolutions.finai.ui.components.ProviderButton
-import com.humblesolutions.finai.ui.components.ScreenScaffold
+import com.humblesolutions.finai.ui.components.Field
+import com.humblesolutions.finai.ui.components.FinAiIcon
+import com.humblesolutions.finai.ui.components.LightStatusBarIcons
+import com.humblesolutions.finai.ui.components.SheetRow
+import com.humblesolutions.finai.ui.components.SheetTitle
+import com.humblesolutions.finai.ui.components.Waves
 import com.humblesolutions.finai.ui.edit.TransactionEditorActions
 import com.humblesolutions.finai.ui.edit.TransactionEditorSheet
 import com.humblesolutions.finai.ui.strings
 import com.humblesolutions.finai.ui.theme.FinAiPalette
+import com.humblesolutions.finai.usecase.CategoryIcon
 import com.humblesolutions.finai.usecase.TransactionBrowsing
+import kotlin.math.min
 
 /**
- * Everything the household has, one statement or one month at a time (#F3).
+ * Everything the household has, one month or one statement at a time (#F3),
+ * on home's green field so opening it from "View all" keeps one ground.
  *
- * The two modes exist because people hold two different things in mind: a
- * statement they are checking against the paper, and a month they are
- * reasoning about. Which filter each sends is [TransactionBrowsing]'s to
- * decide, not this screen's.
+ * The rows are a stack, as in Apple Wallet: each card overlaps the one before
+ * it, and a card that reaches the top stops there and stacks — a little
+ * smaller and a little higher with each card that arrives over it — rather
+ * than leaving the screen. Scrolling back unstacks them. The stacking is drawn
+ * in each card's layer from the scroll position, so scrolling recomposes
+ * nothing.
+ *
+ * Which filter each mode sends is [TransactionBrowsing]'s to decide; this
+ * screen only draws the answer. Tapping a card opens the same editor the
+ * review queue uses.
  */
 @Composable
 fun TransactionsScreen(
@@ -61,62 +128,215 @@ fun TransactionsScreen(
     onClose: () -> Unit,
     onEdit: (String) -> Unit,
     editor: TransactionEditorActions,
+    scroll: ScrollState = rememberScrollState(),
 ) {
-    state.editor?.let { TransactionEditorSheet(it, editor) }
-    ScreenScaffold {
-        Text(
-            text = strings(Strings.transactions_title),
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.Bold,
-        )
+    val dark = isSystemInDarkTheme()
+    LightStatusBarIcons(dark)
+    var picking by rememberSaveable { mutableStateOf(false) }
 
-        Spacer(Modifier.height(14.dp))
-        ModeToggle(state, onMode)
-
-        Spacer(Modifier.height(10.dp))
-        SlicePicker(state, onStatement, onMonth)
-
-        Spacer(Modifier.height(12.dp))
-        when {
-            state.loading -> Loading()
-
-            state.loadFailed -> Failed(state, onRetry)
-
-            state.showsEmpty -> Text(
-                text = state.emptyMessage,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-
-            else -> Rows(state, onLoadMore, onEdit)
+    Box(Modifier.fillMaxSize().background(Field.brush(dark))) {
+        Waves(Modifier.fillMaxSize())
+        Column(Modifier.fillMaxSize().safeDrawingPadding(), horizontalAlignment = Alignment.CenterHorizontally) {
+            Box(Modifier.fillMaxWidth().height(52.dp).padding(horizontal = 8.dp)) {
+                IconButton(onClick = onClose, modifier = Modifier.align(Alignment.CenterStart)) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_back),
+                        contentDescription = strings(Strings.action_back),
+                        tint = Field.ink(),
+                    )
+                }
+            }
+            Box(
+                Modifier
+                    .widthIn(max = 560.dp)
+                    .fillMaxSize()
+                    .verticalScroll(scroll),
+            ) {
+                Wallet(state, scroll, onMode, onStatement, onMonth, onLoadMore, onRetry, onEdit) { picking = true }
+            }
         }
+    }
 
-        Spacer(Modifier.height(20.dp))
-        ProviderButton(text = strings(Strings.transactions_close), onClick = onClose)
+    state.editor?.let { TransactionEditorSheet(it, editor) }
+    if (picking) {
+        SlicePickerSheet(
+            state = state,
+            onStatement = {
+                onStatement(it)
+                picking = false
+            },
+            onMonth = {
+                onMonth(it)
+                picking = false
+            },
+            onDismiss = { picking = false },
+        )
     }
 }
 
-/** The two ways of slicing, as a segmented pair. */
+// ── The stack ───────────────────────────────────────────────────────────
+
+/** What each child of the stack is, which decides how it is placed. */
+private enum class Piece { BLOCK, HEADING, CARD }
+
+/** How much of each card the next one covers: its bottom padding, never its words. */
+private val OVERLAP = 14.dp
+
+/** Where cards stop and stack, below the top of the scrolling area. */
+private val PIN = 22.dp
+
+/** How far up each card further into the stack peeks out. */
+private val PEEK = 6.dp
+
+/** How many cards deep the stack shows before a card fades out. */
+private const val DEPTH = 3f
+
+@Composable
+private fun Wallet(
+    state: TransactionsUiState,
+    scroll: ScrollState,
+    onMode: (TransactionBrowsing.Mode) -> Unit,
+    onStatement: (String) -> Unit,
+    onMonth: (kotlinx.datetime.LocalDate) -> Unit,
+    onLoadMore: () -> Unit,
+    onRetry: () -> Unit,
+    onEdit: (String) -> Unit,
+    onPick: () -> Unit,
+) {
+    val pieces = buildList {
+        add(Piece.BLOCK)
+        if (!state.loading && !state.loadFailed && !state.showsEmpty) {
+            state.monthGroups.forEach { group ->
+                add(Piece.HEADING)
+                repeat(group.rows.size) { add(Piece.CARD) }
+            }
+        }
+        add(Piece.BLOCK)
+    }
+
+    Layout(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+        content = {
+            Top(state, onMode, onStatement, onMonth, onPick)
+            if (!state.loading && !state.loadFailed && !state.showsEmpty) {
+                state.monthGroups.forEach { group ->
+                    Heading(state.monthHeading(group.month))
+                    group.rows.forEach { row -> Card(state, row) { onEdit(row.id) } }
+                }
+            }
+            Bottom(state, onLoadMore, onRetry)
+        },
+    ) { measurables, constraints ->
+        val loose = Constraints(maxWidth = constraints.maxWidth)
+        val placeables = measurables.map { it.measure(loose) }
+        val overlap = OVERLAP.roundToPx()
+        val gap = 12.dp.roundToPx()
+
+        // Each card's place in the content, overlapping the card before it.
+        val tops = IntArray(placeables.size)
+        var y = 0
+        placeables.forEachIndexed { index, placeable ->
+            val piece = pieces[index]
+            val previous = pieces.getOrNull(index - 1)
+            if (index > 0) {
+                y += when {
+                    piece == Piece.CARD && previous == Piece.CARD -> -overlap
+                    piece == Piece.HEADING -> gap * 2
+                    previous == Piece.HEADING -> gap / 2
+                    else -> gap
+                }
+            }
+            tops[index] = y
+            y += placeable.height
+        }
+
+        val pin = PIN.toPx()
+        val peek = PEEK.toPx()
+        val fadeFrom = 72.dp.toPx()
+        val fadeOver = 32.dp.toPx()
+        layout(constraints.maxWidth, y + 24.dp.roundToPx()) {
+            placeables.forEachIndexed { index, placeable ->
+                val top = tops[index]
+                when (pieces[index]) {
+                    Piece.CARD -> {
+                        val step = (placeable.height - overlap).coerceAtLeast(1).toFloat()
+                        placeable.placeWithLayer(0, top, zIndex = 1f + index) {
+                            // Read here, in the layer, so scrolling redraws
+                            // the cards without composing anything again.
+                            val onScreen = top - scroll.value.toFloat()
+                            if (onScreen < pin) {
+                                val depth = (pin - onScreen) / step
+                                val shown = min(depth, DEPTH)
+                                translationY = (pin - onScreen) - peek * shown
+                                scaleX = 1f - 0.04f * shown
+                                scaleY = scaleX
+                                transformOrigin = TransformOrigin(0.5f, 0f)
+                                alpha = if (depth > DEPTH) (1f - (depth - DEPTH)).coerceIn(0f, 1f) else 1f
+                            } else {
+                                translationY = 0f
+                                scaleX = 1f
+                                scaleY = 1f
+                                alpha = 1f
+                            }
+                        }
+                    }
+
+                    // A heading goes as the stack reaches it — the stacked
+                    // card in front is about a card tall — rather than
+                    // showing beneath it.
+                    Piece.HEADING -> placeable.placeWithLayer(0, top, zIndex = 0f) {
+                        val onScreen = top - scroll.value.toFloat()
+                        alpha = ((onScreen - pin - fadeFrom) / fadeOver).coerceIn(0f, 1f)
+                    }
+
+                    Piece.BLOCK -> placeable.place(0, top)
+                }
+            }
+        }
+    }
+}
+
+// ── Above the stack ─────────────────────────────────────────────────────
+
+@Composable
+private fun Top(
+    state: TransactionsUiState,
+    onMode: (TransactionBrowsing.Mode) -> Unit,
+    onStatement: (String) -> Unit,
+    onMonth: (kotlinx.datetime.LocalDate) -> Unit,
+    onPick: () -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        Text(
+            text = strings(Strings.transactions_title),
+            style = MaterialTheme.typography.headlineLarge,
+            fontWeight = FontWeight.Bold,
+            color = Field.ink(),
+            modifier = Modifier.semantics { heading() },
+        )
+        ModeToggle(state, onMode)
+        SliceRow(state, onStatement, onMonth, onPick)
+        Totals(state)
+    }
+}
+
+/** The two ways of slicing, as a pill with the chosen half lit. */
 @Composable
 private fun ModeToggle(state: TransactionsUiState, onMode: (TransactionBrowsing.Mode) -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .clip(CircleShape)
+            .background(Field.Glass)
+            .border(1.dp, Field.GlassEdge, CircleShape)
             .padding(4.dp),
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        Segment(
-            label = strings(Strings.transactions_by_month),
-            selected = !state.browsingByStatement,
-            modifier = Modifier.weight(1f),
-        ) { onMode(TransactionBrowsing.Mode.BY_MONTH) }
-        Segment(
-            label = strings(Strings.transactions_by_statement),
-            selected = state.browsingByStatement,
-            modifier = Modifier.weight(1f),
-        ) { onMode(TransactionBrowsing.Mode.BY_STATEMENT) }
+        Segment(strings(Strings.transactions_by_month), !state.browsingByStatement, Modifier.weight(1f)) {
+            onMode(TransactionBrowsing.Mode.BY_MONTH)
+        }
+        Segment(strings(Strings.transactions_by_statement), state.browsingByStatement, Modifier.weight(1f)) {
+            onMode(TransactionBrowsing.Mode.BY_STATEMENT)
+        }
     }
 }
 
@@ -124,200 +344,333 @@ private fun ModeToggle(state: TransactionsUiState, onMode: (TransactionBrowsing.
 private fun Segment(label: String, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {
     Box(
         modifier = modifier
-            .heightIn(min = 44.dp)
-            .clip(RoundedCornerShape(10.dp))
-            .background(
-                if (selected) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.surfaceVariant,
-            )
-            .clickable(onClick = onClick),
+            .heightIn(min = 48.dp)
+            .clip(CircleShape)
+            .background(if (selected) Color.White else Color.Transparent)
+            .clickable(role = Role.Tab, onClick = onClick)
+            .semantics { this.selected = selected },
         contentAlignment = Alignment.Center,
     ) {
         Text(
             text = label,
-            style = MaterialTheme.typography.labelLarge,
-            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-            color = if (selected) {
-                MaterialTheme.colorScheme.onBackground
-            } else {
-                MaterialTheme.colorScheme.onSurfaceVariant
-            },
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.SemiBold,
+            color = if (selected) FinAiPalette.GreenDeep else Field.ink(0.9f),
         )
     }
 }
 
-/** Which statement, or which month — whichever the mode is asking for. */
+/** The months or statements to choose from, and the button that lists them all. */
 @Composable
-private fun SlicePicker(
+private fun SliceRow(
     state: TransactionsUiState,
     onStatement: (String) -> Unit,
     onMonth: (kotlinx.datetime.LocalDate) -> Unit,
+    onPick: () -> Unit,
 ) {
-    Row(
-        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        if (state.browsingByStatement) {
-            state.statements.forEach { statement ->
-                Chip(
-                    label = state.statementLabel(statement),
-                    selected = statement.id == state.statementId,
-                ) { onStatement(statement.id) }
-            }
-        } else {
-            state.months.forEach { month ->
-                Chip(label = state.monthLabel(month), selected = month == state.month) {
-                    onMonth(month)
+    val pickLabel = strings(
+        if (state.browsingByStatement) Strings.transactions_pick_statement else Strings.transactions_pick_month,
+    )
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            modifier = Modifier.weight(1f).horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            if (state.browsingByStatement) {
+                state.statements.forEach { statement ->
+                    Chip(state.statementChip(statement), statement.id == state.statementId) { onStatement(statement.id) }
+                }
+            } else {
+                state.months.forEach { month ->
+                    Chip(state.monthLabel(month), month == state.month) { onMonth(month) }
                 }
             }
+        }
+        Spacer(Modifier.width(10.dp))
+        Box(
+            modifier = Modifier
+                .size(48.dp)
+                .clip(RoundedCornerShape(16.dp))
+                .background(Color.White)
+                .clickable(onClickLabel = pickLabel, role = Role.Button, onClick = onPick)
+                .semantics { contentDescription = pickLabel },
+            contentAlignment = Alignment.Center,
+        ) {
+            FinAiIcon(Icons.Filled.CalendarMonth, tint = FinAiPalette.GreenDeep, size = 22.dp)
         }
     }
 }
 
 @Composable
 private fun Chip(label: String, selected: Boolean, onClick: () -> Unit) {
-    Text(
-        text = label,
-        style = MaterialTheme.typography.labelMedium,
-        color = if (selected) FinAiPalette.OnGreen else MaterialTheme.colorScheme.onSurfaceVariant,
+    Box(
         modifier = Modifier
-            .clip(RoundedCornerShape(10.dp))
-            .background(
-                if (selected) FinAiPalette.Green else MaterialTheme.colorScheme.surfaceVariant,
-            )
-            .clickable(onClick = onClick)
-            .heightIn(min = 36.dp)
-            .padding(horizontal = 12.dp, vertical = 9.dp),
-    )
-}
-
-@Composable
-private fun Rows(state: TransactionsUiState, onLoadMore: () -> Unit, onEdit: (String) -> Unit) {
-    Totals(state)
-    state.days.forEach { day ->
+            .heightIn(min = 44.dp)
+            .clip(CircleShape)
+            .background(if (selected) Color(0xFF0B5E2E) else Field.Glass)
+            .border(1.dp, if (selected) Color.White.copy(alpha = 0.25f) else Field.GlassEdge, CircleShape)
+            .clickable(role = Role.RadioButton, onClick = onClick)
+            .semantics { this.selected = selected }
+            .padding(horizontal = 18.dp),
+        contentAlignment = Alignment.Center,
+    ) {
         Text(
-            text = state.dateLabel(day.date),
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(top = 12.dp, bottom = 4.dp),
+            text = label,
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+            color = Field.ink(),
         )
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(16.dp))
-                .background(MaterialTheme.colorScheme.surface),
-        ) {
-            day.rows.forEachIndexed { index, row ->
-                TransactionRow(state, row) { onEdit(row.id) }
-                if (index != day.rows.lastIndex) {
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
-                }
-            }
-        }
-    }
-
-    if (state.canLoadMore) {
-        Spacer(Modifier.height(12.dp))
-        ProviderButton(text = strings(Strings.transactions_load_more), onClick = onLoadMore)
-    }
-    if (state.loadingMore) {
-        Spacer(Modifier.height(12.dp))
-        Loading()
     }
 }
 
+/** Money in and money out for the slice, side by side. */
 @Composable
 private fun Totals(state: TransactionsUiState) {
-    val chips = listOfNotNull(
-        state.totalOut?.let { strings(Strings.import_extracted_out, it) },
-        state.totalIn?.let { strings(Strings.import_extracted_in, it) },
-    )
-    if (chips.isEmpty()) return
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        chips.forEach {
-            Text(
-                text = it,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(MaterialTheme.colorScheme.surfaceVariant)
-                    .padding(horizontal = 8.dp, vertical = 4.dp),
-            )
-        }
+    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Total(
+            label = strings(Strings.transactions_total_in),
+            // Absent, not "$0.00", for a slice with nothing in it: zero would
+            // be a claim about the statement rather than an absence of rows.
+            value = state.totalIn ?: "—",
+            icon = Icons.Filled.ArrowUpward,
+            accent = FinAiPalette.Green,
+            label2 = FinAiPalette.GreenDeep,
+            modifier = Modifier.weight(1f),
+        )
+        Total(
+            label = strings(Strings.transactions_total_out),
+            value = state.totalOut ?: "—",
+            icon = Icons.Filled.ArrowDownward,
+            accent = FinAiPalette.Red,
+            label2 = Color(0xFFB91C1C),
+            modifier = Modifier.weight(1f),
+        )
     }
 }
 
 @Composable
-private fun TransactionRow(state: TransactionsUiState, row: Transaction, onEdit: () -> Unit) {
+private fun Total(label: String, value: String, icon: ImageVector, accent: Color, label2: Color, modifier: Modifier) {
+    val dark = isSystemInDarkTheme()
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .heightIn(min = 56.dp)
-            // Any row can be fixed from here, not only the ones the review
-            // queue holds: a wrong category on a confidently filed row is
-            // just as wrong.
-            .clickable(onClickLabel = state.editLabel(row), onClick = onEdit)
-            .padding(horizontal = 14.dp, vertical = 10.dp)
-            .semantics(mergeDescendants = true) { contentDescription = state.rowDescription(row) },
+        modifier = modifier
+            .clip(RoundedCornerShape(22.dp))
+            .background(if (dark) FinAiPalette.DarkSurface else Color.White)
+            .background(accent.copy(alpha = if (dark) 0.14f else 0.10f))
+            .padding(14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        Box(
+            Modifier.size(44.dp).clip(RoundedCornerShape(14.dp)).background(accent.copy(alpha = 0.18f)),
+            contentAlignment = Alignment.Center,
+        ) { FinAiIcon(icon, tint = if (dark) accent else label2, size = 22.dp) }
+        Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
+            Text(label, style = MaterialTheme.typography.labelLarge, color = if (dark) accent else label2)
             Text(
-                text = state.titleOf(row),
-                style = MaterialTheme.typography.bodyMedium,
+                value,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            Spacer(Modifier.height(2.dp))
-            val filed = state.isFiled(row)
+        }
+    }
+}
+
+// ── In the stack ────────────────────────────────────────────────────────
+
+@Composable
+private fun Heading(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.titleMedium,
+        fontWeight = FontWeight.Medium,
+        color = Field.ink(0.92f),
+        modifier = Modifier.padding(start = 4.dp).semantics { heading() },
+    )
+}
+
+/** One transaction as a card; its bottom padding is what the next card covers. */
+@Composable
+private fun Card(state: TransactionsUiState, row: Transaction, onEdit: () -> Unit) {
+    val dark = isSystemInDarkTheme()
+    val shape = RoundedCornerShape(24.dp)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .shadow(10.dp, shape, ambientColor = Color.Black.copy(alpha = 0.25f), spotColor = Color.Black.copy(alpha = 0.25f))
+            .clip(shape)
+            .background(if (dark) FinAiPalette.DarkSurface else Color.White)
+            .border(1.dp, if (dark) Color.White.copy(alpha = 0.06f) else Color(0xFFE8F1EC), shape)
+            .clickable(onClickLabel = state.editLabel(row), onClick = onEdit)
+            .semantics(mergeDescendants = true) { contentDescription = state.rowDescription(row) }
+            .padding(start = 16.dp, end = 12.dp, top = 12.dp, bottom = 12.dp + OVERLAP),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        val filed = state.isFiled(row)
+        Box(
+            Modifier
+                .size(48.dp)
+                .clip(RoundedCornerShape(16.dp))
+                .background((if (filed) FinAiPalette.Green else FinAiPalette.Amber).copy(alpha = 0.14f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            FinAiIcon(
+                iconOf(state.iconFor(row)),
+                tint = if (filed) FinAiPalette.GreenDeep.takeUnless { dark } ?: FinAiPalette.Green else Color(0xFFB45309),
+                size = 26.dp,
+            )
+        }
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f)) {
             Text(
-                text = state.categoryLabel(row),
-                style = MaterialTheme.typography.labelSmall,
-                color = if (filed) {
-                    MaterialTheme.colorScheme.onSurfaceVariant
-                } else {
-                    MaterialTheme.colorScheme.tertiary
-                },
-                modifier = Modifier
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(
-                        if (filed) {
-                            MaterialTheme.colorScheme.surfaceVariant
-                        } else {
-                            MaterialTheme.colorScheme.tertiary.copy(alpha = 0.12f)
-                        },
-                    )
-                    .padding(horizontal = 6.dp, vertical = 2.dp),
+                state.dateLabel(row.occurredOn),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                state.titleOf(row),
+                style = MaterialTheme.typography.titleMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                state.categoryLabel(row),
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (filed) MaterialTheme.colorScheme.onSurfaceVariant else Color(0xFFB45309),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
         }
         Spacer(Modifier.width(10.dp))
         Text(
-            text = state.amountLabel(row),
-            style = MaterialTheme.typography.bodyMedium,
+            state.amountLabel(row),
+            style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold,
             // Green for money in; money out stays plain, so the direction
             // registers instead of every row shouting.
-            color = if (row.direction == TransactionDirection.CREDIT) {
-                FinAiPalette.Green
-            } else {
-                MaterialTheme.colorScheme.onBackground
-            },
+            color = if (state.isCredit(row)) FinAiPalette.GreenDeep.takeUnless { dark } ?: FinAiPalette.Green else MaterialTheme.colorScheme.onSurface,
         )
+        Spacer(Modifier.width(4.dp))
+        FinAiIcon(Icons.AutoMirrored.Filled.KeyboardArrowRight, tint = MaterialTheme.colorScheme.onSurfaceVariant, size = 20.dp)
+    }
+}
+
+/** The shared icon names as Material's pictures. */
+private fun iconOf(icon: CategoryIcon): ImageVector = when (icon) {
+    CategoryIcon.HOME -> Icons.Filled.Home
+    CategoryIcon.TRANSFER -> Icons.Filled.SwapHoriz
+    CategoryIcon.DOCUMENT -> Icons.AutoMirrored.Filled.ReceiptLong
+    CategoryIcon.CAR -> Icons.Filled.DirectionsCar
+    CategoryIcon.BAG -> Icons.Filled.ShoppingBag
+    CategoryIcon.BOLT -> Icons.Filled.Bolt
+    CategoryIcon.DINING -> Icons.Filled.Restaurant
+    CategoryIcon.CART -> Icons.Filled.LocalGroceryStore
+    CategoryIcon.HEART -> Icons.Filled.LocalHospital
+    CategoryIcon.SALARY -> Icons.Filled.Payments
+    CategoryIcon.SHIELD -> Icons.Filled.Security
+    CategoryIcon.SCHOOL -> Icons.Filled.School
+    CategoryIcon.TICKET -> Icons.Filled.TheaterComedy
+    CategoryIcon.GIFT -> Icons.Filled.CardGiftcard
+    CategoryIcon.SPA -> Icons.Filled.Spa
+    CategoryIcon.PIGGY -> Icons.Filled.Savings
+    CategoryIcon.REPEAT -> Icons.Filled.Subscriptions
+    CategoryIcon.PLANE -> Icons.Filled.Flight
+    CategoryIcon.CARD -> Icons.Filled.CreditCard
+    CategoryIcon.PHONE -> Icons.Filled.PhoneAndroid
+    CategoryIcon.TAG -> Icons.AutoMirrored.Filled.Label
+    CategoryIcon.UNFILED -> Icons.AutoMirrored.Filled.HelpOutline
+}
+
+// ── Below the stack ─────────────────────────────────────────────────────
+
+/** Loading, a failure, an empty slice, or the next page — whichever applies. */
+@Composable
+private fun Bottom(state: TransactionsUiState, onLoadMore: () -> Unit, onRetry: () -> Unit) {
+    Column(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        when {
+            state.loading || state.loadingMore -> CircularProgressIndicator(
+                color = Field.ink(),
+                modifier = Modifier.size(24.dp),
+                strokeWidth = 2.dp,
+            )
+
+            state.loadFailed -> {
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(22.dp))
+                        .background(MaterialTheme.colorScheme.background)
+                        .padding(16.dp),
+                    contentAlignment = Alignment.Center,
+                ) { ErrorText(state.errorKey) }
+                Spacer(Modifier.height(10.dp))
+                GlassButton(strings(Strings.dashboard_retry), onRetry)
+            }
+
+            state.showsEmpty -> Text(
+                state.emptyMessage,
+                style = MaterialTheme.typography.bodyLarge,
+                color = Field.ink(0.9f),
+                modifier = Modifier.padding(vertical = 24.dp),
+            )
+
+            state.canLoadMore -> GlassButton(strings(Strings.transactions_load_more), onLoadMore)
+        }
     }
 }
 
 @Composable
-private fun Loading() {
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
-        CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+private fun GlassButton(label: String, onClick: () -> Unit) {
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .heightIn(min = 52.dp)
+            .clip(RoundedCornerShape(18.dp))
+            .background(Field.Glass)
+            .border(1.dp, Field.GlassEdge, RoundedCornerShape(18.dp))
+            .clickable(role = Role.Button, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(label, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, color = Field.ink())
     }
 }
 
+/** Every month, or every statement, to choose from when the chips run off the edge. */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun Failed(state: TransactionsUiState, onRetry: () -> Unit) {
-    Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-        ErrorText(state.errorKey)
-        Spacer(Modifier.height(8.dp))
-        ProviderButton(text = strings(Strings.dashboard_retry), onClick = onRetry)
+private fun SlicePickerSheet(
+    state: TransactionsUiState,
+    onStatement: (String) -> Unit,
+    onMonth: (kotlinx.datetime.LocalDate) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+        SheetTitle(
+            strings(if (state.browsingByStatement) Strings.transactions_pick_statement else Strings.transactions_pick_month),
+        )
+        LazyColumn(Modifier.fillMaxWidth()) {
+            if (state.browsingByStatement) {
+                items(state.statements, key = { it.id }) { statement ->
+                    SheetRow(
+                        title = state.statementLabel(statement),
+                        detail = null,
+                        selected = statement.id == state.statementId,
+                        onClick = { onStatement(statement.id) },
+                    )
+                }
+            } else {
+                items(state.months, key = { it.toString() }) { month ->
+                    SheetRow(
+                        title = state.monthLabel(month),
+                        detail = null,
+                        selected = month == state.month,
+                        onClick = { onMonth(month) },
+                    )
+                }
+            }
+            item { Spacer(Modifier.height(24.dp)) }
+        }
     }
 }

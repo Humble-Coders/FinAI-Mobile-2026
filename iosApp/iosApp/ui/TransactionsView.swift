@@ -2,56 +2,97 @@ import SharedLogic
 import SwiftUI
 
 /**
- Everything the household has, one statement or one month at a time (#F3).
+ Everything the household has, one month or one statement at a time (#F3), on
+ home's green field so opening it from "View all" keeps one ground.
 
- The two modes exist because people hold two different things in mind: a
- statement they are checking against the paper, and a month they are reasoning
- about. Which filter each sends is `TransactionBrowsing`'s to decide, not this
- view's.
+ The rows are a stack, as in Apple Wallet: each card overlaps the one before
+ it, and a card that reaches the top stops there and stacks — a little smaller
+ and a little higher with each card that arrives over it — rather than leaving
+ the screen. Scrolling back unstacks them. Each card works out its own place
+ from where the scroll view has put it (`visualEffect`), so scrolling changes
+ no state. Mirrors Android's `TransactionsScreen`.
+
+ Which filter each mode sends is `TransactionBrowsing`'s to decide; this view
+ only draws the answer. Tapping a card opens the same editor the review queue
+ uses.
  */
 struct TransactionsView: View {
     @ObservedObject var model: TransactionsViewModel
     let userId: String
     let onClose: () -> Void
 
+    @Environment(\.colorScheme) private var scheme
+    @State private var picking = false
+
+    /// How much of each card the next one covers: its bottom padding, never its words.
+    nonisolated private static let overlap: CGFloat = 14
+
     var body: some View {
-        ScreenScaffold(alignment: .leading) {
-            Text(L.t(Strings.shared.transactions_title)).font(.title3.weight(.bold))
+        let dark = scheme == .dark
+        ZStack(alignment: .top) {
+            ZStack {
+                Field.gradient(dark)
+                Waves()
+            }
+            .ignoresSafeArea()
 
-            modeToggle.padding(.top, 14)
-            slicePicker.padding(.top, 10)
-
-            Group {
-                if model.loading {
-                    ProgressView().frame(maxWidth: .infinity)
-                } else if model.loadFailed {
-                    failed
-                } else if model.showsEmpty {
-                    Text(model.emptyMessage).font(.subheadline).foregroundColor(Brand.textMuted)
-                } else {
-                    rows
+            VStack(spacing: 0) {
+                HStack {
+                    Button(action: onClose) {
+                        Image(systemName: "chevron.left")
+                            .font(.body.weight(.semibold))
+                            .foregroundColor(Field.ink())
+                            .tappableArea()
+                    }
+                    .accessibilityLabel(L.t(Strings.shared.action_back))
+                    Spacer()
                 }
-            }
-            .padding(.top, 12)
+                .padding(.horizontal, 8)
+                .frame(height: 52)
 
-            Button(action: onClose) {
-                Text(L.t(Strings.shared.transactions_close)).font(.headline).tappableRow(minHeight: 52)
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 0) {
+                        top.padding(.bottom, 12)
+                        if !model.loading && !model.loadFailed && !model.showsEmpty {
+                            stack
+                        }
+                        bottom.padding(.top, 12)
+                    }
+                    .frame(maxWidth: 560)
+                    .frame(maxWidth: .infinity)
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 24)
+                }
+                .scrollBounceBehavior(.basedOnSize)
             }
-            .buttonStyle(.bordered)
-            .tint(.primary)
-            .padding(.top, 20)
         }
         .onAppear { model.bind(userId: userId) }
         .onDisappear { model.unbind() }
         .sheet(isPresented: editingShown) { CorrectionSheet(model: model) }
+        .sheet(isPresented: $picking) { pickerSheet }
     }
 
     private var editingShown: Binding<Bool> {
         Binding(get: { model.editing != nil }, set: { if !$0 { model.cancelEdit() } })
     }
 
+    // MARK: - Above the stack
+
+    private var top: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text(L.t(Strings.shared.transactions_title))
+                .font(.largeTitle.weight(.bold))
+                .foregroundColor(Field.ink())
+                .accessibilityAddTraits(.isHeader)
+            modeToggle
+            sliceRow
+            totals
+        }
+    }
+
+    /// The two ways of slicing, as a pill with the chosen half lit.
     private var modeToggle: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 0) {
             segment(L.t(Strings.shared.transactions_by_month), selected: !model.browsingByStatement) {
                 model.show(mode: TransactionBrowsing.Mode.byMonth)
             }
@@ -60,148 +101,332 @@ struct TransactionsView: View {
             }
         }
         .padding(4)
-        .background(Brand.surfaceField)
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .background(Capsule().fill(Field.glass))
+        .overlay(Capsule().stroke(Field.glassEdge, lineWidth: 1))
     }
 
     private func segment(_ label: String, selected: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(label)
-                .font(.subheadline.weight(selected ? .semibold : .regular))
-                .foregroundColor(selected ? .primary : Brand.textMuted)
+                .font(.subheadline.weight(.semibold))
+                .foregroundColor(selected ? Brand.greenDeep : Field.ink(0.9))
                 .frame(maxWidth: .infinity, minHeight: 44)
-                .background(selected ? Brand.surface : Color.clear)
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .background(Capsule().fill(selected ? Color.white : .clear))
+                .contentShape(Capsule())
         }
         .buttonStyle(.plain)
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 
-    /// Which statement, or which month — whichever the mode is asking for.
-    private var slicePicker: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                if model.browsingByStatement {
-                    ForEach(model.statements, id: \.id) { statement in
-                        chip(model.statementLabel(statement), selected: statement.id == model.statementId) {
-                            model.show(statement: statement.id)
+    /// The months or statements to choose from, and the button that lists them all.
+    private var sliceRow: some View {
+        HStack(spacing: 10) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    if model.browsingByStatement {
+                        ForEach(model.statements, id: \.id) { statement in
+                            chip(model.statementChip(statement), selected: statement.id == model.statementId) {
+                                model.show(statement: statement.id)
+                            }
                         }
-                    }
-                } else {
-                    ForEach(model.months, id: \.self) { month in
-                        chip(model.monthLabel(month), selected: month == model.month) {
-                            model.show(month: month)
+                    } else {
+                        ForEach(model.months, id: \.self) { month in
+                            chip(model.monthLabel(month), selected: month == model.month) {
+                                model.show(month: month)
+                            }
                         }
                     }
                 }
             }
+            Button { picking = true } label: {
+                Image(systemName: "calendar")
+                    .font(.title3)
+                    .foregroundColor(Brand.greenDeep)
+                    .frame(width: 48, height: 48)
+                    .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color.white))
+            }
+            .accessibilityLabel(L.t(model.browsingByStatement
+                ? Strings.shared.transactions_pick_statement
+                : Strings.shared.transactions_pick_month))
         }
     }
 
     private func chip(_ label: String, selected: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(label)
-                .font(.caption.weight(.medium))
-                .foregroundColor(selected ? Brand.onGreen : Brand.textMuted)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 9)
-                .frame(minHeight: 36)
-                .background(selected ? Brand.green : Brand.surfaceField)
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .font(.subheadline.weight(selected ? .semibold : .medium))
+                .foregroundColor(Field.ink())
+                .padding(.horizontal, 18)
+                .frame(minHeight: 44)
+                .background(Capsule().fill(selected ? Color(red: 0x0B / 255, green: 0x5E / 255, blue: 0x2E / 255) : Field.glass))
+                .overlay(Capsule().stroke(selected ? Color.white.opacity(0.25) : Field.glassEdge, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+
+    /// Money in and money out for the slice, side by side. Absent, not "$0.00",
+    /// for a slice with nothing in it: zero would be a claim about the
+    /// statement rather than an absence of rows.
+    private var totals: some View {
+        HStack(spacing: 12) {
+            total(
+                L.t(Strings.shared.transactions_total_in), model.totalIn ?? "—",
+                symbol: "arrow.up", accent: Brand.green,
+                ink: Color(red: 0x15 / 255, green: 0x80 / 255, blue: 0x3D / 255)
+            )
+            total(
+                L.t(Strings.shared.transactions_total_out), model.totalOut ?? "—",
+                symbol: "arrow.down", accent: Brand.red,
+                ink: Color(red: 0xB9 / 255, green: 0x1C / 255, blue: 0x1C / 255)
+            )
+        }
+    }
+
+    private func total(_ label: String, _ value: String, symbol: String, accent: Color, ink: Color) -> some View {
+        let dark = scheme == .dark
+        return HStack(spacing: 10) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 14, style: .continuous).fill(accent.opacity(0.18))
+                Image(systemName: symbol).font(.body.weight(.semibold)).foregroundColor(dark ? accent : ink)
+            }
+            .frame(width: 44, height: 44)
+            .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(label).font(.subheadline).foregroundColor(dark ? accent : ink)
+                Text(value).font(.headline.weight(.bold)).foregroundColor(.primary).lineLimit(1).minimumScaleFactor(0.7)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity)
+        .background(
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .fill(dark ? Brand.surface : .white)
+                .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(accent.opacity(dark ? 0.14 : 0.10)))
+        )
+        .accessibilityElement(children: .combine)
+    }
+
+    // MARK: - The stack
+
+    private var stack: some View {
+        let groups = model.monthGroups
+        // A running number across the groups, so a later card is always in
+        // front of an earlier one wherever the headings fall.
+        var starts: [Int] = []
+        var running = 0
+        for group in groups {
+            starts.append(running)
+            running += group.rows.count
+        }
+        return VStack(alignment: .leading, spacing: 0) {
+            ForEach(Array(groups.enumerated()), id: \.element.month) { g, group in
+                heading(group.month)
+                ForEach(Array(group.rows.enumerated()), id: \.element.id) { i, row in
+                    stackedCard(row, first: i == 0, order: starts[g] + i)
+                }
+            }
+        }
+    }
+
+    /// A month's heading. It goes as the stack reaches it — the stacked card in
+    /// front is about a card tall — rather than showing beneath it.
+    private func heading(_ month: String) -> some View {
+        Text(model.monthHeading(month))
+            .font(.headline.weight(.medium))
+            .foregroundColor(Field.ink(0.92))
+            .padding(.leading, 4)
+            .padding(.top, 16)
+            .padding(.bottom, 8)
+            .accessibilityAddTraits(.isHeader)
+            .visualEffect { content, proxy in
+                let y: CGFloat = proxy.frame(in: .scrollView).minY
+                let fade: CGFloat = min(max((y - 94) / 32, 0), 1)
+                return content.opacity(Double(fade))
+            }
+            .zIndex(0)
+    }
+
+    private func stackedCard(_ row: SharedLogic.Transaction, first: Bool, order: Int) -> some View {
+        card(row)
+            .padding(.top, first ? 0 : -Self.overlap)
+            .visualEffect { content, proxy in Self.stacked(content, proxy) }
+            .zIndex(Double(1 + order))
+    }
+
+    /// Where a card sits once it has reached the top: stopped there, a little
+    /// higher and smaller for each card that has arrived over it, and gone
+    /// after three.
+    private nonisolated static func stacked(_ content: EmptyVisualEffect, _ proxy: GeometryProxy) -> some VisualEffect {
+        let pin: CGFloat = 22
+        let peek: CGFloat = 6
+        let y = proxy.frame(in: .scrollView).minY
+        let step = max(proxy.size.height - overlap, 1)
+        let depth = max(0, (pin - y) / step)
+        let shown: CGFloat = min(depth, 3)
+        let pinned = y < pin
+        let scale: CGFloat = pinned ? 1 - 0.04 * shown : 1
+        let lift: CGFloat = pinned ? (pin - y) - peek * shown : 0
+        let fade: Double = depth > 3 ? Double(max(0, 1 - (depth - 3))) : 1
+        return content
+            .scaleEffect(scale, anchor: .top)
+            .offset(y: lift)
+            .opacity(fade)
+    }
+
+    /// One transaction as a card; its bottom padding is what the next card covers.
+    private func card(_ row: SharedLogic.Transaction) -> some View {
+        let dark = scheme == .dark
+        let filed = model.isFiled(row)
+        let unfiledInk = Color(red: 0xB4 / 255, green: 0x53 / 255, blue: 0x09 / 255)
+        return Button { model.edit(row.id) } label: {
+            HStack(spacing: 14) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill((filed ? Brand.green : Brand.amber).opacity(0.14))
+                    Image(systemName: Self.symbol(model.iconFor(row)))
+                        .font(.title3)
+                        .foregroundColor(filed ? (dark ? Brand.green : Brand.greenDeep) : unfiledInk)
+                }
+                .frame(width: 48, height: 48)
+                .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(model.dateLabel(row.occurredOn)).font(.caption).foregroundColor(Brand.textMuted)
+                    Text(model.titleOf(row)).font(.headline.weight(.regular)).foregroundColor(.primary).lineLimit(1)
+                    Text(model.categoryLabel(row))
+                        .font(.subheadline)
+                        .foregroundColor(filed ? Brand.textMuted : unfiledInk)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 8)
+                Text(model.amountLabel(row))
+                    .font(.headline.weight(.semibold))
+                    // Green for money in; money out stays plain, so the
+                    // direction registers instead of every row shouting.
+                    .foregroundColor(model.isCredit(row) ? (dark ? Brand.green : Brand.greenDeep) : .primary)
+                Image(systemName: "chevron.right")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundColor(Brand.textMuted)
+                    .accessibilityHidden(true)
+            }
+            .padding(.leading, 16)
+            .padding(.trailing, 12)
+            .padding(.top, 12)
+            .padding(.bottom, 12 + Self.overlap)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .fill(dark ? Brand.surface : .white)
+                    .shadow(color: .black.opacity(0.22), radius: 10, y: -2)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .stroke(dark ? Color.white.opacity(0.06) : Color(red: 0xE8 / 255, green: 0xF1 / 255, blue: 0xEC / 255), lineWidth: 1)
+            )
+            .contentShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(model.rowDescription(row))
+        .accessibilityHint(model.editLabel(row))
+    }
+
+    /// The shared icon names as SF Symbols.
+    private static func symbol(_ icon: CategoryIcon) -> String {
+        switch icon {
+        case .home: "house.fill"
+        case .transfer: "arrow.left.arrow.right"
+        case .document: "doc.text.fill"
+        case .car: "car.fill"
+        case .bag: "bag.fill"
+        case .bolt: "bolt.fill"
+        case .dining: "fork.knife"
+        case .cart: "cart.fill"
+        case .heart: "cross.case.fill"
+        case .salary: "banknote.fill"
+        case .shield: "shield.fill"
+        case .school: "graduationcap.fill"
+        case .ticket: "ticket.fill"
+        case .gift: "gift.fill"
+        case .spa: "leaf.fill"
+        case .piggy: "dollarsign.circle.fill"
+        case .repeat: "repeat"
+        case .plane: "airplane"
+        case .card: "creditcard.fill"
+        case .phone: "iphone"
+        case .tag: "tag.fill"
+        case .unfiled: "questionmark.circle.fill"
+        }
+    }
+
+    // MARK: - Below the stack
+
+    /// Loading, a failure, an empty slice, or the next page — whichever applies.
+    @ViewBuilder
+    private var bottom: some View {
+        if model.loading || model.loadingMore {
+            ProgressView().tint(Field.ink()).frame(maxWidth: .infinity)
+        } else if model.loadFailed {
+            VStack(spacing: 10) {
+                ErrorText(messageKey: model.errorKey)
+                    .padding(16)
+                    .frame(maxWidth: .infinity)
+                    .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(Brand.ground))
+                glassButton(L.t(Strings.shared.dashboard_retry)) { model.load() }
+            }
+        } else if model.showsEmpty {
+            Text(model.emptyMessage)
+                .font(.body)
+                .foregroundColor(Field.ink(0.9))
+                .padding(.vertical, 24)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        } else if model.canLoadMore {
+            glassButton(L.t(Strings.shared.transactions_load_more)) { model.loadMore() }
+        }
+    }
+
+    private func glassButton(_ label: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(label)
+                .font(.subheadline.weight(.semibold))
+                .foregroundColor(Field.ink())
+                .frame(maxWidth: .infinity, minHeight: 52)
+                .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Field.glass))
+                .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(Field.glassEdge, lineWidth: 1))
         }
         .buttonStyle(.plain)
     }
 
-    @ViewBuilder
-    private var rows: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            totals
-            ForEach(model.days, id: \.date) { day in
-                Text(model.dateLabel(day.date))
-                    .font(.caption)
-                    .foregroundColor(Brand.textMuted)
-                    .padding(.top, 12)
-                    .padding(.bottom, 4)
-                VStack(spacing: 0) {
-                    ForEach(Array(day.rows.enumerated()), id: \.element.id) { index, row in
-                        // Any row can be fixed from here, not only the ones the
-                        // review queue holds: a wrong category on a confidently
-                        // filed row is just as wrong.
-                        Button { model.edit(row.id) } label: { transactionRow(row) }
-                            .buttonStyle(.plain)
-                            .accessibilityHint(model.editLabel(row))
-                        if index != day.rows.count - 1 { Divider().overlay(Brand.border) }
+    /// Every month, or every statement, to choose from when the chips run off the edge.
+    private var pickerSheet: some View {
+        NavigationStack {
+            List {
+                if model.browsingByStatement {
+                    ForEach(model.statements, id: \.id) { statement in
+                        ChoiceRow(title: model.statementLabel(statement), detail: nil, selected: statement.id == model.statementId) {
+                            model.show(statement: statement.id)
+                            picking = false
+                        }
+                    }
+                } else {
+                    ForEach(model.months, id: \.self) { month in
+                        ChoiceRow(title: model.monthLabel(month), detail: nil, selected: month == model.month) {
+                            model.show(month: month)
+                            picking = false
+                        }
                     }
                 }
-                .background(Brand.surface)
-                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             }
-
-            if model.canLoadMore {
-                Button { model.loadMore() } label: {
-                    Text(L.t(Strings.shared.transactions_load_more)).font(.headline).tappableRow(minHeight: 52)
+            .navigationTitle(L.t(model.browsingByStatement
+                ? Strings.shared.transactions_pick_statement
+                : Strings.shared.transactions_pick_month))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(L.t(Strings.shared.action_cancel)) { picking = false }
                 }
-                .buttonStyle(.bordered)
-                .tint(.primary)
-                .padding(.top, 12)
             }
-            if model.loadingMore {
-                ProgressView().frame(maxWidth: .infinity).padding(.top, 12)
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var totals: some View {
-        HStack(spacing: 6) {
-            if let out = model.totalOut { totalChip(L.t(Strings.shared.import_extracted_out, out)) }
-            if let money = model.totalIn { totalChip(L.t(Strings.shared.import_extracted_in, money)) }
-        }
-    }
-
-    private func totalChip(_ text: String) -> some View {
-        Text(text)
-            .font(.caption2)
-            .foregroundColor(Brand.textMuted)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(Brand.surfaceField)
-            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-    }
-
-    private func transactionRow(_ row: SharedLogic.Transaction) -> some View {
-        HStack(spacing: 10) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(model.titleOf(row)).font(.body).lineLimit(1).truncationMode(.tail)
-                Text(model.categoryLabel(row))
-                    .font(.caption2)
-                    .foregroundColor(model.isFiled(row) ? Brand.textMuted : Brand.amber)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(model.isFiled(row) ? Brand.surfaceField : Brand.amber.opacity(0.12))
-                    .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-            }
-            Spacer()
-            Text(model.amountLabel(row))
-                .font(.body.weight(.semibold))
-                // Green for money in; money out stays plain, so the direction
-                // registers instead of every row shouting.
-                .foregroundColor(row.direction == .credit ? Brand.green : .primary)
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .frame(minHeight: 56)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(model.rowDescription(row))
-    }
-
-    private var failed: some View {
-        VStack(spacing: 8) {
-            ErrorText(messageKey: model.errorKey)
-            Button { model.load() } label: {
-                Text(L.t(Strings.shared.dashboard_retry)).font(.headline).tappableRow(minHeight: 52)
-            }
-            .buttonStyle(.bordered)
-            .tint(.primary)
         }
     }
 }
