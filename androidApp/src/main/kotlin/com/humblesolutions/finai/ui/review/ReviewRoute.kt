@@ -44,6 +44,7 @@ internal fun ReviewRoute(userId: String, onClose: () -> Unit, showsBack: Boolean
             onUndoDelete = model::undoDelete,
             onDismissAnnouncements = model::dismissAnnouncements,
             onCancelEdit = model::cancelEdit,
+            onDeleteEditing = model::deleteEditing,
             onDateChange = model::onDateChange,
             onAmountChange = model::onAmountChange,
             onDirectionChange = model::onDirectionChange,

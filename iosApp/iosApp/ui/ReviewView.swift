@@ -270,6 +270,10 @@ protocol TransactionEditing: ObservableObject {
     /// The sheet's title: "Fix this transaction" in the queue, "Edit
     /// transaction" from the full list.
     var editTitleKey: String { get }
+    /// A delete from the sheet in flight.
+    var deleting: Bool { get }
+    /// What the delete question names the row by: title, amount, day.
+    var deleteSummary: [String] { get }
 
     func setDate(_ date: Kotlinx_datetimeLocalDate)
     func setAmount(_ value: String)
@@ -282,10 +286,24 @@ protocol TransactionEditing: ObservableObject {
     func setNewCategoryName(_ name: String)
     func cancelNewCategory()
     func createCategory()
+    func deleteEditing()
 }
 
 extension ReviewViewModel: TransactionEditing {
     var editTitleKey: String { Strings.shared.review_edit_title }
+    /// The queue's delete is local first, with an undo, so it is never in flight here.
+    var deleting: Bool { false }
+    var deleteSummary: [String] {
+        editing.map { ImportedRows.shared.summary(row: $0, locale: locale) } ?? []
+    }
+
+    /// The row the sheet has open goes the way the queue deletes any row: at
+    /// once, with the few seconds' undo.
+    func deleteEditing() {
+        guard let id = editing?.id, !saving else { return }
+        cancelEdit()
+        delete(id)
+    }
 }
 
 /// Fixing a row: date, amount, direction, description, category.
@@ -293,6 +311,9 @@ struct CorrectionSheet<Model: TransactionEditing>: View {
     @ObservedObject var model: Model
     @State private var choosingCategory = false
     @State private var choosingDate = false
+    @State private var confirmingDelete = false
+
+    private var busy: Bool { model.saving || model.deleting }
 
     var body: some View {
         NavigationStack {
@@ -340,7 +361,7 @@ struct CorrectionSheet<Model: TransactionEditing>: View {
                     if model.editErrorKey == nil { ErrorText(messageKey: model.editNotice?.messageKey) }
                     GradientButton(
                         title: L.t(Strings.shared.review_edit_save),
-                        enabled: model.canSaveCorrection,
+                        enabled: model.canSaveCorrection && !model.deleting,
                         busy: model.saving
                     ) {
                         dismissKeyboard()
@@ -349,13 +370,36 @@ struct CorrectionSheet<Model: TransactionEditing>: View {
                     .listRowInsets(EdgeInsets())
                     .listRowBackground(Color.clear)
                 }
+                // Asked first: a deleted row is gone from the figures, and
+                // this is the one button in the sheet that cannot be taken back.
+                Section {
+                    Button(role: .destructive) {
+                        dismissKeyboard()
+                        confirmingDelete = true
+                    } label: {
+                        HStack {
+                            Text(L.t(Strings.shared.transaction_delete))
+                            if model.deleting {
+                                Spacer()
+                                ProgressView()
+                            }
+                        }
+                    }
+                    .disabled(busy)
+                }
+            }
+            .alert(L.t(Strings.shared.transaction_delete_confirm_title), isPresented: $confirmingDelete) {
+                Button(L.t(Strings.shared.transaction_delete_confirm), role: .destructive) { model.deleteEditing() }
+                Button(L.t(Strings.shared.action_cancel), role: .cancel) {}
+            } message: {
+                Text(deleteMessage)
             }
             .navigationTitle(L.t(model.editTitleKey))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button(L.t(Strings.shared.review_edit_cancel)) { model.cancelEdit() }
-                        .disabled(model.saving)
+                        .disabled(busy)
                 }
                 // Number pads have no return key.
                 ToolbarItemGroup(placement: .keyboard) {
@@ -377,7 +421,13 @@ struct CorrectionSheet<Model: TransactionEditing>: View {
                 )
             }
         }
-        .interactiveDismissDisabled(model.saving)
+        .interactiveDismissDisabled(busy)
+    }
+
+    private var deleteMessage: String {
+        let parts = model.deleteSummary
+        guard parts.count == 3 else { return "" }
+        return L.t(Strings.shared.transaction_delete_confirm_body, parts[0], parts[1], parts[2])
     }
 
     private var directionBinding: Binding<TransactionDirection?> {

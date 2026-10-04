@@ -343,6 +343,38 @@ class TransactionsViewModel : ViewModel() {
         }
     }
 
+    /**
+     * Deletes the row being edited — the editor asked first. Any row, not
+     * only one still waiting: a wrong row found after confirming it is just
+     * as wrong. On success the ledger has moved, so it is announced, and home
+     * and this list both re-read.
+     */
+    fun deleteEditing() {
+        val repos = repositories ?: return
+        val state = _uiState.value
+        val row = state.editing ?: return
+        if (state.saving || state.deleting) return
+        _uiState.update { it.copy(deleting = true, editErrorKey = null) }
+        viewModelScope.launch {
+            try {
+                repos.transactions.delete(row.id)
+                _uiState.update {
+                    it.copy(
+                        deleting = false,
+                        editing = null,
+                        draft = CorrectionDraft(),
+                        rows = it.rows.filterNot { r -> r.id == row.id },
+                    )
+                }
+                LedgerChanged.announce()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: ApiException) {
+                _uiState.update { it.copy(deleting = false, editErrorKey = e.messageKey) }
+            }
+        }
+    }
+
     fun openNewCategory() = _uiState.update { it.copy(newCategoryName = "", newCategoryErrorKey = null) }
 
     fun onNewCategoryName(name: String) = _uiState.update { it.copy(newCategoryName = name, newCategoryErrorKey = null) }

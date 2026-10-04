@@ -3,6 +3,7 @@ package com.humblesolutions.finai.usecase
 import com.humblesolutions.finai.model.Category
 import com.humblesolutions.finai.model.Transaction
 import com.humblesolutions.finai.model.TransactionDirection
+import com.humblesolutions.finai.util.Dates
 import com.humblesolutions.finai.util.Money
 
 /**
@@ -71,6 +72,16 @@ object ImportedRows {
      * the one the person has to do something about.
      */
     fun categoryOf(row: Transaction, categories: List<Category>): Category? = row.categoryId?.let { id -> categories.firstOrNull { it.id == id } }
+
+    /**
+     * What a question about one row names it by — its title, amount and day —
+     * so "Delete this transaction?" says which, in both apps the same way.
+     */
+    fun summary(row: Transaction, locale: String = "en"): List<String> = listOf(
+        titleOf(row),
+        Money.format(row.amount, row.currency, locale),
+        Dates.parse(row.occurredOn)?.let { Dates.display(it) } ?: row.occurredOn,
+    )
 
     /** What to call a row: the merchant if the parser found one, else its description. */
     fun titleOf(row: Transaction): String = row.merchant?.takeIf { it.isNotBlank() }

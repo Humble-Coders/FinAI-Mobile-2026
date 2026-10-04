@@ -5,6 +5,7 @@ import com.humblesolutions.finai.model.Transaction
 import com.humblesolutions.finai.ui.edit.TransactionEditorState
 import com.humblesolutions.finai.usecase.CorrectionBlock
 import com.humblesolutions.finai.usecase.CorrectionDraft
+import com.humblesolutions.finai.usecase.ImportedRows
 import com.humblesolutions.finai.usecase.ManualEntry
 import com.humblesolutions.finai.usecase.ReviewQueue
 import com.humblesolutions.finai.util.Money
@@ -138,6 +139,7 @@ data class ReviewUiState(
                 newCategoryErrorKey = newCategoryErrorKey,
                 canCreateCategory = canCreateCategory,
                 creatingCategory = creatingCategory,
+                deleteSummary = ImportedRows.summary(row, locale),
             )
         }
 }

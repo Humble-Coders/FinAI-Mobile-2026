@@ -13,6 +13,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -91,6 +92,9 @@ data class TransactionEditorState(
     val canCreateCategory: Boolean,
     val creatingCategory: Boolean,
     val titleKey: String = Strings.review_edit_title,
+    val deleting: Boolean = false,
+    /** "Loblaws, − $86.40 on Aug 2, 2026" — what the delete question names. */
+    val deleteSummary: List<String> = emptyList(),
 )
 
 /** What the editor sheet can ask of the screen that opened it. */
@@ -106,6 +110,8 @@ class TransactionEditorActions(
     val onNewCategoryName: (String) -> Unit,
     val onCreateCategory: () -> Unit,
     val onCancelNewCategory: () -> Unit,
+    /** Null where the screen offers no delete; the button is then not drawn. */
+    val onDelete: (() -> Unit)? = null,
 )
 
 /** The editor: date, amount, direction, description and category. */
@@ -113,7 +119,9 @@ class TransactionEditorActions(
 @Composable
 fun TransactionEditorSheet(state: TransactionEditorState, actions: TransactionEditorActions) {
     var choosingCategory by rememberSaveable { mutableStateOf(false) }
+    var confirmingDelete by rememberSaveable { mutableStateOf(false) }
     val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val busy = state.saving || state.deleting
 
     ModalBottomSheet(onDismissRequest = actions.onCancel, sheetState = sheet) {
         Column(
@@ -136,16 +144,50 @@ fun TransactionEditorSheet(state: TransactionEditorState, actions: TransactionEd
             GradientButton(
                 text = strings(Strings.review_edit_save),
                 onClick = actions.onSave,
-                enabled = state.canSave,
+                enabled = state.canSave && !state.deleting,
                 busy = state.saving,
             )
             TextButton(
                 onClick = actions.onCancel,
-                enabled = !state.saving,
+                enabled = !busy,
                 modifier = Modifier.align(Alignment.CenterHorizontally),
             ) { Text(strings(Strings.review_edit_cancel)) }
+            actions.onDelete?.let {
+                // Asked first: a deleted row is gone from the figures, and
+                // this is the one button in the sheet that cannot be taken back.
+                TextButton(
+                    onClick = { confirmingDelete = true },
+                    enabled = !busy,
+                    modifier = Modifier.align(Alignment.CenterHorizontally),
+                ) {
+                    Text(
+                        strings(Strings.transaction_delete),
+                        color = if (busy) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
+                    )
+                }
+            }
             Spacer(Modifier.height(16.dp))
         }
+    }
+
+    val onDelete = actions.onDelete
+    if (confirmingDelete && onDelete != null) {
+        AlertDialog(
+            onDismissRequest = { confirmingDelete = false },
+            title = { Text(strings(Strings.transaction_delete_confirm_title)) },
+            text = {
+                Text(strings(Strings.transaction_delete_confirm_body, *state.deleteSummary.toTypedArray()))
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        confirmingDelete = false
+                        onDelete()
+                    },
+                ) { Text(strings(Strings.transaction_delete_confirm), color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = { TextButton(onClick = { confirmingDelete = false }) { Text(strings(Strings.action_cancel)) } },
+        )
     }
 
     if (choosingCategory) {

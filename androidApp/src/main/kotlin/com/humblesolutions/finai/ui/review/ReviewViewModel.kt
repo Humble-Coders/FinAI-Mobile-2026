@@ -253,6 +253,17 @@ class ReviewViewModel(private val saved: SavedStateHandle) : ViewModel() {
         clearCorrection()
     }
 
+    /**
+     * Deletes the row the editor has open, the way the queue deletes any row:
+     * gone from the list at once, with the few seconds' undo the queue gives.
+     */
+    fun deleteEditing() {
+        val id = _uiState.value.editing?.id ?: return
+        if (_uiState.value.saving) return
+        cancelEdit()
+        delete(id)
+    }
+
     fun onDateChange(date: LocalDate) = editDraft { it.copy(occurredOn = date) }
 
     fun onAmountChange(value: String) = editDraft { it.copy(amount = value) }

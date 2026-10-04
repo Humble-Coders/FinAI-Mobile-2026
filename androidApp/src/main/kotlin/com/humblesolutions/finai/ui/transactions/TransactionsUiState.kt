@@ -49,6 +49,7 @@ data class TransactionsUiState(
     val editing: Transaction? = null,
     val draft: CorrectionDraft = CorrectionDraft(),
     val saving: Boolean = false,
+    val deleting: Boolean = false,
     val editErrorKey: String? = null,
     val today: LocalDate = ManualEntry.today(),
     val newCategoryName: String? = null,
@@ -204,6 +205,8 @@ data class TransactionsUiState(
                 canCreateCategory = !creatingCategory && !newCategoryName.isNullOrBlank(),
                 creatingCategory = creatingCategory,
                 titleKey = Strings.transactions_edit_title,
+                deleting = deleting,
+                deleteSummary = ImportedRows.summary(row, locale),
             )
         }
 }

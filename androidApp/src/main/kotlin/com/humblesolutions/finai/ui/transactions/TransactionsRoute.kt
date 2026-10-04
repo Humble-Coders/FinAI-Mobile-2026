@@ -42,6 +42,7 @@ internal fun TransactionsRoute(userId: String, onClose: () -> Unit, showsBack: B
             onNewCategoryName = model::onNewCategoryName,
             onCreateCategory = model::createCategory,
             onCancelNewCategory = model::cancelNewCategory,
+            onDelete = model::deleteEditing,
         ),
     )
 }

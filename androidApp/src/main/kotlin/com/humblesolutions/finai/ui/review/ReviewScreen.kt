@@ -99,6 +99,7 @@ class ReviewActions(
     val onUndoDelete: () -> Unit,
     val onDismissAnnouncements: () -> Unit,
     val onCancelEdit: () -> Unit,
+    val onDeleteEditing: () -> Unit = {},
     val onDateChange: (LocalDate) -> Unit,
     val onAmountChange: (String) -> Unit,
     val onDirectionChange: (TransactionDirection) -> Unit,
@@ -124,6 +125,7 @@ class ReviewActions(
             onNewCategoryName = onNewCategoryName,
             onCreateCategory = onCreateCategory,
             onCancelNewCategory = onCancelNewCategory,
+            onDelete = onDeleteEditing,
         )
 }
 

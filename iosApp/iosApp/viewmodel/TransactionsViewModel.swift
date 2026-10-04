@@ -33,6 +33,7 @@ final class TransactionsViewModel: ObservableObject {
     @Published private(set) var editing: SharedLogic.Transaction?
     @Published private(set) var draft = TransactionsViewModel.emptyDraft
     @Published private(set) var saving = false
+    @Published private(set) var deleting = false
     @Published private(set) var editErrorKey: String?
     @Published private(set) var today = ManualEntry.shared.today()
     @Published private(set) var newCategoryName: String?
@@ -523,6 +524,35 @@ final class TransactionsViewModel: ObservableObject {
                 // A duplicate is said in the sheet, with the row still open:
                 // the person's draft is the thing they need to fix.
                 self.saving = false
+                self.editErrorKey = Self.messageKey(error)
+            }
+        }
+    }
+
+    /// What the delete question names the row by: title, amount, day.
+    var deleteSummary: [String] {
+        editing.map { ImportedRows.shared.summary(row: $0, locale: "en") } ?? []
+    }
+
+    /// Deletes the row being edited — the sheet asked first. Any row, not only
+    /// one still waiting: a wrong row found after confirming it is just as
+    /// wrong. On success the ledger has moved, so it is announced, and home and
+    /// this list both re-read. Mirrors Android's `deleteEditing`.
+    func deleteEditing() {
+        guard let transactionsRepository, let row = editing, !saving, !deleting else { return }
+        deleting = true
+        editErrorKey = nil
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                _ = try await transactionsRepository.delete(id: row.id)
+                self.deleting = false
+                self.editing = nil
+                self.draft = Self.emptyDraft
+                self.rows.removeAll { $0.id == row.id }
+                LedgerChanged.announce()
+            } catch {
+                self.deleting = false
                 self.editErrorKey = Self.messageKey(error)
             }
         }

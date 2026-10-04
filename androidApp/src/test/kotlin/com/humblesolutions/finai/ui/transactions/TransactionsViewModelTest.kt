@@ -77,7 +77,15 @@ class TransactionsViewModelTest {
         }
         override suspend fun confirm(id: String): PatchOutcome = error("not called")
         override suspend fun confirmAll(ids: List<String>): ConfirmOutcome = error("not called")
-        override suspend fun delete(id: String): DeleteOutcome = error("not called")
+        val deleted = mutableListOf<String>()
+        var deleteFails: ApiException? = null
+
+        override suspend fun delete(id: String): DeleteOutcome {
+            deleteFails?.let { throw it }
+            deleted += id
+            page = page.copy(rows = page.rows.filterNot { it.id == id })
+            return DeleteOutcome()
+        }
         override fun close() = Unit
     }
 
@@ -482,5 +490,42 @@ class TransactionsViewModelTest {
         LedgerChanged.announce()
 
         assertEquals("imp-2", model.uiState.value.statementId)
+    }
+
+    // ── Deleting from the editor ────────────────────────────────────────
+
+    @Test
+    fun deleting_from_the_editor_sends_it_closes_the_editor_and_tells_home() = runTest {
+        val (model, repo) = editable()
+        model.edit("r1")
+        val before = repo.asks.size
+
+        model.deleteEditing()
+
+        assertEquals(listOf("r1"), repo.deleted)
+        assertNull(model.uiState.value.editing)
+        assertTrue(model.uiState.value.rows.none { it.id == "r1" })
+        // Announced: this list re-reads, as home does.
+        assertTrue(repo.asks.drop(before).any { it.cursor == null && it.month != null }, "the month was read again")
+    }
+
+    @Test
+    fun a_delete_the_server_refuses_keeps_the_editor_open_and_says_why() = runTest {
+        val (model, repo) = editable()
+        model.edit("r1")
+        repo.deleteFails = ApiException.Network(RuntimeException("offline"))
+
+        model.deleteEditing()
+
+        assertEquals("r1", model.uiState.value.editing?.id)
+        assertFalse(model.uiState.value.deleting)
+        assertEquals(ApiException.Network(RuntimeException("offline")).messageKey, model.uiState.value.editErrorKey)
+    }
+
+    @Test
+    fun the_delete_question_names_the_row() {
+        val state = TransactionsUiState(editing = loblaws)
+        assertEquals("LOBLAWS 1234", state.editor?.deleteSummary?.first())
+        assertEquals(3, state.editor?.deleteSummary?.size)
     }
 }
