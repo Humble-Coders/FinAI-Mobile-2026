@@ -491,6 +491,9 @@ final class StatementImportViewModel: ObservableObject, NewAccountHost {
                     document: read,
                     accountId: accountId,
                     keepTextForDiagnostics: keepText,
+                    // Every account is in the household's currency, so any of
+                    // them answers when none is chosen yet.
+                    accountCurrency: (accounts.first { $0.id == accountId } ?? accounts.first)?.currency,
                     onRedacted: { _ in }
                 )
                 guard started == self.generation else { return }

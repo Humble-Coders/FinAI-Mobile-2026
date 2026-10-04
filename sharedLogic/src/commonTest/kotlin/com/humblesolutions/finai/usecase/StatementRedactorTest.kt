@@ -323,4 +323,39 @@ class StatementRedactorTest {
         // that drops it is not relaxed for it.
         assertEquals("", StatementRedactor.redact(screenshot(fromImage = false)))
     }
+
+    // ── A payment receipt ───────────────────────────────────────────────
+
+    private val receipt get() = StatementRedactor.redact(OcrRows.of(ScreenshotFixture.receipt))
+
+    @Test
+    fun a_receipt_with_an_amount_in_whole_rupees_is_sent() {
+        assertTrue(receipt.contains("₹70"), receipt)
+        assertTrue(receipt.contains("4 Oct 2026, 6:27pm"), receipt)
+        assertTrue(receipt.contains("To: GURPREET SINGH"), "the payee is the description: $receipt")
+    }
+
+    @Test
+    fun a_receipt_keeps_back_the_payer_and_both_upi_ids() {
+        assertFalse(receipt.contains("SHARNYA"), "the payer's name went out: $receipt")
+        assertFalse(receipt.contains("okhdfcbank"), receipt)
+        assertFalse(receipt.contains("icrj@ptys"), receipt)
+        assertFalse(receipt.contains("130715123456"), "the transaction id went out whole: $receipt")
+    }
+
+    @Test
+    fun a_upi_id_in_a_statement_row_is_masked_and_the_row_kept() {
+        val text = StatementRedactor.redact(document(listOf("14 Aug UPI/4821/john.d@okaxis/groceries  500.00")))
+
+        assertFalse(text.contains("john.d@okaxis"), text)
+        assertTrue(text.contains("500.00"), text)
+    }
+
+    @Test
+    fun a_bare_symbol_amount_does_not_start_a_statements_rows() {
+        // Only for images: on a statement a "$45" above the rows is as likely
+        // a balance in the header as anything else.
+        val text = StatementRedactor.redact(document(listOf("JANE DOE", "Balance $45", "No dated rows here")))
+        assertEquals("", text)
+    }
 }

@@ -318,7 +318,11 @@ class StatementImportViewModel(private val saved: SavedStateHandle) : ViewModel(
         _uiState.update { it.copy(step = ImportStep.SENDING, problem = null, canResend = true) }
         work = viewModelScope.launch {
             try {
-                val result = ImportStatement(repos.imports).execute(read, accountId, keepText)
+                // Every account is in the household's currency, so any of them
+                // answers when none is chosen yet.
+                val accounts = _uiState.value.accounts
+                val currency = (accounts.firstOrNull { it.id == accountId } ?: accounts.firstOrNull())?.currency
+                val result = ImportStatement(repos.imports).execute(read, accountId, keepText, accountCurrency = currency)
                 if (started != generation) return@launch
                 if (keepText) {
                     _uiState.update {

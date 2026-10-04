@@ -263,6 +263,7 @@ object Strings {
     const val dashboard_recent_debit = "dashboard_recent_debit" // "− {0}"
     const val dashboard_recent_row = "dashboard_recent_row" // "{0}, {1}, {2}, {3}"
     const val dashboard_trend_label = "dashboard_trend_label" // "Net by month"
+    const val statement_other_currency = "statement_other_currency" // "This is in a different currency …"
     const val tab_home = "tab_home" // "Home"
     const val tab_transactions = "tab_transactions" // "Transactions"
     const val tab_review = "tab_review" // "Review"

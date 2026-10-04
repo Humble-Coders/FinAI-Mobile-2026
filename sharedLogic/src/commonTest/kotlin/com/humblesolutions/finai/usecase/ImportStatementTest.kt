@@ -304,4 +304,25 @@ class ImportStatementTest {
 
         assertEquals("2026-08-01", assertNotNull(imports.sent).statementPeriodStart)
     }
+
+    @Test
+    fun a_receipt_in_another_currency_is_refused_before_anything_is_sent() = runTest {
+        val imports = FakeImports()
+
+        val refused = assertFailsWith<StatementInOtherCurrency> {
+            ImportStatement(imports) { today }.execute(ScreenshotFixture.receipt, accountCurrency = "CAD")
+        }
+
+        assertEquals("INR", refused.found)
+        assertNull(imports.sent, "₹70 must never be recorded as $70")
+    }
+
+    @Test
+    fun a_receipt_in_the_accounts_currency_is_sent() = runTest {
+        val imports = FakeImports()
+
+        ImportStatement(imports) { today }.execute(ScreenshotFixture.receipt, accountCurrency = "INR")
+
+        assertTrue(assertNotNull(imports.sent).text.contains("₹70"))
+    }
 }

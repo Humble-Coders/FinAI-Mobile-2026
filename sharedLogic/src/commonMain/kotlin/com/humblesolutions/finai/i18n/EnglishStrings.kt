@@ -220,6 +220,7 @@ val EnglishStrings: Map<String, String> = mapOf(
     Strings.dashboard_recent_debit to "− {0}",
     Strings.dashboard_recent_row to "{0}, {1}, {2}, {3}",
     Strings.dashboard_trend_label to "Net by month",
+    Strings.statement_other_currency to "This is in a different currency from the account. Amounts are saved in the account's currency, so we stopped rather than record the wrong figures.",
     Strings.tab_home to "Home",
     Strings.tab_transactions to "Transactions",
     Strings.tab_review to "Review",

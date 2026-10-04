@@ -38,4 +38,22 @@ internal object ScreenshotFixture {
         source = SourceKind.OCR,
         fromImage = fromImage,
     )
+
+    /** A Google Pay receipt: one payment, in rupees, with no paise and no table. */
+    val receipt: ExtractedDocument = ExtractedDocument(
+        pages = listOf(
+            ExtractedPage(
+                index = 0,
+                lines = listOf(
+                    "G", "To GURPREET SINGH", "₹70", "Pay again", "Completed", "4 Oct 2026, 6:27pm",
+                    "HDFC Bank 8974", "Payment of ₹70 completed", "Receiver's bank has confirmed deposit of",
+                    "money to GURPREET SINGH's bank account", "UPI transaction ID", "130715123456",
+                    "To: GURPREET SINGH", "••••icrj@ptys", "From: SHARNYA GOEL (HDFC Bank)",
+                    "••••2005@okhdfcbank on Google Pay", "Google transaction ID", "CICAgPiq2bXyZw", "G Pay",
+                ).mapIndexed { index, text -> at(text, 40f, 60f + index * 40f) },
+            ),
+        ),
+        source = SourceKind.OCR,
+        fromImage = true,
+    )
 }

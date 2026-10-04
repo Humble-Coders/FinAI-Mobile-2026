@@ -53,6 +53,8 @@ class ImportStatement(
      *        import's redacted text so the parser can be fixed — asked only
      *        after an import the server read and failed on (#31). Never
      *        defaulted to yes, never remembered.
+     * @param accountCurrency the chosen account's currency. A statement plainly
+     *        in another is refused rather than recorded in this one.
      * @param onRedacted the redaction and what it discarded, before the
      *        request goes out. A dropped line is the one outcome that is
      *        otherwise invisible — the import simply comes up short — and a
@@ -66,6 +68,7 @@ class ImportStatement(
         StatementTooLong::class,
         StatementTooManyPages::class,
         StatementHasNothingToSend::class,
+        StatementInOtherCurrency::class,
         ApiException::class,
         CancellationException::class,
     )
@@ -73,6 +76,7 @@ class ImportStatement(
         document: ExtractedDocument,
         accountId: String? = null,
         keepTextForDiagnostics: Boolean = false,
+        accountCurrency: String? = null,
         onRedacted: (StatementRedactor.Redaction) -> Unit = {},
     ): ParsedStatement {
         val rows = OcrRows.of(document)
@@ -88,6 +92,7 @@ class ImportStatement(
         // thing here instead — and it is knowable here, which is the point of
         // counting what redaction threw away.
         if (text.isEmpty()) throw StatementHasNothingToSend(redaction.droppedLines)
+        StatementCurrency.foreign(text, accountCurrency)?.let { throw StatementInOtherCurrency(it) }
 
         return imports.parse(
             StatementUpload(
@@ -180,6 +185,18 @@ class StatementTooManyPages(
 ) : Exception("statement has too many pages"),
     StatementRefusal {
     override val messageKey: String get() = Strings.statement_too_many_pages
+}
+
+/**
+ * The statement is written in another currency than the account it is going
+ * into, and saving it would record its amounts in the account's — see
+ * [StatementCurrency]. Refused before anything is sent.
+ */
+class StatementInOtherCurrency(
+    val found: String,
+) : Exception("statement in $found"),
+    StatementRefusal {
+    override val messageKey: String get() = Strings.statement_other_currency
 }
 
 /**
