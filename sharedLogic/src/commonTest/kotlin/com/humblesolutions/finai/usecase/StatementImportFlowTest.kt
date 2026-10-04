@@ -166,4 +166,12 @@ class StatementImportFlowTest {
         direction = "debit",
         confidence = 96,
     )
+
+    @Test
+    fun a_statement_in_another_currency_offers_another_file_not_typing() {
+        val problem = kotlin.test.assertNotNull(StatementImportFlow.problemFor(StatementInOtherCurrency("INR")))
+
+        kotlin.test.assertEquals(ImportFailure.OTHER_CURRENCY, problem.failure)
+        kotlin.test.assertFalse(problem.failure.offersManualEntry, "typing it in would record it in the wrong currency too")
+    }
 }

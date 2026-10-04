@@ -34,6 +34,28 @@ class KtorTransactionsRepository internal constructor(
         http.getJson("transactions/review") { if (cursor != null) parameter("cursor", cursor) }
 
     @Throws(ApiException::class, CancellationException::class)
+    override suspend fun list(
+        statementImportId: String?,
+        month: String?,
+        needsReview: Boolean?,
+        cursor: String?,
+    ): ReviewPage = http.getJson("transactions") {
+        // Each omitted rather than sent empty or false: the server reads a
+        // missing filter as "no filter", and `needs_review=false` is a filter
+        // that would hide exactly the rows the result screen exists to show.
+        if (statementImportId != null) parameter("statement_import_id", statementImportId)
+        // A malformed month is refused by the server rather than ignored, so a
+        // blank one must never be sent: it would come back 422 rather than as
+        // "every month", which is what omitting it means.
+        if (month != null) parameter("month", month)
+        if (needsReview != null) parameter("needs_review", needsReview)
+        if (cursor != null) parameter("cursor", cursor)
+    }
+
+    @Throws(ApiException::class, CancellationException::class)
+    override suspend fun recent(count: Int): List<Transaction> = http.getJson<ReviewPage>("transactions") { parameter("limit", count) }.rows
+
+    @Throws(ApiException::class, CancellationException::class)
     override suspend fun correct(id: String, patch: TransactionPatch): PatchOutcome = http.patchJson("transactions/$id", patch)
 
     @Throws(ApiException::class, CancellationException::class)

@@ -1,12 +1,17 @@
 package com.humblesolutions.finai.ui.dashboard
 
 import com.humblesolutions.finai.i18n.LocalizationRegistry
+import com.humblesolutions.finai.model.Category
 import com.humblesolutions.finai.model.Commitment
 import com.humblesolutions.finai.model.CommitmentMatch
 import com.humblesolutions.finai.model.Dashboard
+import com.humblesolutions.finai.model.DayPoint
 import com.humblesolutions.finai.model.Flow
 import com.humblesolutions.finai.model.MonthPoint
 import com.humblesolutions.finai.model.Stock
+import com.humblesolutions.finai.model.Transaction
+import com.humblesolutions.finai.model.TransactionDirection
+import com.humblesolutions.finai.usecase.CategoryIcon
 import kotlinx.datetime.LocalDate
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -28,6 +33,7 @@ class DashboardUiStateTest {
         debts: Stock = Stock("12000.00", "0"),
         commitments: List<Commitment> = emptyList(),
         trend: List<MonthPoint> = emptyList(),
+        daily: List<DayPoint> = emptyList(),
         pendingReview: Int = 0,
     ) = Dashboard(
         month = "2026-08-01",
@@ -40,6 +46,7 @@ class DashboardUiStateTest {
         debts = debts,
         commitments = commitments,
         trend = trend,
+        daily = daily,
         pendingReview = pendingReview,
     )
 
@@ -106,13 +113,13 @@ class DashboardUiStateTest {
 
     @Test
     fun a_balance_that_did_not_move_says_so_rather_than_showing_a_zero() {
-        assertEquals("Nothing moved this month", state(august()).investmentsMovement)
+        assertEquals("Nothing moved", state(august()).investmentsMovement)
         assertEquals(
-            "$500.00 set aside this month",
+            "Set aside $500.00",
             state(august(investments = Stock("40000.00", "500.00"))).investmentsMovement,
         )
         assertEquals(
-            "$400.00 paid this month",
+            "Paid $400.00",
             state(august(debts = Stock("12000.00", "400.00"))).debtsMovement,
         )
     }
@@ -192,51 +199,76 @@ class DashboardUiStateTest {
     }
 
     @Test
-    fun a_month_with_no_rows_is_a_gap_in_the_chart() {
-        val bars = state(
-            august(
-                trend = listOf(
-                    MonthPoint("2026-06-01", "300.00"),
-                    MonthPoint("2026-07-01", null),
-                    MonthPoint("2026-08-01", "1500.00"),
-                ),
-            ),
-        ).bars
+    fun there_is_no_chart_for_a_month_with_no_days() {
+        // An empty month, and a server older than the field, look the same.
+        assertNull(state(august()).dailyChart)
+        assertTrue(state(august()).dailyTicks.isEmpty())
+    }
 
-        assertNull(bars[1].fraction, "July has no bar height, because July has no data")
-        assertEquals("Jul: nothing recorded", bars[1].description)
-        assertEquals(1f, bars[2].fraction, "the tallest month fills the chart")
+    // ── The recent list ─────────────────────────────────────────────────
+
+    private val groceries = Category(id = "c1", name = "Groceries")
+
+    private fun row(
+        amount: String = "86.40",
+        credit: Boolean = false,
+        categoryId: String? = "c1",
+        merchant: String? = "Loblaws",
+    ) = Transaction(
+        id = "t1",
+        occurredOn = "2026-08-02",
+        amount = amount,
+        currency = "CAD",
+        direction = if (credit) TransactionDirection.CREDIT else TransactionDirection.DEBIT,
+        merchant = merchant,
+        categoryId = categoryId,
+    )
+
+    @Test
+    fun money_out_and_money_in_are_signed_in_words_not_just_colour() {
+        val rows = state(august()).copy(
+            recent = listOf(row(amount = "86.40"), row(amount = "4100.00", credit = true)),
+            categories = listOf(groceries),
+        ).recentRows
+
+        assertEquals("− $86.40", rows[0].amount)
+        assertFalse(rows[0].isCredit)
+        assertEquals("+ $4,100.00", rows[1].amount)
+        assertTrue(rows[1].isCredit)
     }
 
     @Test
-    fun a_loss_is_as_tall_as_a_gain_and_differs_by_direction() {
-        // Otherwise a bad month draws as a quiet one.
-        val bars = state(
-            august(
-                trend = listOf(MonthPoint("2026-07-01", "-1500.00"), MonthPoint("2026-08-01", "1500.00")),
-            ),
-        ).bars
+    fun a_row_says_what_it_was_filed_as() {
+        val line = state(august()).copy(recent = listOf(row()), categories = listOf(groceries)).recentRows.single()
 
-        assertEquals(bars[0].fraction, bars[1].fraction)
-        assertTrue(bars[0].isNegative)
-        assertFalse(bars[1].isNegative)
+        assertEquals("Groceries", line.category)
+        assertTrue(line.isFiled)
+        assertEquals("Loblaws", line.title)
     }
 
     @Test
-    fun a_tiny_month_still_leaves_a_mark() {
-        val bars = state(
-            august(
-                trend = listOf(MonthPoint("2026-07-01", "2.00"), MonthPoint("2026-08-01", "5000.00")),
-            ),
-        ).bars
+    fun a_row_nothing_filed_says_so_rather_than_leaving_a_blank() {
+        val line = state(august()).copy(recent = listOf(row(categoryId = null))).recentRows.single()
 
-        assertTrue(bars[0].fraction!! > 0f, "a real month must not vanish")
+        assertEquals("Not filed yet", line.category)
+        assertFalse(line.isFiled)
     }
 
     @Test
-    fun the_chart_is_hidden_until_a_month_in_view_holds_something() {
-        assertFalse(state(august(trend = listOf(MonthPoint("2026-07-01", null)))).showsTrend)
-        assertTrue(state(august(trend = listOf(MonthPoint("2026-07-01", "1.00")))).showsTrend)
+    fun hiding_amounts_hides_them_in_the_recent_list_too() {
+        val hidden = state(august()).copy(recent = listOf(row()), amountsHidden = true)
+        val line = hidden.recentRows.single()
+
+        assertFalse(line.amount.contains("86"), "a masked screen must not leak a figure: ${line.amount}")
+    }
+
+    @Test
+    fun a_row_is_read_as_one_sentence() {
+        val line = state(august()).copy(recent = listOf(row()), categories = listOf(groceries)).recentRows.single()
+
+        assertTrue(line.description.contains("Loblaws"))
+        assertTrue(line.description.contains("− $86.40"))
+        assertTrue(line.description.contains("Groceries"))
     }
 
     @Test
@@ -281,6 +313,7 @@ class DashboardUiStateTest {
                 investments = Stock("40000.00", "500.00"),
                 commitments = listOf(Commitment(name = "Rent", expected = "1800.00")),
                 trend = listOf(MonthPoint("2026-07-01", null)),
+                daily = listOf(DayPoint("2026-08-01", "5000.00"), DayPoint("2026-08-02", "4200.00")),
                 pendingReview = 2,
             ),
         )
@@ -293,8 +326,63 @@ class DashboardUiStateTest {
             month.commitmentsSummary,
             month.pendingReviewLabel,
             month.commitments.single().detail,
-            month.bars.single().description,
+            month.dailyDescription.takeIf { it.isNotEmpty() },
+            *month.dailyTicks.toTypedArray(),
         )
         shown.forEach { assertEquals(it, LocalizationRegistry.get(it), "raw key reached the screen: $it") }
+    }
+
+    // ── What is written on the chart ────────────────────────────────────
+
+    private fun charted() = state(
+        august(
+            net = "-610.00",
+            daily = listOf(
+                DayPoint("2026-08-01", "1500.00"),
+                DayPoint("2026-08-02", "1500.00"),
+                DayPoint("2026-08-03", "-610.00"),
+            ),
+        ),
+    )
+
+    @Test
+    fun the_days_are_named_with_the_month_at_each_end() {
+        assertEquals(listOf("Aug 1", "8", "15", "22", "Aug 31"), charted().dailyTicks)
+    }
+
+    @Test
+    fun the_marker_carries_the_latest_days_rounded_figure() {
+        assertEquals("-$610", charted().dailyMarkerValue)
+        assertTrue(charted().dailyMarkerIsLoss, "a month behind writes its figure below the line")
+    }
+
+    @Test
+    fun hiding_amounts_takes_the_figure_off_the_chart_but_not_the_days() {
+        val hidden = charted().copy(amountsHidden = true)
+
+        assertNull(hidden.dailyMarkerValue)
+        assertEquals(5, hidden.dailyTicks.size)
+        assertFalse(hidden.dailyDescription.contains("610"), "a masked screen must not leak a figure")
+    }
+
+    @Test
+    fun the_line_is_described_in_words() {
+        val description = charted().dailyDescription
+
+        assertTrue(description.contains("Aug 2026"))
+        assertTrue(description.contains("$1,500.00"))
+        assertTrue(description.contains("-$610.00") || description.contains("−$610.00"), description)
+    }
+
+    @Test
+    fun a_recent_row_is_drawn_with_its_categorys_icon() {
+        val filed = state(august()).copy(
+            recent = listOf(row()),
+            categories = listOf(groceries.copy(slug = "groceries")),
+        ).recentRows.single()
+        val unfiled = state(august()).copy(recent = listOf(row(categoryId = null))).recentRows.single()
+
+        assertEquals(CategoryIcon.CART, filed.icon)
+        assertEquals(CategoryIcon.UNFILED, unfiled.icon)
     }
 }

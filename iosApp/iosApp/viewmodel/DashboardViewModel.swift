@@ -27,7 +27,7 @@ final class DashboardViewModel: ObservableObject {
         expenses: SharedLogic.Flow(actual: "0", expected: nil),
         investments: Stock(balance: "0", moved: "0"),
         debts: Stock(balance: "0", moved: "0"),
-        commitments: [], trend: [], pendingReview: 0
+        commitments: [], trend: [], daily: [], pendingReview: 0
     )
     @Published private(set) var locale = "en"
     @Published private(set) var loading = true
@@ -40,13 +40,35 @@ final class DashboardViewModel: ObservableObject {
     /// is for the moment somebody is on a train, not a setting, and a dashboard
     /// that opens blank because of a tap days ago is a bug report.
     @Published private(set) var amountsHidden = false
+    /// The newest few rows, whatever month is in view; see `loadRecent`.
+    @Published private(set) var recent: [SharedLogic.Transaction] = []
+    @Published private(set) var categories: [SharedLogic.Category] = []
+
+    // MARK: Editing a commitment
+    @Published private(set) var editingCommitment: Commitment?
+    /// A new commitment being typed in; `editingCommitment` is nil meanwhile.
+    @Published private(set) var addingCommitment = false
+    /// Asking "Delete Rent?" before anything is sent.
+    @Published var confirmingCommitmentDelete = false
+    @Published private(set) var commitmentDraft = CommitmentDraft(name: "", amount: "")
+    @Published private(set) var commitmentSaving = false
+    @Published private(set) var commitmentErrorKey: String?
 
     private var dashboardRepository: DashboardRepository?
     private var capabilitiesRepository: CapabilitiesRepository?
+    private var transactionsRepository: TransactionsRepository?
+    private var categoriesRepository: CategoriesRepository?
+    private var setupRepository: FinancialSetupRepository?
     private var owner: String?
+    /// The recent list's own counter: it does not follow the month, so a step
+    /// back to August must not cancel a read of what happened most recently.
+    private var recentGeneration = 0
     /// Rises on every bind and every month change, so a slow answer for a month
     /// the user has left cannot land on the one they are looking at.
     private var generation = 0
+
+    /// One observer for the model's life; see `listenForChanges`.
+    private var listener: Task<Void, Never>?
 
     #if DEBUG
     private let logging = true
@@ -65,15 +87,29 @@ final class DashboardViewModel: ObservableObject {
         let base = ApiConfig.shared.BASE_URL
         dashboardRepository = KtorDashboardRepository(baseUrl: base, tokens: tokens, logging: logging)
         capabilitiesRepository = KtorCapabilitiesRepository(baseUrl: base, tokens: tokens, logging: logging)
+        transactionsRepository = KtorTransactionsRepository(baseUrl: base, tokens: tokens, logging: logging)
+        categoriesRepository = KtorCategoriesRepository(baseUrl: base, tokens: tokens, logging: logging)
+        setupRepository = KtorFinancialSetupRepository(baseUrl: base, tokens: tokens, logging: logging)
+        listenForChanges()
         load()
+        loadRecent()
     }
 
     func unbind() {
+        listener?.cancel()
+        listener = nil
         dashboardRepository?.close()
         dashboardRepository = nil
         capabilitiesRepository?.close()
         capabilitiesRepository = nil
+        transactionsRepository?.close()
+        transactionsRepository = nil
+        categoriesRepository?.close()
+        categoriesRepository = nil
+        setupRepository?.close()
+        setupRepository = nil
         generation += 1
+        recentGeneration += 1
     }
 
     private func reset() {
@@ -84,6 +120,7 @@ final class DashboardViewModel: ObservableObject {
         refreshing = false
         loadFailed = false
         errorKey = nil
+        recent = []
         owner = nil
         generation += 1
     }
@@ -131,6 +168,193 @@ final class DashboardViewModel: ObservableObject {
         (kotlin(error) as? ApiException)?.messageKey ?? Strings.shared.error_unexpected
     }
 
+    /// As many as the design shows; the rest are one tap away under View all.
+    static let recentCount: Int32 = 3
+
+    /**
+     The newest few rows, for the list under the figures.
+
+     Fails quietly: the figures are the screen, and a list that could not load
+     is simply not drawn rather than turning home into an error.
+     */
+    private func loadRecent() {
+        guard let transactionsRepository else { return }
+        let categoriesRepository = self.categoriesRepository
+        recentGeneration += 1
+        let started = recentGeneration
+        Task { [weak self] in
+            guard let self else { return }
+            guard let rows = try? await transactionsRepository.recent(count: Self.recentCount) else { return }
+            // A name beside each row is a nicety; the rows are the point.
+            let categories = try? await categoriesRepository?.list()
+            guard started == self.recentGeneration else { return }
+            self.recent = rows
+            if let categories { self.categories = categories }
+        }
+    }
+
+    // MARK: - Editing a commitment
+
+    /// Open the editor on the commitment at `index` in the month's list.
+    func editCommitment(_ index: Int) {
+        guard data.commitments.indices.contains(index) else { return }
+        let commitment = data.commitments[index]
+        editingCommitment = commitment
+        addingCommitment = false
+        confirmingCommitmentDelete = false
+        commitmentDraft = CommitmentEdit.shared.draftOf(commitment: commitment)
+        commitmentSaving = false
+        commitmentErrorKey = nil
+    }
+
+    func setCommitmentName(_ name: String) {
+        commitmentDraft = CommitmentDraft(name: name, amount: commitmentDraft.amount)
+        commitmentErrorKey = nil
+    }
+
+    func setCommitmentAmount(_ amount: String) {
+        commitmentDraft = CommitmentDraft(name: commitmentDraft.name, amount: amount)
+        commitmentErrorKey = nil
+    }
+
+    /// Open the editor empty, to add one.
+    func addCommitment() {
+        addingCommitment = true
+        editingCommitment = nil
+        confirmingCommitmentDelete = false
+        commitmentDraft = CommitmentDraft(name: "", amount: "")
+        commitmentSaving = false
+        commitmentErrorKey = nil
+    }
+
+    func cancelCommitment() {
+        guard !commitmentSaving else { return }
+        editingCommitment = nil
+        addingCommitment = false
+        confirmingCommitmentDelete = false
+        commitmentErrorKey = nil
+    }
+
+    /// Ask before deleting: nothing is sent until the person says yes.
+    func askDeleteCommitment() {
+        guard editingCommitment != nil, !commitmentSaving else { return }
+        confirmingCommitmentDelete = true
+    }
+
+    /// Delete the commitment being edited, once the person has said yes.
+    func deleteCommitment() {
+        guard let original = editingCommitment, !commitmentSaving else { return }
+        confirmingCommitmentDelete = false
+        writeSetup(goneKey: Strings.shared.commitment_edit_gone) {
+            CommitmentEdit.shared.removed(setup: $0, original: original)
+        }
+    }
+
+    /// The commitments section is shown once the month is read, empty or not:
+    /// it is where one is added.
+    var showsCommitments: Bool { !loading && !loadFailed }
+
+    var showsCommitmentEditor: Bool { editingCommitment != nil || addingCommitment }
+
+    var commitmentTitleKey: String {
+        addingCommitment ? Strings.shared.commitment_add_title : Strings.shared.commitment_edit_title
+    }
+
+    /// "Delete Rent?" — naming it, so the wrong one is not deleted by a quick tap.
+    var deleteCommitmentTitle: String {
+        L.t(Strings.shared.commitment_delete_confirm_title, editingCommitment?.name ?? "")
+    }
+
+    private var commitmentBlock: CommitmentBlock? {
+        if addingCommitment {
+            return CommitmentEdit.shared.blockingReasonForNew(
+                draft: commitmentDraft, currency: data.currency, existing: Int32(data.commitments.count)
+            )
+        }
+        return editingCommitment.flatMap {
+            CommitmentEdit.shared.blockingReason(original: $0, draft: commitmentDraft, currency: data.currency)
+        }
+    }
+
+    var canSaveCommitment: Bool { showsCommitmentEditor && !commitmentSaving && commitmentBlock == nil }
+
+    /// The notice under Save. Nothing before a touch: not "nothing changed" on
+    /// an edit just opened, and not "give it a name" on an add with both fields
+    /// still empty — the limit is the exception, said at once.
+    var commitmentNotice: String? {
+        if let commitmentErrorKey { return commitmentErrorKey }
+        guard let block = commitmentBlock else { return nil }
+        let untouched = addingCommitment
+            && commitmentDraft.name.trimmingCharacters(in: .whitespaces).isEmpty
+            && commitmentDraft.amount.trimmingCharacters(in: .whitespaces).isEmpty
+        if block == .nothingChanged { return nil }
+        if untouched && block != .tooMany { return nil }
+        return block.messageKey
+    }
+
+    var commitmentCurrencySymbol: String { Money.shared.symbol(currency: data.currency) }
+
+    var commitmentAmountPlaceholder: String {
+        Money.shared.normalize(raw: "0", fractionDigits: Money.shared.fractionDigits(currency: data.currency)) ?? ""
+    }
+
+    /**
+     Read the wizard's answers, change the one commitment, write them back. The
+     server keeps commitments as one list replaced whole, with no ids. If the
+     commitment is no longer in it — changed on another phone since this month
+     was read — nothing is written over it: the month is re-read and the person
+     told. Mirrors Android's `saveCommitment`.
+     */
+    func saveCommitment() {
+        guard canSaveCommitment else { return }
+        let draft = commitmentDraft
+        if addingCommitment {
+            // Nil when the list filled up on another phone since this month
+            // was read: the same refusal the count check gives up front.
+            writeSetup(goneKey: Strings.shared.commitment_add_limit) {
+                CommitmentEdit.shared.added(setup: $0, draft: draft)
+            }
+        } else if let original = editingCommitment {
+            writeSetup(goneKey: Strings.shared.commitment_edit_gone) {
+                CommitmentEdit.shared.applied(setup: $0, original: original, draft: draft)
+            }
+        }
+    }
+
+    /**
+     Read the wizard's answers, change them, and write them back; then re-read
+     the month so the list shows what was saved. The server keeps commitments as
+     one list replaced whole, with no ids. `change` returns nil when the answers
+     moved on since this month was read — on another phone, say. Nothing is
+     written over them then: the month is re-read and `goneKey` says why.
+     Mirrors Android's `writeSetup`.
+     */
+    private func writeSetup(goneKey: String, change: @escaping (FinancialSetup) -> FinancialSetup?) {
+        guard let setupRepository else { return }
+        commitmentSaving = true
+        commitmentErrorKey = nil
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                let setup = try await setupRepository.get()
+                guard let changed = change(setup) else {
+                    self.commitmentSaving = false
+                    self.commitmentErrorKey = goneKey
+                    self.load(refresh: true)
+                    return
+                }
+                _ = try await setupRepository.save(setup: changed)
+                self.commitmentSaving = false
+                self.editingCommitment = nil
+                self.addingCommitment = false
+                self.load(refresh: true)
+            } catch {
+                self.commitmentSaving = false
+                self.commitmentErrorKey = Self.messageKey(error)
+            }
+        }
+    }
+
     /// Mask or unmask every figure on screen.
     func toggleAmounts() { amountsHidden.toggle() }
 
@@ -142,6 +366,28 @@ final class DashboardViewModel: ObservableObject {
     func showNextMonth() {
         guard canGoForward else { return }
         show(DashboardMonths.shared.next(month: month))
+    }
+
+    /**
+     Re-read whenever something changed the ledger.
+
+     A refresh, not a load: the figures already on screen stay up while the new
+     ones arrive, so coming back from an import does not flash an empty
+     dashboard on the way to a full one.
+
+     One observer per model. A second would re-read the month twice for every
+     write, which is invisible on a fast connection and a doubled bill on a
+     slow one.
+     */
+    private func listenForChanges() {
+        guard listener == nil else { return }
+        listener = Task { [weak self] in
+            for await _ in LedgerChanged.events {
+                guard let self, !Task.isCancelled else { return }
+                self.load(refresh: true)
+                self.loadRecent()
+            }
+        }
     }
 
     private func show(_ next: Kotlinx_datetimeLocalDate) {
@@ -268,48 +514,90 @@ final class DashboardViewModel: ObservableObject {
         return L.t(Strings.shared.dashboard_pending_review, String(pending))
     }
 
-    /// Scaled by magnitude, so a heavy loss draws as tall as a heavy gain and
-    /// the direction is carried by colour — a bad month must not look quiet.
-    var bars: [Bar] {
-        let magnitudes = data.trend.map { point in
-            point.net.flatMap { Money.shared.magnitudeOf(raw: $0, fractionDigits: digits) }
+    /// The month day by day — shared geometry, so both apps draw the same
+    /// line. Nil for a month with nothing in it, and from a server too old to
+    /// send the days: no chart rather than a flat line that looks measured.
+    var dailyChart: DashboardTrend.DailyChart? {
+        DashboardTrend.shared.daily(daily: data.daily, month: data.month.isEmpty ? month.description : data.month)
+    }
+
+    /// Under the chart: "Aug 1", the weeks as plain days, and "Aug 31".
+    var dailyTicks: [String] {
+        guard let ticks = dailyChart?.ticks else { return [] }
+        let name = Dates.shared.monthShort(date: month, language: locale)
+        return ticks.enumerated().map { index, tick in
+            index == 0 || index == ticks.count - 1
+                ? L.t(Strings.shared.dashboard_daily_tick, name, String(tick.day))
+                : String(tick.day)
         }
-        let tallest = magnitudes.compactMap { $0 }.max {
-            Money.shared.compare(a: $0, b: $1, fractionDigits: digits) < 0
+    }
+
+    private var latestDay: DayPoint? {
+        guard let chart = dailyChart else { return nil }
+        let day = chart.days[Int(chart.markerIndex)].day
+        return data.daily.first { $0.day == day }
+    }
+
+    /// The latest day's figure, rounded ("$1.5k"), on the marker. Nil while
+    /// amounts are hidden.
+    var dailyMarkerValue: String? {
+        amountsHidden ? nil : latestDay.map {
+            Money.shared.compact(amount: $0.net, currency: data.currency, locale: locale)
         }
-        return data.trend.enumerated().map { index, point in
-            let label = Dates.shared.parse(iso: point.month)
-                .map { Dates.shared.monthShort(date: $0, language: locale) } ?? ""
-            return Bar(
-                id: index,
-                shortLabel: label,
-                // Nil is a gap, not a zero: the view outlines it rather than
-                // drawing a bar for a month nobody recorded.
-                fraction: magnitudes[index].map { fraction(of: $0, against: tallest) },
-                isNegative: point.net.map {
-                    Money.shared.signOf(raw: $0, fractionDigits: digits) < 0
-                } ?? false,
-                description: point.net.map {
-                    L.t(Strings.shared.dashboard_trend_month, label, money($0))
-                } ?? L.t(Strings.shared.dashboard_trend_no_data_month, label)
+    }
+
+    /// A month behind so far, whose figure goes below its point.
+    var dailyMarkerIsLoss: Bool {
+        latestDay.map { Money.shared.signOf(raw: $0.net, fractionDigits: digits) < 0 } ?? false
+    }
+
+    /// The line in words, for VoiceOver. Mirrors Android's `dailyDescription`.
+    var dailyDescription: String {
+        let days = data.daily.filter { Double($0.net) != nil }
+        guard let first = days.first, let last = days.last,
+              let lowest = days.min(by: { Double($0.net)! < Double($1.net)! }),
+              let highest = days.max(by: { Double($0.net)! < Double($1.net)! })
+        else { return "" }
+        return L.t(
+            Strings.shared.dashboard_daily_description,
+            monthLabel,
+            money(first.net),
+            money(last.net),
+            money(lowest.net),
+            money(highest.net)
+        )
+    }
+
+    /// The recent list, worded. Signed in words — "+ $5.00" or "− $5.00" — so
+    /// colour is never the only cue.
+    var recentRows: [RecentRow] {
+        recent.map { row in
+            let isCredit = row.direction == .credit
+            let amount = L.t(
+                isCredit ? Strings.shared.dashboard_recent_credit : Strings.shared.dashboard_recent_debit,
+                money(row.amount)
+            )
+            let category = ImportedRows.shared.categoryOf(row: row, categories: categories)
+            let categoryName = category?.name ?? L.t(Strings.shared.import_extracted_uncategorised)
+            let date = Dates.shared.parse(iso: row.occurredOn).map { Dates.shared.display(date: $0) }
+                ?? row.occurredOn
+            let title = ImportedRows.shared.titleOf(row: row)
+            return RecentRow(
+                id: row.id,
+                icon: CategoryIcons.shared.forSlug(slug: category?.slug),
+                title: title,
+                date: date,
+                amount: amount,
+                isCredit: isCredit,
+                category: categoryName,
+                isFiled: category != nil,
+                description: L.t(Strings.shared.dashboard_recent_row, title, date, amount, categoryName)
             )
         }
     }
 
-    private func fraction(of magnitude: String, against tallest: String?) -> Double {
-        guard let tallest,
-              let top = Double(tallest), top > 0,
-              let value = Double(magnitude)
-        else { return Self.minimumBar }
-        return min(max(value / top, Self.minimumBar), 1)
-    }
-
-    /// Floor for a bar, so a small but real month is a mark and not an absence.
-    private static let minimumBar = 0.06
-
     var showsEmptyState: Bool { !loading && !loadFailed && data.isEmpty }
 
-    var showsTrend: Bool { data.trend.contains { $0.hasData } }
 }
 
 /// One commitment as a row: its name, what was expected, and what we saw.
@@ -321,11 +609,18 @@ struct CommitmentRow: Identifiable {
     let detail: String
 }
 
-/// One bar of the trend. `fraction` is nil for a month with no rows at all.
-struct Bar: Identifiable {
-    let id: Int
-    let shortLabel: String
-    let fraction: Double?
-    let isNegative: Bool
+/// One row of the recent list, already worded.
+struct RecentRow: Identifiable {
+    let id: String
+    /// What the tile beside it shows; `.unfiled` for a row nothing filed.
+    let icon: CategoryIcon
+    let title: String
+    let date: String
+    let amount: String
+    let isCredit: Bool
+    let category: String
+    /// False for a row nothing filed, which is drawn as needing attention.
+    let isFiled: Bool
+    /// The whole row as one sentence, read once by VoiceOver.
     let description: String
 }

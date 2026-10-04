@@ -177,8 +177,15 @@ fun GradientButton(
         ),
     ) {
         Box(
+            // Width to fill, a fixed least height — not fillMaxSize. Filling
+            // the height took whatever the parent offered: inside a scrolling
+            // column that is nothing, so the green shrank to the text's height;
+            // in a footer under a weighted column it is the whole screen, so
+            // Save covered the form above it. Found by rendering, not by any
+            // test or build.
             modifier = Modifier
-                .fillMaxSize()
+                .fillMaxWidth()
+                .heightIn(min = 56.dp)
                 .alpha(if (enabled) 1f else 0.5f)
                 .background(
                     Brush.horizontalGradient(listOf(FinAiPalette.Green, FinAiPalette.GreenDeep)),

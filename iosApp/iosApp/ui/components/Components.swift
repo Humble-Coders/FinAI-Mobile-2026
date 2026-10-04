@@ -15,6 +15,8 @@ enum Brand {
     static let red = Color(red: 0xEF / 255, green: 0x44 / 255, blue: 0x44 / 255)
     /// The investments accent. Mirrors `FinAiPalette.Purple`.
     static let purple = Color(red: 0x8B / 255, green: 0x5C / 255, blue: 0xF6 / 255)
+    /// The investments accent, as in the dashboard design. Mirrors `FinAiPalette.Blue`.
+    static let blue = Color(red: 0x3B / 255, green: 0x82 / 255, blue: 0xF6 / 255)
 
     static let ground = Color("Ground")
     /// The auth sheet's card: white on light, a lifted grey on dark.

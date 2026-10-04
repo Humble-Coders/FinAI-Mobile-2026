@@ -51,9 +51,24 @@ object StatementRedactor {
 
     // The trailing boundary matters: without it this also matches the `A4B5C6`
     // inside `SPOTIFY P3A4B5C6`, which is a transaction, not an address.
+    // A UPI ID — `name@okhdfcbank`, `98xxxx2005@ybl` — which EMAIL misses for
+    // having no dot after the `@`. It names the account holder or the payee's
+    // account as surely as an email does.
+    private val UPI_ID = Regex("""[\w.\-]+@[A-Za-z][A-Za-z0-9]+\b""")
+
     private val POSTAL_CODE = Regex("""\b[A-Za-z]\d[A-Za-z][ -]?\d[A-Za-z]\d\b""")
 
     private val AMOUNT = Regex("""\d[\d,]*\.\d{2}""")
+
+    // A payment app writes `₹70` or `$45`, with no cents: an amount because of
+    // the currency in front of it. Only for screenshots — on a statement a
+    // bare number beside a symbol is as likely a balance as a row.
+    private val CURRENCY_AMOUNT = Regex("""(?:[₹$€£]|\bRs\.?|\bINR)\s?\d[\d,]*(?:\.\d{1,2})?""", RegexOption.IGNORE_CASE)
+
+    // "From: <the account holder> (HDFC Bank)" on a payment receipt. The payee
+    // ("To: …") is the transaction's description and stays; the payer is the
+    // person importing it, whose name the redactor exists to keep back.
+    private val FROM_LINE = Regex("""^\s*(?:from|paid by|sent by)\s*:.*""", RegexOption.IGNORE_CASE)
 
     // A date that need not carry a year: `14 Aug`, `AUG 14`, `08/14`. `\s?`
     // rather than `\s*` on purpose — a word and a number separated by a column
@@ -62,6 +77,13 @@ object StatementRedactor {
         Regex("""\b(\d{1,2}[/-]\d{1,2}|\d{1,2}\s?[A-Za-z]{3,}|[A-Za-z]{3,}\s?\d{1,2})\b""")
 
     private const val MASK = "••••"
+
+    // A line that is only a date, as a banking app heads each day's rows:
+    // `Aug 14`, `14 August 2026`, `Friday, August 14`, `08/14/2026`, `Today`.
+    private val DATE_HEADING = Regex(
+        """^(?:today|yesterday|(?:[A-Za-z]{3,9},?\s+)?(?:[A-Za-z]{3,9}\.?\s+\d{1,2}(?:st|nd|rd|th)?|\d{1,2}\s+[A-Za-z]{3,9}\.?)(?:,?\s+\d{4})?|\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?)$""",
+        RegexOption.IGNORE_CASE,
+    )
 
     /** Whether a line reads as a transaction: a date and an amount together. */
     fun looksLikeATransaction(line: String): Boolean = AMOUNT.containsMatchIn(line) && DATE.containsMatchIn(line)
@@ -101,6 +123,8 @@ object StatementRedactor {
             val start =
                 if (page.index == 0) {
                     lines.indexOfFirst { looksLikeATransaction(it) }
+                        .takeIf { it >= 0 || !document.fromImage }
+                        ?: imageStart(lines)
                 } else {
                     0
                 }
@@ -116,6 +140,10 @@ object StatementRedactor {
                 // identifier — an e-transfer names an email, and a merchant
                 // reference can be shaped exactly like a postal code. Losing
                 // the row hides money; masking the identifier does not.
+                if (document.fromImage && FROM_LINE.matches(line)) {
+                    dropped++
+                    continue
+                }
                 if (!looksLikeATransaction(line) && carriesAnIdentifier(line)) {
                     dropped++
                     continue
@@ -124,6 +152,25 @@ object StatementRedactor {
             }
         }
         return Redaction(text = kept.joinToString("\n").trim(), droppedLines = dropped)
+    }
+
+    /**
+     * Where a photo or screenshot's rows begin, when no line holds a date and
+     * an amount together.
+     *
+     * The usual case for a banking app, not a broken one: it heads each day
+     * with its date and lists the rows under it with only a merchant and an
+     * amount, so the statement rule — start at the first dated amount — finds
+     * nothing and the whole screenshot went unsent. Here the rows start at the
+     * first amount, taking with them the date headings directly above, which
+     * are what date them. Everything higher up — the status bar, the app's
+     * title, an account name — is dropped as a statement's header is.
+     */
+    private fun imageStart(lines: List<String>): Int {
+        var start = lines.indexOfFirst { AMOUNT.containsMatchIn(it) || CURRENCY_AMOUNT.containsMatchIn(it) }
+        if (start < 0) return -1
+        while (start > 0 && DATE_HEADING.matches(lines[start - 1].trim())) start--
+        return start
     }
 
     private fun carriesAnIdentifier(line: String): Boolean = EMAIL.containsMatchIn(line) ||
@@ -136,6 +183,7 @@ object StatementRedactor {
         // there: an email, a phone number, a postal code, a grouped account or
         // card number.
         var masked = EMAIL.replace(line, MASK)
+        masked = UPI_ID.replace(masked, MASK)
         masked = PHONE.replace(masked, MASK)
         masked = POSTAL_CODE.replace(masked, MASK)
         masked = GROUPED_DIGIT_RUN.replace(masked) { lastFour(it.value) }

@@ -27,10 +27,11 @@ struct ManualEntryView: View {
     @State private var choosingDate = false
     @State private var choosingCategory = false
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
         ZStack {
-            Brand.ground.ignoresSafeArea()
+            MintBackdrop(decoration: "creditcard.fill")
             if model.loading {
                 // The app's coin loader covers the first load; underneath, ground.
                 Color.clear
@@ -92,28 +93,7 @@ struct ManualEntryView: View {
     }
 
     private var header: some View {
-        ZStack {
-            Text(L.t(Strings.shared.manual_entry_title))
-                .font(.headline)
-                .lineLimit(1)
-                .padding(.horizontal, 56)
-                .accessibilityAddTraits(.isHeader)
-            HStack {
-                Button {
-                    close()
-                } label: {
-                    Image(systemName: "chevron.left")
-                        .font(.body.weight(.semibold))
-                        .tappableArea()
-                }
-                .accessibilityLabel(L.t(Strings.shared.action_back))
-                .foregroundColor(.primary)
-                Spacer()
-            }
-            .padding(.horizontal, 8)
-        }
-        .frame(height: 52)
-        .background(Brand.ground)
+        MintHeader(title: L.t(Strings.shared.manual_entry_title)) { close() }
     }
 
     private func close() {
@@ -152,31 +132,12 @@ struct ManualEntryView: View {
                             .background(Brand.sheet, in: RoundedRectangle(cornerRadius: 16))
                     }
 
-                    PickerField(
-                        label: L.t(Strings.shared.manual_entry_account_label),
-                        value: model.account?.name,
-                        placeholder: L.t(Strings.shared.manual_entry_account_placeholder),
-                        isError: model.notice == .noAccount
-                    ) { choosingAccount = true }
+                    MintPanel {
+                    directionChoice
 
-                    HStack(alignment: .bottom, spacing: 12) {
-                        PickerField(
-                            label: L.t(Strings.shared.manual_entry_date_label),
-                            value: model.dateLabel,
-                            placeholder: L.t(Strings.shared.manual_entry_date_placeholder),
-                            isError: model.notice == .noDate || model.notice == .futureDate
-                        ) {
-                            // The calendar's last pickable day is today as of
-                            // now, not as of the last edit.
-                            model.refreshToday()
-                            choosingDate = true
-                        }
-                        Button(L.t(Strings.shared.manual_entry_date_today)) { model.chooseToday() }
-                            .buttonStyle(.bordered)
-                            .tint(model.isToday ? .primary : .secondary)
-                            .frame(minHeight: 56)
-                            .accessibilityAddTraits(model.isToday ? .isSelected : [])
-                    }
+                    accountField
+
+                    dateField
 
                     AmountField(
                         label: L.t(Strings.shared.manual_entry_amount_label),
@@ -186,22 +147,6 @@ struct ManualEntryView: View {
                         text: Binding(get: { model.draft.amount }, set: { model.setAmount($0) })
                     )
 
-                    VStack(alignment: .leading, spacing: 8) {
-                        FieldLabel(text: L.t(Strings.shared.manual_entry_direction_label))
-                        // Neither is preselected: "money out" is the likelier
-                        // answer, which is exactly why guessing it would go
-                        // unnoticed when it is wrong.
-                        Picker(L.t(Strings.shared.manual_entry_direction_label), selection: directionBinding) {
-                            Text(L.t(Strings.shared.manual_entry_direction_out)).tag(TransactionDirection?.some(.debit))
-                            Text(L.t(Strings.shared.manual_entry_direction_in)).tag(TransactionDirection?.some(.credit))
-                        }
-                        .pickerStyle(.segmented)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 8)
-                                .stroke(model.notice == .noDirection ? Color.red : .clear, lineWidth: 1)
-                        )
-                    }
-
                     WizardField(
                         label: L.t(Strings.shared.manual_entry_description_label),
                         placeholder: L.t(Strings.shared.manual_entry_description_hint),
@@ -209,6 +154,7 @@ struct ManualEntryView: View {
                         isError: model.notice == .noDescription || model.notice == .descriptionTooLong,
                         submitLabel: .done,
                         onSubmit: { dismissKeyboard() },
+                        leading: "doc.text",
                         text: Binding(get: { model.draft.description_ }, set: { model.setDescription($0) })
                     )
 
@@ -216,7 +162,9 @@ struct ManualEntryView: View {
                         PickerField(
                             label: L.t(Strings.shared.manual_entry_category_label),
                             value: model.categoryName ?? L.t(Strings.shared.manual_entry_category_none),
-                            placeholder: L.t(Strings.shared.manual_entry_category_none)
+                            placeholder: L.t(Strings.shared.manual_entry_category_none),
+                            leading: "tag",
+                            trailing: "chevron.right"
                         ) { choosingCategory = true }
                         // Said out loud, so an empty category reads as a choice
                         // made, not a field forgotten.
@@ -226,10 +174,11 @@ struct ManualEntryView: View {
                                 .foregroundColor(Brand.textMuted)
                         }
                     }
+                    }
                 }
                 .frame(maxWidth: 560)
                 .frame(maxWidth: .infinity)
-                .padding(.horizontal, 24)
+                .padding(.horizontal, 20)
                 .padding(.vertical, 16)
             }
             .scrollBounceBehavior(.basedOnSize)
@@ -254,13 +203,136 @@ struct ManualEntryView: View {
                 }
             }
             .frame(maxWidth: 560)
-            .padding(.horizontal, 24)
+            .padding(.horizontal, 20)
             .padding(.bottom, 16)
         }
     }
 
-    private var directionBinding: Binding<TransactionDirection?> {
-        Binding(get: { model.draft.direction }, set: { if let chosen = $0 { model.chooseDirection(chosen) } })
+    // MARK: - The design's fields
+
+    /// Two cards, in first as the design has it. Neither is preselected:
+    /// "money out" is the likelier answer, which is exactly why guessing it
+    /// would go unnoticed when it is wrong.
+    private var directionChoice: some View {
+        let dark = scheme == .dark
+        return HStack(spacing: 12) {
+            ForEach([TransactionDirection.credit, TransactionDirection.debit], id: \.self) { direction in
+                let selected = model.draft.direction == direction
+                Button { model.chooseDirection(direction) } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: direction == .credit ? "arrow.up" : "arrow.down")
+                            .font(.body.weight(.semibold))
+                        Text(L.t(direction == .credit
+                            ? Strings.shared.manual_entry_direction_in
+                            : Strings.shared.manual_entry_direction_out))
+                            .font(.subheadline.weight(selected ? .semibold : .medium))
+                            .lineLimit(2)
+                    }
+                    .foregroundColor(selected ? Mint.greenText(dark) : .primary)
+                    .frame(maxWidth: .infinity, minHeight: 64)
+                    .background(
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .fill(selected ? Brand.green.opacity(0.12) : Mint.card(dark))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(
+                            selected ? Brand.green : (model.notice == .noDirection ? Color.red : Mint.edge(dark)),
+                            lineWidth: selected || model.notice == .noDirection ? 1.5 : 1
+                        )
+                    )
+                    .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(selected ? .isSelected : [])
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(L.t(Strings.shared.manual_entry_direction_label))
+    }
+
+    /// The account, as the design has it: its bank tile, its name and kind, and
+    /// a chevron. Tapping opens the same account list, with "Add an account".
+    private var accountField: some View {
+        let account = model.account
+        let index = model.accounts.firstIndex { $0.id == account?.id } ?? 0
+        return VStack(alignment: .leading, spacing: 8) {
+            FieldLabel(text: L.t(Strings.shared.manual_entry_account_label))
+            Button { choosingAccount = true } label: {
+                HStack(spacing: 12) {
+                    IconTile(
+                        symbol: "building.columns.fill",
+                        accent: Mint.accountTints[index % Mint.accountTints.count],
+                        size: 44, iconSize: 20
+                    )
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(account?.name ?? L.t(Strings.shared.manual_entry_account_placeholder))
+                            .font(.headline.weight(.regular))
+                            .foregroundColor(account == nil ? Brand.textMuted.opacity(0.7) : .primary)
+                            .lineLimit(1)
+                        if let account, let detail = StatementImportView.detail(account) {
+                            Text(detail).font(.subheadline).foregroundColor(Brand.textMuted).lineLimit(1)
+                        }
+                    }
+                    Spacer(minLength: 8)
+                    Image(systemName: "chevron.down")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundColor(Brand.textMuted)
+                        .accessibilityHidden(true)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .frame(minHeight: 68)
+                .fieldFrame(focused: false, isError: model.notice == .noAccount)
+                .contentShape(RoundedRectangle(cornerRadius: SetupView.fieldRadius))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(L.t(Strings.shared.manual_entry_account_label))
+            .accessibilityValue(account?.name ?? L.t(Strings.shared.manual_entry_account_placeholder))
+        }
+    }
+
+    /// The date with its calendar mark, "Today, 15 Sep 2026" when it is today,
+    /// and the one-tap Today kept beside it until today is the date chosen.
+    private var dateField: some View {
+        let value = model.dateLabel.map {
+            model.isToday ? L.t(Strings.shared.manual_entry_date_today_value, $0) : $0
+        }
+        return VStack(alignment: .leading, spacing: 8) {
+            FieldLabel(text: L.t(Strings.shared.manual_entry_date_label))
+            HStack(spacing: 12) {
+                Button {
+                    // The calendar's last pickable day is today as of now, not
+                    // as of the last edit.
+                    model.refreshToday()
+                    choosingDate = true
+                } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: "calendar").foregroundColor(Brand.textMuted).accessibilityHidden(true)
+                        Text(value ?? L.t(Strings.shared.manual_entry_date_placeholder))
+                            .foregroundColor(value == nil ? Brand.textMuted.opacity(0.6) : .primary)
+                            .lineLimit(2)
+                        Spacer(minLength: 8)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(L.t(Strings.shared.manual_entry_date_label))
+                .accessibilityValue(value ?? L.t(Strings.shared.manual_entry_date_placeholder))
+                if !model.isToday {
+                    Button(L.t(Strings.shared.manual_entry_date_today)) { model.chooseToday() }
+                        .buttonStyle(.bordered)
+                        .tint(.secondary)
+                        .controlSize(.small)
+                }
+                Image(systemName: "chevron.right")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundColor(Brand.textMuted)
+                    .accessibilityHidden(true)
+            }
+            .padding(.horizontal, 16)
+            .frame(minHeight: 56)
+            .fieldFrame(focused: false, isError: model.notice == .noDate || model.notice == .futureDate)
+        }
     }
 
     private var newAccountShown: Binding<Bool> {

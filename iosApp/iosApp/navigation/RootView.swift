@@ -21,6 +21,9 @@ struct RootView: View {
 
     /// The dashboard, which is home (PRD F3).
     @StateObject private var dashboardModel = DashboardViewModel()
+
+    /// Everything the household has (#F3).
+    @StateObject private var transactionsModel = TransactionsViewModel()
     /// Where the signed-in, set-up person is: home, or one of the two ways
     /// money gets in. Scene storage, so the app coming back after iOS
     /// reclaimed it reopens that screen rather than dropping them on home.
@@ -155,15 +158,8 @@ struct RootView: View {
             UpdateRequiredView()
         case .home:
             switch HomeRoute(rawValue: homeRoute) ?? .home {
-            case .home:
-                DashboardView(
-                    model: dashboardModel,
-                    userId: model.me?.user.id ?? "",
-                    onImportStatement: { homeRoute = HomeRoute.importStatement.rawValue },
-                    onAddTransaction: { homeRoute = HomeRoute.add.rawValue },
-                    onReview: { homeRoute = HomeRoute.review.rawValue },
-                    onSignOut: { model.signOut() }
-                )
+            case .home, .transactions, .review:
+                tabs
             case .add, .addAfterImport:
                 ManualEntryView(
                     model: entryModel,
@@ -180,12 +176,6 @@ struct RootView: View {
                     onTypeInstead: { homeRoute = HomeRoute.addAfterImport.rawValue },
                     onReview: { homeRoute = HomeRoute.review.rawValue }
                 )
-            case .review:
-                ReviewView(
-                    model: reviewModel,
-                    userId: model.me?.user.id ?? "",
-                    onClose: { homeRoute = HomeRoute.home.rawValue }
-                )
             }
         case .failed:
             FailedView(
@@ -197,6 +187,39 @@ struct RootView: View {
             SplashView(slow: model.startIsSlow)
                 .task { await model.watchForSlowStart() }
         }
+    }
+
+    /**
+     Home, every transaction and the review queue, on the system tab bar. The
+     import and manual entry are flows with a start and an end, so they cover
+     the bar while open and give it back when they close. The selection is the
+     scene-stored route itself, so the app coming back reopens the same tab.
+     */
+    private var tabs: some View {
+        let userId = model.me?.user.id ?? ""
+        let goHome = { homeRoute = HomeRoute.home.rawValue }
+        return TabView(selection: $homeRoute) {
+            DashboardView(
+                model: dashboardModel,
+                userId: userId,
+                onImportStatement: { homeRoute = HomeRoute.importStatement.rawValue },
+                onAddTransaction: { homeRoute = HomeRoute.add.rawValue },
+                onReview: { homeRoute = HomeRoute.review.rawValue },
+                onViewAll: { homeRoute = HomeRoute.transactions.rawValue },
+                onSignOut: { model.signOut() }
+            )
+            .tabItem { Label(L.t(Strings.shared.tab_home), systemImage: "house.fill") }
+            .tag(HomeRoute.home.rawValue)
+
+            TransactionsView(model: transactionsModel, userId: userId, onClose: goHome, showsBack: false)
+                .tabItem { Label(L.t(Strings.shared.tab_transactions), systemImage: "list.bullet.rectangle.fill") }
+                .tag(HomeRoute.transactions.rawValue)
+
+            ReviewView(model: reviewModel, userId: userId, onClose: goHome, showsBack: false)
+                .tabItem { Label(L.t(Strings.shared.tab_review), systemImage: "checkmark.circle.fill") }
+                .tag(HomeRoute.review.rawValue)
+        }
+        .tint(Brand.greenDeep)
     }
 
     private var failureKey: String {
@@ -230,4 +253,6 @@ private enum HomeRoute: String {
     case addAfterImport = "add_after_import"
     /// The review queue (#32), from home or from an import that left rows.
     case review
+    /// Everything the household has, by statement or by month (#F3).
+    case transactions
 }

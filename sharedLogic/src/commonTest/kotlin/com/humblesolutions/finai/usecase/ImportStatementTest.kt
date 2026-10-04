@@ -8,6 +8,7 @@ import com.humblesolutions.finai.model.ParsedStatement
 import com.humblesolutions.finai.model.RowsToSave
 import com.humblesolutions.finai.model.SaveOutcome
 import com.humblesolutions.finai.model.SourceKind
+import com.humblesolutions.finai.model.StatementImports
 import com.humblesolutions.finai.model.StatementUpload
 import com.humblesolutions.finai.repository.StatementImportRepository
 import kotlinx.coroutines.test.runTest
@@ -23,6 +24,8 @@ class ImportStatementTest {
 
     /** Records what was sent, and whether anything was sent at all. */
     private class FakeImports : StatementImportRepository {
+        override suspend fun list(): StatementImports = StatementImports()
+
         var sent: StatementUpload? = null
 
         override suspend fun parse(upload: StatementUpload): ParsedStatement {
@@ -258,5 +261,88 @@ class ImportStatementTest {
 
         ImportStatement(imports).execute(document, accountId = "acct-1", keepTextForDiagnostics = true)
         assertTrue(assertNotNull(imports.sent).keepTextForDiagnostics)
+    }
+
+    // ── A screenshot ────────────────────────────────────────────────────
+
+    private val today = kotlinx.datetime.LocalDate(2026, 10, 4)
+
+    @Test
+    fun a_screenshot_is_sent_in_rows_and_dated_by_the_year_ending_today() = runTest {
+        val imports = FakeImports()
+
+        ImportStatement(imports) { today }.execute(ScreenshotFixture.document())
+
+        val sent = assertNotNull(imports.sent)
+        assertTrue(sent.text.contains("Loblaws   -$86.40"), sent.text)
+        assertEquals("2025-10-05", sent.statementPeriodStart)
+        assertEquals("2026-10-04", sent.statementPeriodEnd)
+        assertEquals("ocr", sent.sourceKind)
+    }
+
+    @Test
+    fun a_scan_with_no_period_is_not_given_one() = runTest {
+        // A scanned statement may be years old; a guessed year would be wrong.
+        val imports = FakeImports()
+        val scan = ScreenshotFixture.document(fromImage = false).copy(
+            pages = listOf(ExtractedPage(index = 0, lines = listOf(ExtractedLine(text = transaction)))),
+        )
+
+        ImportStatement(imports) { today }.execute(scan)
+
+        assertNull(assertNotNull(imports.sent).statementPeriodStart)
+    }
+
+    @Test
+    fun a_screenshot_that_shows_its_period_keeps_it() = runTest {
+        val imports = FakeImports()
+        val shown = ScreenshotFixture.document().copy(
+            pages = listOf(ExtractedPage(index = 0, lines = listOf(ExtractedLine(text = header), ExtractedLine(text = transaction)))),
+        )
+
+        ImportStatement(imports) { today }.execute(shown)
+
+        assertEquals("2026-08-01", assertNotNull(imports.sent).statementPeriodStart)
+    }
+
+    @Test
+    fun a_receipt_in_another_currency_is_refused_before_anything_is_sent() = runTest {
+        val imports = FakeImports()
+
+        val refused = assertFailsWith<StatementInOtherCurrency> {
+            ImportStatement(imports) { today }.execute(ScreenshotFixture.receipt, accountCurrency = "CAD")
+        }
+
+        assertEquals("INR", refused.found)
+        assertNull(imports.sent, "₹70 must never be recorded as $70")
+    }
+
+    @Test
+    fun a_receipt_in_the_accounts_currency_is_sent() = runTest {
+        val imports = FakeImports()
+
+        ImportStatement(imports) { today }.execute(ScreenshotFixture.receipt, accountCurrency = "INR")
+
+        assertTrue(assertNotNull(imports.sent).text.contains("₹70"))
+    }
+
+    @Test
+    fun a_screenshots_dates_are_sent_with_their_year() = runTest {
+        val imports = FakeImports()
+
+        ImportStatement(imports) { today }.execute(ScreenshotFixture.document())
+
+        val text = assertNotNull(imports.sent).text
+        assertTrue(text.contains("Aug 14, 2026"), text)
+        assertFalse(text.contains("Aug 14\n"), text)
+    }
+
+    @Test
+    fun a_pdfs_dates_are_sent_as_printed() = runTest {
+        val imports = FakeImports()
+
+        ImportStatement(imports) { today }.execute(statement(header, transaction))
+
+        assertTrue(assertNotNull(imports.sent).text.contains("14 Aug  SPOTIFY"), "a statement's year comes from its period")
     }
 }

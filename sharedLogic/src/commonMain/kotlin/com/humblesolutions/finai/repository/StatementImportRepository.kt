@@ -4,6 +4,7 @@ import com.humblesolutions.finai.model.ApiException
 import com.humblesolutions.finai.model.ParsedStatement
 import com.humblesolutions.finai.model.RowsToSave
 import com.humblesolutions.finai.model.SaveOutcome
+import com.humblesolutions.finai.model.StatementImports
 import com.humblesolutions.finai.model.StatementUpload
 import kotlin.coroutines.cancellation.CancellationException
 
@@ -23,6 +24,15 @@ interface StatementImportRepository {
      */
     @Throws(ApiException::class, CancellationException::class)
     suspend fun save(importId: String, rows: RowsToSave): SaveOutcome
+
+    /**
+     * Every statement this household has imported, newest first.
+     *
+     * So the transactions screen can offer them as things to pick. The free
+     * tier allows one a month, so this is a short list and does not page.
+     */
+    @Throws(ApiException::class, CancellationException::class)
+    suspend fun list(): StatementImports
 
     /** Releases the HTTP client. Built fresh per bind, never shared. */
     fun close()

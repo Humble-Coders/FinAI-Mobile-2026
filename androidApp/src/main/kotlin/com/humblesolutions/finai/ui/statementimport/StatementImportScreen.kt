@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -12,12 +13,25 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ReceiptLong
+import androidx.compose.material.icons.filled.AccountBalance
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.PhotoCamera
+import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -32,9 +46,13 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
@@ -43,16 +61,29 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.humblesolutions.finai.R
 import com.humblesolutions.finai.i18n.Strings
+import com.humblesolutions.finai.model.Account
 import com.humblesolutions.finai.model.AccountKind
+import com.humblesolutions.finai.model.Transaction
+import com.humblesolutions.finai.model.TransactionDirection
 import com.humblesolutions.finai.ui.components.AccountSheet
+import com.humblesolutions.finai.ui.components.AccountTints
+import com.humblesolutions.finai.ui.components.ChoiceCard
 import com.humblesolutions.finai.ui.components.ErrorText
 import com.humblesolutions.finai.ui.components.GradientButton
+import com.humblesolutions.finai.ui.components.IconTile
+import com.humblesolutions.finai.ui.components.Mint
+import com.humblesolutions.finai.ui.components.MintBackdrop
+import com.humblesolutions.finai.ui.components.MintHeader
+import com.humblesolutions.finai.ui.components.MintPanel
+import com.humblesolutions.finai.ui.components.MintTitle
 import com.humblesolutions.finai.ui.components.NewAccountSheet
 import com.humblesolutions.finai.ui.components.PasswordField
 import com.humblesolutions.finai.ui.components.PickerField
 import com.humblesolutions.finai.ui.components.ProviderButton
 import com.humblesolutions.finai.ui.strings
+import com.humblesolutions.finai.ui.theme.FinAiPalette
 import com.humblesolutions.finai.usecase.ImportStep
+import com.humblesolutions.finai.usecase.ImportedRows
 
 /** What the screen can ask for; the pickers are the platform's, so the route supplies them. */
 class StatementImportActions(
@@ -77,6 +108,8 @@ class StatementImportActions(
     val onChooseAnother: () -> Unit,
     val onTypeInstead: () -> Unit,
     val onReview: () -> Unit,
+    /** Try the extracted list again; the import itself already succeeded. */
+    val onReloadImported: () -> Unit,
     val onDiagnosticsTicked: (Boolean) -> Unit,
     val onSendDiagnostics: () -> Unit,
 )
@@ -91,60 +124,43 @@ class StatementImportActions(
  */
 @Composable
 fun StatementImportScreen(state: StatementImportUiState, actions: StatementImportActions) {
-    var choosingAccount by rememberSaveable { mutableStateOf(false) }
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-            .safeDrawingPadding(),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Header(onClose = actions.onClose)
+    Box(Modifier.fillMaxSize()) {
+        MintBackdrop(decoration = decorationFor(state.step))
         Column(
-            modifier = Modifier
-                .widthIn(max = ContentMaxWidth)
-                .fillMaxWidth()
-                .weight(1f)
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 24.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+            modifier = Modifier.fillMaxSize().safeDrawingPadding(),
+            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            when (state.step) {
-                ImportStep.CHOOSE_ACCOUNT -> AccountStep(state, actions) { choosingAccount = true }
+            MintHeader(title = strings(Strings.import_title), onBack = actions.onClose, step = stepOf(state.step))
+            Column(
+                modifier = Modifier
+                    .widthIn(max = ContentMaxWidth)
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 20.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                when (state.step) {
+                    ImportStep.CHOOSE_ACCOUNT -> AccountStep(state, actions)
 
-                ImportStep.CHOOSE_FILE -> FileStep(state, actions)
+                    ImportStep.CHOOSE_FILE -> FileStep(state, actions)
 
-                ImportStep.CONSENT -> ConsentStep(state, actions)
+                    ImportStep.CONSENT -> Panelled { ConsentStep(state, actions) }
 
-                ImportStep.PASSWORD -> PasswordStep(state, actions)
+                    ImportStep.PASSWORD -> Panelled { PasswordStep(state, actions) }
 
-                // The coin loader covers these; its caption says which.
-                ImportStep.READING, ImportStep.SENDING, ImportStep.SAVING -> Spacer(Modifier.height(1.dp))
+                    // The coin loader covers these; its caption says which.
+                    ImportStep.READING, ImportStep.SENDING, ImportStep.SAVING -> Spacer(Modifier.height(1.dp))
 
-                ImportStep.DONE -> DoneStep(state, actions)
+                    ImportStep.DONE -> Panelled { DoneStep(state, actions) }
 
-                ImportStep.FAILED -> FailedStep(state, actions)
+                    ImportStep.FAILED -> Panelled { FailedStep(state, actions) }
+                }
+                Spacer(Modifier.height(16.dp))
             }
-            Spacer(Modifier.height(16.dp))
         }
     }
 
-    if (choosingAccount) {
-        AccountSheet(
-            accounts = state.accounts,
-            chosenId = state.accountId,
-            onChosen = {
-                actions.onChooseAccount(it)
-                choosingAccount = false
-            },
-            onAdd = {
-                choosingAccount = false
-                actions.onOpenNewAccount()
-            },
-            onDismiss = { choosingAccount = false },
-        )
-    }
     state.newAccount?.let { draft ->
         NewAccountSheet(
             draft = draft,
@@ -162,25 +178,21 @@ fun StatementImportScreen(state: StatementImportUiState, actions: StatementImpor
 
 private val ContentMaxWidth = 560.dp
 
+/** Which of the three dashes is lit: the account, the file, then the read and its end. */
+private fun stepOf(step: ImportStep): Int = when (step) {
+    ImportStep.CHOOSE_ACCOUNT -> 1
+    ImportStep.CHOOSE_FILE, ImportStep.CONSENT, ImportStep.PASSWORD -> 2
+    else -> 3
+}
+
+/** The faint picture in the corner: a bank while choosing one, a page after. */
+private fun decorationFor(step: ImportStep): ImageVector = if (step == ImportStep.CHOOSE_ACCOUNT) Icons.Filled.AccountBalance else Icons.AutoMirrored.Filled.ReceiptLong
+
+/** The later steps keep their content; the panel gives them the same ground. */
 @Composable
-private fun Header(onClose: () -> Unit) {
-    Box(Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 8.dp)) {
-        IconButton(onClick = onClose, modifier = Modifier.align(Alignment.CenterStart)) {
-            Icon(
-                painter = painterResource(R.drawable.ic_back),
-                contentDescription = strings(Strings.action_back),
-                tint = MaterialTheme.colorScheme.onBackground,
-            )
-        }
-        Text(
-            text = strings(Strings.import_title),
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.align(Alignment.Center).padding(horizontal = 56.dp).semantics { heading() },
-        )
-    }
+private fun Panelled(content: @Composable ColumnScope.() -> Unit) {
+    Spacer(Modifier.height(8.dp))
+    MintPanel { content() }
 }
 
 @Composable
@@ -202,42 +214,117 @@ private fun Body(text: String, muted: Boolean = false) {
     )
 }
 
+/**
+ * Which account: every account as a card, chosen by tapping it, then an
+ * "Add an account" row — the same choices the account sheet offered, laid
+ * out as the design has them. Continue waits for a real choice.
+ */
 @Composable
-private fun AccountStep(state: StatementImportUiState, actions: StatementImportActions, onPick: () -> Unit) {
-    Title(strings(Strings.import_account_title))
-    Body(strings(Strings.import_account_hint), muted = true)
-    if (state.accountsErrorKey != null) {
-        ErrorText(state.accountsErrorKey)
-        TextButton(onClick = actions.onRetryAccounts) { Text(strings(Strings.import_try_again)) }
-        return
+private fun AccountStep(state: StatementImportUiState, actions: StatementImportActions) {
+    Spacer(Modifier.height(8.dp))
+    MintTitle(strings(Strings.import_account_title), strings(Strings.import_account_hint))
+    Spacer(Modifier.height(4.dp))
+    MintPanel {
+        when {
+            state.accountsErrorKey != null -> {
+                ErrorText(state.accountsErrorKey)
+                TextButton(onClick = actions.onRetryAccounts) { Text(strings(Strings.import_try_again)) }
+            }
+
+            state.accountsLoading -> Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
+            }
+
+            else -> {
+                if (state.accounts.isEmpty()) Body(strings(Strings.manual_entry_accounts_empty), muted = true)
+                Column(Modifier.selectableGroup(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    state.accounts.forEachIndexed { index, account ->
+                        ChoiceCard(
+                            icon = Icons.Filled.AccountBalance,
+                            accent = AccountTints[index % AccountTints.size],
+                            title = account.name,
+                            detail = accountDetail(account),
+                            selected = account.id == state.accountId,
+                            onClick = { actions.onChooseAccount(account.id) },
+                        )
+                    }
+                }
+                ChoiceCard(
+                    icon = Icons.Filled.Add,
+                    accent = FinAiPalette.Green,
+                    title = strings(Strings.manual_entry_account_add),
+                    detail = null,
+                    onClick = actions.onOpenNewAccount,
+                )
+            }
+        }
+        Spacer(Modifier.height(4.dp))
+        // Not optional and not defaulted: Continue waits for a real choice.
+        GradientButton(
+            text = strings(Strings.action_continue),
+            onClick = actions.onContinueFromAccount,
+            enabled = state.canContinueFromAccount,
+        )
     }
-    PickerField(
-        label = strings(Strings.manual_entry_account_label),
-        value = state.account?.name,
-        placeholder = strings(Strings.manual_entry_account_placeholder),
-        onClick = onPick,
-        enabled = !state.accountsLoading,
-    )
-    // Not optional and not defaulted: Continue waits for a real choice.
-    GradientButton(
-        text = strings(Strings.action_continue),
-        onClick = actions.onContinueFromAccount,
-        enabled = state.canContinueFromAccount,
-    )
 }
 
+/** "Savings · CAD": the kind, then the currency — what the account sheet shows. */
+@Composable
+private fun accountDetail(account: Account): String? = listOfNotNull(account.kind.labelKey?.let { strings(it) }, account.currency.ifBlank { null })
+    .joinToString(" · ")
+    .ifBlank { null }
+
+/** The three ways in, what happens to the file, and which account it is for. */
 @Composable
 private fun FileStep(state: StatementImportUiState, actions: StatementImportActions) {
-    Title(strings(Strings.import_file_title))
-    PrivacyNote()
-    GradientButton(text = strings(Strings.import_pick_file), onClick = actions.onPickFile)
-    ProviderButton(text = strings(Strings.import_pick_photo), onClick = actions.onPickPhoto)
-    ProviderButton(text = strings(Strings.import_take_photo), onClick = actions.onTakePhoto)
-    TextButton(onClick = actions.onBackToAccount) {
+    Spacer(Modifier.height(8.dp))
+    MintTitle(strings(Strings.import_file_title), strings(Strings.import_file_subtitle))
+    Spacer(Modifier.height(4.dp))
+    MintPanel {
+        ChoiceCard(
+            icon = Icons.Filled.UploadFile,
+            accent = FinAiPalette.Green,
+            title = strings(Strings.import_pick_file_title),
+            detail = strings(Strings.import_pick_file_detail),
+            onClick = actions.onPickFile,
+        )
+        ChoiceCard(
+            icon = Icons.Filled.Image,
+            accent = FinAiPalette.Blue,
+            title = strings(Strings.import_pick_photo),
+            detail = strings(Strings.import_pick_photo_detail),
+            onClick = actions.onPickPhoto,
+        )
+        ChoiceCard(
+            icon = Icons.Filled.PhotoCamera,
+            accent = Color(0xFFF59E0B),
+            title = strings(Strings.import_take_photo),
+            detail = strings(Strings.import_take_photo_detail),
+            onClick = actions.onTakePhoto,
+            tinted = true,
+        )
+        PrivacyNote()
         Text(
-            text = state.account?.name ?: strings(Strings.manual_entry_account_placeholder),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
+            text = strings(Strings.import_selected_account),
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 4.dp, start = 4.dp),
+        )
+        val account = state.account
+        ChoiceCard(
+            icon = Icons.Filled.AccountBalance,
+            accent = FinAiPalette.Green,
+            title = account?.name ?: strings(Strings.manual_entry_account_placeholder),
+            detail = account?.let { accountDetail(it) },
+            onClick = actions.onBackToAccount,
+            trailing = {
+                Text(
+                    strings(Strings.import_change_account),
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Mint.greenText(),
+                )
+            },
         )
     }
 }
@@ -245,17 +332,29 @@ private fun FileStep(state: StatementImportUiState, actions: StatementImportActi
 /** The true thing, said plainly: the file is read here and never uploaded. */
 @Composable
 private fun PrivacyNote() {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.surface,
-        tonalElevation = 2.dp,
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(18.dp))
+            .background(FinAiPalette.Green.copy(alpha = 0.08f))
+            .padding(14.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(
-            text = strings(Strings.import_on_device),
-            style = MaterialTheme.typography.bodyMedium,
-            modifier = Modifier.padding(16.dp),
-        )
+        IconTile(Icons.Filled.Lock, FinAiPalette.Green, size = 40.dp, iconSize = 20.dp)
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                strings(Strings.import_private_title),
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+                color = Mint.greenText(),
+            )
+            Text(
+                strings(Strings.import_on_device),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 }
 
@@ -338,6 +437,10 @@ private fun DoneStep(state: StatementImportUiState, actions: StatementImportActi
     ) {
         state.summary.forEach { Body(it) }
     }
+    // What it actually read. "Imported 24" is a claim the person cannot check,
+    // and the one question they have is whether the categories are right.
+    ImportedRowsSection(state, actions)
+
     // Straight into the review queue when the import left rows waiting (#32).
     if (state.needsReview > 0) {
         Body(strings(Strings.import_review_now), muted = true)
@@ -401,4 +504,173 @@ private fun DiagnosticsOffer(state: StatementImportUiState, actions: StatementIm
             )
         }
     }
+}
+
+// ── What the import read ────────────────────────────────────────────────
+
+/**
+ * The rows the import produced, grouped by the day they fell on.
+ *
+ * Arranged by shared [ImportedRows] so iOS shows the same list in the same
+ * order; this draws it. A failure to load leaves the import succeeded — the
+ * summary above still stands, and the offer to try the list again is a line,
+ * not an error screen.
+ */
+@Composable
+private fun ImportedRowsSection(state: StatementImportUiState, actions: StatementImportActions) {
+    if (state.importedLoading) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center,
+        ) {
+            CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+        }
+        return
+    }
+    if (state.importedErrorKey != null) {
+        Body(strings(Strings.import_extracted_failed), muted = true)
+        ProviderButton(text = strings(Strings.import_extracted_retry), onClick = actions.onReloadImported)
+        return
+    }
+    if (state.imported.isEmpty()) return
+
+    Spacer(Modifier.height(4.dp))
+    Text(
+        text = strings(Strings.import_extracted_title),
+        style = MaterialTheme.typography.titleSmall,
+        fontWeight = FontWeight.SemiBold,
+    )
+    ImportedTotals(state)
+    Spacer(Modifier.height(4.dp))
+
+    ImportedRows.byDate(state.imported).forEach { day ->
+        Text(
+            text = state.dateLabel(day.date),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 10.dp, bottom = 4.dp),
+        )
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp),
+            color = MaterialTheme.colorScheme.surface,
+            tonalElevation = 1.dp,
+        ) {
+            Column {
+                day.rows.forEachIndexed { index, row ->
+                    ImportedRow(state, row)
+                    if (index != day.rows.lastIndex) {
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** Money out, money in, and how many still want a person. */
+@Composable
+private fun ImportedTotals(state: StatementImportUiState) {
+    val chips = buildList<Pair<String, Boolean>> {
+        // Each omitted when there is none, rather than shown as zero: "0.00 in"
+        // reads as a fact about the statement rather than an absence of rows.
+        state.totalOut?.let { add(strings(Strings.import_extracted_out, it) to false) }
+        state.totalIn?.let { add(strings(Strings.import_extracted_in, it) to false) }
+        state.waitingLabel?.let { add(it to true) }
+    }
+    if (chips.isEmpty()) return
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        chips.forEach { (text, warning) ->
+            Text(
+                text = text,
+                style = MaterialTheme.typography.labelSmall,
+                color = if (warning) {
+                    MaterialTheme.colorScheme.tertiary
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                },
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(
+                        if (warning) {
+                            MaterialTheme.colorScheme.tertiary.copy(alpha = 0.12f)
+                        } else {
+                            MaterialTheme.colorScheme.surfaceVariant
+                        },
+                    )
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun ImportedRow(state: StatementImportUiState, row: Transaction) {
+    val isDebit = row.direction == TransactionDirection.DEBIT
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 56.dp)
+            .padding(horizontal = 14.dp, vertical = 10.dp)
+            // One announcement per row: the name, what it was filed as, and
+            // the amount, rather than three separate stops.
+            .semantics(mergeDescendants = true) {
+                contentDescription = state.rowDescription(row)
+            },
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(
+                text = ImportedRows.titleOf(row),
+                style = MaterialTheme.typography.bodyMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Spacer(Modifier.height(2.dp))
+            CategoryChip(state, row)
+        }
+        Spacer(Modifier.width(10.dp))
+        Text(
+            text = state.amountLabel(row),
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.SemiBold,
+            // Green for money in; money out stays plain. Colouring both makes
+            // every row shout and the direction stops registering.
+            color = if (isDebit) {
+                MaterialTheme.colorScheme.onBackground
+            } else {
+                FinAiPalette.Green
+            },
+        )
+    }
+}
+
+/** What it was filed as — or that nothing filed it, which is the useful case. */
+@Composable
+private fun CategoryChip(state: StatementImportUiState, row: Transaction) {
+    val category = ImportedRows.categoryOf(row, state.categories)
+    val filed = category != null
+    Text(
+        text = category?.name ?: strings(Strings.import_extracted_uncategorised),
+        style = MaterialTheme.typography.labelSmall,
+        color = if (filed) {
+            MaterialTheme.colorScheme.onSurfaceVariant
+        } else {
+            MaterialTheme.colorScheme.tertiary
+        },
+        modifier = Modifier
+            .clip(RoundedCornerShape(6.dp))
+            .background(
+                if (filed) {
+                    MaterialTheme.colorScheme.surfaceVariant
+                } else {
+                    MaterialTheme.colorScheme.tertiary.copy(alpha = 0.12f)
+                },
+            )
+            .padding(horizontal = 6.dp, vertical = 2.dp),
+    )
 }

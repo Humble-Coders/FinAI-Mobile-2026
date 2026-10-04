@@ -287,4 +287,75 @@ class StatementRedactorTest {
 
         assertEquals("", text)
     }
+
+    // ── A screenshot of a banking app ───────────────────────────────────
+
+    private fun screenshot(fromImage: Boolean = true) = OcrRows.of(ScreenshotFixture.document(fromImage))
+
+    @Test
+    fun a_screenshot_with_no_dated_amount_line_still_sends_its_rows() {
+        val text = StatementRedactor.redact(screenshot())
+
+        assertTrue(text.contains("Loblaws   -$86.40"), text)
+        assertTrue(text.contains("Payroll Acme Corp   +$2,600.00"), text)
+        assertTrue(text.contains("Uber trip   -$42.10"), text)
+        assertTrue(text.contains("Aug 13"), "a day heading between rows is kept: $text")
+    }
+
+    @Test
+    fun the_date_heading_above_the_first_row_comes_with_it() {
+        val text = StatementRedactor.redact(screenshot())
+        assertTrue(text.startsWith("Aug 14"), text)
+    }
+
+    @Test
+    fun what_sits_above_a_screenshots_rows_is_dropped() {
+        val text = StatementRedactor.redact(screenshot())
+
+        assertFalse(text.contains("6:01"), "the status bar went out: $text")
+        assertFalse(text.contains("Chequing"), "the account line went out: $text")
+        assertFalse(text.contains("5004321"), "the account number went out: $text")
+    }
+
+    @Test
+    fun a_scanned_statement_keeps_the_strict_rule() {
+        // Not an image: a scan has a name-and-address header, and the rule
+        // that drops it is not relaxed for it.
+        assertEquals("", StatementRedactor.redact(screenshot(fromImage = false)))
+    }
+
+    // ── A payment receipt ───────────────────────────────────────────────
+
+    private val receipt get() = StatementRedactor.redact(OcrRows.of(ScreenshotFixture.receipt))
+
+    @Test
+    fun a_receipt_with_an_amount_in_whole_rupees_is_sent() {
+        assertTrue(receipt.contains("₹70"), receipt)
+        assertTrue(receipt.contains("4 Oct 2026, 6:27pm"), receipt)
+        assertTrue(receipt.contains("To: GURPREET SINGH"), "the payee is the description: $receipt")
+    }
+
+    @Test
+    fun a_receipt_keeps_back_the_payer_and_both_upi_ids() {
+        assertFalse(receipt.contains("SHARNYA"), "the payer's name went out: $receipt")
+        assertFalse(receipt.contains("okhdfcbank"), receipt)
+        assertFalse(receipt.contains("icrj@ptys"), receipt)
+        assertFalse(receipt.contains("130715123456"), "the transaction id went out whole: $receipt")
+    }
+
+    @Test
+    fun a_upi_id_in_a_statement_row_is_masked_and_the_row_kept() {
+        val text = StatementRedactor.redact(document(listOf("14 Aug UPI/4821/john.d@okaxis/groceries  500.00")))
+
+        assertFalse(text.contains("john.d@okaxis"), text)
+        assertTrue(text.contains("500.00"), text)
+    }
+
+    @Test
+    fun a_bare_symbol_amount_does_not_start_a_statements_rows() {
+        // Only for images: on a statement a "$45" above the rows is as likely
+        // a balance in the header as anything else.
+        val text = StatementRedactor.redact(document(listOf("JANE DOE", "Balance $45", "No dated rows here")))
+        assertEquals("", text)
+    }
 }

@@ -10,6 +10,7 @@ import com.humblesolutions.finai.model.Category
 import com.humblesolutions.finai.model.DuplicateMatch
 import com.humblesolutions.finai.model.NewAccount
 import com.humblesolutions.finai.model.NewTransaction
+import com.humblesolutions.finai.model.ReviewPage
 import com.humblesolutions.finai.model.ReviewReason
 import com.humblesolutions.finai.model.Transaction
 import com.humblesolutions.finai.model.TransactionDirection
@@ -584,6 +585,13 @@ class ManualEntryViewModelTest {
         private val gate: CompletableDeferred<Unit>? = null,
         private val answer: ((NewTransaction) -> Transaction)? = null,
     ) : TransactionsRepository {
+        override suspend fun list(
+            statementImportId: String?,
+            month: String?,
+            needsReview: Boolean?,
+            cursor: String?,
+        ): ReviewPage = ReviewPage()
+
         val sent = mutableListOf<NewTransaction>()
 
         override suspend fun create(entry: NewTransaction): Transaction {

@@ -20,24 +20,23 @@ struct StatementImportView: View {
     /// The account, the file and whether a read was under way, kept for the
     /// scene so the app coming back reads the same file again.
     @SceneStorage("statement_import.state") private var stored = ""
-    @State private var choosingAccount = false
-    @State private var addAccountNext = false
     @State private var pickingFile = false
     @State private var photo: PhotosPickerItem?
     @State private var takingPhoto = false
     /// Held here only — never in scene storage — and cleared once used.
     @State private var password = ""
+    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
         ZStack {
-            Brand.ground.ignoresSafeArea()
+            MintBackdrop(decoration: model.step == .chooseAccount ? "building.columns.fill" : "doc.text.fill")
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     content
                 }
                 .frame(maxWidth: 560)
                 .frame(maxWidth: .infinity)
-                .padding(.horizontal, 24)
+                .padding(.horizontal, 20)
                 .padding(.vertical, 16)
             }
             .scrollBounceBehavior(.basedOnSize)
@@ -50,25 +49,6 @@ struct StatementImportView: View {
         // before the view came back found none to send with.
         .onDisappear { if !takingPhoto { model.unbind() } }
         .onChange(of: model.snapshot) { _, snapshot in stored = snapshot }
-        .sheet(isPresented: $choosingAccount, onDismiss: {
-            guard addAccountNext else { return }
-            addAccountNext = false
-            model.openNewAccount()
-        }) {
-            AccountListSheet(
-                accounts: model.accounts,
-                chosenId: model.accountId,
-                onChosen: { id in
-                    model.chooseAccount(id)
-                    choosingAccount = false
-                },
-                onAdd: {
-                    addAccountNext = true
-                    choosingAccount = false
-                },
-                onCancel: { choosingAccount = false }
-            )
-        }
         .sheet(isPresented: newAccountShown) { NewAccountSheet(model: model) }
         .fileImporter(isPresented: $pickingFile, allowedContentTypes: [.pdf, .image]) { result in
             if case .success(let url) = result, let copy = try? ImportFiles.adopt(url) {
@@ -109,29 +89,20 @@ struct StatementImportView: View {
     }
 
     private var header: some View {
-        ZStack {
-            Text(L.t(Strings.shared.import_title))
-                .font(.headline)
-                .lineLimit(1)
-                .padding(.horizontal, 56)
-                .accessibilityAddTraits(.isHeader)
-            HStack {
-                Button {
-                    if model.step == .chooseFile { model.backToAccount() } else if !model.working { close() }
-                } label: {
-                    Image(systemName: "chevron.left")
-                        .font(.body.weight(.semibold))
-                        .tappableArea()
-                }
-                .accessibilityLabel(L.t(Strings.shared.action_back))
-                .foregroundColor(.primary)
-                .disabled(model.working)
-                Spacer()
-            }
-            .padding(.horizontal, 8)
+        MintHeader(title: L.t(Strings.shared.import_title), step: stepNumber, backDisabled: model.working) {
+            if model.step == .chooseFile { model.backToAccount() } else if !model.working { close() }
         }
-        .frame(height: 52)
-        .background(Brand.ground)
+        .padding(.bottom, 4)
+    }
+
+    /// Which of the three dashes is lit: the account, the file, then the read
+    /// and its end.
+    private var stepNumber: Int {
+        switch model.step {
+        case .chooseAccount: 1
+        case .chooseFile, .consent, .password: 2
+        default: 3
+        }
     }
 
     @ViewBuilder
@@ -139,10 +110,11 @@ struct StatementImportView: View {
         switch model.step {
         case .chooseAccount: accountStep
         case .chooseFile: fileStep
-        case .consent: consentStep
-        case .password: passwordStep
-        case .done: doneStep
-        case .failed: failedStep
+        // The later steps keep their content; the panel gives them the ground.
+        case .consent: MintPanel { consentStep }
+        case .password: MintPanel { passwordStep }
+        case .done: MintPanel { doneStep }
+        case .failed: MintPanel { failedStep }
         // The coin loader covers these; its caption says which.
         default: Color.clear.frame(height: 1)
         }
@@ -154,52 +126,123 @@ struct StatementImportView: View {
             .accessibilityAddTraits(.isHeader)
     }
 
+    /// Which account: every account as a card, chosen by tapping it, then "Add
+    /// an account" — the same choices the account list offered, laid out as the
+    /// design has them. Continue waits for a real choice.
     private var accountStep: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            title(Strings.shared.import_account_title)
-            Text(L.t(Strings.shared.import_account_hint)).foregroundColor(Brand.textMuted)
-            if let key = model.accountsErrorKey {
-                ErrorText(messageKey: key)
-                Button(L.t(Strings.shared.import_try_again)) { model.loadAccounts() }
-            } else {
-                PickerField(
-                    label: L.t(Strings.shared.manual_entry_account_label),
-                    value: model.account?.name,
-                    placeholder: L.t(Strings.shared.manual_entry_account_placeholder)
-                ) { choosingAccount = true }
+        VStack(alignment: .leading, spacing: 20) {
+            MintTitle(title: L.t(Strings.shared.import_account_title), subtitle: L.t(Strings.shared.import_account_hint))
+            MintPanel {
+                if let key = model.accountsErrorKey {
+                    ErrorText(messageKey: key)
+                    Button(L.t(Strings.shared.import_try_again)) { model.loadAccounts() }
+                } else if model.accountsLoading {
+                    ProgressView().frame(maxWidth: .infinity).padding(24)
+                } else {
+                    if model.accounts.isEmpty {
+                        Text(L.t(Strings.shared.manual_entry_accounts_empty)).foregroundColor(Brand.textMuted)
+                    }
+                    ForEach(Array(model.accounts.enumerated()), id: \.element.id) { index, account in
+                        let chosen = account.id == model.accountId
+                        Button { model.chooseAccount(account.id) } label: {
+                            ChoiceCardLabel(
+                                symbol: "building.columns.fill",
+                                accent: Mint.accountTints[index % Mint.accountTints.count],
+                                title: account.name,
+                                detail: Self.detail(account),
+                                selected: chosen
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityAddTraits(chosen ? .isSelected : [])
+                    }
+                    Button { model.openNewAccount() } label: {
+                        ChoiceCardLabel(symbol: "plus", accent: Brand.green, title: L.t(Strings.shared.manual_entry_account_add))
+                    }
+                    .buttonStyle(.plain)
+                }
                 // Not optional and not defaulted: Continue waits for a real choice.
                 GradientButton(title: L.t(Strings.shared.action_continue), enabled: model.canContinueFromAccount) {
                     model.continueFromAccount()
                 }
+                .padding(.top, 4)
             }
         }
     }
 
+    /// "Savings · CAD": the kind, then the currency — what the account list shows.
+    static func detail(_ account: Account) -> String? {
+        let parts = [account.kind.labelKey.map { L.t($0) }, account.currency.isEmpty ? nil : account.currency]
+            .compactMap { $0 }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+
+    /// The three ways in, what happens to the file, and which account it is for.
     private var fileStep: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            title(Strings.shared.import_file_title)
-            // The true thing, said plainly: read here, never uploaded.
-            Text(L.t(Strings.shared.import_on_device))
-                .font(.subheadline)
-                .padding(16)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Brand.sheet, in: RoundedRectangle(cornerRadius: 16))
-            GradientButton(title: L.t(Strings.shared.import_pick_file)) { pickingFile = true }
-            PhotosPicker(selection: $photo, matching: .images) {
-                Text(L.t(Strings.shared.import_pick_photo)).font(.headline).tappableRow(minHeight: 52)
-            }
-            .buttonStyle(.bordered)
-            .tint(.primary)
-            if CameraPicker.isAvailable {
-                Button { takingPhoto = true } label: {
-                    Text(L.t(Strings.shared.import_take_photo)).font(.headline).tappableRow(minHeight: 52)
+        let dark = scheme == .dark
+        return VStack(alignment: .leading, spacing: 20) {
+            MintTitle(title: L.t(Strings.shared.import_file_title), subtitle: L.t(Strings.shared.import_file_subtitle))
+            MintPanel {
+                Button { pickingFile = true } label: {
+                    ChoiceCardLabel(
+                        symbol: "doc.text.fill", accent: Brand.green,
+                        title: L.t(Strings.shared.import_pick_file_title),
+                        detail: L.t(Strings.shared.import_pick_file_detail)
+                    )
                 }
-                .buttonStyle(.bordered)
-                .tint(.primary)
+                .buttonStyle(.plain)
+                PhotosPicker(selection: $photo, matching: .images) {
+                    ChoiceCardLabel(
+                        symbol: "photo.fill", accent: Brand.blue,
+                        title: L.t(Strings.shared.import_pick_photo),
+                        detail: L.t(Strings.shared.import_pick_photo_detail)
+                    )
+                }
+                .buttonStyle(.plain)
+                if CameraPicker.isAvailable {
+                    Button { takingPhoto = true } label: {
+                        ChoiceCardLabel(
+                            symbol: "camera.fill", accent: Mint.orange,
+                            title: L.t(Strings.shared.import_take_photo),
+                            detail: L.t(Strings.shared.import_take_photo_detail),
+                            tinted: true
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+                // The true thing, said plainly: read here, never uploaded.
+                HStack(alignment: .center, spacing: 14) {
+                    IconTile(symbol: "lock.fill", accent: Brand.green, size: 40, iconSize: 18)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(L.t(Strings.shared.import_private_title))
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundColor(Mint.greenText(dark))
+                        Text(L.t(Strings.shared.import_on_device))
+                            .font(.footnote)
+                            .foregroundColor(Brand.textMuted)
+                    }
+                }
+                .padding(14)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Brand.green.opacity(0.08)))
+                Text(L.t(Strings.shared.import_selected_account))
+                    .font(.subheadline.weight(.medium))
+                    .foregroundColor(Brand.textMuted)
+                    .padding(.top, 4)
+                    .padding(.leading, 4)
+                Button { model.backToAccount() } label: {
+                    ChoiceCardLabel(
+                        symbol: "building.columns.fill", accent: Brand.green,
+                        title: model.account?.name ?? L.t(Strings.shared.manual_entry_account_placeholder),
+                        detail: model.account.flatMap { Self.detail($0) }
+                    ) {
+                        Text(L.t(Strings.shared.import_change_account))
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundColor(Mint.greenText(dark))
+                    }
+                }
+                .buttonStyle(.plain)
             }
-            Button(model.account?.name ?? L.t(Strings.shared.manual_entry_account_placeholder)) { model.backToAccount() }
-                .lineLimit(1)
-                .foregroundColor(Brand.textMuted)
         }
     }
 
@@ -258,6 +301,12 @@ struct StatementImportView: View {
                 ForEach(model.summary, id: \.self) { Text($0) }
             }
             .onAppear { AccessibilityNotification.Announcement(model.summary.joined(separator: ". ")).post() }
+
+            // What it actually read. "Imported 24" is a claim the person
+            // cannot check, and the one question they have is whether the
+            // categories are right.
+            importedRows
+
             // Straight into the review queue when rows are waiting (#32).
             if model.needsReview > 0 {
                 Text(L.t(Strings.shared.import_review_now)).foregroundColor(Brand.textMuted)
@@ -331,6 +380,102 @@ struct StatementImportView: View {
         }
         .padding(16)
         .background(Brand.sheet, in: RoundedRectangle(cornerRadius: 16))
+    }
+
+    // MARK: - What the import read
+
+    /// The rows the import produced, grouped by the day they fell on.
+    ///
+    /// Arranged by shared `ImportedRows` so Android shows the same list in the
+    /// same order; this draws it. A failure to load leaves the import
+    /// succeeded — the summary above still stands, and the offer to try again
+    /// is a line, not an error screen.
+    @ViewBuilder
+    private var importedRows: some View {
+        if model.importedLoading {
+            ProgressView().frame(maxWidth: .infinity).padding(.vertical, 8)
+        } else if model.importedErrorKey != nil {
+            VStack(alignment: .leading, spacing: 8) {
+                Text(L.t(Strings.shared.import_extracted_failed)).foregroundColor(Brand.textMuted)
+                Button { model.reloadImported() } label: {
+                    Text(L.t(Strings.shared.import_extracted_retry)).font(.headline).tappableRow(minHeight: 52)
+                }
+                .buttonStyle(.bordered)
+                .tint(.primary)
+            }
+        } else if !model.imported.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                Text(L.t(Strings.shared.import_extracted_title)).font(.subheadline.weight(.semibold))
+                importedTotals
+                ForEach(model.importedDays, id: \.date) { day in
+                    Text(model.dateLabel(day.date))
+                        .font(.caption)
+                        .foregroundColor(Brand.textMuted)
+                        .padding(.top, 6)
+                    VStack(spacing: 0) {
+                        ForEach(Array(day.rows.enumerated()), id: \.element.id) { index, row in
+                            importedRow(row)
+                            if index != day.rows.count - 1 {
+                                Divider().overlay(Brand.border)
+                            }
+                        }
+                    }
+                    .background(Brand.surface)
+                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                }
+            }
+        }
+    }
+
+    /// Money out, money in, and how many still want a person.
+    @ViewBuilder
+    private var importedTotals: some View {
+        HStack(spacing: 6) {
+            // Each omitted when there is none, rather than shown as zero:
+            // "0.00 in" reads as a fact about the statement rather than an
+            // absence of rows.
+            if let out = model.totalOut { chip(L.t(Strings.shared.import_extracted_out, out), warning: false) }
+            if let money = model.totalIn { chip(L.t(Strings.shared.import_extracted_in, money), warning: false) }
+            if let waiting = model.waitingLabel { chip(waiting, warning: true) }
+        }
+    }
+
+    private func chip(_ text: String, warning: Bool) -> some View {
+        Text(text)
+            .font(.caption2)
+            .foregroundColor(warning ? Brand.amber : Brand.textMuted)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(warning ? Brand.amber.opacity(0.12) : Brand.surface)
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+
+    private func importedRow(_ row: SharedLogic.Transaction) -> some View {
+        HStack(alignment: .center, spacing: 10) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(model.titleOf(row)).font(.body).lineLimit(1).truncationMode(.tail)
+                Text(model.categoryLabel(row))
+                    .font(.caption2)
+                    .foregroundColor(model.isFiled(row) ? Brand.textMuted : Brand.amber)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(model.isFiled(row) ? Brand.surfaceField : Brand.amber.opacity(0.12))
+                    .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+            }
+            Spacer()
+            Text(model.amountLabel(row))
+                .font(.body.weight(.semibold))
+                // Green for money in; money out stays plain. Colouring both
+                // makes every row shout and the direction stops registering.
+                .foregroundColor(row.direction == .credit ? Brand.green : .primary)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .frame(minHeight: 56)
+        // One announcement per row: the name, what it was filed as and the
+        // amount, rather than three separate stops.
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(model.rowDescription(row))
     }
 }
 

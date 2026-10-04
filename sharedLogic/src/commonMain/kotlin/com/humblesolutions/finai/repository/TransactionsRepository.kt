@@ -33,6 +33,40 @@ interface TransactionsRepository {
     suspend fun review(cursor: String? = null): ReviewPage
 
     /**
+     * A page of this household's rows — **filed ones included** (#F3).
+     *
+     * [review] answers "what still needs me". This answers "what did you do",
+     * which the import result screen asks the moment a statement lands: a row
+     * the model filed with confidence is saved and otherwise shown to nobody,
+     * so "imported 24" could not be opened to see the 24.
+     *
+     * @param statementImportId scopes to one import, which is how the result
+     *   screen asks for exactly the rows it just created.
+     * @param month `YYYY-MM`, filtering by the date on the statement rather
+     *   than when the row was written — the months a person recognises from
+     *   their own statements. Combines with [statementImportId].
+     * @param needsReview filters within that; null returns both kinds, and
+     *   each row says which it is.
+     */
+    @Throws(ApiException::class, CancellationException::class)
+    suspend fun list(
+        statementImportId: String? = null,
+        month: String? = null,
+        needsReview: Boolean? = null,
+        cursor: String? = null,
+    ): ReviewPage
+
+    /**
+     * The household's newest [count] rows, for the dashboard's recent list.
+     *
+     * A default built on [list] so a fake gets it for free; the network
+     * implementation overrides it to ask the server for only [count], rather
+     * than a full page on every refresh of home to show three of them.
+     */
+    @Throws(ApiException::class, CancellationException::class)
+    suspend fun recent(count: Int): List<Transaction> = list().rows.take(count)
+
+    /**
      * Fix a row. Whatever changed, the row has been looked at, so it leaves
      * the queue — unless it still has no category, in which case the server
      * keeps it, asking for one (Finance-backend #48).

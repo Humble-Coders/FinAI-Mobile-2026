@@ -54,6 +54,7 @@ enum class ImportFailure(
     UNSUPPORTED_FILE(Strings.statement_unsupported, canRetry = false, offersManualEntry = true, offersDiagnostics = false),
     NOTHING_READABLE(Strings.statement_nothing_readable, canRetry = false, offersManualEntry = true, offersDiagnostics = false),
     NOTHING_TO_SEND(Strings.statement_no_transactions, canRetry = false, offersManualEntry = true, offersDiagnostics = false),
+    OTHER_CURRENCY(Strings.statement_other_currency, canRetry = false, offersManualEntry = false, offersDiagnostics = false),
     TOO_MANY_PAGES(Strings.statement_too_many_pages, canRetry = false, offersManualEntry = true, offersDiagnostics = false),
     TOO_LONG(Strings.statement_too_long, canRetry = false, offersManualEntry = true, offersDiagnostics = false),
     TOO_MANY_TRANSACTIONS(Strings.import_too_many_transactions, canRetry = false, offersManualEntry = true, offersDiagnostics = false),
@@ -100,6 +101,8 @@ object StatementImportFlow {
         is StatementTooLong, is ApiException.StatementTooLarge -> ImportProblem(ImportFailure.TOO_LONG)
 
         is StatementHasNothingToSend -> ImportProblem(ImportFailure.NOTHING_TO_SEND)
+
+        is StatementInOtherCurrency -> ImportProblem(ImportFailure.OTHER_CURRENCY)
 
         is ApiException.TooManyTransactions -> ImportProblem(ImportFailure.TOO_MANY_TRANSACTIONS)
 

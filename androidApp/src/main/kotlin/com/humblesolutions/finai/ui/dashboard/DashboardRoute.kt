@@ -20,6 +20,7 @@ internal fun DashboardRoute(
     onImportStatement: () -> Unit,
     onAddTransaction: () -> Unit,
     onReview: () -> Unit,
+    onViewAll: () -> Unit,
     onSignOut: () -> Unit,
 ) {
     val model: DashboardViewModel = viewModel()
@@ -38,6 +39,18 @@ internal fun DashboardRoute(
         onImportStatement = onImportStatement,
         onAddTransaction = onAddTransaction,
         onReview = onReview,
+        onViewAll = onViewAll,
         onSignOut = onSignOut,
+        commitments = CommitmentActions(
+            onEdit = model::editCommitment,
+            onAdd = model::addCommitment,
+            onName = model::onCommitmentName,
+            onAmount = model::onCommitmentAmount,
+            onSave = model::saveCommitment,
+            onCancel = model::cancelCommitment,
+            onAskDelete = model::askDeleteCommitment,
+            onDelete = model::deleteCommitment,
+            onKeep = model::keepCommitment,
+        ),
     )
 }

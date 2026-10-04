@@ -27,6 +27,9 @@ internal object FinAiPalette {
     val Amber = Color(0xFFFBBF24)
     val Red = Color(0xFFEF4444)
 
+    /** The investments accent, as in the dashboard design. */
+    val Blue = Color(0xFF3B82F6)
+
     // Dark — the design's primary mode.
     val DarkGround = Color(0xFF0A0A0A)
     val DarkSurface = Color(0xFF1C1C1E)

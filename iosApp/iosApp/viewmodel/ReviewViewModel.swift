@@ -273,6 +273,7 @@ final class ReviewViewModel: ObservableObject {
             guard let self else { return }
             do {
                 let outcome = try await transactionsRepository.confirmAll(ids: ids)
+                LedgerChanged.announce()
                 guard started == self.generation else { return }
                 self.confirmingAll = false
                 self.announcements = [
@@ -301,6 +302,7 @@ final class ReviewViewModel: ObservableObject {
             guard let self else { return }
             do {
                 let outcome = try await transactionsRepository.confirm(id: id)
+                LedgerChanged.announce()
                 guard started == self.generation else { return }
                 self.apply(
                     id: id,
@@ -375,6 +377,7 @@ final class ReviewViewModel: ObservableObject {
             guard let self else { return }
             do {
                 let outcome = try await transactionsRepository.correct(id: row.id, patch: patch)
+                LedgerChanged.announce()
                 guard started == self.generation else { return }
                 self.saving = false
                 self.editing = nil
@@ -487,6 +490,7 @@ final class ReviewViewModel: ObservableObject {
             guard let self else { return }
             do {
                 _ = try await transactionsRepository.delete(id: pending.id)
+                LedgerChanged.announce()
             } catch {
                 guard started == self.generation else { return }
                 // It is still on the server, so put it back where it was.

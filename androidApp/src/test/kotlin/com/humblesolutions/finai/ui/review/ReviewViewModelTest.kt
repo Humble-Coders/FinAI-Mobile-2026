@@ -647,6 +647,13 @@ class ReviewViewModelTest {
         private val failConfirmOne: ApiException? = null,
         private val failDelete: ApiException? = null,
     ) : TransactionsRepository {
+        override suspend fun list(
+            statementImportId: String?,
+            month: String?,
+            needsReview: Boolean?,
+            cursor: String?,
+        ): ReviewPage = ReviewPage()
+
         var pagesRead = 0
         val cursors = mutableListOf<String?>()
         val confirmedAll = mutableListOf<List<String>>()
@@ -709,5 +716,27 @@ class ReviewViewModelTest {
     private class FakeCapabilities : CapabilitiesRepository {
         override suspend fun fetch() = Capabilities(currency = "CAD", locale = "en-CA")
         override fun close() = Unit
+    }
+
+    @Test
+    fun `deleting from the editor closes it and takes the row out with the usual undo`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val transactions = FakeTransactions(pages = listOf(ReviewPage(rows = listOf(row("a"), row("b")))))
+        val model = model()
+        model.bind("alice") { repositories(transactions = transactions) }
+        runCurrent()
+        model.edit("a")
+        runCurrent()
+
+        model.deleteEditing()
+        runCurrent()
+
+        assertNull(model.uiState.value.editing)
+        assertEquals(listOf("b"), model.uiState.value.visibleRows.map { it.id })
+        assertEquals(emptyList(), transactions.deleted, "nothing sent inside the undo window")
+
+        advanceTimeBy(ReviewViewModel.UNDO_WINDOW_MS + 1)
+        runCurrent()
+        assertEquals(listOf("a"), transactions.deleted)
     }
 }

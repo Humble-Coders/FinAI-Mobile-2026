@@ -9,7 +9,9 @@ import com.humblesolutions.finai.config.Supabase
 import com.humblesolutions.finai.data.AndroidStatementReader
 import com.humblesolutions.finai.data.KtorAccountsRepository
 import com.humblesolutions.finai.data.KtorAiConsentRepository
+import com.humblesolutions.finai.data.KtorCategoriesRepository
 import com.humblesolutions.finai.data.KtorStatementImportRepository
+import com.humblesolutions.finai.data.KtorTransactionsRepository
 import com.humblesolutions.finai.data.SupabaseTokenSource
 import com.humblesolutions.finai.model.AccountKind
 import com.humblesolutions.finai.model.ApiException
@@ -17,9 +19,11 @@ import com.humblesolutions.finai.model.ExtractedDocument
 import com.humblesolutions.finai.model.ParsedStatement
 import com.humblesolutions.finai.repository.AccountsRepository
 import com.humblesolutions.finai.repository.AiConsentRepository
+import com.humblesolutions.finai.repository.CategoriesRepository
 import com.humblesolutions.finai.repository.StatementImportRepository
 import com.humblesolutions.finai.repository.StatementReadException
 import com.humblesolutions.finai.repository.StatementReader
+import com.humblesolutions.finai.repository.TransactionsRepository
 import com.humblesolutions.finai.usecase.ImportFailure
 import com.humblesolutions.finai.usecase.ImportProblem
 import com.humblesolutions.finai.usecase.ImportStatement
@@ -27,6 +31,7 @@ import com.humblesolutions.finai.usecase.ImportStep
 import com.humblesolutions.finai.usecase.NewAccountDraft
 import com.humblesolutions.finai.usecase.NewAccountForm
 import com.humblesolutions.finai.usecase.StatementImportFlow
+import com.humblesolutions.finai.util.LedgerChanged
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -80,6 +85,8 @@ class StatementImportViewModel(private val saved: SavedStateHandle) : ViewModel(
                 consent = KtorAiConsentRepository(ApiConfig.BASE_URL, tokens, logging),
                 reader = AndroidStatementReader(context.applicationContext),
                 files = AndroidPickedFiles(context.applicationContext),
+                transactions = KtorTransactionsRepository(ApiConfig.BASE_URL, tokens, logging),
+                categories = KtorCategoriesRepository(ApiConfig.BASE_URL, tokens, logging),
             )
         }
     }
@@ -311,7 +318,11 @@ class StatementImportViewModel(private val saved: SavedStateHandle) : ViewModel(
         _uiState.update { it.copy(step = ImportStep.SENDING, problem = null, canResend = true) }
         work = viewModelScope.launch {
             try {
-                val result = ImportStatement(repos.imports).execute(read, accountId, keepText)
+                // Every account is in the household's currency, so any of them
+                // answers when none is chosen yet.
+                val accounts = _uiState.value.accounts
+                val currency = (accounts.firstOrNull { it.id == accountId } ?: accounts.firstOrNull())?.currency
+                val result = ImportStatement(repos.imports).execute(read, accountId, keepText, accountCurrency = currency)
                 if (started != generation) return@launch
                 if (keepText) {
                     _uiState.update {
@@ -351,14 +362,72 @@ class StatementImportViewModel(private val saved: SavedStateHandle) : ViewModel(
                         step = ImportStep.DONE,
                         summary = StatementImportFlow.summary(result, outcome),
                         needsReview = outcome.needsReview,
+                        importId = outcome.importId,
                         canResend = false,
                     )
                 }
+                // Home shows figures derived from these rows, and the server
+                // has confirmed them. Announced here rather than optimistically
+                // on send, so a refresh never shows the figures it already had.
+                LedgerChanged.announce()
+                loadImported(outcome.importId)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 if (started != generation) return@launch
                 fail(e)
+            }
+        }
+    }
+
+    /** Try the list again after it failed; the import itself already succeeded. */
+    fun reloadImported() {
+        _uiState.value.importId?.let { loadImported(it) }
+    }
+
+    /**
+     * The rows this import produced, for the result screen.
+     *
+     * Asked for by the import's own id, so the list is exactly what just
+     * happened rather than the household's whole ledger. Both kinds: the rows
+     * flagged for review AND the ones the model filed with confidence, which
+     * are the ones nobody has ever been shown and the only way to answer the
+     * question somebody actually has — did it get my categories right.
+     *
+     * A failure here leaves the import succeeded and the summary standing. The
+     * rows are worth showing and not worth turning a finished import into an
+     * error screen over.
+     */
+    private fun loadImported(importId: String) {
+        val repos = repositories ?: return
+        if (importId.isBlank()) return
+        val started = generation
+        _uiState.update { it.copy(importedLoading = true, importedErrorKey = null) }
+        viewModelScope.launch {
+            try {
+                val page = repos.transactions.list(statementImportId = importId)
+                val categories = try {
+                    repos.categories.list()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: ApiException) {
+                    // A name beside each row is a nicety; the rows are the point.
+                    emptyList()
+                }
+                if (started != generation) return@launch
+                _uiState.update {
+                    it.copy(
+                        imported = page.rows,
+                        categories = categories,
+                        importedLoading = false,
+                        importedErrorKey = null,
+                    )
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: ApiException) {
+                if (started != generation) return@launch
+                _uiState.update { it.copy(importedLoading = false, importedErrorKey = e.messageKey) }
             }
         }
     }
@@ -546,11 +615,15 @@ internal class ImportRepositories(
     val consent: AiConsentRepository,
     val reader: StatementReader,
     val files: PickedFiles,
+    val transactions: TransactionsRepository,
+    val categories: CategoriesRepository,
 ) {
     fun close() {
         accounts.close()
         imports.close()
         consent.close()
         reader.close()
+        transactions.close()
+        categories.close()
     }
 }

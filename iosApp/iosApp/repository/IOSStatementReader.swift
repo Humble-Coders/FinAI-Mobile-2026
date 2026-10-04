@@ -96,7 +96,7 @@ final class IOSStatementReader {
         // reports once, on success.
         guard characters >= meaningfulCharacters else { return nil }
         onPage(document.pageCount, document.pageCount)
-        return ExtractedDocument(pages: pages, source: .pdfText)
+        return ExtractedDocument(pages: pages, source: .pdfText, fromImage: false)
     }
 
     /// Splits a page's text into lines, keeping where each one sat.
@@ -175,7 +175,7 @@ final class IOSStatementReader {
         guard pages.contains(where: { !$0.lines.isEmpty }) else {
             throw ReadError.nothingReadable
         }
-        return ExtractedDocument(pages: pages, source: .ocr)
+        return ExtractedDocument(pages: pages, source: .ocr, fromImage: false)
     }
 
     // MARK: - Path 3: an image
@@ -192,7 +192,8 @@ final class IOSStatementReader {
         guard !lines.isEmpty else { throw ReadError.nothingReadable }
         return ExtractedDocument(
             pages: [ExtractedPage(index: 0, lines: lines)],
-            source: .ocr
+            source: .ocr,
+            fromImage: true
         )
     }
 

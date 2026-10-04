@@ -24,6 +24,7 @@ import com.humblesolutions.finai.usecase.ManualEntryDraft
 import com.humblesolutions.finai.usecase.NewAccountDraft
 import com.humblesolutions.finai.usecase.NewAccountForm
 import com.humblesolutions.finai.util.Dates
+import com.humblesolutions.finai.util.LedgerChanged
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -272,6 +273,9 @@ class ManualEntryViewModel internal constructor(
                     )
                 }
                 store(_uiState.value)
+                // One transaction moves the month's figures too. After the
+                // server returned the stored row, never on send.
+                LedgerChanged.announce()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: ApiException.DuplicateTransaction) {

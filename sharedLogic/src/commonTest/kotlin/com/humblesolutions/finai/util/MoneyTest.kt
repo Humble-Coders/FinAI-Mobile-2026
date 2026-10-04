@@ -108,4 +108,37 @@ class MoneyTest {
         assertNull(Money.add("1200", "abc"))
         assertNull(Money.add("", ""))
     }
+
+    // ── compact, for chart labels ───────────────────────────────────────
+
+    @Test
+    fun compact_figures_round_to_what_a_chart_label_needs() {
+        assertEquals("$420", Money.compact("420.40", "CAD"))
+        assertEquals("$1.5k", Money.compact("1500.00", "CAD"))
+        assertEquals("$1k", Money.compact("1000", "CAD"))
+        assertEquals("$12k", Money.compact("12345.67", "CAD"))
+        assertEquals("$1.2M", Money.compact("1234567", "CAD"))
+        assertEquals("$25M", Money.compact("25000000", "CAD"))
+    }
+
+    @Test
+    fun compact_figures_round_up_into_the_next_unit_rather_than_reading_1000() {
+        assertEquals("$1k", Money.compact("999.60", "CAD"))
+        assertEquals("$10k", Money.compact("9990", "CAD"))
+        assertEquals("$1M", Money.compact("999600", "CAD"))
+    }
+
+    @Test
+    fun a_compact_loss_keeps_its_sign_and_nothing_has_none() {
+        assertEquals("-$500", Money.compact("-500", "CAD"))
+        assertEquals("-$2.5k", Money.compact("-2500", "CAD"))
+        assertEquals("$0", Money.compact("-0.20", "CAD"))
+    }
+
+    @Test
+    fun compact_figures_follow_the_same_conventions_as_full_ones() {
+        assertEquals("1,5k €", Money.compact("1500", "EUR", "fr"))
+        assertEquals("1.5k XYZ", Money.compact("1500", "XYZ"))
+        assertEquals("", Money.compact("not money", "CAD"))
+    }
 }

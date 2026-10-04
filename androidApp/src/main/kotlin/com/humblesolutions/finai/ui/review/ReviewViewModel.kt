@@ -20,6 +20,7 @@ import com.humblesolutions.finai.usecase.CorrectionDraft
 import com.humblesolutions.finai.usecase.ManualEntry
 import com.humblesolutions.finai.usecase.ReviewQueue
 import com.humblesolutions.finai.util.Dates
+import com.humblesolutions.finai.util.LedgerChanged
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -193,6 +194,7 @@ class ReviewViewModel(private val saved: SavedStateHandle) : ViewModel() {
         viewModelScope.launch {
             try {
                 val outcome = repos.transactions.confirmAll(ids)
+                LedgerChanged.announce()
                 if (started != generation) return@launch
                 _uiState.update {
                     it.copy(
@@ -223,6 +225,7 @@ class ReviewViewModel(private val saved: SavedStateHandle) : ViewModel() {
         viewModelScope.launch {
             try {
                 val outcome = repos.transactions.confirm(id)
+                LedgerChanged.announce()
                 if (started != generation) return@launch
                 applyOutcome(id, outcome.transaction, ReviewQueue.aftermath(outcome, row.merchant))
             } catch (e: CancellationException) {
@@ -248,6 +251,17 @@ class ReviewViewModel(private val saved: SavedStateHandle) : ViewModel() {
         if (_uiState.value.saving) return
         _uiState.update { it.copy(editing = null, draft = CorrectionDraft(), editErrorKey = null) }
         clearCorrection()
+    }
+
+    /**
+     * Deletes the row the editor has open, the way the queue deletes any row:
+     * gone from the list at once, with the few seconds' undo the queue gives.
+     */
+    fun deleteEditing() {
+        val id = _uiState.value.editing?.id ?: return
+        if (_uiState.value.saving) return
+        cancelEdit()
+        delete(id)
     }
 
     fun onDateChange(date: LocalDate) = editDraft { it.copy(occurredOn = date) }
@@ -281,6 +295,7 @@ class ReviewViewModel(private val saved: SavedStateHandle) : ViewModel() {
         viewModelScope.launch {
             try {
                 val outcome = repos.transactions.correct(row.id, patch)
+                LedgerChanged.announce()
                 if (started != generation) return@launch
                 _uiState.update { it.copy(saving = false, editing = null, draft = CorrectionDraft()) }
                 clearCorrection()
@@ -402,6 +417,7 @@ class ReviewViewModel(private val saved: SavedStateHandle) : ViewModel() {
         viewModelScope.launch {
             try {
                 repos.transactions.delete(pending.row.id)
+                LedgerChanged.announce()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: ApiException) {

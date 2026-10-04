@@ -41,12 +41,25 @@ final class StatementImportViewModel: ObservableObject, NewAccountHost {
     @Published private(set) var diagnosticsThanks: String?
     @Published private(set) var summary: [String] = []
     @Published private(set) var needsReview = 0
+    /// The import just finished, so its rows can be asked for by id.
+    @Published private(set) var importId: String?
+    /// What the import actually produced — "imported 24" is a claim the person
+    /// cannot check, and the one question they have is whether the categories
+    /// are right. These are the 24.
+    @Published private(set) var imported: [SharedLogic.Transaction] = []
+    @Published private(set) var importedLoading = false
+    /// A list that would not load must not make a successful import look failed.
+    @Published private(set) var importedErrorKey: String?
+    @Published private(set) var importedCategories: [SharedLogic.Category] = []
     /// A read was under way — so a restore reads the file again.
     @Published private(set) var inProgress = false
 
     private var accountsRepository: AccountsRepository?
     private var importsRepository: StatementImportRepository?
     private var consentRepository: AiConsentRepository?
+    /// Read only after a finished import, for the rows it produced.
+    private var transactionsRepository: TransactionsRepository?
+    private var categoriesRepository: CategoriesRepository?
     private let reader = IOSStatementReader()
     private var owner: String?
     private var generation = 0
@@ -107,10 +120,16 @@ final class StatementImportViewModel: ObservableObject, NewAccountHost {
         accountsRepository = KtorAccountsRepository(baseUrl: base, tokens: tokens, logging: logging)
         importsRepository = KtorStatementImportRepository(baseUrl: base, tokens: tokens, logging: logging)
         consentRepository = KtorAiConsentRepository(baseUrl: base, tokens: tokens, logging: logging)
+        transactionsRepository = KtorTransactionsRepository(baseUrl: base, tokens: tokens, logging: logging)
+        categoriesRepository = KtorCategoriesRepository(baseUrl: base, tokens: tokens, logging: logging)
         loadAccounts()
     }
 
     func unbind() {
+        transactionsRepository?.close()
+        transactionsRepository = nil
+        categoriesRepository?.close()
+        categoriesRepository = nil
         accountsRepository?.close()
         accountsRepository = nil
         importsRepository?.close()
@@ -147,10 +166,131 @@ final class StatementImportViewModel: ObservableObject, NewAccountHost {
         diagnosticsThanks = nil
         summary = []
         needsReview = 0
+        importId = nil
+        imported = []
+        importedLoading = false
+        importedErrorKey = nil
+        importedCategories = []
         inProgress = false
         policy = nil
         consentTicked = false
         consentErrorKey = nil
+    }
+
+    // MARK: - What the import read (the same rules as Android's UI state)
+
+    /// The import screen does not fetch capabilities, so figures here are
+    /// grouped the English way. Android's import state defaults the same.
+    /// Only the thousands separator differs, and only in French — worth a
+    /// follow-up rather than a second client on this screen.
+    private let locale = "en"
+
+    /// The currency these rows are in — the account's, since one import is one account.
+    private var importedCurrency: String {
+        imported.first?.currency ?? accounts.first { $0.id == accountId }?.currency ?? ""
+    }
+
+    private var importedDigits: Int32 { Money.shared.fractionDigits(currency: importedCurrency) }
+
+    private func importedMoney(_ amount: String) -> String {
+        Money.shared.format(amount: amount, currency: importedCurrency, locale: locale)
+    }
+
+    /// What left the account across the import, or nil when nothing did.
+    var totalOut: String? {
+        ImportedRows.shared.totalOut(rows: imported, fractionDigits: importedDigits).map(importedMoney)
+    }
+
+    /// What arrived, or nil when nothing did.
+    var totalIn: String? {
+        ImportedRows.shared.totalIn(rows: imported, fractionDigits: importedDigits).map(importedMoney)
+    }
+
+    /// "3 need you", or nil when the model filed every row.
+    var waitingLabel: String? {
+        let count = Int(ImportedRows.shared.waitingCount(rows: imported))
+        guard count > 0 else { return nil }
+        if count == 1 { return L.t(Strings.shared.import_extracted_waiting_one) }
+        return L.t(Strings.shared.import_extracted_waiting, String(count))
+    }
+
+    /// The days of the import, newest first.
+    var importedDays: [ImportedRows.Day] { ImportedRows.shared.byDate(rows: imported) }
+
+    /// A day's heading, as a person reads a date.
+    func dateLabel(_ iso: String) -> String {
+        Dates.shared.parse(iso: iso).map { Dates.shared.display(date: $0) } ?? iso
+    }
+
+    func titleOf(_ row: SharedLogic.Transaction) -> String { ImportedRows.shared.titleOf(row: row) }
+
+    func amountLabel(_ row: SharedLogic.Transaction) -> String {
+        Money.shared.format(amount: row.amount, currency: row.currency, locale: locale)
+    }
+
+    /// What it was filed as, or that nothing filed it — the useful case.
+    func categoryLabel(_ row: SharedLogic.Transaction) -> String {
+        ImportedRows.shared.categoryOf(row: row, categories: importedCategories)?.name
+            ?? L.t(Strings.shared.import_extracted_uncategorised)
+    }
+
+    func isFiled(_ row: SharedLogic.Transaction) -> Bool {
+        ImportedRows.shared.categoryOf(row: row, categories: importedCategories) != nil
+    }
+
+    /// The whole row as one sentence, so VoiceOver announces it once instead of
+    /// stopping at the name, the category and the amount in turn.
+    func rowDescription(_ row: SharedLogic.Transaction) -> String {
+        L.t(
+            Strings.shared.import_extracted_row,
+            titleOf(row), categoryLabel(row), amountLabel(row)
+        )
+    }
+
+    /// Try the list again after it failed; the import itself already succeeded.
+    func reloadImported() {
+        guard let importId else { return }
+        loadImported(importId)
+    }
+
+    /**
+     The rows this import produced, for the result screen.
+
+     Asked for by the import's own id, so the list is exactly what just happened
+     rather than the household's whole ledger. Both kinds: the rows flagged for
+     review AND the ones the model filed with confidence, which are the ones
+     nobody has ever been shown and the only way to answer the question somebody
+     actually has — did it get my categories right.
+
+     A failure here leaves the import succeeded and the summary standing. The
+     rows are worth showing and not worth turning a finished import into an
+     error screen over.
+     */
+    private func loadImported(_ importId: String) {
+        guard let transactionsRepository, !importId.isEmpty else { return }
+        let categoriesRepository = self.categoriesRepository
+        let started = generation
+        importedLoading = true
+        importedErrorKey = nil
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                let page = try await transactionsRepository.list(
+                    statementImportId: importId, month: nil, needsReview: nil, cursor: nil
+                )
+                // A name beside each row is a nicety; the rows are the point.
+                let categories = try? await categoriesRepository?.list()
+                guard started == self.generation else { return }
+                self.imported = page.rows
+                self.importedCategories = categories ?? []
+                self.importedLoading = false
+                self.importedErrorKey = nil
+            } catch {
+                guard started == self.generation else { return }
+                self.importedLoading = false
+                self.importedErrorKey = Self.messageKey(error)
+            }
+        }
     }
 
     /// Leaving on purpose: the file, the document and any password go; the
@@ -351,6 +491,9 @@ final class StatementImportViewModel: ObservableObject, NewAccountHost {
                     document: read,
                     accountId: accountId,
                     keepTextForDiagnostics: keepText,
+                    // Every account is in the household's currency, so any of
+                    // them answers when none is chosen yet.
+                    accountCurrency: (accounts.first { $0.id == accountId } ?? accounts.first)?.currency,
                     onRedacted: { _ in }
                 )
                 guard started == self.generation else { return }
@@ -393,8 +536,14 @@ final class StatementImportViewModel: ObservableObject, NewAccountHost {
                 self.canResend = false
                 self.summary = StatementImportFlow.shared.summary(parsed: result, saved: outcome)
                 self.needsReview = Int(outcome.needsReview)
+                self.importId = outcome.importId
                 self.step = .done
                 ImportFiles.clear()
+                // Home shows figures derived from these rows, and the server
+                // has confirmed them. Announced here rather than optimistically
+                // on send, so a refresh never shows the figures it already had.
+                LedgerChanged.announce()
+                self.loadImported(outcome.importId)
             } catch {
                 guard started == self.generation, !Task.isCancelled else { return }
                 self.fail(error)

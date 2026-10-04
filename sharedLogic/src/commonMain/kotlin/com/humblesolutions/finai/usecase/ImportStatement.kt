@@ -7,7 +7,14 @@ import com.humblesolutions.finai.model.ExtractedDocument
 import com.humblesolutions.finai.model.ParsedStatement
 import com.humblesolutions.finai.model.StatementUpload
 import com.humblesolutions.finai.repository.StatementImportRepository
+import kotlinx.datetime.DatePeriod
+import kotlinx.datetime.LocalDate
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.minus
+import kotlinx.datetime.plus
+import kotlinx.datetime.todayIn
 import kotlin.coroutines.cancellation.CancellationException
+import kotlin.time.Clock
 
 /**
  * A document the device has read in, transaction rows back — everything that
@@ -33,7 +40,9 @@ import kotlin.coroutines.cancellation.CancellationException
  */
 class ImportStatement(
     private val imports: StatementImportRepository,
+    private val today: () -> LocalDate,
 ) {
+    constructor(imports: StatementImportRepository) : this(imports, { Clock.System.todayIn(TimeZone.currentSystemDefault()) })
 
     /**
      * @param document what the platform reader produced. Never sent; only the
@@ -44,6 +53,8 @@ class ImportStatement(
      *        import's redacted text so the parser can be fixed — asked only
      *        after an import the server read and failed on (#31). Never
      *        defaulted to yes, never remembered.
+     * @param accountCurrency the chosen account's currency. A statement plainly
+     *        in another is refused rather than recorded in this one.
      * @param onRedacted the redaction and what it discarded, before the
      *        request goes out. A dropped line is the one outcome that is
      *        otherwise invisible — the import simply comes up short — and a
@@ -57,6 +68,7 @@ class ImportStatement(
         StatementTooLong::class,
         StatementTooManyPages::class,
         StatementHasNothingToSend::class,
+        StatementInOtherCurrency::class,
         ApiException::class,
         CancellationException::class,
     )
@@ -64,11 +76,15 @@ class ImportStatement(
         document: ExtractedDocument,
         accountId: String? = null,
         keepTextForDiagnostics: Boolean = false,
+        accountCurrency: String? = null,
         onRedacted: (StatementRedactor.Redaction) -> Unit = {},
     ): ParsedStatement {
-        val period = StatementPeriod.find(document)
-        val redaction = StatementRedactor.of(document)
-        val text = redaction.text
+        val rows = OcrRows.of(document)
+        val period = StatementPeriod.find(rows) ?: recentYear(rows)
+        val redaction = StatementRedactor.of(rows)
+        // A screenshot's dates carry no year; the year is decided here, not
+        // left to the model. See YearlessDates.
+        val text = if (rows.fromImage) YearlessDates.complete(redaction.text, today()) else redaction.text
         onRedacted(redaction)
 
         tooManyPages(document.pages.size)?.let { throw it }
@@ -78,6 +94,7 @@ class ImportStatement(
         // thing here instead — and it is knowable here, which is the point of
         // counting what redaction threw away.
         if (text.isEmpty()) throw StatementHasNothingToSend(redaction.droppedLines)
+        StatementCurrency.foreign(text, accountCurrency)?.let { throw StatementInOtherCurrency(it) }
 
         return imports.parse(
             StatementUpload(
@@ -90,6 +107,23 @@ class ImportStatement(
                 keepTextForDiagnostics = keepTextForDiagnostics,
             ),
         )
+    }
+
+    /**
+     * The year to date a screenshot's rows by, when it shows no period.
+     *
+     * A banking app prints `Aug 14` and no year anywhere, and the parser omits
+     * a row it cannot date rather than guess — so a screenshot came back with
+     * nothing. What is true of a screenshot is that it shows recent activity:
+     * the year ending today places `Aug 14` and `Dec 3` each in the right year.
+     * Only for an image; a scanned statement may be years old, and a wrong
+     * year is worse than an omitted row.
+     */
+    private fun recentYear(document: ExtractedDocument): StatementPeriod.Range? {
+        if (!document.fromImage) return null
+        val end = today()
+        val start = end.minus(DatePeriod(years = 1)).plus(DatePeriod(days = 1))
+        return StatementPeriod.Range(start = start.toString(), end = end.toString())
     }
 
     companion object {
@@ -153,6 +187,18 @@ class StatementTooManyPages(
 ) : Exception("statement has too many pages"),
     StatementRefusal {
     override val messageKey: String get() = Strings.statement_too_many_pages
+}
+
+/**
+ * The statement is written in another currency than the account it is going
+ * into, and saving it would record its amounts in the account's — see
+ * [StatementCurrency]. Refused before anything is sent.
+ */
+class StatementInOtherCurrency(
+    val found: String,
+) : Exception("statement in $found"),
+    StatementRefusal {
+    override val messageKey: String get() = Strings.statement_other_currency
 }
 
 /**

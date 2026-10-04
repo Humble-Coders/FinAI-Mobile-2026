@@ -2,8 +2,20 @@ package com.humblesolutions.finai.ui.dashboard
 
 import com.humblesolutions.finai.i18n.LocalizationRegistry
 import com.humblesolutions.finai.i18n.Strings
+import com.humblesolutions.finai.model.Category
+import com.humblesolutions.finai.model.Commitment
 import com.humblesolutions.finai.model.Dashboard
+import com.humblesolutions.finai.model.DayPoint
+import com.humblesolutions.finai.model.Transaction
+import com.humblesolutions.finai.model.TransactionDirection
+import com.humblesolutions.finai.usecase.CategoryIcon
+import com.humblesolutions.finai.usecase.CategoryIcons
+import com.humblesolutions.finai.usecase.CommitmentBlock
+import com.humblesolutions.finai.usecase.CommitmentDraft
+import com.humblesolutions.finai.usecase.CommitmentEdit
 import com.humblesolutions.finai.usecase.DashboardMonths
+import com.humblesolutions.finai.usecase.DashboardTrend
+import com.humblesolutions.finai.usecase.ImportedRows
 import com.humblesolutions.finai.util.Dates
 import com.humblesolutions.finai.util.Money
 import kotlinx.datetime.LocalDate
@@ -38,6 +50,20 @@ data class DashboardUiState(
      * that opens blank because of a tap days ago is a bug report.
      */
     val amountsHidden: Boolean = false,
+
+    /** The newest few rows, whatever month is in view; see `loadRecent`. */
+    val recent: List<Transaction> = emptyList(),
+    val categories: List<Category> = emptyList(),
+
+    // ── Editing a commitment ────────────────────────────────────────────
+    val editingCommitment: Commitment? = null,
+    /** A new commitment being typed in; [editingCommitment] is null meanwhile. */
+    val addingCommitment: Boolean = false,
+    /** Asking "Delete Rent?" before anything is sent. */
+    val confirmingCommitmentDelete: Boolean = false,
+    val commitmentDraft: CommitmentDraft = CommitmentDraft(),
+    val commitmentSaving: Boolean = false,
+    val commitmentErrorKey: String? = null,
 ) {
     private val digits: Int get() = data.fractionDigits
 
@@ -112,8 +138,52 @@ data class DashboardUiState(
             expected = money(commitment.expected),
             wasSeen = commitment.wasSeen,
             detail = detailFor(commitment),
+            editLabel = text(Strings.commitment_edit_hint, commitment.name),
         )
     }
+
+    /** The commitments section is shown once the month is read, empty or not: it is where one is added. */
+    val showsCommitments: Boolean get() = !loading && !loadFailed
+
+    val showsCommitmentEditor: Boolean get() = editingCommitment != null || addingCommitment
+
+    val commitmentTitleKey: String
+        get() = if (addingCommitment) Strings.commitment_add_title else Strings.commitment_edit_title
+
+    private val commitmentBlock: CommitmentBlock?
+        get() = when {
+            addingCommitment -> CommitmentEdit.blockingReasonForNew(commitmentDraft, data.currency, data.commitments.size)
+            else -> editingCommitment?.let { CommitmentEdit.blockingReason(it, commitmentDraft, data.currency) }
+        }
+
+    val canSaveCommitment: Boolean
+        get() = showsCommitmentEditor && !commitmentSaving && commitmentBlock == null
+
+    /**
+     * The notice under Save. Nothing before a touch: not "nothing changed" on
+     * an edit just opened, and not "give it a name" on an add with both
+     * fields still empty — the limit is the exception, said at once.
+     */
+    val commitmentNotice: String?
+        get() {
+            commitmentErrorKey?.let { return it }
+            val block = commitmentBlock ?: return null
+            val untouched = addingCommitment && commitmentDraft.name.isBlank() && commitmentDraft.amount.isBlank()
+            return when {
+                block == CommitmentBlock.NOTHING_CHANGED -> null
+                untouched && block != CommitmentBlock.TOO_MANY -> null
+                else -> block.messageKey
+            }
+        }
+
+    /** "Delete Rent?" — naming it, so the wrong one is not deleted by a quick tap. */
+    val deleteCommitmentTitle: String
+        get() = text(Strings.commitment_delete_confirm_title, editingCommitment?.name.orEmpty())
+
+    val commitmentCurrencySymbol: String get() = Money.symbol(data.currency)
+
+    val commitmentAmountPlaceholder: String
+        get() = Money.normalize("0", Money.fractionDigits(data.currency)).orEmpty()
 
     /**
      * "Seen Aug 2, 2026" — never "Paid".
@@ -150,56 +220,77 @@ data class DashboardUiState(
     }
 
     /**
-     * The bars, each as a fraction of the tallest month in view.
-     *
-     * Scaled by magnitude, so a heavy loss draws as tall as a heavy gain and
-     * the direction is carried by colour rather than by height — a month that
-     * went badly should not look like a quiet one.
+     * The month day by day — shared geometry, so the two apps draw the same
+     * line. Null for a month with nothing in it, and from a server too old to
+     * send the days: no chart rather than a flat line that looks measured.
      */
-    val bars: List<Bar> get() {
-        val magnitudes = data.trend.associate { point ->
-            point.month to point.net?.let { Money.magnitudeOf(it, digits) }
-        }
-        val tallest = magnitudes.values.filterNotNull()
-            .maxWithOrNull { a, b -> Money.compare(a, b, digits) }
+    val dailyChart: DashboardTrend.DailyChart? get() = DashboardTrend.daily(data.daily, data.month.ifEmpty { month.toString() })
 
-        return data.trend.map { point ->
-            val magnitude = magnitudes[point.month]
-            val label = Dates.parse(point.month)?.let { Dates.monthShort(it, locale) }.orEmpty()
-            Bar(
-                month = point.month,
-                shortLabel = label,
-                // Null is a gap, not a zero: the screen outlines it rather
-                // than drawing a bar for a month nobody recorded.
-                fraction = magnitude?.let { fractionOf(it, tallest) },
-                isNegative = point.net?.let { Money.signOf(it, digits) < 0 } ?: false,
-                description = point.net?.let { text(Strings.dashboard_trend_month, label, money(it)) }
-                    ?: text(Strings.dashboard_trend_no_data_month, label),
-            )
+    /** Under the chart: "Aug 1", the weeks as plain days, and "Aug 31". */
+    val dailyTicks: List<String> get() {
+        val ticks = dailyChart?.ticks ?: return emptyList()
+        val name = Dates.monthShort(month, locale)
+        return ticks.mapIndexed { index, tick ->
+            if (index == 0 || index == ticks.lastIndex) {
+                text(Strings.dashboard_daily_tick, name, tick.day.toString())
+            } else {
+                tick.day.toString()
+            }
         }
     }
 
-    /**
-     * [magnitude] against the tallest bar, floored so a real but tiny month is
-     * still a visible mark rather than nothing at all.
-     */
-    private fun fractionOf(magnitude: String, tallest: String?): Float {
-        if (tallest == null || Money.compare(tallest, "0", digits) == 0) return MINIMUM_BAR
-        val ratio = (magnitude.toFloatOrNull() ?: return MINIMUM_BAR) /
-            (tallest.toFloatOrNull()?.takeIf { it > 0f } ?: return MINIMUM_BAR)
-        return ratio.coerceIn(MINIMUM_BAR, 1f)
+    private val latestDay: DayPoint? get() = dailyChart?.let { chart ->
+        data.daily.firstOrNull { it.day == chart.days[chart.markerIndex].day }
+    }
+
+    /** The latest day's figure, rounded ("$1.5k"), on the marker. Null while amounts are hidden. */
+    val dailyMarkerValue: String? get() = if (amountsHidden) null else latestDay?.let { Money.compact(it.net, data.currency, locale) }
+
+    /** A month behind so far, whose figure is written below its point rather than across the line. */
+    val dailyMarkerIsLoss: Boolean get() = latestDay?.let { Money.signOf(it.net, digits) < 0 } ?: false
+
+    /** The line in words, for somebody who cannot see it. */
+    val dailyDescription: String get() {
+        val days = data.daily.filter { it.net.toDoubleOrNull() != null }
+        if (days.isEmpty()) return ""
+        val lowest = days.minBy { it.net.toDouble() }
+        val highest = days.maxBy { it.net.toDouble() }
+        return text(
+            Strings.dashboard_daily_description,
+            monthLabel,
+            money(days.first().net),
+            money(days.last().net),
+            money(lowest.net),
+            money(highest.net),
+        )
+    }
+
+    /** The recent list, worded. Empty when there is nothing to show. */
+    val recentRows: List<RecentRow> get() = recent.map { row ->
+        val isCredit = row.direction == TransactionDirection.CREDIT
+        val amount = text(
+            if (isCredit) Strings.dashboard_recent_credit else Strings.dashboard_recent_debit,
+            money(row.amount),
+        )
+        val category = ImportedRows.categoryOf(row, categories)
+        val categoryName = category?.name ?: text(Strings.import_extracted_uncategorised)
+        val date = Dates.parse(row.occurredOn)?.let { Dates.display(it) } ?: row.occurredOn
+        val title = ImportedRows.titleOf(row)
+        RecentRow(
+            id = row.id,
+            icon = CategoryIcons.forSlug(category?.slug),
+            title = title,
+            date = date,
+            amount = amount,
+            isCredit = isCredit,
+            category = categoryName,
+            isFiled = category != null,
+            description = text(Strings.dashboard_recent_row, title, date, amount, categoryName),
+        )
     }
 
     /** Nothing recorded at all, so the screen offers a first step instead of zeroes. */
     val showsEmptyState: Boolean get() = !loading && !loadFailed && data.isEmpty
-
-    /** Drawn only once a month in view holds something. */
-    val showsTrend: Boolean get() = data.trend.any { it.hasData }
-
-    private companion object {
-        /** Floor for a bar, so a £2 month is a mark and not an absence. */
-        const val MINIMUM_BAR = 0.06f
-    }
 }
 
 /** One commitment as a row: its name, what was expected, and what we saw. */
@@ -208,18 +299,23 @@ data class CommitmentRow(
     val expected: String,
     val wasSeen: Boolean,
     val detail: String,
+    /** Read aloud for the row, which opens the editor when tapped. */
+    val editLabel: String = "",
 )
 
-/**
- * One bar of the trend.
- *
- * [fraction] is null for a month with no rows at all. The screen draws those
- * as an outline — a zero-height bar states a fact nobody observed.
- */
-data class Bar(
-    val month: String,
-    val shortLabel: String,
-    val fraction: Float?,
-    val isNegative: Boolean,
+/** One row of the recent list, already worded. */
+data class RecentRow(
+    val id: String,
+    /** What the tile beside it shows; [CategoryIcon.UNFILED] for a row nothing filed. */
+    val icon: CategoryIcon = CategoryIcon.UNFILED,
+    val title: String,
+    val date: String,
+    /** Signed in words — "+ $5.00" or "− $5.00" — so colour is never the only cue. */
+    val amount: String,
+    val isCredit: Boolean,
+    val category: String,
+    /** False for a row nothing filed, which is drawn as needing attention. */
+    val isFiled: Boolean,
+    /** The whole row as one sentence, read once by a screen reader. */
     val description: String,
 )
