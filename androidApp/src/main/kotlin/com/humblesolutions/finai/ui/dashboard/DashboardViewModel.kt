@@ -12,11 +12,13 @@ import com.humblesolutions.finai.data.KtorTransactionsRepository
 import com.humblesolutions.finai.data.SupabaseTokenSource
 import com.humblesolutions.finai.i18n.Strings
 import com.humblesolutions.finai.model.ApiException
+import com.humblesolutions.finai.model.FinancialSetup
 import com.humblesolutions.finai.repository.CapabilitiesRepository
 import com.humblesolutions.finai.repository.CategoriesRepository
 import com.humblesolutions.finai.repository.DashboardRepository
 import com.humblesolutions.finai.repository.FinancialSetupRepository
 import com.humblesolutions.finai.repository.TransactionsRepository
+import com.humblesolutions.finai.usecase.CommitmentDraft
 import com.humblesolutions.finai.usecase.CommitmentEdit
 import com.humblesolutions.finai.usecase.DashboardMonths
 import com.humblesolutions.finai.util.LedgerChanged
@@ -188,6 +190,8 @@ class DashboardViewModel : ViewModel() {
         _uiState.update {
             it.copy(
                 editingCommitment = commitment,
+                addingCommitment = false,
+                confirmingCommitmentDelete = false,
                 commitmentDraft = CommitmentEdit.draftOf(commitment),
                 commitmentSaving = false,
                 commitmentErrorKey = null,
@@ -203,10 +207,37 @@ class DashboardViewModel : ViewModel() {
         it.copy(commitmentDraft = it.commitmentDraft.copy(amount = amount), commitmentErrorKey = null)
     }
 
+    /** Open the editor empty, to add one. */
+    fun addCommitment() = _uiState.update {
+        it.copy(
+            addingCommitment = true,
+            editingCommitment = null,
+            confirmingCommitmentDelete = false,
+            commitmentDraft = CommitmentDraft(),
+            commitmentSaving = false,
+            commitmentErrorKey = null,
+        )
+    }
+
     fun cancelCommitment() {
         if (_uiState.value.commitmentSaving) return
-        _uiState.update { it.copy(editingCommitment = null, commitmentErrorKey = null) }
+        _uiState.update {
+            it.copy(
+                editingCommitment = null,
+                addingCommitment = false,
+                confirmingCommitmentDelete = false,
+                commitmentErrorKey = null,
+            )
+        }
     }
+
+    /** Ask before deleting: nothing is sent until the person says yes. */
+    fun askDeleteCommitment() {
+        if (_uiState.value.editingCommitment == null || _uiState.value.commitmentSaving) return
+        _uiState.update { it.copy(confirmingCommitmentDelete = true) }
+    }
+
+    fun keepCommitment() = _uiState.update { it.copy(confirmingCommitmentDelete = false) }
 
     /**
      * Read the wizard's answers, change the one commitment, write them back.
@@ -217,26 +248,51 @@ class DashboardViewModel : ViewModel() {
      * is written over it: the month is re-read and the person told.
      */
     fun saveCommitment() {
-        val repos = repositories ?: return
-        val setupRepository = repos.setup ?: return
         val state = _uiState.value
-        val original = state.editingCommitment ?: return
         if (!state.canSaveCommitment) return
         val draft = state.commitmentDraft
+        val original = state.editingCommitment
+        if (state.addingCommitment) {
+            // Null when the list filled up on another phone since this month
+            // was read: the same refusal the count check gives up front.
+            writeSetup(goneKey = Strings.commitment_add_limit) { CommitmentEdit.added(it, draft) }
+        } else if (original != null) {
+            writeSetup(goneKey = Strings.commitment_edit_gone) { CommitmentEdit.applied(it, original, draft) }
+        }
+    }
+
+    /** Delete the commitment being edited, once the person has said yes. */
+    fun deleteCommitment() {
+        val state = _uiState.value
+        val original = state.editingCommitment ?: return
+        if (!state.confirmingCommitmentDelete || state.commitmentSaving) return
+        _uiState.update { it.copy(confirmingCommitmentDelete = false) }
+        writeSetup(goneKey = Strings.commitment_edit_gone) { CommitmentEdit.removed(it, original) }
+    }
+
+    /**
+     * Read the wizard's answers, [change] them, and write them back; then
+     * re-read the month so the list shows what was saved.
+     *
+     * [change] returns null when the answers moved on since this month was
+     * read — on another phone, say. Nothing is written over them then: the
+     * month is re-read and [goneKey] says why.
+     */
+    private fun writeSetup(goneKey: String, change: (FinancialSetup) -> FinancialSetup?) {
+        val setupRepository = repositories?.setup ?: return
         _uiState.update { it.copy(commitmentSaving = true, commitmentErrorKey = null) }
         viewModelScope.launch {
             try {
-                val setup = setupRepository.get()
-                val changed = CommitmentEdit.applied(setup, original, draft)
+                val changed = change(setupRepository.get())
                 if (changed == null) {
-                    _uiState.update {
-                        it.copy(commitmentSaving = false, commitmentErrorKey = Strings.commitment_edit_gone)
-                    }
+                    _uiState.update { it.copy(commitmentSaving = false, commitmentErrorKey = goneKey) }
                     load(refresh = true)
                     return@launch
                 }
                 setupRepository.save(changed)
-                _uiState.update { it.copy(commitmentSaving = false, editingCommitment = null) }
+                _uiState.update {
+                    it.copy(commitmentSaving = false, editingCommitment = null, addingCommitment = false)
+                }
                 load(refresh = true)
             } catch (e: CancellationException) {
                 throw e

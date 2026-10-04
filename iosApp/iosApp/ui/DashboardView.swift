@@ -53,7 +53,7 @@ struct DashboardView: View {
     }
 
     private var commitmentShown: Binding<Bool> {
-        Binding(get: { model.editingCommitment != nil }, set: { if !$0 { model.cancelCommitment() } })
+        Binding(get: { model.showsCommitmentEditor }, set: { if !$0 { model.cancelCommitment() } })
     }
 
     // MARK: - The field
@@ -328,7 +328,8 @@ struct DashboardView: View {
         let showsRecent = !rows.isEmpty || !model.showsEmptyState
         return VStack(alignment: .leading, spacing: 0) {
             if showsRecent { recent(rows) }
-            if !model.commitmentRows.isEmpty {
+            // Shown once the month is read, even with none: it is where one is added.
+            if model.showsCommitments {
                 commitments.padding(.top, showsRecent ? 28 : 0)
             }
             Button(L.t(Strings.shared.action_sign_out), action: onSignOut)
@@ -399,11 +400,29 @@ struct DashboardView: View {
 
     private var commitments: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text(L.t(Strings.shared.dashboard_commitments_title))
-                .font(.title3.weight(.bold))
-                .accessibilityAddTraits(.isHeader)
+            HStack {
+                Text(L.t(Strings.shared.dashboard_commitments_title))
+                    .font(.title3.weight(.bold))
+                    .accessibilityAddTraits(.isHeader)
+                Spacer(minLength: 8)
+                Button(action: model.addCommitment) {
+                    HStack(spacing: 4) {
+                        FinAiIcon(symbol: "plus", tint: Brand.textMuted, size: 13)
+                        Text(L.t(Strings.shared.commitments_add)).font(.subheadline.weight(.medium))
+                    }
+                    .foregroundColor(Brand.textMuted)
+                    .frame(minHeight: 44)
+                }
+                .accessibilityLabel(L.t(Strings.shared.commitments_add_hint))
+            }
             if let summary = model.commitmentsSummary {
                 Text(summary).font(.subheadline).foregroundColor(Brand.textMuted).padding(.top, 2)
+            }
+            if model.commitmentRows.isEmpty {
+                Text(L.t(Strings.shared.commitments_none))
+                    .font(.subheadline)
+                    .foregroundColor(Brand.textMuted)
+                    .padding(.top, 4)
             }
             ForEach(Array(model.commitmentRows.enumerated()), id: \.element.id) { index, row in
                 Button { model.editCommitment(row.id) } label: {
@@ -924,7 +943,7 @@ private struct ActionRow: View {
     }
 }
 
-/// A commitment's name and monthly amount, which is all a commitment has.
+/// Adding or editing a commitment: its name and monthly amount, which is all one has.
 private struct CommitmentEditor: View {
     @ObservedObject var model: DashboardViewModel
 
@@ -963,8 +982,24 @@ private struct CommitmentEditor: View {
                     .listRowInsets(EdgeInsets())
                     .listRowBackground(Color.clear)
                 }
+                // Only for one that exists. Asked again before anything is sent.
+                if model.editingCommitment != nil {
+                    Section {
+                        Button(L.t(Strings.shared.commitment_delete), role: .destructive) {
+                            model.askDeleteCommitment()
+                        }
+                        .disabled(model.commitmentSaving)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                    }
+                }
             }
-            .navigationTitle(L.t(Strings.shared.commitment_edit_title))
+            .navigationTitle(L.t(model.commitmentTitleKey))
+            .alert(model.deleteCommitmentTitle, isPresented: $model.confirmingCommitmentDelete) {
+                Button(L.t(Strings.shared.commitment_delete_confirm), role: .destructive) { model.deleteCommitment() }
+                Button(L.t(Strings.shared.commitment_edit_cancel), role: .cancel) {}
+            } message: {
+                Text(L.t(Strings.shared.commitment_delete_confirm_body))
+            }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {

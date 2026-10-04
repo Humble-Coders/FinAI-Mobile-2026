@@ -54,6 +54,10 @@ data class DashboardUiState(
 
     // ── Editing a commitment ────────────────────────────────────────────
     val editingCommitment: Commitment? = null,
+    /** A new commitment being typed in; [editingCommitment] is null meanwhile. */
+    val addingCommitment: Boolean = false,
+    /** Asking "Delete Rent?" before anything is sent. */
+    val confirmingCommitmentDelete: Boolean = false,
     val commitmentDraft: CommitmentDraft = CommitmentDraft(),
     val commitmentSaving: Boolean = false,
     val commitmentErrorKey: String? = null,
@@ -135,16 +139,43 @@ data class DashboardUiState(
         )
     }
 
+    /** The commitments section is shown once the month is read, empty or not: it is where one is added. */
+    val showsCommitments: Boolean get() = !loading && !loadFailed
+
+    val showsCommitmentEditor: Boolean get() = editingCommitment != null || addingCommitment
+
+    val commitmentTitleKey: String
+        get() = if (addingCommitment) Strings.commitment_add_title else Strings.commitment_edit_title
+
     private val commitmentBlock: CommitmentBlock?
-        get() = editingCommitment?.let { CommitmentEdit.blockingReason(it, commitmentDraft, data.currency) }
+        get() = when {
+            addingCommitment -> CommitmentEdit.blockingReasonForNew(commitmentDraft, data.currency, data.commitments.size)
+            else -> editingCommitment?.let { CommitmentEdit.blockingReason(it, commitmentDraft, data.currency) }
+        }
 
     val canSaveCommitment: Boolean
-        get() = editingCommitment != null && !commitmentSaving && commitmentBlock == null
+        get() = showsCommitmentEditor && !commitmentSaving && commitmentBlock == null
 
-    /** The notice under Save — never "nothing changed" before a touch. */
+    /**
+     * The notice under Save. Nothing before a touch: not "nothing changed" on
+     * an edit just opened, and not "give it a name" on an add with both
+     * fields still empty — the limit is the exception, said at once.
+     */
     val commitmentNotice: String?
-        get() = commitmentErrorKey
-            ?: commitmentBlock?.takeIf { it != CommitmentBlock.NOTHING_CHANGED }?.messageKey
+        get() {
+            commitmentErrorKey?.let { return it }
+            val block = commitmentBlock ?: return null
+            val untouched = addingCommitment && commitmentDraft.name.isBlank() && commitmentDraft.amount.isBlank()
+            return when {
+                block == CommitmentBlock.NOTHING_CHANGED -> null
+                untouched && block != CommitmentBlock.TOO_MANY -> null
+                else -> block.messageKey
+            }
+        }
+
+    /** "Delete Rent?" — naming it, so the wrong one is not deleted by a quick tap. */
+    val deleteCommitmentTitle: String
+        get() = text(Strings.commitment_delete_confirm_title, editingCommitment?.name.orEmpty())
 
     val commitmentCurrencySymbol: String get() = Money.symbol(data.currency)
 

@@ -50,6 +50,7 @@ import androidx.compose.material.icons.filled.Savings
 import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
@@ -137,7 +138,7 @@ fun DashboardScreen(
     commitments: CommitmentActions = CommitmentActions(),
 ) {
     val dark = isSystemInDarkTheme()
-    if (state.editingCommitment != null) CommitmentEditor(state, commitments)
+    if (state.showsCommitmentEditor) CommitmentEditor(state, commitments)
     LightStatusBarIcons(dark)
 
     Column(
@@ -181,7 +182,7 @@ fun DashboardScreen(
             }
         }
 
-        Sheet(state, onViewAll, onSignOut, commitments.onEdit)
+        Sheet(state, onViewAll, onSignOut, commitments)
     }
 }
 
@@ -966,7 +967,7 @@ private fun LoadFailed(state: DashboardUiState, onRetry: () -> Unit) {
 
 /** Rising over the field with the newest rows, and the month's commitments. */
 @Composable
-private fun Sheet(state: DashboardUiState, onViewAll: () -> Unit, onSignOut: () -> Unit, onEditCommitment: (Int) -> Unit) {
+private fun Sheet(state: DashboardUiState, onViewAll: () -> Unit, onSignOut: () -> Unit, commitments: CommitmentActions) {
     Box(
         Modifier
             .fillMaxWidth()
@@ -988,9 +989,10 @@ private fun Sheet(state: DashboardUiState, onViewAll: () -> Unit, onSignOut: () 
             // which is the way into every transaction.
             val showsRecent = rows.isNotEmpty() || !state.showsEmptyState
             if (showsRecent) Recent(rows, onViewAll)
-            if (state.commitments.isNotEmpty()) {
+            // Shown once the month is read, even with none: it is where one is added.
+            if (state.showsCommitments) {
                 if (showsRecent) Spacer(Modifier.height(28.dp))
-                Commitments(state, onEditCommitment)
+                Commitments(state, commitments)
             }
             Spacer(Modifier.height(12.dp))
             TextButton(onClick = onSignOut, modifier = Modifier.align(Alignment.CenterHorizontally)) {
@@ -1089,15 +1091,44 @@ private fun RecentLine(row: RecentRow) {
 // ── Commitments ─────────────────────────────────────────────────────────
 
 @Composable
-private fun Commitments(state: DashboardUiState, onEdit: (Int) -> Unit) {
-    Text(
-        text = strings(Strings.dashboard_commitments_title),
-        style = MaterialTheme.typography.titleLarge,
-        fontWeight = FontWeight.Bold,
-        modifier = Modifier.semantics { heading() },
-    )
+private fun Commitments(state: DashboardUiState, actions: CommitmentActions) {
+    val onEdit = actions.onEdit
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            text = strings(Strings.dashboard_commitments_title),
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier
+                .weight(1f)
+                .semantics { heading() },
+        )
+        Row(
+            modifier = Modifier
+                .heightIn(min = 48.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .clickable(onClickLabel = strings(Strings.commitments_add_hint), onClick = actions.onAdd)
+                .padding(horizontal = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            FinAiIcon(Icons.Filled.Add, tint = MaterialTheme.colorScheme.onSurfaceVariant, size = 18.dp)
+            Spacer(Modifier.width(4.dp))
+            Text(
+                text = strings(Strings.commitments_add),
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
     state.commitmentsSummary?.let {
         Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+    if (state.commitments.isEmpty()) {
+        Text(
+            text = strings(Strings.commitments_none),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 4.dp),
+        )
     }
     Spacer(Modifier.height(4.dp))
     state.commitments.forEachIndexed { index, row ->
@@ -1145,13 +1176,17 @@ private fun Commitments(state: DashboardUiState, onEdit: (Int) -> Unit) {
 /** What the commitment editor can ask of the dashboard's model. */
 class CommitmentActions(
     val onEdit: (Int) -> Unit = {},
+    val onAdd: () -> Unit = {},
     val onName: (String) -> Unit = {},
     val onAmount: (String) -> Unit = {},
     val onSave: () -> Unit = {},
     val onCancel: () -> Unit = {},
+    val onAskDelete: () -> Unit = {},
+    val onDelete: () -> Unit = {},
+    val onKeep: () -> Unit = {},
 )
 
-/** A commitment's name and monthly amount, which is all a commitment has. */
+/** Adding or editing a commitment: its name and monthly amount, which is all one has. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun CommitmentEditor(state: DashboardUiState, actions: CommitmentActions) {
@@ -1168,7 +1203,7 @@ private fun CommitmentEditor(state: DashboardUiState, actions: CommitmentActions
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             Text(
-                text = strings(Strings.commitment_edit_title),
+                text = strings(state.commitmentTitleKey),
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.semantics { heading() },
@@ -1203,7 +1238,29 @@ private fun CommitmentEditor(state: DashboardUiState, actions: CommitmentActions
                 enabled = !state.commitmentSaving,
                 modifier = Modifier.align(Alignment.CenterHorizontally),
             ) { Text(strings(Strings.commitment_edit_cancel)) }
+            // Only for one that exists. Asked again before anything is sent.
+            if (state.editingCommitment != null) {
+                TextButton(
+                    onClick = actions.onAskDelete,
+                    enabled = !state.commitmentSaving,
+                    modifier = Modifier.align(Alignment.CenterHorizontally),
+                ) { Text(strings(Strings.commitment_delete), color = MaterialTheme.colorScheme.error) }
+            }
             Spacer(Modifier.height(16.dp))
         }
+    }
+
+    if (state.confirmingCommitmentDelete) {
+        AlertDialog(
+            onDismissRequest = actions.onKeep,
+            title = { Text(state.deleteCommitmentTitle) },
+            text = { Text(strings(Strings.commitment_delete_confirm_body)) },
+            confirmButton = {
+                TextButton(onClick = actions.onDelete) {
+                    Text(strings(Strings.commitment_delete_confirm), color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = { TextButton(onClick = actions.onKeep) { Text(strings(Strings.commitment_edit_cancel)) } },
+        )
     }
 }

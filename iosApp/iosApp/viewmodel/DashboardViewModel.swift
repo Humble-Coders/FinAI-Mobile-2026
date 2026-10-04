@@ -46,6 +46,10 @@ final class DashboardViewModel: ObservableObject {
 
     // MARK: Editing a commitment
     @Published private(set) var editingCommitment: Commitment?
+    /// A new commitment being typed in; `editingCommitment` is nil meanwhile.
+    @Published private(set) var addingCommitment = false
+    /// Asking "Delete Rent?" before anything is sent.
+    @Published var confirmingCommitmentDelete = false
     @Published private(set) var commitmentDraft = CommitmentDraft(name: "", amount: "")
     @Published private(set) var commitmentSaving = false
     @Published private(set) var commitmentErrorKey: String?
@@ -196,6 +200,8 @@ final class DashboardViewModel: ObservableObject {
         guard data.commitments.indices.contains(index) else { return }
         let commitment = data.commitments[index]
         editingCommitment = commitment
+        addingCommitment = false
+        confirmingCommitmentDelete = false
         commitmentDraft = CommitmentEdit.shared.draftOf(commitment: commitment)
         commitmentSaving = false
         commitmentErrorKey = nil
@@ -211,23 +217,79 @@ final class DashboardViewModel: ObservableObject {
         commitmentErrorKey = nil
     }
 
-    func cancelCommitment() {
-        guard !commitmentSaving else { return }
+    /// Open the editor empty, to add one.
+    func addCommitment() {
+        addingCommitment = true
         editingCommitment = nil
+        confirmingCommitmentDelete = false
+        commitmentDraft = CommitmentDraft(name: "", amount: "")
+        commitmentSaving = false
         commitmentErrorKey = nil
     }
 
+    func cancelCommitment() {
+        guard !commitmentSaving else { return }
+        editingCommitment = nil
+        addingCommitment = false
+        confirmingCommitmentDelete = false
+        commitmentErrorKey = nil
+    }
+
+    /// Ask before deleting: nothing is sent until the person says yes.
+    func askDeleteCommitment() {
+        guard editingCommitment != nil, !commitmentSaving else { return }
+        confirmingCommitmentDelete = true
+    }
+
+    /// Delete the commitment being edited, once the person has said yes.
+    func deleteCommitment() {
+        guard let original = editingCommitment, !commitmentSaving else { return }
+        confirmingCommitmentDelete = false
+        writeSetup(goneKey: Strings.shared.commitment_edit_gone) {
+            CommitmentEdit.shared.removed(setup: $0, original: original)
+        }
+    }
+
+    /// The commitments section is shown once the month is read, empty or not:
+    /// it is where one is added.
+    var showsCommitments: Bool { !loading && !loadFailed }
+
+    var showsCommitmentEditor: Bool { editingCommitment != nil || addingCommitment }
+
+    var commitmentTitleKey: String {
+        addingCommitment ? Strings.shared.commitment_add_title : Strings.shared.commitment_edit_title
+    }
+
+    /// "Delete Rent?" — naming it, so the wrong one is not deleted by a quick tap.
+    var deleteCommitmentTitle: String {
+        L.t(Strings.shared.commitment_delete_confirm_title, editingCommitment?.name ?? "")
+    }
+
     private var commitmentBlock: CommitmentBlock? {
-        editingCommitment.flatMap {
+        if addingCommitment {
+            return CommitmentEdit.shared.blockingReasonForNew(
+                draft: commitmentDraft, currency: data.currency, existing: Int32(data.commitments.count)
+            )
+        }
+        return editingCommitment.flatMap {
             CommitmentEdit.shared.blockingReason(original: $0, draft: commitmentDraft, currency: data.currency)
         }
     }
 
-    var canSaveCommitment: Bool { editingCommitment != nil && !commitmentSaving && commitmentBlock == nil }
+    var canSaveCommitment: Bool { showsCommitmentEditor && !commitmentSaving && commitmentBlock == nil }
 
-    /// The notice under Save — never "nothing changed" before a touch.
+    /// The notice under Save. Nothing before a touch: not "nothing changed" on
+    /// an edit just opened, and not "give it a name" on an add with both fields
+    /// still empty — the limit is the exception, said at once.
     var commitmentNotice: String? {
-        commitmentErrorKey ?? (commitmentBlock == .nothingChanged ? nil : commitmentBlock?.messageKey)
+        if let commitmentErrorKey { return commitmentErrorKey }
+        guard let block = commitmentBlock else { return nil }
+        let untouched = addingCommitment
+            && commitmentDraft.name.trimmingCharacters(in: .whitespaces).isEmpty
+            && commitmentDraft.amount.trimmingCharacters(in: .whitespaces).isEmpty
+        if block == .nothingChanged { return nil }
+        if untouched && block != .tooMany { return nil }
+        return block.messageKey
     }
 
     var commitmentCurrencySymbol: String { Money.shared.symbol(currency: data.currency) }
@@ -244,23 +306,47 @@ final class DashboardViewModel: ObservableObject {
      told. Mirrors Android's `saveCommitment`.
      */
     func saveCommitment() {
-        guard let setupRepository, let original = editingCommitment, canSaveCommitment else { return }
+        guard canSaveCommitment else { return }
         let draft = commitmentDraft
+        if addingCommitment {
+            // Nil when the list filled up on another phone since this month
+            // was read: the same refusal the count check gives up front.
+            writeSetup(goneKey: Strings.shared.commitment_add_limit) {
+                CommitmentEdit.shared.added(setup: $0, draft: draft)
+            }
+        } else if let original = editingCommitment {
+            writeSetup(goneKey: Strings.shared.commitment_edit_gone) {
+                CommitmentEdit.shared.applied(setup: $0, original: original, draft: draft)
+            }
+        }
+    }
+
+    /**
+     Read the wizard's answers, change them, and write them back; then re-read
+     the month so the list shows what was saved. The server keeps commitments as
+     one list replaced whole, with no ids. `change` returns nil when the answers
+     moved on since this month was read — on another phone, say. Nothing is
+     written over them then: the month is re-read and `goneKey` says why.
+     Mirrors Android's `writeSetup`.
+     */
+    private func writeSetup(goneKey: String, change: @escaping (FinancialSetup) -> FinancialSetup?) {
+        guard let setupRepository else { return }
         commitmentSaving = true
         commitmentErrorKey = nil
         Task { [weak self] in
             guard let self else { return }
             do {
                 let setup = try await setupRepository.get()
-                guard let changed = CommitmentEdit.shared.applied(setup: setup, original: original, draft: draft) else {
+                guard let changed = change(setup) else {
                     self.commitmentSaving = false
-                    self.commitmentErrorKey = Strings.shared.commitment_edit_gone
+                    self.commitmentErrorKey = goneKey
                     self.load(refresh: true)
                     return
                 }
                 _ = try await setupRepository.save(setup: changed)
                 self.commitmentSaving = false
                 self.editingCommitment = nil
+                self.addingCommitment = false
                 self.load(refresh: true)
             } catch {
                 self.commitmentSaving = false

@@ -43,10 +43,14 @@ internal fun DashboardRoute(
         onSignOut = onSignOut,
         commitments = CommitmentActions(
             onEdit = model::editCommitment,
+            onAdd = model::addCommitment,
             onName = model::onCommitmentName,
             onAmount = model::onCommitmentAmount,
             onSave = model::saveCommitment,
             onCancel = model::cancelCommitment,
+            onAskDelete = model::askDeleteCommitment,
+            onDelete = model::deleteCommitment,
+            onKeep = model::keepCommitment,
         ),
     )
 }

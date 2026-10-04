@@ -21,6 +21,7 @@ import com.humblesolutions.finai.repository.CategoriesRepository
 import com.humblesolutions.finai.repository.DashboardRepository
 import com.humblesolutions.finai.repository.FinancialSetupRepository
 import com.humblesolutions.finai.repository.TransactionsRepository
+import com.humblesolutions.finai.usecase.CommitmentEdit
 import com.humblesolutions.finai.usecase.DashboardMonths
 import com.humblesolutions.finai.util.LedgerChanged
 import kotlinx.coroutines.CompletableDeferred
@@ -472,5 +473,92 @@ class DashboardViewModelTest {
 
         assertFalse(model.uiState.value.canSaveCommitment)
         assertNull(model.uiState.value.commitmentNotice)
+    }
+
+    // ── Adding and deleting a commitment ────────────────────────────────
+
+    @Test
+    fun a_new_commitment_is_added_at_the_end_and_the_month_re_read() = runTest {
+        val dashboard = month()
+        val setup = FakeSetup(FinancialSetup(currency = "CAD", obligations = listOf(Obligation("Rent", "1800.00"))))
+        val model = withSetup(dashboard, setup)
+        val reads = dashboard.asked.size
+
+        model.addCommitment()
+        model.onCommitmentName("Gym")
+        model.onCommitmentAmount("40")
+        model.saveCommitment()
+
+        assertEquals(listOf(Obligation("Rent", "1800.00"), Obligation("Gym", "40.00")), setup.saved.single().obligations)
+        assertFalse(model.uiState.value.showsCommitmentEditor)
+        assertEquals(reads + 1, dashboard.asked.size)
+    }
+
+    @Test
+    fun an_empty_add_says_nothing_until_something_is_typed() = runTest {
+        val model = withSetup(month(), FakeSetup(FinancialSetup()))
+
+        model.addCommitment()
+
+        assertFalse(model.uiState.value.canSaveCommitment)
+        assertNull(model.uiState.value.commitmentNotice, "no 'give it a name' on a sheet just opened")
+        model.onCommitmentAmount("40")
+        assertEquals(Strings.setup_item_name_missing, model.uiState.value.commitmentNotice)
+    }
+
+    @Test
+    fun a_full_list_is_refused_up_front_and_said_at_once() = runTest {
+        val full = List(CommitmentEdit.COUNT_LIMIT) { Commitment(name = "Bill $it", expected = "10.00") }
+        val model = withSetup(FakeDashboard(Dashboard(currency = "CAD", commitments = full)), FakeSetup(FinancialSetup()))
+
+        model.addCommitment()
+
+        assertFalse(model.uiState.value.canSaveCommitment)
+        assertEquals(Strings.commitment_add_limit, model.uiState.value.commitmentNotice)
+    }
+
+    @Test
+    fun deleting_asks_first_and_sends_nothing_until_yes() = runTest {
+        val setup = FakeSetup(FinancialSetup(currency = "CAD", obligations = listOf(Obligation("Phone", "65.00"), Obligation("Rent", "1800.00"))))
+        val model = withSetup(month(), setup)
+        model.editCommitment(1)
+
+        model.askDeleteCommitment()
+        assertTrue(model.uiState.value.confirmingCommitmentDelete)
+        assertEquals("Delete Rent?", model.uiState.value.deleteCommitmentTitle)
+        assertTrue(setup.saved.isEmpty(), "asking is not deleting")
+
+        model.deleteCommitment()
+
+        assertEquals(listOf(Obligation("Phone", "65.00")), setup.saved.single().obligations)
+        assertFalse(model.uiState.value.showsCommitmentEditor)
+    }
+
+    @Test
+    fun saying_no_keeps_the_commitment_and_the_editor() = runTest {
+        val setup = FakeSetup(FinancialSetup(currency = "CAD", obligations = listOf(Obligation("Rent", "1800.00"))))
+        val model = withSetup(month(), setup)
+        model.editCommitment(1)
+        model.askDeleteCommitment()
+
+        model.keepCommitment()
+        model.deleteCommitment()
+
+        assertTrue(setup.saved.isEmpty(), "delete without a fresh yes does nothing")
+        assertTrue(model.uiState.value.showsCommitmentEditor)
+    }
+
+    @Test
+    fun a_commitment_changed_elsewhere_is_not_deleted() = runTest {
+        val dashboard = month()
+        val setup = FakeSetup(FinancialSetup(currency = "CAD", obligations = listOf(Obligation("Rent", "1950.00"))))
+        val model = withSetup(dashboard, setup)
+        model.editCommitment(1)
+        model.askDeleteCommitment()
+
+        model.deleteCommitment()
+
+        assertTrue(setup.saved.isEmpty())
+        assertEquals(Strings.commitment_edit_gone, model.uiState.value.commitmentErrorKey)
     }
 }

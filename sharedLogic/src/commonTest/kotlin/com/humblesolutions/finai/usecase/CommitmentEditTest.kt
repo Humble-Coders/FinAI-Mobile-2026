@@ -76,4 +76,57 @@ class CommitmentEditTest {
         )
         assertEquals(listOf("1900.00", "1800.00"), assertNotNull(after).obligations.map { it.monthlyAmount })
     }
+
+    // ── Adding ──────────────────────────────────────────────────────────
+
+    @Test
+    fun a_new_commitment_goes_at_the_end_with_its_amount_written_as_money() {
+        val after = CommitmentEdit.added(setup(Obligation("Rent", "1800.00")), CommitmentDraft(" Gym ", "40"))
+        assertEquals(listOf(Obligation("Rent", "1800.00"), Obligation("Gym", "40.00")), assertNotNull(after).obligations)
+    }
+
+    @Test
+    fun a_new_commitment_is_checked_like_an_edited_one() {
+        assertEquals(CommitmentBlock.NO_NAME, CommitmentEdit.blockingReasonForNew(CommitmentDraft("", "10"), "CAD", 0))
+        assertEquals(CommitmentBlock.AMOUNT_ZERO, CommitmentEdit.blockingReasonForNew(CommitmentDraft("Gym", "0"), "CAD", 0))
+        assertNull(CommitmentEdit.blockingReasonForNew(CommitmentDraft("Gym", "40"), "CAD", 3))
+    }
+
+    @Test
+    fun the_twenty_first_commitment_is_refused_before_it_is_typed() {
+        // The server holds a wizard list to twenty; learning it from a 422
+        // after both fields are filled in is the worse time.
+        assertEquals(
+            CommitmentBlock.TOO_MANY,
+            CommitmentEdit.blockingReasonForNew(CommitmentDraft("Gym", "40"), "CAD", CommitmentEdit.COUNT_LIMIT),
+        )
+    }
+
+    @Test
+    fun a_list_that_filled_up_elsewhere_is_not_added_to() {
+        val full = setup(*Array(CommitmentEdit.COUNT_LIMIT) { Obligation("Bill $it", "10.00") })
+        assertNull(CommitmentEdit.added(full, CommitmentDraft("Gym", "40")))
+    }
+
+    // ── Deleting ────────────────────────────────────────────────────────
+
+    @Test
+    fun deleting_removes_the_matching_obligation_and_nothing_else() {
+        val after = CommitmentEdit.removed(
+            setup(Obligation("Phone", "65.00"), Obligation("Rent", "1800.00"), Obligation("Gym", "40.00")),
+            rent,
+        )
+        assertEquals(listOf(Obligation("Phone", "65.00"), Obligation("Gym", "40.00")), assertNotNull(after).obligations)
+    }
+
+    @Test
+    fun a_commitment_changed_elsewhere_is_not_deleted_on_a_stale_read() {
+        assertNull(CommitmentEdit.removed(setup(Obligation("Rent", "1950.00")), rent))
+    }
+
+    @Test
+    fun of_two_identical_rows_only_one_is_deleted() {
+        val after = CommitmentEdit.removed(setup(Obligation("Rent", "1800.00"), Obligation("Rent", "1800.00")), rent)
+        assertEquals(1, assertNotNull(after).obligations.size)
+    }
 }
