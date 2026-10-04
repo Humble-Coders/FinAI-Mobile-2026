@@ -104,6 +104,7 @@ final class TransactionsViewModel: ObservableObject {
         listener = Task { [weak self] in
             for await _ in LedgerChanged.events {
                 guard let self, !Task.isCancelled else { return }
+                self.refreshMonths()
                 self.load(refresh: true)
             }
         }
@@ -120,18 +121,56 @@ final class TransactionsViewModel: ObservableObject {
             // them leaves browsing by month, which always offers the current.
             let imports = (try? await importsRepository.list().imports) ?? []
             let categories = (try? await categoriesRepository?.list()) ?? []
+            // Which months have anything in them, from the transactions' own
+            // dates. Losing this leaves the current month on offer.
+            let everything = await self.readAll()
             guard started == self.generation else { return }
+            let today = Self.today
             let offered = TransactionBrowsing.shared.statementsFrom(imports: imports)
             self.statements = offered
-            self.months = TransactionBrowsing.shared.monthsFrom(
-                imports: imports,
-                today: DashboardMonths.shared.current(
-                    timeZone: Kotlinx_datetimeTimeZone.companion.currentSystemDefault()
-                )
-            )
+            self.months = TransactionBrowsing.shared.monthsWithRows(rows: everything, today: today)
+            self.month = TransactionBrowsing.shared.startingMonth(rows: everything, today: today)
             self.categories = categories ?? []
             self.statementId = offered.first?.id
             self.load()
+        }
+    }
+
+    private static var today: Kotlinx_datetimeLocalDate {
+        DashboardMonths.shared.current(timeZone: Kotlinx_datetimeTimeZone.companion.currentSystemDefault())
+    }
+
+    /// Every row, newest first, page after page — capped; see `categoryPages`.
+    /// Empty when it cannot be read: the months then fall back to the current one.
+    private func readAll() async -> [SharedLogic.Transaction] {
+        guard let transactionsRepository else { return [] }
+        do {
+            var page = try await transactionsRepository.list(
+                statementImportId: nil, month: nil, needsReview: nil, cursor: nil
+            )
+            var rows = page.rows
+            var pages = 1
+            while let cursor = page.nextCursor, pages < Self.categoryPages {
+                page = try await transactionsRepository.list(
+                    statementImportId: nil, month: nil, needsReview: nil, cursor: cursor
+                )
+                rows += page.rows
+                pages += 1
+            }
+            return rows
+        } catch {
+            return []
+        }
+    }
+
+    /// Re-read which months have rows, keeping the one being looked at. Run when
+    /// the ledger changed: an import may have brought months nobody could
+    /// choose before.
+    private func refreshMonths() {
+        Task { [weak self] in
+            guard let self else { return }
+            let everything = await self.readAll()
+            self.months = TransactionBrowsing.shared.monthsWithRows(rows: everything, today: Self.today)
         }
     }
 

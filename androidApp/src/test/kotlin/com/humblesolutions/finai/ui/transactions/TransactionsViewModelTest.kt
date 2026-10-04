@@ -257,7 +257,9 @@ class TransactionsViewModelTest {
         repo.page = ReviewPage(rows = listOf(Transaction(id = "r2")))
         LedgerChanged.announce()
 
-        assertEquals(before + 1, repo.asks.size)
+        // The slice is read again — and the months too, which is another
+        // request, so this counts the slice's read rather than all of them.
+        assertTrue(repo.asks.drop(before).any { it.cursor == null && it.month != null }, "the month was read again")
         assertEquals(listOf("r2"), model.uiState.value.rows.map { it.id })
     }
 
@@ -315,7 +317,9 @@ class TransactionsViewModelTest {
         model.onAmountChange("90.00")
         model.saveEdit()
 
-        assertEquals(before + 1, repo.asks.size)
+        // The slice is read again — and the months too, which is another
+        // request, so this counts the slice's read rather than all of them.
+        assertTrue(repo.asks.drop(before).any { it.cursor == null && it.month != null }, "the month was read again")
     }
 
     @Test
@@ -407,5 +411,29 @@ class TransactionsViewModelTest {
         val model = model(repo)
 
         assertEquals(listOf("here"), model.uiState.value.visibleRows.map { it.id })
+    }
+
+    @Test
+    fun months_with_transactions_are_offered_and_the_newest_opens() = runTest {
+        // The reported bug: months came from when statements were imported,
+        // so a statement of earlier months, imported this month, offered only
+        // this month — empty — and no way to reach the months it covered.
+        val now = DashboardMonths.current()
+        val last = DashboardMonths.previous(now)
+        val before = DashboardMonths.previous(last)
+        val repo = FakeTransactions(
+            ReviewPage(
+                rows = listOf(
+                    Transaction(id = "a", occurredOn = DashboardMonths.wire(last) + "-15"),
+                    Transaction(id = "b", occurredOn = DashboardMonths.wire(before) + "-03"),
+                ),
+            ),
+        )
+
+        val model = model(repo, FakeImports(emptyList()))
+
+        assertEquals(listOf(now, last, before), model.uiState.value.months)
+        assertEquals(last, model.uiState.value.month, "not an empty current month")
+        assertEquals(DashboardMonths.wire(last), repo.asks.last().month)
     }
 }

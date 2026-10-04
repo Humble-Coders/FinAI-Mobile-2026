@@ -113,20 +113,26 @@ object TransactionBrowsing {
     }
 
     /**
-     * The months worth offering, newest first.
+     * The months worth offering, newest first: every month a transaction falls
+     * in, by the date on the statement, and the current month.
      *
-     * Taken from the months the statements actually cover rather than a
-     * rolling window: offering twelve months to somebody with one statement is
-     * eleven taps that lead to an empty screen. The current month is always
-     * included, because a transaction typed in today belongs to no statement.
+     * From the transactions themselves, not from when statements were
+     * imported. An August statement imported in October has nothing to do
+     * with October, and offering months by import date left a person whose
+     * only import was this month with one chip — the current month, empty —
+     * and no way to reach August at all. The current month is always there,
+     * because a transaction typed in today belongs to it.
      */
-    fun monthsFrom(imports: List<StatementImportSummary>, today: LocalDate): List<LocalDate> {
-        val fromStatements = imports.mapNotNull { Dates.parse(it.createdAt.take(10)) }
-            .map { DashboardMonths.first(it) }
-        return (fromStatements + DashboardMonths.first(today))
-            .distinct()
-            .sortedDescending()
-    }
+    fun monthsWithRows(rows: List<Transaction>, today: LocalDate): List<LocalDate> = (monthsOf(rows) + DashboardMonths.first(today)).distinct().sortedDescending()
+
+    /**
+     * The month to open on: the newest one with anything in it, or the current
+     * month when there is nothing at all. Opening on an empty current month
+     * when last month is full reads as the import having gone missing.
+     */
+    fun startingMonth(rows: List<Transaction>, today: LocalDate): LocalDate = monthsOf(rows).maxOrNull() ?: DashboardMonths.first(today)
+
+    private fun monthsOf(rows: List<Transaction>): List<LocalDate> = rows.mapNotNull { row -> Dates.parse(row.occurredOn)?.let { DashboardMonths.first(it) } }
 
     /**
      * The statements worth offering: the ones that produced rows.

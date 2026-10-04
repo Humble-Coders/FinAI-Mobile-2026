@@ -9,6 +9,7 @@ import com.humblesolutions.finai.data.KtorStatementImportRepository
 import com.humblesolutions.finai.data.KtorTransactionsRepository
 import com.humblesolutions.finai.data.SupabaseTokenSource
 import com.humblesolutions.finai.model.ApiException
+import com.humblesolutions.finai.model.Transaction
 import com.humblesolutions.finai.model.TransactionDirection
 import com.humblesolutions.finai.repository.CategoriesRepository
 import com.humblesolutions.finai.repository.StatementImportRepository
@@ -82,7 +83,10 @@ class TransactionsViewModel : ViewModel() {
         if (listening) return
         listening = true
         viewModelScope.launch {
-            LedgerChanged.events.collect { load(refresh = true) }
+            LedgerChanged.events.collect {
+                refreshMonths()
+                load(refresh = true)
+            }
         }
     }
 
@@ -108,18 +112,56 @@ class TransactionsViewModel : ViewModel() {
             } catch (e: ApiException) {
                 emptyList()
             }
+            // Which months have anything in them, from the transactions'
+            // own dates. Losing this leaves the current month on offer.
+            val everything = orEmpty { readAll(repos) }
             if (started != generation) return@launch
+            val today = DashboardMonths.current()
             _uiState.update {
                 it.copy(
                     statements = TransactionBrowsing.statementsFrom(imports),
-                    months = TransactionBrowsing.monthsFrom(imports, DashboardMonths.current()),
+                    months = TransactionBrowsing.monthsWithRows(everything, today),
                     categories = categories,
                     statementId = TransactionBrowsing.statementsFrom(imports).firstOrNull()?.id,
-                    month = DashboardMonths.current(),
+                    month = TransactionBrowsing.startingMonth(everything, today),
                 )
             }
             load()
         }
+    }
+
+    /**
+     * Re-read which months have rows, keeping the one being looked at. Run
+     * when the ledger changed: an import may have brought months nobody could
+     * choose before.
+     */
+    private fun refreshMonths() {
+        val repos = repositories ?: return
+        viewModelScope.launch {
+            val everything = orEmpty { readAll(repos) }
+            _uiState.update { it.copy(months = TransactionBrowsing.monthsWithRows(everything, DashboardMonths.current())) }
+        }
+    }
+
+    /** Every row, newest first, page after page — capped; see [CATEGORY_PAGES]. */
+    private suspend fun readAll(repos: TransactionsRepositories): List<Transaction> {
+        var page = repos.transactions.list()
+        val rows = page.rows.toMutableList()
+        var pages = 1
+        while (page.nextCursor != null && pages < CATEGORY_PAGES) {
+            page = repos.transactions.list(cursor = page.nextCursor)
+            rows += page.rows
+            pages++
+        }
+        return rows
+    }
+
+    private suspend fun <T> orEmpty(read: suspend () -> List<T>): List<T> = try {
+        read()
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: ApiException) {
+        emptyList()
     }
 
     fun showMode(mode: TransactionBrowsing.Mode) {
