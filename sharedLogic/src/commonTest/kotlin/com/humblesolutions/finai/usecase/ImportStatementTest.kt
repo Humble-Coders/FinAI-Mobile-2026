@@ -262,4 +262,46 @@ class ImportStatementTest {
         ImportStatement(imports).execute(document, accountId = "acct-1", keepTextForDiagnostics = true)
         assertTrue(assertNotNull(imports.sent).keepTextForDiagnostics)
     }
+
+    // ── A screenshot ────────────────────────────────────────────────────
+
+    private val today = kotlinx.datetime.LocalDate(2026, 10, 4)
+
+    @Test
+    fun a_screenshot_is_sent_in_rows_and_dated_by_the_year_ending_today() = runTest {
+        val imports = FakeImports()
+
+        ImportStatement(imports) { today }.execute(ScreenshotFixture.document())
+
+        val sent = assertNotNull(imports.sent)
+        assertTrue(sent.text.contains("Loblaws   -$86.40"), sent.text)
+        assertEquals("2025-10-05", sent.statementPeriodStart)
+        assertEquals("2026-10-04", sent.statementPeriodEnd)
+        assertEquals("ocr", sent.sourceKind)
+    }
+
+    @Test
+    fun a_scan_with_no_period_is_not_given_one() = runTest {
+        // A scanned statement may be years old; a guessed year would be wrong.
+        val imports = FakeImports()
+        val scan = ScreenshotFixture.document(fromImage = false).copy(
+            pages = listOf(ExtractedPage(index = 0, lines = listOf(ExtractedLine(text = transaction)))),
+        )
+
+        ImportStatement(imports) { today }.execute(scan)
+
+        assertNull(assertNotNull(imports.sent).statementPeriodStart)
+    }
+
+    @Test
+    fun a_screenshot_that_shows_its_period_keeps_it() = runTest {
+        val imports = FakeImports()
+        val shown = ScreenshotFixture.document().copy(
+            pages = listOf(ExtractedPage(index = 0, lines = listOf(ExtractedLine(text = header), ExtractedLine(text = transaction)))),
+        )
+
+        ImportStatement(imports) { today }.execute(shown)
+
+        assertEquals("2026-08-01", assertNotNull(imports.sent).statementPeriodStart)
+    }
 }

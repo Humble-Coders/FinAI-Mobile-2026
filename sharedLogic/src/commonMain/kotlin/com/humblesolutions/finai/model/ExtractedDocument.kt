@@ -16,6 +16,12 @@ package com.humblesolutions.finai.model
 data class ExtractedDocument(
     val pages: List<ExtractedPage> = emptyList(),
     val source: SourceKind = SourceKind.PDF_TEXT,
+    /**
+     * A photo or screenshot, rather than a PDF. Always [SourceKind.OCR], but
+     * not every OCR read is one: a scanned PDF is a statement, with a header
+     * and a period; a screenshot of a banking app is a list, with neither.
+     */
+    val fromImage: Boolean = false,
 ) {
     val isEmpty: Boolean get() = pages.all { it.lines.isEmpty() }
 

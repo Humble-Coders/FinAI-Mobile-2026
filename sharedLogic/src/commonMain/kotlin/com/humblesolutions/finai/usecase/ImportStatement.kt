@@ -7,7 +7,14 @@ import com.humblesolutions.finai.model.ExtractedDocument
 import com.humblesolutions.finai.model.ParsedStatement
 import com.humblesolutions.finai.model.StatementUpload
 import com.humblesolutions.finai.repository.StatementImportRepository
+import kotlinx.datetime.DatePeriod
+import kotlinx.datetime.LocalDate
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.minus
+import kotlinx.datetime.plus
+import kotlinx.datetime.todayIn
 import kotlin.coroutines.cancellation.CancellationException
+import kotlin.time.Clock
 
 /**
  * A document the device has read in, transaction rows back — everything that
@@ -33,7 +40,9 @@ import kotlin.coroutines.cancellation.CancellationException
  */
 class ImportStatement(
     private val imports: StatementImportRepository,
+    private val today: () -> LocalDate,
 ) {
+    constructor(imports: StatementImportRepository) : this(imports, { Clock.System.todayIn(TimeZone.currentSystemDefault()) })
 
     /**
      * @param document what the platform reader produced. Never sent; only the
@@ -66,8 +75,9 @@ class ImportStatement(
         keepTextForDiagnostics: Boolean = false,
         onRedacted: (StatementRedactor.Redaction) -> Unit = {},
     ): ParsedStatement {
-        val period = StatementPeriod.find(document)
-        val redaction = StatementRedactor.of(document)
+        val rows = OcrRows.of(document)
+        val period = StatementPeriod.find(rows) ?: recentYear(rows)
+        val redaction = StatementRedactor.of(rows)
         val text = redaction.text
         onRedacted(redaction)
 
@@ -90,6 +100,23 @@ class ImportStatement(
                 keepTextForDiagnostics = keepTextForDiagnostics,
             ),
         )
+    }
+
+    /**
+     * The year to date a screenshot's rows by, when it shows no period.
+     *
+     * A banking app prints `Aug 14` and no year anywhere, and the parser omits
+     * a row it cannot date rather than guess — so a screenshot came back with
+     * nothing. What is true of a screenshot is that it shows recent activity:
+     * the year ending today places `Aug 14` and `Dec 3` each in the right year.
+     * Only for an image; a scanned statement may be years old, and a wrong
+     * year is worse than an omitted row.
+     */
+    private fun recentYear(document: ExtractedDocument): StatementPeriod.Range? {
+        if (!document.fromImage) return null
+        val end = today()
+        val start = end.minus(DatePeriod(years = 1)).plus(DatePeriod(days = 1))
+        return StatementPeriod.Range(start = start.toString(), end = end.toString())
     }
 
     companion object {

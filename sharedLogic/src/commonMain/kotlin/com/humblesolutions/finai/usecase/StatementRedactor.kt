@@ -63,6 +63,13 @@ object StatementRedactor {
 
     private const val MASK = "••••"
 
+    // A line that is only a date, as a banking app heads each day's rows:
+    // `Aug 14`, `14 August 2026`, `Friday, August 14`, `08/14/2026`, `Today`.
+    private val DATE_HEADING = Regex(
+        """^(?:today|yesterday|(?:[A-Za-z]{3,9},?\s+)?(?:[A-Za-z]{3,9}\.?\s+\d{1,2}(?:st|nd|rd|th)?|\d{1,2}\s+[A-Za-z]{3,9}\.?)(?:,?\s+\d{4})?|\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?)$""",
+        RegexOption.IGNORE_CASE,
+    )
+
     /** Whether a line reads as a transaction: a date and an amount together. */
     fun looksLikeATransaction(line: String): Boolean = AMOUNT.containsMatchIn(line) && DATE.containsMatchIn(line)
 
@@ -101,6 +108,8 @@ object StatementRedactor {
             val start =
                 if (page.index == 0) {
                     lines.indexOfFirst { looksLikeATransaction(it) }
+                        .takeIf { it >= 0 || !document.fromImage }
+                        ?: imageStart(lines)
                 } else {
                     0
                 }
@@ -124,6 +133,25 @@ object StatementRedactor {
             }
         }
         return Redaction(text = kept.joinToString("\n").trim(), droppedLines = dropped)
+    }
+
+    /**
+     * Where a photo or screenshot's rows begin, when no line holds a date and
+     * an amount together.
+     *
+     * The usual case for a banking app, not a broken one: it heads each day
+     * with its date and lists the rows under it with only a merchant and an
+     * amount, so the statement rule — start at the first dated amount — finds
+     * nothing and the whole screenshot went unsent. Here the rows start at the
+     * first amount, taking with them the date headings directly above, which
+     * are what date them. Everything higher up — the status bar, the app's
+     * title, an account name — is dropped as a statement's header is.
+     */
+    private fun imageStart(lines: List<String>): Int {
+        var start = lines.indexOfFirst { AMOUNT.containsMatchIn(it) }
+        if (start < 0) return -1
+        while (start > 0 && DATE_HEADING.matches(lines[start - 1].trim())) start--
+        return start
     }
 
     private fun carriesAnIdentifier(line: String): Boolean = EMAIL.containsMatchIn(line) ||

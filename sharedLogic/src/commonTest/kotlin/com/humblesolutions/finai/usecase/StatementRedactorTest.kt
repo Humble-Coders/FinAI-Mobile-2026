@@ -287,4 +287,40 @@ class StatementRedactorTest {
 
         assertEquals("", text)
     }
+
+    // ── A screenshot of a banking app ───────────────────────────────────
+
+    private fun screenshot(fromImage: Boolean = true) = OcrRows.of(ScreenshotFixture.document(fromImage))
+
+    @Test
+    fun a_screenshot_with_no_dated_amount_line_still_sends_its_rows() {
+        val text = StatementRedactor.redact(screenshot())
+
+        assertTrue(text.contains("Loblaws   -$86.40"), text)
+        assertTrue(text.contains("Payroll Acme Corp   +$2,600.00"), text)
+        assertTrue(text.contains("Uber trip   -$42.10"), text)
+        assertTrue(text.contains("Aug 13"), "a day heading between rows is kept: $text")
+    }
+
+    @Test
+    fun the_date_heading_above_the_first_row_comes_with_it() {
+        val text = StatementRedactor.redact(screenshot())
+        assertTrue(text.startsWith("Aug 14"), text)
+    }
+
+    @Test
+    fun what_sits_above_a_screenshots_rows_is_dropped() {
+        val text = StatementRedactor.redact(screenshot())
+
+        assertFalse(text.contains("6:01"), "the status bar went out: $text")
+        assertFalse(text.contains("Chequing"), "the account line went out: $text")
+        assertFalse(text.contains("5004321"), "the account number went out: $text")
+    }
+
+    @Test
+    fun a_scanned_statement_keeps_the_strict_rule() {
+        // Not an image: a scan has a name-and-address header, and the rule
+        // that drops it is not relaxed for it.
+        assertEquals("", StatementRedactor.redact(screenshot(fromImage = false)))
+    }
 }

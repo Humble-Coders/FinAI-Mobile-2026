@@ -200,6 +200,7 @@ class AndroidStatementReader(private val context: Context) : StatementReader {
         return ExtractedDocument(
             pages = listOf(ExtractedPage(index = 0, lines = lines)),
             source = SourceKind.OCR,
+            fromImage = true,
         )
     }
 
