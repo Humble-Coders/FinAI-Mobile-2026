@@ -109,13 +109,13 @@ class DashboardUiStateTest {
 
     @Test
     fun a_balance_that_did_not_move_says_so_rather_than_showing_a_zero() {
-        assertEquals("Nothing moved this month", state(august()).investmentsMovement)
+        assertEquals("Nothing moved", state(august()).investmentsMovement)
         assertEquals(
-            "$500.00 set aside this month",
+            "Set aside $500.00",
             state(august(investments = Stock("40000.00", "500.00"))).investmentsMovement,
         )
         assertEquals(
-            "$400.00 paid this month",
+            "Paid $400.00",
             state(august(debts = Stock("12000.00", "400.00"))).debtsMovement,
         )
     }
@@ -339,5 +339,40 @@ class DashboardUiStateTest {
             month.trendDescriptions.single(),
         )
         shown.forEach { assertEquals(it, LocalizationRegistry.get(it), "raw key reached the screen: $it") }
+    }
+
+    // ── What is written on the chart ────────────────────────────────────
+
+    private fun charted() = state(
+        august(
+            trend = listOf(
+                MonthPoint("2026-05-01", null),
+                MonthPoint("2026-06-01", "1500.00"),
+                MonthPoint("2026-07-01", null),
+                MonthPoint("2026-08-01", "-610.00"),
+            ),
+        ),
+    )
+
+    @Test
+    fun each_point_is_labelled_with_its_month_and_its_rounded_figure() {
+        val labels = charted().chartLabels
+
+        // May is before the first recorded month, so the chart starts at June.
+        assertEquals(listOf("Jun", "Jul", "Aug"), labels.map { it.month })
+        assertEquals(listOf("$1.5k", null, "-$610"), labels.map { it.value })
+    }
+
+    @Test
+    fun a_month_in_the_red_is_marked_so_its_figure_goes_below_the_line() {
+        assertEquals(listOf(false, false, true), charted().chartLabels.map { it.isLoss })
+    }
+
+    @Test
+    fun hiding_amounts_takes_the_figures_off_the_chart_but_not_the_months() {
+        val labels = charted().copy(amountsHidden = true).chartLabels
+
+        assertEquals(listOf("Jun", "Jul", "Aug"), labels.map { it.month })
+        assertTrue(labels.all { it.value == null })
     }
 }

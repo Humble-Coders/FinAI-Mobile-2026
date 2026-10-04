@@ -273,6 +273,47 @@ object Money {
     }
 
     /**
+     * A short figure for a chart label: `"1500"` in CAD becomes `"$1.5k"`.
+     *
+     * Rounded on purpose — a label on a line is for seeing which month was
+     * bigger, and the exact figure is a tap or a glance at the card away.
+     * Whole units below a thousand, one decimal below ten thousand, then
+     * thousands, then millions. The same symbol, sign and decimal mark as
+     * [format], so the two never look like different currencies.
+     */
+    fun compact(amount: String, currency: String, locale: String = "en"): String {
+        val value = amount.trim().toDoubleOrNull() ?: return ""
+        val negative = value < 0
+        val size = kotlin.math.abs(value)
+        val french = locale.take(2).lowercase() == "fr"
+        val point = if (french) "," else "."
+
+        fun tenths(x: Double): String {
+            val rounded = kotlin.math.round(x * 10) / 10
+            val whole = rounded.toLong()
+            val tenth = kotlin.math.round((rounded - whole) * 10).toLong()
+            return if (tenth == 0L) whole.toString() else "$whole$point$tenth"
+        }
+
+        val thousands = size / 1_000
+        val millions = size / 1_000_000
+        val body = when {
+            kotlin.math.round(size) < 1_000 -> kotlin.math.round(size).toLong().toString()
+            thousands < 9.95 -> tenths(thousands) + "k"
+            thousands < 999.5 -> kotlin.math.round(thousands).toLong().toString() + "k"
+            millions < 9.95 -> tenths(millions) + "M"
+            else -> kotlin.math.round(millions).toLong().toString() + "M"
+        }
+        val symbol = SYMBOLS[currency.uppercase()]
+        val written = when {
+            symbol == null -> body + " " + currency.uppercase()
+            french -> body + " " + symbol
+            else -> symbol + body
+        }
+        return if (negative && body != "0") "-" + written else written
+    }
+
+    /**
      * What to draw beside an amount field, e.g. `"$"`. Currencies the table
      * does not know show their code, which is honest and never wrong.
      */

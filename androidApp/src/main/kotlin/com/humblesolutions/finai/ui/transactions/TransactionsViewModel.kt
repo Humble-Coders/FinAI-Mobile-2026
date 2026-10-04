@@ -9,10 +9,14 @@ import com.humblesolutions.finai.data.KtorStatementImportRepository
 import com.humblesolutions.finai.data.KtorTransactionsRepository
 import com.humblesolutions.finai.data.SupabaseTokenSource
 import com.humblesolutions.finai.model.ApiException
+import com.humblesolutions.finai.model.TransactionDirection
 import com.humblesolutions.finai.repository.CategoriesRepository
 import com.humblesolutions.finai.repository.StatementImportRepository
 import com.humblesolutions.finai.repository.TransactionsRepository
+import com.humblesolutions.finai.usecase.CorrectionDraft
 import com.humblesolutions.finai.usecase.DashboardMonths
+import com.humblesolutions.finai.usecase.ManualEntry
+import com.humblesolutions.finai.usecase.ReviewQueue
 import com.humblesolutions.finai.usecase.TransactionBrowsing
 import com.humblesolutions.finai.util.LedgerChanged
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -212,6 +216,114 @@ class TransactionsViewModel : ViewModel() {
             } catch (e: ApiException) {
                 if (started != generation) return@launch
                 _uiState.update { it.copy(loadingMore = false, errorKey = e.messageKey) }
+            }
+        }
+    }
+
+    // ── Editing a row ───────────────────────────────────────────────────
+
+    /** Open the editor on [id], filled in as the row stands. */
+    fun edit(id: String) {
+        val row = _uiState.value.rows.firstOrNull { it.id == id } ?: return
+        _uiState.update {
+            it.copy(
+                editing = row,
+                draft = ReviewQueue.draftOf(row),
+                editErrorKey = null,
+                saving = false,
+                today = ManualEntry.today(),
+            )
+        }
+    }
+
+    fun cancelEdit() {
+        if (_uiState.value.saving) return
+        _uiState.update { it.copy(editing = null, draft = CorrectionDraft(), editErrorKey = null) }
+    }
+
+    fun onDateChange(date: LocalDate) = editDraft { it.copy(occurredOn = date) }
+
+    fun onAmountChange(value: String) = editDraft { it.copy(amount = value) }
+
+    fun onDirectionChange(direction: TransactionDirection) = editDraft { it.copy(direction = direction) }
+
+    fun onDescriptionChange(value: String) = editDraft { it.copy(description = value) }
+
+    fun onCategoryChosen(id: String) = editDraft { it.copy(categoryId = id) }
+
+    private fun editDraft(change: (CorrectionDraft) -> CorrectionDraft) {
+        if (_uiState.value.editing == null) return
+        _uiState.update { it.copy(draft = change(it.draft), editErrorKey = null) }
+    }
+
+    /**
+     * Send only what changed, through the same rule as the review queue.
+     *
+     * On success the ledger has moved, so it is announced: home re-reads its
+     * month and this list re-reads its slice — which is also what moves a row
+     * whose new date took it out of the month being looked at.
+     */
+    fun saveEdit() {
+        val repos = repositories ?: return
+        val state = _uiState.value
+        val row = state.editing ?: return
+        if (state.saving) return
+        val patch = ReviewQueue.correction(row, state.draft, state.today) ?: return
+        _uiState.update { it.copy(saving = true, editErrorKey = null) }
+        viewModelScope.launch {
+            try {
+                repos.transactions.correct(row.id, patch)
+                _uiState.update { it.copy(saving = false, editing = null, draft = CorrectionDraft()) }
+                LedgerChanged.announce()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: ApiException) {
+                // A duplicate is said in the sheet, with the row still open:
+                // the person's draft is the thing they need to fix.
+                _uiState.update { it.copy(saving = false, editErrorKey = e.messageKey) }
+            }
+        }
+    }
+
+    fun openNewCategory() = _uiState.update { it.copy(newCategoryName = "", newCategoryErrorKey = null) }
+
+    fun onNewCategoryName(name: String) = _uiState.update { it.copy(newCategoryName = name, newCategoryErrorKey = null) }
+
+    fun cancelNewCategory() {
+        if (_uiState.value.creatingCategory) return
+        _uiState.update { it.copy(newCategoryName = null, newCategoryErrorKey = null) }
+    }
+
+    /** Adds the category and files the row being edited into it. */
+    fun createCategory() {
+        val repos = repositories ?: return
+        val name = _uiState.value.newCategoryName?.trim().orEmpty()
+        if (name.isEmpty() || _uiState.value.creatingCategory) return
+        _uiState.update { it.copy(creatingCategory = true, newCategoryErrorKey = null) }
+        viewModelScope.launch {
+            try {
+                val made = repos.categories.create(name)
+                _uiState.update {
+                    it.copy(
+                        creatingCategory = false,
+                        newCategoryName = null,
+                        categories = it.categories + made,
+                        draft = it.draft.copy(categoryId = made.id),
+                    )
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: ApiException.CategoryExists) {
+                // Taken by one they can already use, so use it.
+                _uiState.update {
+                    it.copy(
+                        creatingCategory = false,
+                        newCategoryName = null,
+                        draft = it.draft.copy(categoryId = e.categoryId ?: it.draft.categoryId),
+                    )
+                }
+            } catch (e: ApiException) {
+                _uiState.update { it.copy(creatingCategory = false, newCategoryErrorKey = e.messageKey) }
             }
         }
     }

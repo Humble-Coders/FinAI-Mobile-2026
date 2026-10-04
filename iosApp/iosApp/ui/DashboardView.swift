@@ -49,6 +49,11 @@ struct DashboardView: View {
         )
         .onAppear { model.bind(userId: userId) }
         .onDisappear { model.unbind() }
+        .sheet(isPresented: commitmentShown) { CommitmentEditor(model: model) }
+    }
+
+    private var commitmentShown: Binding<Bool> {
+        Binding(get: { model.editingCommitment != nil }, set: { if !$0 { model.cancelCommitment() } })
     }
 
     // MARK: - The field
@@ -57,6 +62,16 @@ struct DashboardView: View {
         VStack(alignment: .leading, spacing: 0) {
             header
             hero.padding(.top, 26)
+            if let chart = model.chart {
+                TrendChart(chart: chart, labels: model.chartLabels)
+                    .frame(height: 172)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(
+                        L.t(Strings.shared.dashboard_trend_label) + ": "
+                            + model.trendDescriptions.joined(separator: "; ")
+                    )
+                    .padding(.top, 18)
+            }
             Group {
                 if model.loadFailed {
                     loadFailed
@@ -151,32 +166,12 @@ struct DashboardView: View {
                 monthPill
             }
 
-            // Beside the line when there is one, so the two do not cross.
-            FractionOfWidth(fraction: model.chart == nil ? 1 : 0.6) {
-                FittedAmount(text: model.net, sizes: FittedAmount.hero, color: Field.ink())
-            }
+            FittedAmount(text: model.net, sizes: FittedAmount.hero, color: Field.ink())
+                .frame(maxWidth: .infinity, alignment: .leading)
 
-            Spacer(minLength: 14)
             // Absent, not "+0%", when there is no month to compare against.
             if let change = model.changeLabel {
-                changePill(change, rose: model.netIsPositive)
-            }
-        }
-        // Tall enough to give the line room between the pills — but only when
-        // there is a line, or an empty month opens with a hole in it.
-        .frame(minHeight: model.chart == nil ? 0 : 156, alignment: .top)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        // Behind the words, across the right of the hero and out to the
-        // screen's edge, as in the design.
-        .background {
-            if let chart = model.chart {
-                TrendChart(chart: chart)
-                    .padding(.trailing, -20)
-                    .accessibilityElement(children: .ignore)
-                    .accessibilityLabel(
-                        L.t(Strings.shared.dashboard_trend_label) + ": "
-                            + model.trendDescriptions.joined(separator: "; ")
-                    )
+                changePill(change, rose: model.netIsPositive).padding(.top, 12)
             }
         }
     }
@@ -411,27 +406,33 @@ struct DashboardView: View {
                 Text(summary).font(.subheadline).foregroundColor(Brand.textMuted).padding(.top, 2)
             }
             ForEach(Array(model.commitmentRows.enumerated()), id: \.element.id) { index, row in
-                HStack(spacing: 14) {
-                    ZStack {
-                        Circle().fill(row.wasSeen ? Brand.green.opacity(0.18) : Color.gray.opacity(0.18))
-                        if row.wasSeen {
-                            FinAiIcon(symbol: "checkmark", tint: Brand.greenDeep, size: 13)
+                Button { model.editCommitment(row.id) } label: {
+                    HStack(spacing: 14) {
+                        ZStack {
+                            Circle().fill(row.wasSeen ? Brand.green.opacity(0.18) : Color.gray.opacity(0.18))
+                            if row.wasSeen {
+                                FinAiIcon(symbol: "checkmark", tint: Brand.greenDeep, size: 13)
+                            }
                         }
+                        .frame(width: 28, height: 28)
+                        // Decorative: `detail` already says this in words.
+                        .accessibilityHidden(true)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(row.name).font(.headline.weight(.regular)).foregroundColor(.primary)
+                            // Not red when unseen: we do not know it is unpaid,
+                            // only that we did not find it.
+                            Text(row.detail).font(.subheadline).foregroundColor(Brand.textMuted)
+                        }
+                        Spacer(minLength: 8)
+                        Text(row.expected).font(.headline.weight(.regular)).foregroundColor(Brand.textMuted)
+                        FinAiIcon(symbol: "chevron.right", tint: Brand.textMuted, size: 12)
                     }
-                    .frame(width: 28, height: 28)
-                    // Decorative: `detail` already says this in words.
-                    .accessibilityHidden(true)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(row.name).font(.headline.weight(.regular))
-                        // Not red when unseen: we do not know it is unpaid,
-                        // only that we did not find it.
-                        Text(row.detail).font(.subheadline).foregroundColor(Brand.textMuted)
-                    }
-                    Spacer(minLength: 8)
-                    Text(row.expected).font(.headline.weight(.regular)).foregroundColor(Brand.textMuted)
+                    .padding(.vertical, 8)
+                    .frame(minHeight: 60)
+                    .contentShape(Rectangle())
                 }
-                .padding(.vertical, 8)
-                .frame(minHeight: 60)
+                .buttonStyle(.plain)
+                .accessibilityHint(L.t(Strings.shared.commitment_edit_hint, row.name))
                 if index != model.commitmentRows.count - 1 { Divider().overlay(Brand.border) }
             }
         }
@@ -515,63 +516,68 @@ private struct Waves: View {
 // MARK: - The chart
 
 /**
- The months as a soft line, with the month in view marked. The geometry is
+ Net by month, as a line with every figure written on it. The geometry is
  shared (`DashboardTrend`): a gap is never drawn through, so no line invents a
- value for a month nobody recorded, and a loss sits below a gain.
+ value for a month nobody recorded; a loss sits below a gain; and when the
+ months cross zero a dashed line marks it, so a month in the red is visible as
+ one. Each recorded month carries its rounded figure, each month its name; the
+ month in view is the right-hand end, marked, with its figure on a pill.
 
- It occupies the right of the hero, fading in from the left so the words in
- front stay readable, below the month pill and above the change pill. The
- marker is the month in view — always the right-hand end — whose figure is the
- large one beside it, so it carries no caption. Mirrors Android's `TrendChart`.
+ Labels that would collide are left off — the month in view's never — rather
+ than drawn over one another. Every figure is in the accessibility label too.
+ Mirrors Android's `TrendChart`.
  */
 private struct TrendChart: View {
     let chart: DashboardTrend.Chart
+    let labels: [ChartLabel]
 
-    /// Where the line begins, as a fraction of the width.
-    private let start: CGFloat = 0.38
+    private let side: CGFloat = 22
+    /// Room above the line for the figures written over it.
+    private let top: CGFloat = 34
+    /// Room below for the month names.
+    private let bottom: CGFloat = 30
 
     var body: some View {
         GeometryReader { geometry in
             let size = geometry.size
             ZStack(alignment: .topLeading) {
+                if let zero = chart.zero?.doubleValue {
+                    Path { path in
+                        path.move(to: CGPoint(x: side, y: y(zero, size)))
+                        path.addLine(to: CGPoint(x: size.width - side, y: y(zero, size)))
+                    }
+                    .stroke(Field.ink(0.35), style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
+                }
                 ForEach(Array(chart.segments.enumerated()), id: \.offset) { _, run in
-                    segment(run.map { $0.intValue }, in: size)
+                    segment(run.map { $0.intValue }, size)
                 }
                 if let index = chart.markerIndex?.intValue {
-                    marker(at: point(chart.points[index], in: size), in: size)
+                    marker(at(chart.points[index], size), size)
+                }
+                ForEach(placements(size), id: \.key) { placed in
+                    placed.view.position(placed.centre)
                 }
             }
         }
-        .mask(
-            LinearGradient(
-                stops: [
-                    .init(color: .clear, location: 0),
-                    .init(color: .clear, location: start),
-                    .init(color: .black, location: start + 0.22),
-                ],
-                startPoint: .leading,
-                endPoint: .trailing
-            )
-        )
     }
 
-    private func point(_ p: DashboardTrend.Point, in size: CGSize) -> CGPoint {
-        let left = size.width * start + 24
-        let right = size.width - 28
-        let top: CGFloat = 58
-        let bottom = size.height - 52
-        return CGPoint(
-            x: left + CGFloat(p.x) * (right - left),
-            y: bottom - CGFloat(p.y?.doubleValue ?? 0) * (bottom - top)
+    private func y(_ fraction: Double, _ size: CGSize) -> CGFloat {
+        let low = size.height - bottom
+        return low - CGFloat(fraction) * (low - top)
+    }
+
+    private func at(_ point: DashboardTrend.Point, _ size: CGSize) -> CGPoint {
+        CGPoint(
+            x: side + CGFloat(point.x) * (size.width - side * 2),
+            y: y(point.y?.doubleValue ?? 0, size)
         )
     }
 
     @ViewBuilder
-    private func segment(_ run: [Int], in size: CGSize) -> some View {
-        let pts = run.map { point(chart.points[$0], in: size) }
-        if pts.count == 1 {
-            Circle().fill(Field.ink(0.9)).frame(width: 6, height: 6).position(pts[0])
-        } else {
+    private func segment(_ run: [Int], _ size: CGSize) -> some View {
+        let pts = run.map { at(chart.points[$0], size) }
+        let floor = size.height - bottom
+        if pts.count > 1 {
             let line = Path { path in
                 path.move(to: pts[0])
                 // Control points level with each end, so the curve never
@@ -583,50 +589,113 @@ private struct TrendChart: View {
             }
             let fill = Path { path in
                 path.addPath(line)
-                path.addLine(to: CGPoint(x: pts[pts.count - 1].x, y: size.height))
-                path.addLine(to: CGPoint(x: pts[0].x, y: size.height))
+                path.addLine(to: CGPoint(x: pts[pts.count - 1].x, y: floor))
+                path.addLine(to: CGPoint(x: pts[0].x, y: floor))
                 path.closeSubpath()
             }
-            // Fades well before the bottom, so where a gap ends a run the fill
-            // does not stand as a hard-edged column.
             fill.fill(
                 LinearGradient(
-                    colors: [Field.ink(0.18), Field.ink(0)],
-                    startPoint: UnitPoint(x: 0.5, y: 58 / max(size.height, 1)),
-                    endPoint: UnitPoint(x: 0.5, y: (58 + (size.height - 58) * 0.7) / max(size.height, 1))
+                    colors: [Field.ink(0.20), Field.ink(0)],
+                    startPoint: UnitPoint(x: 0.5, y: top / max(size.height, 1)),
+                    endPoint: UnitPoint(x: 0.5, y: floor / max(size.height, 1))
                 )
             )
             line.stroke(Field.ink(0.95), style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
         }
+        ForEach(Array(pts.enumerated()), id: \.offset) { _, point in
+            Circle().fill(Field.ink(0.95)).frame(width: 7, height: 7).position(point)
+        }
     }
 
     @ViewBuilder
-    private func marker(at dot: CGPoint, in size: CGSize) -> some View {
+    private func marker(_ dot: CGPoint, _ size: CGSize) -> some View {
         Path { path in
             path.move(to: dot)
-            path.addLine(to: CGPoint(x: dot.x, y: size.height))
+            path.addLine(to: CGPoint(x: dot.x, y: size.height - bottom))
         }
-        .stroke(Field.ink(0.6), style: StrokeStyle(lineWidth: 1.5, dash: [3, 3]))
+        .stroke(Field.ink(0.5), style: StrokeStyle(lineWidth: 1.5, dash: [3, 3]))
         Circle().fill(Field.ink(0.3)).frame(width: 20, height: 20).position(dot)
         Circle().fill(Field.ink()).frame(width: 11, height: 11).position(dot)
     }
-}
 
-/// Gives its content `fraction` of the width it is offered, at the leading edge.
-private struct FractionOfWidth: Layout {
-    var fraction: CGFloat
-
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let width = proposal.width ?? 0
-        let child = subviews.first?.sizeThatFits(ProposedViewSize(width: width * fraction, height: nil)) ?? .zero
-        return CGSize(width: width, height: child.height)
+    private struct Placed {
+        let key: String
+        let centre: CGPoint
+        let view: AnyView
     }
 
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        subviews.first?.place(
-            at: bounds.origin,
-            proposal: ProposedViewSize(width: bounds.width * fraction, height: nil)
-        )
+    /// Every label that fits, centred where it belongs; the month in view first.
+    private func placements(_ size: CGSize) -> [Placed] {
+        let marker = chart.markerIndex?.intValue
+        let order = (marker.map { [$0] } ?? []) + labels.indices.filter { $0 != marker }
+        let gap: CGFloat = 4
+        var out: [Placed] = []
+
+        var takenValues: [ClosedRange<CGFloat>] = []
+        for index in order {
+            guard let value = labels[index].value, chart.points[index].y != nil else { continue }
+            let marked = index == marker
+            let width = Self.width(value, bold: marked) + (marked ? 14 : 0)
+            let height: CGFloat = marked ? 20 : 16
+            let dot = at(chart.points[index], size)
+            let x = min(max(dot.x, width / 2), size.width - width / 2)
+            let span = (x - width / 2 - gap)...(x + width / 2 + gap)
+            if takenValues.contains(where: { $0.overlaps(span) }) { continue }
+            takenValues.append(span)
+            // Below a month in the red, where the line dipped to, rather than
+            // across the line it is a label for.
+            let y = labels[index].isLoss
+                ? min(dot.y + 10 + height / 2, size.height - bottom - height / 2)
+                : max(dot.y - 10 - height / 2, height / 2)
+            out.append(Placed(key: "v\(index)", centre: CGPoint(x: x, y: y), view: AnyView(valueLabel(value, marked: marked))))
+        }
+
+        var takenMonths: [ClosedRange<CGFloat>] = []
+        for index in order {
+            let month = labels[index].month
+            let width = Self.width(month, bold: index == marker)
+            let x = min(max(at(chart.points[index], size).x, width / 2), size.width - width / 2)
+            let span = (x - width / 2 - gap)...(x + width / 2 + gap)
+            if takenMonths.contains(where: { $0.overlaps(span) }) { continue }
+            takenMonths.append(span)
+            let recorded = chart.points[index].y != nil
+            out.append(Placed(
+                key: "m\(index)",
+                centre: CGPoint(x: x, y: size.height - 9),
+                view: AnyView(
+                    Text(month)
+                        .font(.caption2.weight(index == marker ? .bold : .regular))
+                        // A month with nothing recorded is named, but quietly.
+                        .foregroundColor(Field.ink(recorded ? 0.8 : 0.45))
+                        .fixedSize()
+                )
+            ))
+        }
+        return out
+    }
+
+    @ViewBuilder
+    private func valueLabel(_ value: String, marked: Bool) -> some View {
+        let text = Text(value)
+            .font(.caption2.weight(marked ? .bold : .medium))
+            .foregroundColor(Field.ink(marked ? 1 : 0.85))
+            .fixedSize()
+        if marked {
+            text
+                .padding(.horizontal, 7)
+                .padding(.vertical, 2)
+                .background(Capsule().fill(Field.glass))
+                .overlay(Capsule().stroke(Field.glassEdge, lineWidth: 1))
+        } else {
+            text
+        }
+    }
+
+    /// A label's width in the Dynamic Type font it is drawn in.
+    private static func width(_ text: String, bold: Bool) -> CGFloat {
+        let base = UIFont.preferredFont(forTextStyle: .caption2)
+        let font = UIFont.systemFont(ofSize: base.pointSize, weight: bold ? .bold : .medium)
+        return ceil((text as NSString).size(withAttributes: [.font: font]).width)
     }
 }
 
@@ -643,6 +712,9 @@ private struct FittedAmount: View {
     let text: String
     let sizes: [CGFloat]
     var color: Color = .primary
+    /// Cut short at the smallest size rather than wrapping: inside a card,
+    /// one line is the rule.
+    var oneLine = false
     /// Called when even the smallest size will not fit on one line.
     var onOverflow: (() -> Void)?
 
@@ -657,6 +729,8 @@ private struct FittedAmount: View {
             }
             if let onOverflow {
                 Color.clear.frame(height: 1).onAppear(perform: onOverflow)
+            } else if oneLine {
+                line(sizes.last ?? 14).lineLimit(1).truncationMode(.tail)
             } else {
                 line(sizes.last ?? 14).fixedSize(horizontal: false, vertical: true)
             }
@@ -780,13 +854,17 @@ private struct FigureCard: View {
             }
             if stacked {
                 labelText.padding(.top, 10)
-                FittedAmount(text: amount, sizes: FittedAmount.stacked).padding(.top, 2)
+                FittedAmount(text: amount, sizes: FittedAmount.stacked, oneLine: true).padding(.top, 2)
             }
             if let detail {
+                // One line, as the four cards are: smaller first, then cut
+                // short. A wrapped second line would make them uneven again.
                 Text(detail)
                     .font(.caption.weight(detailIsWarning ? .semibold : .regular))
                     .foregroundColor(detailIsWarning ? accent.label(dark) : Brand.textMuted)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                    .truncationMode(.tail)
                     .padding(.top, 10)
             }
             Spacer(minLength: 0)
@@ -845,3 +923,62 @@ private struct ActionRow: View {
         .buttonStyle(.plain)
     }
 }
+
+/// A commitment's name and monthly amount, which is all a commitment has.
+private struct CommitmentEditor: View {
+    @ObservedObject var model: DashboardViewModel
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    WizardField(
+                        label: L.t(Strings.shared.commitment_edit_name),
+                        placeholder: "",
+                        autocapitalization: .sentences,
+                        isError: false,
+                        submitLabel: .next,
+                        onSubmit: {},
+                        text: Binding(get: { model.commitmentDraft.name }, set: { model.setCommitmentName($0) })
+                    )
+                    AmountField(
+                        label: L.t(Strings.shared.commitment_edit_amount),
+                        symbol: model.commitmentCurrencySymbol,
+                        placeholder: model.commitmentAmountPlaceholder,
+                        isError: false,
+                        large: false,
+                        text: Binding(get: { model.commitmentDraft.amount }, set: { model.setCommitmentAmount($0) })
+                    )
+                }
+                Section {
+                    ErrorText(messageKey: model.commitmentNotice)
+                    GradientButton(
+                        title: L.t(Strings.shared.commitment_edit_save),
+                        enabled: model.canSaveCommitment,
+                        busy: model.commitmentSaving
+                    ) {
+                        dismissKeyboard()
+                        model.saveCommitment()
+                    }
+                    .listRowInsets(EdgeInsets())
+                    .listRowBackground(Color.clear)
+                }
+            }
+            .navigationTitle(L.t(Strings.shared.commitment_edit_title))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(L.t(Strings.shared.commitment_edit_cancel)) { model.cancelCommitment() }
+                        .disabled(model.commitmentSaving)
+                }
+                // Number pads have no return key.
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button(L.t(Strings.shared.action_done)) { dismissKeyboard() }
+                }
+            }
+        }
+        .interactiveDismissDisabled(model.commitmentSaving)
+    }
+}
+

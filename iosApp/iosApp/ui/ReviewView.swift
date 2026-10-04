@@ -241,9 +241,52 @@ private struct ReviewRowView: View {
     }
 }
 
+/**
+ What the transaction editor sheet reads and asks of the screen that opened it.
+
+ Shared by the review queue and the full transaction list: the same fields, the
+ same shared rules (`ReviewQueue`), the same sheet. Mirrors Android's
+ `TransactionEditorState` and `TransactionEditorActions`.
+ */
+@MainActor
+protocol TransactionEditing: ObservableObject {
+    var draft: CorrectionDraft { get }
+    var editNotice: CorrectionBlock? { get }
+    var currency: String { get }
+    var editCategoryName: String? { get }
+    var editErrorKey: String? { get }
+    var canSaveCorrection: Bool { get }
+    var saving: Bool { get }
+    var today: Kotlinx_datetimeLocalDate { get }
+    var pickableCategories: [(category: SharedLogic.Category, name: String)] { get }
+    var newCategoryName: String? { get }
+    var newCategoryErrorKey: String? { get }
+    var canCreateCategory: Bool { get }
+    var creatingCategory: Bool { get }
+    /// The sheet's title: "Fix this transaction" in the queue, "Edit
+    /// transaction" from the full list.
+    var editTitleKey: String { get }
+
+    func setDate(_ date: Kotlinx_datetimeLocalDate)
+    func setAmount(_ value: String)
+    func setDirection(_ direction: TransactionDirection)
+    func setDescription(_ value: String)
+    func chooseCategory(_ id: String)
+    func saveCorrection()
+    func cancelEdit()
+    func openNewCategory()
+    func setNewCategoryName(_ name: String)
+    func cancelNewCategory()
+    func createCategory()
+}
+
+extension ReviewViewModel: TransactionEditing {
+    var editTitleKey: String { Strings.shared.review_edit_title }
+}
+
 /// Fixing a row: date, amount, direction, description, category.
-private struct CorrectionSheet: View {
-    @ObservedObject var model: ReviewViewModel
+struct CorrectionSheet<Model: TransactionEditing>: View {
+    @ObservedObject var model: Model
     @State private var choosingCategory = false
     @State private var choosingDate = false
 
@@ -303,7 +346,7 @@ private struct CorrectionSheet: View {
                     .listRowBackground(Color.clear)
                 }
             }
-            .navigationTitle(L.t(Strings.shared.review_edit_title))
+            .navigationTitle(L.t(model.editTitleKey))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -317,7 +360,7 @@ private struct CorrectionSheet: View {
                 }
             }
             .sheet(isPresented: $choosingCategory) { categorySheet }
-            .sheet(isPresented: newCategoryShown) { NewCategorySheet(model: model) }
+            .sheet(isPresented: newCategoryShown) { NewCategorySheet<Model>(model: model) }
             .sheet(isPresented: $choosingDate) {
                 CorrectionDateSheet(
                     chosen: model.draft.occurredOn,
@@ -425,8 +468,8 @@ enum ReviewDates {
 }
 
 /// A category the household makes for itself, from the picker.
-private struct NewCategorySheet: View {
-    @ObservedObject var model: ReviewViewModel
+private struct NewCategorySheet<Model: TransactionEditing>: View {
+    @ObservedObject var model: Model
 
     var body: some View {
         NavigationStack {

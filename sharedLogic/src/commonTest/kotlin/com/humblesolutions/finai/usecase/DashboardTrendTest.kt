@@ -85,4 +85,18 @@ class DashboardTrendTest {
         val chart = assertNotNull(DashboardTrend.chart(listOf(month(7, "100"), month(8, null))))
         assertNull(chart.markerIndex)
     }
+
+    @Test
+    fun the_zero_line_is_marked_when_the_months_cross_it() {
+        val chart = assertNotNull(DashboardTrend.chart(listOf(month(7, "-500"), month(8, "1500"))))
+        val zero = assertNotNull(chart.zero)
+        val (loss, gain) = chart.points.map { assertNotNull(it.y) }
+        assertTrue(loss < zero && zero < gain)
+    }
+
+    @Test
+    fun there_is_no_zero_line_when_every_month_is_on_one_side() {
+        assertNull(assertNotNull(DashboardTrend.chart(listOf(month(7, "100"), month(8, "300")))).zero)
+        assertNull(assertNotNull(DashboardTrend.chart(listOf(month(7, "-100"), month(8, "-300")))).zero)
+    }
 }

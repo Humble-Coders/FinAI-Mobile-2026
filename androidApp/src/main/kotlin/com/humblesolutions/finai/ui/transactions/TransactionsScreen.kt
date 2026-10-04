@@ -36,6 +36,8 @@ import com.humblesolutions.finai.model.TransactionDirection
 import com.humblesolutions.finai.ui.components.ErrorText
 import com.humblesolutions.finai.ui.components.ProviderButton
 import com.humblesolutions.finai.ui.components.ScreenScaffold
+import com.humblesolutions.finai.ui.edit.TransactionEditorActions
+import com.humblesolutions.finai.ui.edit.TransactionEditorSheet
 import com.humblesolutions.finai.ui.strings
 import com.humblesolutions.finai.ui.theme.FinAiPalette
 import com.humblesolutions.finai.usecase.TransactionBrowsing
@@ -57,7 +59,10 @@ fun TransactionsScreen(
     onLoadMore: () -> Unit,
     onRetry: () -> Unit,
     onClose: () -> Unit,
+    onEdit: (String) -> Unit,
+    editor: TransactionEditorActions,
 ) {
+    state.editor?.let { TransactionEditorSheet(it, editor) }
     ScreenScaffold {
         Text(
             text = strings(Strings.transactions_title),
@@ -83,7 +88,7 @@ fun TransactionsScreen(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
-            else -> Rows(state, onLoadMore)
+            else -> Rows(state, onLoadMore, onEdit)
         }
 
         Spacer(Modifier.height(20.dp))
@@ -186,7 +191,7 @@ private fun Chip(label: String, selected: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
-private fun Rows(state: TransactionsUiState, onLoadMore: () -> Unit) {
+private fun Rows(state: TransactionsUiState, onLoadMore: () -> Unit, onEdit: (String) -> Unit) {
     Totals(state)
     state.days.forEach { day ->
         Text(
@@ -202,7 +207,7 @@ private fun Rows(state: TransactionsUiState, onLoadMore: () -> Unit) {
                 .background(MaterialTheme.colorScheme.surface),
         ) {
             day.rows.forEachIndexed { index, row ->
-                TransactionRow(state, row)
+                TransactionRow(state, row) { onEdit(row.id) }
                 if (index != day.rows.lastIndex) {
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
                 }
@@ -243,11 +248,15 @@ private fun Totals(state: TransactionsUiState) {
 }
 
 @Composable
-private fun TransactionRow(state: TransactionsUiState, row: Transaction) {
+private fun TransactionRow(state: TransactionsUiState, row: Transaction, onEdit: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(min = 56.dp)
+            // Any row can be fixed from here, not only the ones the review
+            // queue holds: a wrong category on a confidently filed row is
+            // just as wrong.
+            .clickable(onClickLabel = state.editLabel(row), onClick = onEdit)
             .padding(horizontal = 14.dp, vertical = 10.dp)
             .semantics(mergeDescendants = true) { contentDescription = state.rowDescription(row) },
         verticalAlignment = Alignment.CenterVertically,

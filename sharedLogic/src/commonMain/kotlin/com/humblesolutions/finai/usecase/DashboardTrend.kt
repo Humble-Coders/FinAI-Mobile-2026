@@ -32,11 +32,16 @@ object DashboardTrend {
      *   a line through an empty month invents a value for it.
      * @property markerIndex the month in view, when it holds something. The
      *   server's window ends at that month, so this is the last point or none.
+     * @property zero where nothing gained and nothing lost sits, when the
+     *   months cross it: a line that dips below that mark is a month that went
+     *   into the red, and without the mark that is invisible. Null when every
+     *   month is on one side of it.
      */
     data class Chart(
         val points: List<Point>,
         val segments: List<List<Int>>,
         val markerIndex: Int?,
+        val zero: Double? = null,
     )
 
     /** Headroom above and below, so the line never runs along an edge. */
@@ -75,6 +80,7 @@ object DashboardTrend {
             points = points,
             segments = runs(points),
             markerIndex = points.lastIndex.takeIf { points.last().y != null },
+            zero = if (low < 0 && high > 0) scale(0.0, low, high) else null,
         )
     }
 

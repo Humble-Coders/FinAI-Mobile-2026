@@ -7,13 +7,17 @@ import com.humblesolutions.finai.config.Supabase
 import com.humblesolutions.finai.data.KtorCapabilitiesRepository
 import com.humblesolutions.finai.data.KtorCategoriesRepository
 import com.humblesolutions.finai.data.KtorDashboardRepository
+import com.humblesolutions.finai.data.KtorFinancialSetupRepository
 import com.humblesolutions.finai.data.KtorTransactionsRepository
 import com.humblesolutions.finai.data.SupabaseTokenSource
+import com.humblesolutions.finai.i18n.Strings
 import com.humblesolutions.finai.model.ApiException
 import com.humblesolutions.finai.repository.CapabilitiesRepository
 import com.humblesolutions.finai.repository.CategoriesRepository
 import com.humblesolutions.finai.repository.DashboardRepository
+import com.humblesolutions.finai.repository.FinancialSetupRepository
 import com.humblesolutions.finai.repository.TransactionsRepository
+import com.humblesolutions.finai.usecase.CommitmentEdit
 import com.humblesolutions.finai.usecase.DashboardMonths
 import com.humblesolutions.finai.util.LedgerChanged
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -64,6 +68,7 @@ class DashboardViewModel : ViewModel() {
                 capabilities = KtorCapabilitiesRepository(ApiConfig.BASE_URL, tokens, logging),
                 transactions = KtorTransactionsRepository(ApiConfig.BASE_URL, tokens, logging),
                 categories = KtorCategoriesRepository(ApiConfig.BASE_URL, tokens, logging),
+                setup = KtorFinancialSetupRepository(ApiConfig.BASE_URL, tokens, logging),
             )
         }
     }
@@ -175,6 +180,72 @@ class DashboardViewModel : ViewModel() {
         }
     }
 
+    // ── Editing a commitment ────────────────────────────────────────────
+
+    /** Open the editor on the commitment at [index] in the month's list. */
+    fun editCommitment(index: Int) {
+        val commitment = _uiState.value.data.commitments.getOrNull(index) ?: return
+        _uiState.update {
+            it.copy(
+                editingCommitment = commitment,
+                commitmentDraft = CommitmentEdit.draftOf(commitment),
+                commitmentSaving = false,
+                commitmentErrorKey = null,
+            )
+        }
+    }
+
+    fun onCommitmentName(name: String) = _uiState.update {
+        it.copy(commitmentDraft = it.commitmentDraft.copy(name = name), commitmentErrorKey = null)
+    }
+
+    fun onCommitmentAmount(amount: String) = _uiState.update {
+        it.copy(commitmentDraft = it.commitmentDraft.copy(amount = amount), commitmentErrorKey = null)
+    }
+
+    fun cancelCommitment() {
+        if (_uiState.value.commitmentSaving) return
+        _uiState.update { it.copy(editingCommitment = null, commitmentErrorKey = null) }
+    }
+
+    /**
+     * Read the wizard's answers, change the one commitment, write them back.
+     *
+     * The server keeps commitments as one list replaced whole, with no ids, so
+     * there is no smaller request to make. If the commitment is no longer in
+     * the list — changed on another phone since this month was read — nothing
+     * is written over it: the month is re-read and the person told.
+     */
+    fun saveCommitment() {
+        val repos = repositories ?: return
+        val setupRepository = repos.setup ?: return
+        val state = _uiState.value
+        val original = state.editingCommitment ?: return
+        if (!state.canSaveCommitment) return
+        val draft = state.commitmentDraft
+        _uiState.update { it.copy(commitmentSaving = true, commitmentErrorKey = null) }
+        viewModelScope.launch {
+            try {
+                val setup = setupRepository.get()
+                val changed = CommitmentEdit.applied(setup, original, draft)
+                if (changed == null) {
+                    _uiState.update {
+                        it.copy(commitmentSaving = false, commitmentErrorKey = Strings.commitment_edit_gone)
+                    }
+                    load(refresh = true)
+                    return@launch
+                }
+                setupRepository.save(changed)
+                _uiState.update { it.copy(commitmentSaving = false, editingCommitment = null) }
+                load(refresh = true)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: ApiException) {
+                _uiState.update { it.copy(commitmentSaving = false, commitmentErrorKey = e.messageKey) }
+            }
+        }
+    }
+
     /** Mask or unmask every figure on screen. */
     fun toggleAmounts() = _uiState.update { it.copy(amountsHidden = !it.amountsHidden) }
 
@@ -212,12 +283,14 @@ internal class DashboardRepositories(
     // Optional so a test about the month need not build a recent list too.
     val transactions: TransactionsRepository? = null,
     val categories: CategoriesRepository? = null,
+    val setup: FinancialSetupRepository? = null,
 ) {
     fun close() {
         dashboard.close()
         capabilities.close()
         transactions?.close()
         categories?.close()
+        setup?.close()
     }
 }
 

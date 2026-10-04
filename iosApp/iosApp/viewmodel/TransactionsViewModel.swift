@@ -29,6 +29,20 @@ final class TransactionsViewModel: ObservableObject {
     @Published private(set) var loadFailed = false
     @Published private(set) var errorKey: String?
 
+    // MARK: Editing one row
+    @Published private(set) var editing: SharedLogic.Transaction?
+    @Published private(set) var draft = TransactionsViewModel.emptyDraft
+    @Published private(set) var saving = false
+    @Published private(set) var editErrorKey: String?
+    @Published private(set) var today = ManualEntry.shared.today()
+    @Published private(set) var newCategoryName: String?
+    @Published private(set) var creatingCategory = false
+    @Published private(set) var newCategoryErrorKey: String?
+
+    private static let emptyDraft = CorrectionDraft(
+        occurredOn: nil, amount: "", direction: nil, description: "", categoryId: nil
+    )
+
     private var transactionsRepository: TransactionsRepository?
     private var importsRepository: StatementImportRepository?
     private var categoriesRepository: CategoriesRepository?
@@ -215,9 +229,10 @@ final class TransactionsViewModel: ObservableObject {
 
     var browsingByStatement: Bool { mode == TransactionBrowsing.Mode.byStatement }
 
-    private var currency: String { rows.first?.currency ?? "" }
+    /// The list's currency, for its totals. `currency` is the editor's.
+    private var listCurrency: String { rows.first?.currency ?? "" }
 
-    private var digits: Int32 { Money.shared.fractionDigits(currency: currency) }
+    private var digits: Int32 { Money.shared.fractionDigits(currency: listCurrency) }
 
     var days: [ImportedRows.Day] { ImportedRows.shared.byDate(rows: rows) }
 
@@ -230,7 +245,7 @@ final class TransactionsViewModel: ObservableObject {
     }
 
     private func money(_ amount: String) -> String {
-        Money.shared.format(amount: amount, currency: currency, locale: locale)
+        Money.shared.format(amount: amount, currency: listCurrency, locale: locale)
     }
 
     func amountLabel(_ row: SharedLogic.Transaction) -> String {
@@ -294,4 +309,155 @@ final class TransactionsViewModel: ObservableObject {
     }
 
     var canLoadMore: Bool { nextCursor != nil && !loadingMore && !loading }
+
+    // MARK: - Editing a row (the same sheet and rules as the review queue)
+
+    /// Read aloud for a row, which opens the editor when tapped.
+    func editLabel(_ row: SharedLogic.Transaction) -> String {
+        L.t(Strings.shared.transactions_edit_hint, titleOf(row))
+    }
+
+    /// Open the editor on `id`, filled in as the row stands.
+    func edit(_ id: String) {
+        guard let row = rows.first(where: { $0.id == id }) else { return }
+        editing = row
+        draft = ReviewQueue.shared.draftOf(row: row)
+        editErrorKey = nil
+        saving = false
+        today = ManualEntry.shared.today()
+    }
+
+    func cancelEdit() {
+        guard !saving else { return }
+        editing = nil
+        draft = Self.emptyDraft
+        editErrorKey = nil
+    }
+
+    func setDate(_ date: Kotlinx_datetimeLocalDate) { change(occurredOn: .some(date)) }
+    func setAmount(_ value: String) { change(amount: value) }
+    func setDirection(_ direction: TransactionDirection) { change(direction: .some(direction)) }
+    func setDescription(_ value: String) { change(description: value) }
+    func chooseCategory(_ id: String) { change(categoryId: .some(id)) }
+
+    private func change(
+        occurredOn: Kotlinx_datetimeLocalDate?? = nil,
+        amount: String? = nil,
+        direction: TransactionDirection?? = nil,
+        description: String? = nil,
+        categoryId: String?? = nil
+    ) {
+        guard editing != nil else { return }
+        draft = CorrectionDraft(
+            occurredOn: occurredOn ?? draft.occurredOn,
+            amount: amount ?? draft.amount,
+            direction: direction ?? draft.direction,
+            description: description ?? draft.description_,
+            categoryId: categoryId ?? draft.categoryId
+        )
+        editErrorKey = nil
+    }
+
+    private var editBlock: CorrectionBlock? {
+        editing.flatMap { ReviewQueue.shared.blockingReason(row: $0, draft: draft, today: today) }
+    }
+
+    var canSaveCorrection: Bool { editing != nil && !saving && editBlock == nil }
+    /// "Nothing has changed yet" is not worth saying before they touch anything.
+    var editNotice: CorrectionBlock? { editBlock == .nothingChanged ? nil : editBlock }
+    var editCategoryName: String? { ReviewQueue.shared.categoryName(categories: categories, id: draft.categoryId) }
+    var editTitleKey: String { Strings.shared.transactions_edit_title }
+    var currency: String { editing?.currency ?? "" }
+
+    /// The household's own first, then the shared taxonomy.
+    var pickableCategories: [(category: SharedLogic.Category, name: String)] {
+        categories
+            .map { (category: $0, name: ReviewQueue.shared.categoryName(category: $0)) }
+            .sorted { a, b in
+                a.category.isSystem != b.category.isSystem
+                    ? !a.category.isSystem
+                    : a.name.lowercased() < b.name.lowercased()
+            }
+    }
+
+    var canCreateCategory: Bool {
+        !creatingCategory && !(newCategoryName ?? "").trimmingCharacters(in: .whitespaces).isEmpty
+    }
+
+    /**
+     Send only what changed, through the same rule as the review queue. On
+     success the ledger has moved, so it is announced: home re-reads its month
+     and this list re-reads its slice — which also moves a row whose new date
+     took it out of the month being looked at.
+     */
+    func saveCorrection() {
+        guard let transactionsRepository, let row = editing, !saving,
+              let patch = ReviewQueue.shared.correction(row: row, draft: draft, today: today)
+        else { return }
+        saving = true
+        editErrorKey = nil
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                _ = try await transactionsRepository.correct(id: row.id, patch: patch)
+                self.saving = false
+                self.editing = nil
+                self.draft = Self.emptyDraft
+                LedgerChanged.announce()
+            } catch {
+                // A duplicate is said in the sheet, with the row still open:
+                // the person's draft is the thing they need to fix.
+                self.saving = false
+                self.editErrorKey = Self.messageKey(error)
+            }
+        }
+    }
+
+    func openNewCategory() {
+        newCategoryName = ""
+        newCategoryErrorKey = nil
+    }
+
+    func setNewCategoryName(_ name: String) {
+        newCategoryName = name
+        newCategoryErrorKey = nil
+    }
+
+    func cancelNewCategory() {
+        guard !creatingCategory else { return }
+        newCategoryName = nil
+        newCategoryErrorKey = nil
+    }
+
+    /// Adds the category and files the row being edited into it.
+    func createCategory() {
+        guard let categoriesRepository, canCreateCategory else { return }
+        let name = (newCategoryName ?? "").trimmingCharacters(in: .whitespaces)
+        creatingCategory = true
+        newCategoryErrorKey = nil
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                let made = try await categoriesRepository.create(name: name)
+                self.creatingCategory = false
+                self.newCategoryName = nil
+                self.categories.append(made)
+                self.chooseCategory(made.id)
+            } catch {
+                let kotlin = (error as NSError).userInfo["KotlinException"]
+                if let exists = kotlin as? ApiException.CategoryExists {
+                    // Taken by one they can already use, so use it.
+                    self.creatingCategory = false
+                    self.newCategoryName = nil
+                    if let id = exists.categoryId { self.chooseCategory(id) }
+                } else {
+                    self.creatingCategory = false
+                    self.newCategoryErrorKey = Self.messageKey(error)
+                }
+            }
+        }
+    }
 }
+
+extension TransactionsViewModel: TransactionEditing {}
+

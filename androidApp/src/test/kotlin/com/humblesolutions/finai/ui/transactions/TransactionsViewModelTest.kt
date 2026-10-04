@@ -14,6 +14,7 @@ import com.humblesolutions.finai.model.StatementImportSummary
 import com.humblesolutions.finai.model.StatementImports
 import com.humblesolutions.finai.model.StatementUpload
 import com.humblesolutions.finai.model.Transaction
+import com.humblesolutions.finai.model.TransactionDirection
 import com.humblesolutions.finai.model.TransactionPatch
 import com.humblesolutions.finai.repository.CategoriesRepository
 import com.humblesolutions.finai.repository.StatementImportRepository
@@ -32,6 +33,7 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -62,7 +64,14 @@ class TransactionsViewModelTest {
 
         override suspend fun create(entry: NewTransaction): Transaction = error("not called")
         override suspend fun review(cursor: String?): ReviewPage = error("not called")
-        override suspend fun correct(id: String, patch: TransactionPatch): PatchOutcome = error("not called")
+        val patches = mutableListOf<Pair<String, TransactionPatch>>()
+        var correctFails: ApiException? = null
+
+        override suspend fun correct(id: String, patch: TransactionPatch): PatchOutcome {
+            correctFails?.let { throw it }
+            patches += id to patch
+            return PatchOutcome()
+        }
         override suspend fun confirm(id: String): PatchOutcome = error("not called")
         override suspend fun confirmAll(ids: List<String>): ConfirmOutcome = error("not called")
         override suspend fun delete(id: String): DeleteOutcome = error("not called")
@@ -84,7 +93,7 @@ class TransactionsViewModelTest {
 
     private class FakeCategories : CategoriesRepository {
         override suspend fun list(): List<Category> = listOf(Category(id = "c1", name = "Groceries"))
-        override suspend fun create(name: String): Category = error("not called")
+        override suspend fun create(name: String): Category = Category(id = "mine", name = name)
         override fun close() = Unit
     }
 
@@ -247,5 +256,102 @@ class TransactionsViewModelTest {
 
         assertEquals(before + 1, repo.asks.size)
         assertEquals(listOf("r2"), model.uiState.value.rows.map { it.id })
+    }
+
+    // ── Editing any row ─────────────────────────────────────────────────
+
+    private val loblaws = Transaction(
+        id = "r1",
+        occurredOn = "2026-10-02",
+        amount = "86.40",
+        currency = "CAD",
+        direction = TransactionDirection.DEBIT,
+        description = "LOBLAWS 1234",
+        categoryId = "c1",
+    )
+
+    private fun editable(repo: FakeTransactions = FakeTransactions(ReviewPage(rows = listOf(loblaws)))) = model(repo) to repo
+
+    @Test
+    fun a_row_opens_in_the_editor_as_it_stands() = runTest {
+        val (model, _) = editable()
+
+        model.edit("r1")
+
+        val editor = assertNotNull(model.uiState.value.editor)
+        assertEquals("r1", editor.row.id)
+        assertEquals("86.40", editor.draft.amount)
+        assertFalse(editor.canSave, "nothing has changed yet")
+        assertNull(editor.notice, "and that is not worth saying before a touch")
+    }
+
+    @Test
+    fun saving_sends_only_what_changed_and_closes_the_editor() = runTest {
+        val (model, repo) = editable()
+        model.edit("r1")
+
+        model.onAmountChange("90.00")
+        model.saveEdit()
+
+        val (id, patch) = repo.patches.single()
+        assertEquals("r1", id)
+        assertEquals("90.00", patch.amount)
+        assertNull(patch.description, "an untouched field is not re-sent")
+        assertNull(model.uiState.value.editor)
+    }
+
+    @Test
+    fun a_saved_edit_re_reads_the_list_and_tells_home() = runTest {
+        // Announced, so home re-reads its month; this list hears it too and
+        // re-reads its slice — which also drops a row whose new date took it
+        // out of the month being looked at.
+        val (model, repo) = editable()
+        model.edit("r1")
+        val before = repo.asks.size
+
+        model.onAmountChange("90.00")
+        model.saveEdit()
+
+        assertEquals(before + 1, repo.asks.size)
+    }
+
+    @Test
+    fun an_edit_that_would_duplicate_stays_open_and_says_so() = runTest {
+        val (model, repo) = editable()
+        repo.correctFails = ApiException.WouldDuplicate("t-9")
+        model.edit("r1")
+
+        model.onAmountChange("90.00")
+        model.saveEdit()
+
+        val editor = assertNotNull(model.uiState.value.editor, "the draft is what they need to fix")
+        assertEquals(ApiException.WouldDuplicate("t-9").messageKey, editor.errorKey)
+        assertFalse(editor.saving)
+    }
+
+    @Test
+    fun cancelling_closes_without_sending() = runTest {
+        val (model, repo) = editable()
+        model.edit("r1")
+        model.onAmountChange("90.00")
+
+        model.cancelEdit()
+
+        assertNull(model.uiState.value.editor)
+        assertTrue(repo.patches.isEmpty())
+    }
+
+    @Test
+    fun a_new_category_is_made_and_the_row_filed_into_it() = runTest {
+        val (model, _) = editable()
+        model.edit("r1")
+        model.openNewCategory()
+
+        model.onNewCategoryName("Pets")
+        model.createCategory()
+
+        val editor = assertNotNull(model.uiState.value.editor)
+        assertEquals("mine", editor.draft.categoryId)
+        assertNull(editor.newCategoryName)
     }
 }

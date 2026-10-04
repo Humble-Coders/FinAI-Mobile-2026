@@ -43,6 +43,11 @@ struct TransactionsView: View {
         }
         .onAppear { model.bind(userId: userId) }
         .onDisappear { model.unbind() }
+        .sheet(isPresented: editingShown) { CorrectionSheet(model: model) }
+    }
+
+    private var editingShown: Binding<Bool> {
+        Binding(get: { model.editing != nil }, set: { if !$0 { model.cancelEdit() } })
     }
 
     private var modeToggle: some View {
@@ -118,7 +123,12 @@ struct TransactionsView: View {
                     .padding(.bottom, 4)
                 VStack(spacing: 0) {
                     ForEach(Array(day.rows.enumerated()), id: \.element.id) { index, row in
-                        transactionRow(row)
+                        // Any row can be fixed from here, not only the ones the
+                        // review queue holds: a wrong category on a confidently
+                        // filed row is just as wrong.
+                        Button { model.edit(row.id) } label: { transactionRow(row) }
+                            .buttonStyle(.plain)
+                            .accessibilityHint(model.editLabel(row))
                         if index != day.rows.count - 1 { Divider().overlay(Brand.border) }
                     }
                 }

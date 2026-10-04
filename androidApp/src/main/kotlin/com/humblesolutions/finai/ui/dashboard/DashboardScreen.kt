@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -16,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
@@ -48,10 +50,13 @@ import androidx.compose.material.icons.filled.Savings
 import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.Alignment
@@ -73,6 +78,7 @@ import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.SubcomposeLayout
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
@@ -81,6 +87,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
@@ -92,9 +100,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
 import com.humblesolutions.finai.i18n.Strings
+import com.humblesolutions.finai.ui.components.AmountField
 import com.humblesolutions.finai.ui.components.ErrorText
 import com.humblesolutions.finai.ui.components.FinAiIcon
+import com.humblesolutions.finai.ui.components.GradientButton
 import com.humblesolutions.finai.ui.components.ProviderButton
+import com.humblesolutions.finai.ui.components.WizardField
 import com.humblesolutions.finai.ui.strings
 import com.humblesolutions.finai.ui.theme.FinAiPalette
 import com.humblesolutions.finai.usecase.DashboardTrend
@@ -123,8 +134,10 @@ fun DashboardScreen(
     onReview: () -> Unit,
     onViewAll: () -> Unit,
     onSignOut: () -> Unit,
+    commitments: CommitmentActions = CommitmentActions(),
 ) {
     val dark = isSystemInDarkTheme()
+    if (state.editingCommitment != null) CommitmentEditor(state, commitments)
     LightStatusBarIcons(dark)
 
     Column(
@@ -153,6 +166,10 @@ fun DashboardScreen(
                 Header(state, onReview)
                 Spacer(Modifier.height(26.dp))
                 Hero(state, onToggleAmounts, onPreviousMonth, onNextMonth)
+                state.chart?.let { chart ->
+                    Spacer(Modifier.height(18.dp))
+                    TrendChart(chart, state, Modifier.fillMaxWidth().height(CHART_HEIGHT))
+                }
                 Spacer(Modifier.height(22.dp))
                 when {
                     state.loadFailed -> LoadFailed(state, onRetry)
@@ -164,7 +181,7 @@ fun DashboardScreen(
             }
         }
 
-        Sheet(state, onViewAll, onSignOut)
+        Sheet(state, onViewAll, onSignOut, commitments.onEdit)
     }
 }
 
@@ -336,55 +353,40 @@ private fun Hero(
     onPreviousMonth: () -> Unit,
     onNextMonth: () -> Unit,
 ) {
-    Box(Modifier.fillMaxWidth()) {
-        // Behind the words, across the right of the hero and out to the
-        // screen's edge, as in the design.
-        state.chart?.let { chart ->
-            TrendChart(
-                chart = chart,
-                state = state,
-                modifier = Modifier
-                    .matchParentSize()
-                    .bleedEnd(20.dp),
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text = strings(Strings.dashboard_net_label),
+            style = MaterialTheme.typography.titleMedium,
+            color = Field.ink(0.9f),
+        )
+        Spacer(Modifier.width(4.dp))
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(CircleShape)
+                .clickable(onClick = onToggleAmounts)
+                .semantics { contentDescription = state.hideToggleLabel },
+            contentAlignment = Alignment.Center,
+        ) {
+            FinAiIcon(
+                icon = if (state.amountsHidden) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                tint = Field.ink(0.85f),
+                size = 20.dp,
             )
         }
-        // Tall enough to give the line room between the pills — but only
-        // when there is a line, or an empty month opens with a hole in it.
-        Column(Modifier.fillMaxWidth().heightIn(min = if (state.chart != null) 156.dp else 0.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                Text(
-                    text = strings(Strings.dashboard_net_label),
-                    style = MaterialTheme.typography.titleMedium,
-                    color = Field.ink(0.9f),
-                )
-                Spacer(Modifier.width(4.dp))
-                Box(
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clip(CircleShape)
-                        .clickable(onClick = onToggleAmounts)
-                        .semantics { contentDescription = state.hideToggleLabel },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    FinAiIcon(
-                        icon = if (state.amountsHidden) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
-                        tint = Field.ink(0.85f),
-                        size = 20.dp,
-                    )
-                }
-                Spacer(Modifier.weight(1f))
-                MonthPill(state, onPreviousMonth, onNextMonth)
-            }
-            FittedAmount(
-                text = state.net,
-                style = MaterialTheme.typography.displaySmall.copy(fontWeight = FontWeight.Bold, color = Field.ink()),
-                sizes = HERO_SIZES,
-                modifier = Modifier.fillMaxWidth(if (state.chart != null) 0.6f else 1f),
-            )
-            Spacer(Modifier.weight(1f, fill = false).heightIn(min = 14.dp))
-            // Absent, not "+0%", when there is no month to compare against.
-            state.changeLabel?.let { ChangePill(it, state.netIsPositive) }
-        }
+        Spacer(Modifier.weight(1f))
+        MonthPill(state, onPreviousMonth, onNextMonth)
+    }
+    FittedAmount(
+        text = state.net,
+        style = MaterialTheme.typography.displaySmall.copy(fontWeight = FontWeight.Bold, color = Field.ink()),
+        sizes = HERO_SIZES,
+        modifier = Modifier.fillMaxWidth(),
+    )
+    // Absent, not "+0%", when there is no month to compare against.
+    state.changeLabel?.let {
+        Spacer(Modifier.height(12.dp))
+        ChangePill(it, state.netIsPositive)
     }
 }
 
@@ -448,125 +450,180 @@ private fun ChangePill(label: String, rose: Boolean) {
     }
 }
 
-/** Widens a child past the end padding of its parent, leaving its start put. */
-private fun Modifier.bleedEnd(by: Dp): Modifier = layout { measurable, constraints ->
-    val extra = by.roundToPx()
-    val widened = if (constraints.hasBoundedWidth) {
-        constraints.copy(minWidth = constraints.minWidth + extra, maxWidth = constraints.maxWidth + extra)
-    } else {
-        constraints
-    }
-    val placeable = measurable.measure(widened)
-    layout(constraints.constrainWidth(placeable.width), placeable.height) { placeable.place(0, 0) }
-}
-
 /**
- * The months as a soft line, as in the design, with the month in view marked.
+ * Net by month, as a line with every figure written on it (PRD F3).
  *
  * The geometry is shared ([DashboardTrend]): a gap is never drawn through, so
- * no line invents a value for a month nobody recorded, and a loss sits below a
- * gain. It occupies the right of the hero, fading in from the left so the
- * words in front stay readable, and keeps below the month pill and above the
- * change pill. The caption sits beside the marker — the month in view, always
- * the right-hand end — rather than above it, where the month pill is.
+ * no line invents a value for a month nobody recorded; a loss sits below a
+ * gain; and when the months cross zero a dashed line marks it, so a month in
+ * the red is visible as one. Each recorded month carries its rounded figure,
+ * each month its name; the month in view is the right-hand end, marked, with
+ * its figure on a pill.
+ *
+ * Labels that would collide are left off — the month in view's never — rather
+ * than drawn over one another. Every figure is in the description as well.
  */
 @Composable
 private fun TrendChart(chart: DashboardTrend.Chart, state: DashboardUiState, modifier: Modifier) {
     val description = strings(Strings.dashboard_trend_label) + ": " + state.trendDescriptions.joinToString("; ")
-    Canvas(
-        modifier
-            .semantics { contentDescription = description }
-            .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
-            .drawWithContent {
-                drawContent()
-                // Fade in from the left: the line begins under the figure and
-                // must not cross it at full strength.
-                drawRect(
-                    Brush.horizontalGradient(
-                        0f to Color.Transparent,
-                        CHART_START to Color.Transparent,
-                        (CHART_START + 0.22f) to Color.Black,
-                    ),
-                    blendMode = BlendMode.DstIn,
-                )
-            },
-    ) {
-        val area = ChartArea(size.width, size.height, this)
-        chart.segments.forEach { run ->
-            val pts = run.map { area.at(chart.points[it]) }
-            if (pts.size == 1) {
-                drawCircle(Field.ink(0.9f), radius = 3.dp.toPx(), center = pts.single())
-                return@forEach
-            }
-            val line = Path().apply {
-                moveTo(pts.first().x, pts.first().y)
-                // Control points level with each end, so the curve never
-                // overshoots a month above or below its value.
-                pts.zipWithNext { a, b ->
-                    val mid = (a.x + b.x) / 2
-                    cubicTo(mid, a.y, mid, b.y, b.x, b.y)
+    val labels = state.chartLabels
+    Layout(
+        modifier = modifier.semantics { contentDescription = description },
+        content = {
+            Canvas(Modifier.fillMaxSize().clearAndSetSemantics {}) {
+                val area = ChartArea(size.width, size.height, this)
+                chart.zero?.let { zero ->
+                    val y = area.y(zero)
+                    drawLine(
+                        Field.ink(0.35f),
+                        start = Offset(area.left, y),
+                        end = Offset(area.right, y),
+                        strokeWidth = 1.dp.toPx(),
+                        pathEffect = PathEffect.dashPathEffect(floatArrayOf(4.dp.toPx(), 4.dp.toPx())),
+                    )
+                }
+                chart.segments.forEach { run ->
+                    val pts = run.map { area.at(chart.points[it]) }
+                    if (pts.size > 1) {
+                        val line = Path().apply {
+                            moveTo(pts.first().x, pts.first().y)
+                            // Control points level with each end, so the curve
+                            // never overshoots a month above or below its value.
+                            pts.zipWithNext { a, b ->
+                                val mid = (a.x + b.x) / 2
+                                cubicTo(mid, a.y, mid, b.y, b.x, b.y)
+                            }
+                        }
+                        val fill = Path().apply {
+                            addPath(line)
+                            lineTo(pts.last().x, area.bottom)
+                            lineTo(pts.first().x, area.bottom)
+                            close()
+                        }
+                        drawPath(
+                            fill,
+                            Brush.verticalGradient(listOf(Field.ink(0.20f), Field.ink(0f)), startY = area.top, endY = area.bottom),
+                        )
+                        drawPath(line, Field.ink(0.95f), style = Stroke(width = 2.5.dp.toPx(), cap = StrokeCap.Round))
+                    }
+                    pts.forEach { drawCircle(Field.ink(0.95f), radius = 3.5.dp.toPx(), center = it) }
+                }
+                chart.markerIndex?.let { index ->
+                    val dot = area.at(chart.points[index])
+                    drawLine(
+                        Field.ink(0.5f),
+                        start = dot,
+                        end = Offset(dot.x, area.bottom),
+                        strokeWidth = 1.5.dp.toPx(),
+                        pathEffect = PathEffect.dashPathEffect(floatArrayOf(6f, 6f)),
+                    )
+                    drawCircle(Field.ink(0.3f), radius = 10.dp.toPx(), center = dot)
+                    drawCircle(Field.ink(), radius = 5.5.dp.toPx(), center = dot)
                 }
             }
-            val fill = Path().apply {
-                addPath(line)
-                lineTo(pts.last().x, size.height)
-                lineTo(pts.first().x, size.height)
-                close()
+            labels.forEachIndexed { index, label ->
+                val marked = index == chart.markerIndex
+                Box(
+                    if (marked && label.value != null) {
+                        Modifier
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Field.Glass)
+                            .border(1.dp, Field.GlassEdge, RoundedCornerShape(10.dp))
+                            .padding(horizontal = 7.dp, vertical = 2.dp)
+                    } else {
+                        Modifier
+                    },
+                ) {
+                    label.value?.let {
+                        Text(
+                            it,
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = if (marked) FontWeight.Bold else FontWeight.Medium,
+                            color = Field.ink(if (marked) 1f else 0.85f),
+                            maxLines = 1,
+                            softWrap = false,
+                        )
+                    }
+                }
             }
-            drawPath(
-                fill,
-                // Fades well before the bottom, so where a gap ends a run the
-                // fill does not stand as a hard-edged column.
-                Brush.verticalGradient(
-                    listOf(Field.ink(0.18f), Field.ink(0f)),
-                    startY = area.top,
-                    endY = area.top + (size.height - area.top) * 0.7f,
-                ),
-            )
-            drawPath(line, Field.ink(0.95f), style = Stroke(width = 2.5.dp.toPx(), cap = StrokeCap.Round))
-        }
-        // The month in view, which the server always puts at the right-hand
-        // end. Its figure is the large one beside the chart, so it carries no
-        // caption of its own.
-        chart.markerIndex?.let { index ->
-            val dot = area.at(chart.points[index])
-            drawLine(
-                Field.ink(0.6f),
-                start = dot,
-                end = Offset(dot.x, size.height),
-                strokeWidth = 1.5.dp.toPx(),
-                pathEffect = PathEffect.dashPathEffect(floatArrayOf(6f, 6f)),
-            )
-            drawCircle(Field.ink(0.3f), radius = 10.dp.toPx(), center = dot)
-            drawCircle(Field.ink(), radius = 5.5.dp.toPx(), center = dot)
+            labels.forEachIndexed { index, label ->
+                Text(
+                    label.month,
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = if (index == chart.markerIndex) FontWeight.Bold else FontWeight.Normal,
+                    // A month with nothing recorded is named, but quietly.
+                    color = Field.ink(if (chart.points[index].y == null) 0.45f else 0.8f),
+                    maxLines = 1,
+                    softWrap = false,
+                )
+            }
+        },
+    ) { measurables, constraints ->
+        val canvas = measurables[0].measure(constraints)
+        val n = labels.size
+        val loose = Constraints()
+        val values = measurables.subList(1, 1 + n).map { it.measure(loose) }
+        val months = measurables.subList(1 + n, 1 + 2 * n).map { it.measure(loose) }
+        layout(canvas.width, canvas.height) {
+            canvas.place(0, 0)
+            val area = ChartArea(canvas.width.toFloat(), canvas.height.toFloat(), this@Layout)
+            val gap = 4.dp.roundToPx()
+            // The month in view first, so it is never the one left off.
+            val order = listOfNotNull(chart.markerIndex) + labels.indices.filter { it != chart.markerIndex }
+
+            val takenValues = mutableListOf<IntRange>()
+            order.forEach { index ->
+                val label = values[index]
+                val point = chart.points[index]
+                if (label.width == 0 || point.y == null) return@forEach
+                val centre = area.at(point)
+                val left = (centre.x - label.width / 2f).toInt().coerceIn(0, (canvas.width - label.width).coerceAtLeast(0))
+                val span = (left - gap)..(left + label.width + gap)
+                if (takenValues.any { it.first <= span.last && span.first <= it.last }) return@forEach
+                takenValues += span
+                // Below a month in the red, where the line dipped to, rather than
+                // across the line it is a label for.
+                val top = if (labels[index].isLoss) {
+                    (centre.y + 10.dp.toPx()).toInt().coerceAtMost((area.bottom - label.height).toInt())
+                } else {
+                    (centre.y - 10.dp.toPx() - label.height).toInt().coerceAtLeast(0)
+                }
+                label.place(left, top)
+            }
+
+            val takenMonths = mutableListOf<IntRange>()
+            order.forEach { index ->
+                val label = months[index]
+                val x = area.at(chart.points[index]).x
+                val left = (x - label.width / 2f).toInt().coerceIn(0, (canvas.width - label.width).coerceAtLeast(0))
+                val span = (left - gap)..(left + label.width + gap)
+                if (takenMonths.any { it.first <= span.last && span.first <= it.last }) return@forEach
+                takenMonths += span
+                label.place(left, canvas.height - label.height)
+            }
         }
     }
 }
 
 /** Where the line may go inside the chart's box. */
 private class ChartArea(width: Float, height: Float, density: Density) {
-    private val left = width * CHART_START + with(density) { 24.dp.toPx() }
-    private val right = width - with(density) { CHART_INSET.toPx() }
+    val left = with(density) { 22.dp.toPx() }
+    val right = width - with(density) { 22.dp.toPx() }
     val top = with(density) { CHART_TOP.toPx() }
-    private val bottom = height - with(density) { CHART_BOTTOM.toPx() }
+    val bottom = height - with(density) { CHART_BOTTOM.toPx() }
 
-    fun at(point: DashboardTrend.Point) = Offset(
-        left + (point.x * (right - left)).toFloat(),
-        bottom - ((point.y ?: 0.0) * (bottom - top)).toFloat(),
-    )
+    fun y(fraction: Double): Float = bottom - (fraction * (bottom - top)).toFloat()
+
+    fun at(point: DashboardTrend.Point) = Offset(left + (point.x * (right - left)).toFloat(), y(point.y ?: 0.0))
 }
 
-/** Where the line begins, as a fraction of the hero's width. */
-private const val CHART_START = 0.38f
+private val CHART_HEIGHT = 172.dp
 
-/** Below the month pill. */
-private val CHART_TOP = 58.dp
+/** Room above the line for the figures written over it. */
+private val CHART_TOP = 34.dp
 
-/** Above the change pill. */
-private val CHART_BOTTOM = 52.dp
-
-/** Keeps the marker off the screen's edge. */
-private val CHART_INSET = 28.dp
+/** Room below for the month names. */
+private val CHART_BOTTOM = 30.dp
 
 // ── The four cards ──────────────────────────────────────────────────────
 
@@ -684,15 +741,20 @@ private fun FigureCard(
                 Spacer(Modifier.height(10.dp))
                 CardLabel(label, accent, dark)
                 Spacer(Modifier.height(2.dp))
-                FittedAmount(amount, amountStyle, CARD_STACKED_SIZES, Modifier.fillMaxWidth())
+                FittedAmount(amount, amountStyle, CARD_STACKED_SIZES, Modifier.fillMaxWidth(), oneLine = true)
             }
             detail?.let {
                 Spacer(Modifier.height(10.dp))
+                // One line, as the four cards are: smaller first, then cut short. A
+                // wrapped second line would make the cards uneven again.
                 Text(
                     text = it,
                     style = MaterialTheme.typography.labelMedium,
                     color = if (detailIsWarning) accent.labelFor(dark) else MaterialTheme.colorScheme.onSurfaceVariant,
                     fontWeight = if (detailIsWarning) FontWeight.SemiBold else FontWeight.Normal,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    autoSize = TextAutoSize.StepBased(minFontSize = 10.sp, maxFontSize = 12.sp, stepSize = 0.5.sp),
                 )
             }
         }
@@ -735,13 +797,24 @@ private fun CardLabel(label: String, accent: Accent, dark: Boolean) {
  * amount. A wrapped figure is ugly; a truncated one is wrong.
  */
 @Composable
-private fun FittedAmount(text: String, style: TextStyle, sizes: List<TextUnit>, modifier: Modifier = Modifier) {
+private fun FittedAmount(
+    text: String,
+    style: TextStyle,
+    sizes: List<TextUnit>,
+    modifier: Modifier = Modifier,
+    oneLine: Boolean = false,
+) {
     BoxWithConstraints(modifier) {
         val size = rememberTextMeasurer().largestFitting(text, style, sizes, constraints.maxWidth)
-        if (size != null) {
-            Text(text, style = style.copy(fontSize = size), maxLines = 1, softWrap = false)
-        } else {
-            Text(text, style = style.copy(fontSize = sizes.last()))
+        when {
+            size != null -> Text(text, style = style.copy(fontSize = size), maxLines = 1, softWrap = false)
+
+            // Inside a card, one line is the rule: at the smallest size, then
+            // cut short. Only reachable at the very largest font sizes with a
+            // figure of seven digits or more.
+            oneLine -> Text(text, style = style.copy(fontSize = sizes.last()), maxLines = 1, overflow = TextOverflow.Ellipsis)
+
+            else -> Text(text, style = style.copy(fontSize = sizes.last()))
         }
     }
 }
@@ -893,7 +966,7 @@ private fun LoadFailed(state: DashboardUiState, onRetry: () -> Unit) {
 
 /** Rising over the field with the newest rows, and the month's commitments. */
 @Composable
-private fun Sheet(state: DashboardUiState, onViewAll: () -> Unit, onSignOut: () -> Unit) {
+private fun Sheet(state: DashboardUiState, onViewAll: () -> Unit, onSignOut: () -> Unit, onEditCommitment: (Int) -> Unit) {
     Box(
         Modifier
             .fillMaxWidth()
@@ -917,7 +990,7 @@ private fun Sheet(state: DashboardUiState, onViewAll: () -> Unit, onSignOut: () 
             if (showsRecent) Recent(rows, onViewAll)
             if (state.commitments.isNotEmpty()) {
                 if (showsRecent) Spacer(Modifier.height(28.dp))
-                Commitments(state)
+                Commitments(state, onEditCommitment)
             }
             Spacer(Modifier.height(12.dp))
             TextButton(onClick = onSignOut, modifier = Modifier.align(Alignment.CenterHorizontally)) {
@@ -1016,7 +1089,7 @@ private fun RecentLine(row: RecentRow) {
 // ── Commitments ─────────────────────────────────────────────────────────
 
 @Composable
-private fun Commitments(state: DashboardUiState) {
+private fun Commitments(state: DashboardUiState, onEdit: (Int) -> Unit) {
     Text(
         text = strings(Strings.dashboard_commitments_title),
         style = MaterialTheme.typography.titleLarge,
@@ -1029,7 +1102,12 @@ private fun Commitments(state: DashboardUiState) {
     Spacer(Modifier.height(4.dp))
     state.commitments.forEachIndexed { index, row ->
         Row(
-            modifier = Modifier.fillMaxWidth().heightIn(min = 60.dp).padding(vertical = 8.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 60.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .clickable(onClickLabel = row.editLabel) { onEdit(index) }
+                .padding(vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             // Decorative: `detail` already says this in words.
@@ -1053,9 +1131,79 @@ private fun Commitments(state: DashboardUiState) {
                 Text(row.detail, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Text(row.expected, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(Modifier.width(4.dp))
+            FinAiIcon(Icons.AutoMirrored.Filled.KeyboardArrowRight, tint = MaterialTheme.colorScheme.onSurfaceVariant, size = 18.dp)
         }
         if (index != state.commitments.lastIndex) {
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f))
+        }
+    }
+}
+
+// ── Editing a commitment ────────────────────────────────────────────────
+
+/** What the commitment editor can ask of the dashboard's model. */
+class CommitmentActions(
+    val onEdit: (Int) -> Unit = {},
+    val onName: (String) -> Unit = {},
+    val onAmount: (String) -> Unit = {},
+    val onSave: () -> Unit = {},
+    val onCancel: () -> Unit = {},
+)
+
+/** A commitment's name and monthly amount, which is all a commitment has. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CommitmentEditor(state: DashboardUiState, actions: CommitmentActions) {
+    val focus = LocalFocusManager.current
+    ModalBottomSheet(
+        onDismissRequest = actions.onCancel,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .imePadding()
+                .padding(horizontal = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Text(
+                text = strings(Strings.commitment_edit_title),
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.semantics { heading() },
+            )
+            WizardField(
+                value = state.commitmentDraft.name,
+                onValueChange = actions.onName,
+                label = strings(Strings.commitment_edit_name),
+                capitalization = KeyboardCapitalization.Sentences,
+            )
+            AmountField(
+                value = state.commitmentDraft.amount,
+                onValueChange = actions.onAmount,
+                label = strings(Strings.commitment_edit_amount),
+                symbol = state.commitmentCurrencySymbol,
+                placeholder = state.commitmentAmountPlaceholder,
+                large = false,
+                imeAction = ImeAction.Done,
+            )
+            ErrorText(state.commitmentNotice)
+            GradientButton(
+                text = strings(Strings.commitment_edit_save),
+                onClick = {
+                    focus.clearFocus()
+                    actions.onSave()
+                },
+                enabled = state.canSaveCommitment,
+                busy = state.commitmentSaving,
+            )
+            TextButton(
+                onClick = actions.onCancel,
+                enabled = !state.commitmentSaving,
+                modifier = Modifier.align(Alignment.CenterHorizontally),
+            ) { Text(strings(Strings.commitment_edit_cancel)) }
+            Spacer(Modifier.height(16.dp))
         }
     }
 }

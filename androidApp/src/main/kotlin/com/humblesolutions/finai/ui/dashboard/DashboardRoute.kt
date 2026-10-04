@@ -41,5 +41,12 @@ internal fun DashboardRoute(
         onReview = onReview,
         onViewAll = onViewAll,
         onSignOut = onSignOut,
+        commitments = CommitmentActions(
+            onEdit = model::editCommitment,
+            onName = model::onCommitmentName,
+            onAmount = model::onCommitmentAmount,
+            onSave = model::saveCommitment,
+            onCancel = model::cancelCommitment,
+        ),
     )
 }

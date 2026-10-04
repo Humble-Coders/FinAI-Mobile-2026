@@ -2,6 +2,7 @@ package com.humblesolutions.finai.ui.review
 
 import com.humblesolutions.finai.model.Category
 import com.humblesolutions.finai.model.Transaction
+import com.humblesolutions.finai.ui.edit.TransactionEditorState
 import com.humblesolutions.finai.usecase.CorrectionBlock
 import com.humblesolutions.finai.usecase.CorrectionDraft
 import com.humblesolutions.finai.usecase.ManualEntry
@@ -119,4 +120,24 @@ data class ReviewUiState(
 
     val canCreateCategory: Boolean
         get() = !creatingCategory && !newCategoryName.isNullOrBlank()
+
+    /** The editor sheet's view of the correction in progress, or null when none is. */
+    val editor: TransactionEditorState?
+        get() = editing?.let { row ->
+            TransactionEditorState(
+                row = row,
+                draft = draft,
+                notice = editNotice,
+                errorKey = editErrorKey,
+                canSave = canSaveCorrection,
+                saving = saving,
+                categoryName = editCategoryName,
+                pickableCategories = pickableCategories,
+                today = today,
+                newCategoryName = newCategoryName,
+                newCategoryErrorKey = newCategoryErrorKey,
+                canCreateCategory = canCreateCategory,
+                creatingCategory = creatingCategory,
+            )
+        }
 }

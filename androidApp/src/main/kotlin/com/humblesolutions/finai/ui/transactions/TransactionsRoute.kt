@@ -8,6 +8,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.humblesolutions.finai.BuildConfig
 import com.humblesolutions.finai.ui.components.LoaderSignal
+import com.humblesolutions.finai.ui.edit.TransactionEditorActions
 
 /** Everything the household has, with its own view model (#F3). */
 @Composable
@@ -27,5 +28,19 @@ internal fun TransactionsRoute(userId: String, onClose: () -> Unit) {
         onLoadMore = model::loadMore,
         onRetry = { model.load() },
         onClose = onClose,
+        onEdit = model::edit,
+        editor = TransactionEditorActions(
+            onCancel = model::cancelEdit,
+            onDateChange = model::onDateChange,
+            onAmountChange = model::onAmountChange,
+            onDirectionChange = model::onDirectionChange,
+            onDescriptionChange = model::onDescriptionChange,
+            onCategoryChosen = model::onCategoryChosen,
+            onSave = model::saveEdit,
+            onOpenNewCategory = model::openNewCategory,
+            onNewCategoryName = model::onNewCategoryName,
+            onCreateCategory = model::createCategory,
+            onCancelNewCategory = model::cancelNewCategory,
+        ),
     )
 }

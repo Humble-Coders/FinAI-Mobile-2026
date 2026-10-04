@@ -1,13 +1,17 @@
 package com.humblesolutions.finai.ui.dashboard
 
+import com.humblesolutions.finai.i18n.Strings
 import com.humblesolutions.finai.model.ApiException
 import com.humblesolutions.finai.model.Capabilities
 import com.humblesolutions.finai.model.Category
+import com.humblesolutions.finai.model.Commitment
 import com.humblesolutions.finai.model.ConfirmOutcome
 import com.humblesolutions.finai.model.Dashboard
 import com.humblesolutions.finai.model.DeleteOutcome
+import com.humblesolutions.finai.model.FinancialSetup
 import com.humblesolutions.finai.model.Flow
 import com.humblesolutions.finai.model.NewTransaction
+import com.humblesolutions.finai.model.Obligation
 import com.humblesolutions.finai.model.PatchOutcome
 import com.humblesolutions.finai.model.ReviewPage
 import com.humblesolutions.finai.model.Transaction
@@ -15,6 +19,7 @@ import com.humblesolutions.finai.model.TransactionPatch
 import com.humblesolutions.finai.repository.CapabilitiesRepository
 import com.humblesolutions.finai.repository.CategoriesRepository
 import com.humblesolutions.finai.repository.DashboardRepository
+import com.humblesolutions.finai.repository.FinancialSetupRepository
 import com.humblesolutions.finai.repository.TransactionsRepository
 import com.humblesolutions.finai.usecase.DashboardMonths
 import com.humblesolutions.finai.util.LedgerChanged
@@ -377,5 +382,95 @@ class DashboardViewModelTest {
 
         assertEquals(1, recent.asked.size)
         assertEquals(listOf("r1"), model.uiState.value.recent.map { it.id })
+    }
+
+    // ── Editing a commitment ────────────────────────────────────────────
+
+    private class FakeSetup(var setup: FinancialSetup) : FinancialSetupRepository {
+        val saved = mutableListOf<FinancialSetup>()
+        var fail: ApiException? = null
+
+        override suspend fun get(): FinancialSetup = setup
+
+        override suspend fun save(setup: FinancialSetup): FinancialSetup {
+            fail?.let { throw it }
+            saved += setup
+            this.setup = setup
+            return setup
+        }
+
+        override fun close() = Unit
+    }
+
+    private val rent = Commitment(name = "Rent", expected = "1800.00")
+
+    private fun withSetup(dashboard: FakeDashboard, setup: FakeSetup): DashboardViewModel {
+        val model = DashboardViewModel()
+        model.bind("alice") { DashboardRepositories(dashboard, FakeCapabilities(), setup = setup) }
+        return model
+    }
+
+    private fun month() = FakeDashboard(Dashboard(currency = "CAD", commitments = listOf(Commitment(name = "Phone", expected = "65.00"), rent)))
+
+    @Test
+    fun saving_a_commitment_changes_that_one_and_re_reads_the_month() = runTest {
+        val dashboard = month()
+        val setup = FakeSetup(FinancialSetup(currency = "CAD", obligations = listOf(Obligation("Phone", "65.00"), Obligation("Rent", "1800.00"))))
+        val model = withSetup(dashboard, setup)
+        val reads = dashboard.asked.size
+
+        model.editCommitment(1)
+        model.onCommitmentAmount("1850")
+        model.saveCommitment()
+
+        assertEquals(
+            listOf(Obligation("Phone", "65.00"), Obligation("Rent", "1850.00")),
+            setup.saved.single().obligations,
+        )
+        assertNull(model.uiState.value.editingCommitment)
+        assertEquals(reads + 1, dashboard.asked.size, "the month is re-read, so the card shows the new amount")
+    }
+
+    @Test
+    fun a_commitment_changed_elsewhere_is_not_written_over() = runTest {
+        // The wizard's answers moved on since the month was read.
+        val dashboard = month()
+        val setup = FakeSetup(FinancialSetup(currency = "CAD", obligations = listOf(Obligation("Rent", "1950.00"))))
+        val model = withSetup(dashboard, setup)
+        val reads = dashboard.asked.size
+
+        model.editCommitment(1)
+        model.onCommitmentAmount("2000")
+        model.saveCommitment()
+
+        assertTrue(setup.saved.isEmpty(), "nothing is written over the newer answer")
+        assertEquals(Strings.commitment_edit_gone, model.uiState.value.commitmentErrorKey)
+        assertEquals(reads + 1, dashboard.asked.size, "and the month is re-read to show it")
+    }
+
+    @Test
+    fun a_failed_save_keeps_the_editor_open_with_the_reason() = runTest {
+        val setup = FakeSetup(FinancialSetup(currency = "CAD", obligations = listOf(Obligation("Rent", "1800.00"))))
+            .apply { fail = ApiException.Network(RuntimeException("offline")) }
+        val model = withSetup(month(), setup)
+
+        model.editCommitment(1)
+        model.onCommitmentName("Rent + parking")
+        model.saveCommitment()
+
+        val state = model.uiState.value
+        assertEquals(rent, state.editingCommitment)
+        assertFalse(state.commitmentSaving)
+        assertEquals(ApiException.Network(RuntimeException("offline")).messageKey, state.commitmentErrorKey)
+    }
+
+    @Test
+    fun an_unchanged_commitment_cannot_be_saved_and_says_nothing_about_it() = runTest {
+        val model = withSetup(month(), FakeSetup(FinancialSetup()))
+
+        model.editCommitment(1)
+
+        assertFalse(model.uiState.value.canSaveCommitment)
+        assertNull(model.uiState.value.commitmentNotice)
     }
 }

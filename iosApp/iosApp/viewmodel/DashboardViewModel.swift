@@ -44,10 +44,17 @@ final class DashboardViewModel: ObservableObject {
     @Published private(set) var recent: [SharedLogic.Transaction] = []
     @Published private(set) var categories: [SharedLogic.Category] = []
 
+    // MARK: Editing a commitment
+    @Published private(set) var editingCommitment: Commitment?
+    @Published private(set) var commitmentDraft = CommitmentDraft(name: "", amount: "")
+    @Published private(set) var commitmentSaving = false
+    @Published private(set) var commitmentErrorKey: String?
+
     private var dashboardRepository: DashboardRepository?
     private var capabilitiesRepository: CapabilitiesRepository?
     private var transactionsRepository: TransactionsRepository?
     private var categoriesRepository: CategoriesRepository?
+    private var setupRepository: FinancialSetupRepository?
     private var owner: String?
     /// The recent list's own counter: it does not follow the month, so a step
     /// back to August must not cancel a read of what happened most recently.
@@ -78,6 +85,7 @@ final class DashboardViewModel: ObservableObject {
         capabilitiesRepository = KtorCapabilitiesRepository(baseUrl: base, tokens: tokens, logging: logging)
         transactionsRepository = KtorTransactionsRepository(baseUrl: base, tokens: tokens, logging: logging)
         categoriesRepository = KtorCategoriesRepository(baseUrl: base, tokens: tokens, logging: logging)
+        setupRepository = KtorFinancialSetupRepository(baseUrl: base, tokens: tokens, logging: logging)
         listenForChanges()
         load()
         loadRecent()
@@ -94,6 +102,8 @@ final class DashboardViewModel: ObservableObject {
         transactionsRepository = nil
         categoriesRepository?.close()
         categoriesRepository = nil
+        setupRepository?.close()
+        setupRepository = nil
         generation += 1
         recentGeneration += 1
     }
@@ -176,6 +186,86 @@ final class DashboardViewModel: ObservableObject {
             guard started == self.recentGeneration else { return }
             self.recent = rows
             if let categories { self.categories = categories }
+        }
+    }
+
+    // MARK: - Editing a commitment
+
+    /// Open the editor on the commitment at `index` in the month's list.
+    func editCommitment(_ index: Int) {
+        guard data.commitments.indices.contains(index) else { return }
+        let commitment = data.commitments[index]
+        editingCommitment = commitment
+        commitmentDraft = CommitmentEdit.shared.draftOf(commitment: commitment)
+        commitmentSaving = false
+        commitmentErrorKey = nil
+    }
+
+    func setCommitmentName(_ name: String) {
+        commitmentDraft = CommitmentDraft(name: name, amount: commitmentDraft.amount)
+        commitmentErrorKey = nil
+    }
+
+    func setCommitmentAmount(_ amount: String) {
+        commitmentDraft = CommitmentDraft(name: commitmentDraft.name, amount: amount)
+        commitmentErrorKey = nil
+    }
+
+    func cancelCommitment() {
+        guard !commitmentSaving else { return }
+        editingCommitment = nil
+        commitmentErrorKey = nil
+    }
+
+    private var commitmentBlock: CommitmentBlock? {
+        editingCommitment.flatMap {
+            CommitmentEdit.shared.blockingReason(original: $0, draft: commitmentDraft, currency: data.currency)
+        }
+    }
+
+    var canSaveCommitment: Bool { editingCommitment != nil && !commitmentSaving && commitmentBlock == nil }
+
+    /// The notice under Save — never "nothing changed" before a touch.
+    var commitmentNotice: String? {
+        commitmentErrorKey ?? (commitmentBlock == .nothingChanged ? nil : commitmentBlock?.messageKey)
+    }
+
+    var commitmentCurrencySymbol: String { Money.shared.symbol(currency: data.currency) }
+
+    var commitmentAmountPlaceholder: String {
+        Money.shared.normalize(raw: "0", fractionDigits: Money.shared.fractionDigits(currency: data.currency)) ?? ""
+    }
+
+    /**
+     Read the wizard's answers, change the one commitment, write them back. The
+     server keeps commitments as one list replaced whole, with no ids. If the
+     commitment is no longer in it — changed on another phone since this month
+     was read — nothing is written over it: the month is re-read and the person
+     told. Mirrors Android's `saveCommitment`.
+     */
+    func saveCommitment() {
+        guard let setupRepository, let original = editingCommitment, canSaveCommitment else { return }
+        let draft = commitmentDraft
+        commitmentSaving = true
+        commitmentErrorKey = nil
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                let setup = try await setupRepository.get()
+                guard let changed = CommitmentEdit.shared.applied(setup: setup, original: original, draft: draft) else {
+                    self.commitmentSaving = false
+                    self.commitmentErrorKey = Strings.shared.commitment_edit_gone
+                    self.load(refresh: true)
+                    return
+                }
+                _ = try await setupRepository.save(setup: changed)
+                self.commitmentSaving = false
+                self.editingCommitment = nil
+                self.load(refresh: true)
+            } catch {
+                self.commitmentSaving = false
+                self.commitmentErrorKey = Self.messageKey(error)
+            }
         }
     }
 
@@ -353,6 +443,23 @@ final class DashboardViewModel: ObservableObject {
         }
     }
 
+    /// What is written on the chart, one per point it draws: the month, and its
+    /// figure rounded for a label ("$1.5k") — left off while amounts are hidden,
+    /// and for a month with nothing recorded. Mirrors Android's `chartLabels`.
+    var chartLabels: [ChartLabel] {
+        (chart?.points ?? []).map { point in
+            let net = data.trend.first { $0.month == point.month }?.net
+            return ChartLabel(
+                month: Dates.shared.parse(iso: point.month)
+                    .map { Dates.shared.monthShort(date: $0, language: locale) } ?? "",
+                value: amountsHidden ? nil : net.map {
+                    Money.shared.compact(amount: $0, currency: data.currency, locale: locale)
+                },
+                isLoss: net.map { Money.shared.signOf(raw: $0, fractionDigits: digits) < 0 } ?? false
+            )
+        }
+    }
+
     /// The recent list, worded. Signed in words — "+ $5.00" or "− $5.00" — so
     /// colour is never the only cue.
     var recentRows: [RecentRow] {
@@ -406,3 +513,12 @@ struct RecentRow: Identifiable {
     /// The whole row as one sentence, read once by VoiceOver.
     let description: String
 }
+
+/// One point's writing on the chart: its month, and its rounded figure if shown.
+struct ChartLabel {
+    let month: String
+    let value: String?
+    /// A month in the red, whose figure is written below its point.
+    let isLoss: Bool
+}
+

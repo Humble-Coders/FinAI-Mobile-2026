@@ -3,9 +3,13 @@ package com.humblesolutions.finai.ui.dashboard
 import com.humblesolutions.finai.i18n.LocalizationRegistry
 import com.humblesolutions.finai.i18n.Strings
 import com.humblesolutions.finai.model.Category
+import com.humblesolutions.finai.model.Commitment
 import com.humblesolutions.finai.model.Dashboard
 import com.humblesolutions.finai.model.Transaction
 import com.humblesolutions.finai.model.TransactionDirection
+import com.humblesolutions.finai.usecase.CommitmentBlock
+import com.humblesolutions.finai.usecase.CommitmentDraft
+import com.humblesolutions.finai.usecase.CommitmentEdit
 import com.humblesolutions.finai.usecase.DashboardMonths
 import com.humblesolutions.finai.usecase.DashboardTrend
 import com.humblesolutions.finai.usecase.ImportedRows
@@ -47,6 +51,12 @@ data class DashboardUiState(
     /** The newest few rows, whatever month is in view; see `loadRecent`. */
     val recent: List<Transaction> = emptyList(),
     val categories: List<Category> = emptyList(),
+
+    // ── Editing a commitment ────────────────────────────────────────────
+    val editingCommitment: Commitment? = null,
+    val commitmentDraft: CommitmentDraft = CommitmentDraft(),
+    val commitmentSaving: Boolean = false,
+    val commitmentErrorKey: String? = null,
 ) {
     private val digits: Int get() = data.fractionDigits
 
@@ -121,8 +131,25 @@ data class DashboardUiState(
             expected = money(commitment.expected),
             wasSeen = commitment.wasSeen,
             detail = detailFor(commitment),
+            editLabel = text(Strings.commitment_edit_hint, commitment.name),
         )
     }
+
+    private val commitmentBlock: CommitmentBlock?
+        get() = editingCommitment?.let { CommitmentEdit.blockingReason(it, commitmentDraft, data.currency) }
+
+    val canSaveCommitment: Boolean
+        get() = editingCommitment != null && !commitmentSaving && commitmentBlock == null
+
+    /** The notice under Save — never "nothing changed" before a touch. */
+    val commitmentNotice: String?
+        get() = commitmentErrorKey
+            ?: commitmentBlock?.takeIf { it != CommitmentBlock.NOTHING_CHANGED }?.messageKey
+
+    val commitmentCurrencySymbol: String get() = Money.symbol(data.currency)
+
+    val commitmentAmountPlaceholder: String
+        get() = Money.normalize("0", Money.fractionDigits(data.currency)).orEmpty()
 
     /**
      * "Seen Aug 2, 2026" — never "Paid".
@@ -174,6 +201,21 @@ data class DashboardUiState(
             ?: text(Strings.dashboard_trend_no_data_month, label)
     }
 
+    /**
+     * What is written on the chart, one per point the chart draws: the month,
+     * and its figure rounded for a label ("$1.5k"). The figure is left off
+     * while amounts are hidden, like every other figure on the screen, and for
+     * a month with nothing recorded, which has no figure to write.
+     */
+    val chartLabels: List<ChartLabel> get() = chart?.points.orEmpty().map { point ->
+        val net = data.trend.firstOrNull { it.month == point.month }?.net
+        ChartLabel(
+            month = Dates.parse(point.month)?.let { Dates.monthShort(it, locale) }.orEmpty(),
+            value = if (amountsHidden) null else net?.let { Money.compact(it, data.currency, locale) },
+            isLoss = net?.let { Money.signOf(it, digits) < 0 } ?: false,
+        )
+    }
+
     /** The recent list, worded. Empty when there is nothing to show. */
     val recentRows: List<RecentRow> get() = recent.map { row ->
         val isCredit = row.direction == TransactionDirection.CREDIT
@@ -207,6 +249,8 @@ data class CommitmentRow(
     val expected: String,
     val wasSeen: Boolean,
     val detail: String,
+    /** Read aloud for the row, which opens the editor when tapped. */
+    val editLabel: String = "",
 )
 
 /** One row of the recent list, already worded. */
@@ -222,4 +266,12 @@ data class RecentRow(
     val isFiled: Boolean,
     /** The whole row as one sentence, read once by a screen reader. */
     val description: String,
+)
+
+/** One point's writing on the chart: its month, and its rounded figure if shown. */
+data class ChartLabel(
+    val month: String,
+    val value: String?,
+    /** A month in the red, whose figure is written below its point, not over the line. */
+    val isLoss: Boolean = false,
 )

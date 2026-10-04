@@ -5,8 +5,13 @@ import com.humblesolutions.finai.i18n.Strings
 import com.humblesolutions.finai.model.Category
 import com.humblesolutions.finai.model.StatementImportSummary
 import com.humblesolutions.finai.model.Transaction
+import com.humblesolutions.finai.ui.edit.TransactionEditorState
+import com.humblesolutions.finai.usecase.CorrectionBlock
+import com.humblesolutions.finai.usecase.CorrectionDraft
 import com.humblesolutions.finai.usecase.DashboardMonths
 import com.humblesolutions.finai.usecase.ImportedRows
+import com.humblesolutions.finai.usecase.ManualEntry
+import com.humblesolutions.finai.usecase.ReviewQueue
 import com.humblesolutions.finai.usecase.TransactionBrowsing
 import com.humblesolutions.finai.util.Dates
 import com.humblesolutions.finai.util.Money
@@ -36,6 +41,16 @@ data class TransactionsUiState(
     val loadingMore: Boolean = false,
     val loadFailed: Boolean = false,
     val errorKey: String? = null,
+
+    // ── Editing one row ─────────────────────────────────────────────────
+    val editing: Transaction? = null,
+    val draft: CorrectionDraft = CorrectionDraft(),
+    val saving: Boolean = false,
+    val editErrorKey: String? = null,
+    val today: LocalDate = ManualEntry.today(),
+    val newCategoryName: String? = null,
+    val creatingCategory: Boolean = false,
+    val newCategoryErrorKey: String? = null,
 ) {
     private val currency: String get() = rows.firstOrNull()?.currency.orEmpty()
 
@@ -109,4 +124,35 @@ data class TransactionsUiState(
     }
 
     val canLoadMore: Boolean get() = nextCursor != null && !loadingMore && !loading
+
+    /** Read aloud for a row, which opens the editor when tapped. */
+    fun editLabel(row: Transaction): String = text(Strings.transactions_edit_hint, titleOf(row))
+
+    /**
+     * The editor sheet's view of the edit in progress. The same sheet and the
+     * same shared rules as the review queue's: one ledger, one way to fix it.
+     */
+    val editor: TransactionEditorState?
+        get() = editing?.let { row ->
+            val block = ReviewQueue.blockingReason(row, draft, today)
+            TransactionEditorState(
+                row = row,
+                draft = draft,
+                // "Nothing has changed" is not worth saying before a touch.
+                notice = block?.takeIf { it != CorrectionBlock.NOTHING_CHANGED },
+                errorKey = editErrorKey,
+                canSave = !saving && block == null,
+                saving = saving,
+                categoryName = ReviewQueue.categoryName(categories, draft.categoryId),
+                pickableCategories = categories
+                    .map { it to ReviewQueue.categoryName(it) }
+                    .sortedWith(compareBy({ it.first.isSystem }, { it.second.lowercase() })),
+                today = today,
+                newCategoryName = newCategoryName,
+                newCategoryErrorKey = newCategoryErrorKey,
+                canCreateCategory = !creatingCategory && !newCategoryName.isNullOrBlank(),
+                creatingCategory = creatingCategory,
+                titleKey = Strings.transactions_edit_title,
+            )
+        }
 }
