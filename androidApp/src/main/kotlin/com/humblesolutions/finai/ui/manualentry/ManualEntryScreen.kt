@@ -1,6 +1,8 @@
 package com.humblesolutions.finai.ui.manualentry
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,12 +14,25 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.filled.Label
+import androidx.compose.material.icons.automirrored.filled.ReceiptLong
+import androidx.compose.material.icons.filled.AccountBalance
+import androidx.compose.material.icons.filled.ArrowDownward
+import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.CreditCard
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
@@ -44,9 +59,12 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
@@ -60,17 +78,26 @@ import com.humblesolutions.finai.i18n.Strings
 import com.humblesolutions.finai.model.AccountKind
 import com.humblesolutions.finai.model.TransactionDirection
 import com.humblesolutions.finai.ui.components.AccountSheet
+import com.humblesolutions.finai.ui.components.AccountTints
 import com.humblesolutions.finai.ui.components.AmountField
 import com.humblesolutions.finai.ui.components.ErrorText
 import com.humblesolutions.finai.ui.components.FieldLabel
+import com.humblesolutions.finai.ui.components.FinAiIcon
 import com.humblesolutions.finai.ui.components.GradientButton
+import com.humblesolutions.finai.ui.components.IconTile
+import com.humblesolutions.finai.ui.components.Mint
+import com.humblesolutions.finai.ui.components.MintBackdrop
+import com.humblesolutions.finai.ui.components.MintHeader
+import com.humblesolutions.finai.ui.components.MintPanel
 import com.humblesolutions.finai.ui.components.NewAccountSheet
 import com.humblesolutions.finai.ui.components.PickerField
 import com.humblesolutions.finai.ui.components.SheetRow
 import com.humblesolutions.finai.ui.components.SheetTitle
 import com.humblesolutions.finai.ui.components.WizardField
+import com.humblesolutions.finai.ui.components.fieldFrame
 import com.humblesolutions.finai.ui.components.neutralChipColors
 import com.humblesolutions.finai.ui.strings
+import com.humblesolutions.finai.ui.theme.FinAiPalette
 import com.humblesolutions.finai.usecase.ManualEntryBlock
 import kotlinx.datetime.LocalDate
 
@@ -110,12 +137,11 @@ class ManualEntryActions(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ManualEntryScreen(state: ManualEntryUiState, fromUnreadable: Boolean, actions: ManualEntryActions) {
-    val ground = MaterialTheme.colorScheme.background
     val focus = LocalFocusManager.current
 
     // The app's coin loader covers the first load; underneath it, just ground.
     if (state.loading) {
-        Box(Modifier.fillMaxSize().background(ground))
+        MintBackdrop(decoration = Icons.Filled.CreditCard)
         return
     }
 
@@ -123,17 +149,17 @@ fun ManualEntryScreen(state: ManualEntryUiState, fromUnreadable: Boolean, action
     var choosingDate by rememberSaveable { mutableStateOf(false) }
     var choosingCategory by rememberSaveable { mutableStateOf(false) }
 
+    MintBackdrop(decoration = Icons.Filled.CreditCard)
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(ground)
             // Status bar, navigation bar, keyboard *and* the camera cutout:
             // held sideways, a phone's cutout sits beside the content, which
             // the bars alone do not account for. The ground still bleeds under.
             .safeDrawingPadding(),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Header(onClose = actions.onClose)
+        MintHeader(title = strings(Strings.manual_entry_title), onBack = actions.onClose)
 
         if (state.loadFailed) {
             LoadFailed(state.errorKey, actions.onRetry.takeIf { state.canRetry })
@@ -146,71 +172,75 @@ fun ManualEntryScreen(state: ManualEntryUiState, fromUnreadable: Boolean, action
                 .fillMaxWidth()
                 .weight(1f)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(20.dp),
+                .padding(horizontal = 20.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             if (fromUnreadable) UnreadableNote()
 
-            PickerField(
-                label = strings(Strings.manual_entry_account_label),
-                value = state.account?.name,
-                placeholder = strings(Strings.manual_entry_account_placeholder),
-                onClick = { choosingAccount = true },
-                isError = state.notice == ManualEntryBlock.NO_ACCOUNT,
-            )
-
-            DateRow(
-                state,
-                onPick = {
-                    // The calendar's last pickable day is today as of now, not
-                    // as of the last edit: the screen may have sat open past midnight.
-                    actions.onRefreshToday()
-                    choosingDate = true
-                },
-                onToday = actions.onToday,
-            )
-
-            AmountField(
-                value = state.draft.amount,
-                onValueChange = actions.onAmountChange,
-                label = strings(Strings.manual_entry_amount_label),
-                symbol = state.symbol,
-                placeholder = state.amountPlaceholder,
-                isError = state.notice in AmountBlocks,
-            )
-
-            DirectionChoice(
-                chosen = state.draft.direction,
-                onChosen = actions.onDirectionChosen,
-                isError = state.notice == ManualEntryBlock.NO_DIRECTION,
-            )
-
-            WizardField(
-                value = state.draft.description,
-                onValueChange = actions.onDescriptionChange,
-                label = strings(Strings.manual_entry_description_label),
-                placeholder = strings(Strings.manual_entry_description_hint),
-                imeAction = ImeAction.Done,
-                capitalization = KeyboardCapitalization.Sentences,
-                isError = state.notice in DescriptionBlocks,
-                onDone = { focus.clearFocus() },
-            )
-
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                PickerField(
-                    label = strings(Strings.manual_entry_category_label),
-                    value = state.categoryName ?: strings(Strings.manual_entry_category_none),
-                    placeholder = strings(Strings.manual_entry_category_none),
-                    onClick = { choosingCategory = true },
+            MintPanel {
+                DirectionChoice(
+                    chosen = state.draft.direction,
+                    onChosen = actions.onDirectionChosen,
+                    isError = state.notice == ManualEntryBlock.NO_DIRECTION,
                 )
-                // Said out loud, so an empty category reads as a choice made,
-                // not a field forgotten.
-                if (state.draft.categoryId == null) {
-                    Text(
-                        text = strings(Strings.manual_entry_category_auto),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+
+                AccountField(
+                    state = state,
+                    onClick = { choosingAccount = true },
+                    isError = state.notice == ManualEntryBlock.NO_ACCOUNT,
+                )
+
+                DateRow(
+                    state,
+                    onPick = {
+                        // The calendar's last pickable day is today as of now,
+                        // not as of the last edit: the screen may have sat open
+                        // past midnight.
+                        actions.onRefreshToday()
+                        choosingDate = true
+                    },
+                    onToday = actions.onToday,
+                )
+
+                AmountField(
+                    value = state.draft.amount,
+                    onValueChange = actions.onAmountChange,
+                    label = strings(Strings.manual_entry_amount_label),
+                    symbol = state.symbol,
+                    placeholder = state.amountPlaceholder,
+                    isError = state.notice in AmountBlocks,
+                )
+
+                WizardField(
+                    value = state.draft.description,
+                    onValueChange = actions.onDescriptionChange,
+                    label = strings(Strings.manual_entry_description_label),
+                    placeholder = strings(Strings.manual_entry_description_hint),
+                    imeAction = ImeAction.Done,
+                    capitalization = KeyboardCapitalization.Sentences,
+                    isError = state.notice in DescriptionBlocks,
+                    onDone = { focus.clearFocus() },
+                    leading = Icons.AutoMirrored.Filled.ReceiptLong,
+                )
+
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    PickerField(
+                        label = strings(Strings.manual_entry_category_label),
+                        value = state.categoryName ?: strings(Strings.manual_entry_category_none),
+                        placeholder = strings(Strings.manual_entry_category_none),
+                        onClick = { choosingCategory = true },
+                        leading = Icons.AutoMirrored.Filled.Label,
+                        trailing = Icons.AutoMirrored.Filled.KeyboardArrowRight,
                     )
+                    // Said out loud, so an empty category reads as a choice
+                    // made, not a field forgotten.
+                    if (state.draft.categoryId == null) {
+                        Text(
+                            text = strings(Strings.manual_entry_category_auto),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
             }
             Spacer(Modifier.height(8.dp))
@@ -220,7 +250,7 @@ fun ManualEntryScreen(state: ManualEntryUiState, fromUnreadable: Boolean, action
             modifier = Modifier
                 .widthIn(max = ContentMaxWidth)
                 .fillMaxWidth()
-                .padding(horizontal = 24.dp),
+                .padding(horizontal = 20.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             ErrorText(state.errorKey)
@@ -332,31 +362,6 @@ private val DateBlocks = setOf(ManualEntryBlock.NO_DATE, ManualEntryBlock.FUTURE
 private const val MILLIS_PER_DAY = 86_400_000L
 
 @Composable
-private fun Header(onClose: () -> Unit) {
-    Box(Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 8.dp)) {
-        IconButton(onClick = onClose, modifier = Modifier.align(Alignment.CenterStart)) {
-            Icon(
-                painter = painterResource(R.drawable.ic_back),
-                contentDescription = strings(Strings.action_back),
-                tint = MaterialTheme.colorScheme.onBackground,
-            )
-        }
-        Text(
-            text = strings(Strings.manual_entry_title),
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.onBackground,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier
-                .align(Alignment.Center)
-                .padding(horizontal = 56.dp)
-                .semantics { heading() },
-        )
-    }
-}
-
-@Composable
 private fun LoadFailed(errorKey: String?, onRetry: (() -> Unit)?) {
     Column(
         modifier = Modifier.widthIn(max = ContentMaxWidth).fillMaxSize().padding(24.dp),
@@ -394,24 +399,29 @@ private fun UnreadableNote() {
 
 @Composable
 private fun DateRow(state: ManualEntryUiState, onPick: () -> Unit, onToday: () -> Unit) {
-    Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        Box(Modifier.weight(1f)) {
-            PickerField(
-                label = strings(Strings.manual_entry_date_label),
-                value = state.dateLabel,
-                placeholder = strings(Strings.manual_entry_date_placeholder),
-                onClick = onPick,
-                isError = state.notice in DateBlocks,
-            )
-        }
-        FilterChip(
-            selected = state.draft.occurredOn == state.today,
-            onClick = onToday,
-            label = { Text(strings(Strings.manual_entry_date_today)) },
-            colors = neutralChipColors(),
-            modifier = Modifier.padding(bottom = 12.dp),
-        )
-    }
+    val isToday = state.draft.occurredOn == state.today
+    PickerField(
+        label = strings(Strings.manual_entry_date_label),
+        value = state.dateLabel?.let { if (isToday) strings(Strings.manual_entry_date_today_value, it) else it },
+        placeholder = strings(Strings.manual_entry_date_placeholder),
+        onClick = onPick,
+        isError = state.notice in DateBlocks,
+        leading = Icons.Filled.CalendarMonth,
+        trailing = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+        // The one-tap Today, kept: offered until today is the date chosen.
+        end = if (isToday) {
+            null
+        } else {
+            {
+                FilterChip(
+                    selected = false,
+                    onClick = onToday,
+                    label = { Text(strings(Strings.manual_entry_date_today)) },
+                    colors = neutralChipColors(),
+                )
+            }
+        },
+    )
 }
 
 @Composable
@@ -420,38 +430,107 @@ private fun DirectionChoice(
     onChosen: (TransactionDirection) -> Unit,
     isError: Boolean,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        FieldLabel(strings(Strings.manual_entry_direction_label))
-        // Neither is preselected: "money out" is the likelier answer, which is
-        // exactly why guessing it would go unnoticed when it is wrong.
-        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-            Directions.forEachIndexed { index, (direction, labelKey) ->
-                SegmentedButton(
-                    selected = chosen == direction,
-                    onClick = { onChosen(direction) },
-                    shape = SegmentedButtonDefaults.itemShape(index = index, count = Directions.size),
-                    colors = SegmentedButtonDefaults.colors(
-                        activeContainerColor = MaterialTheme.colorScheme.inverseSurface,
-                        activeContentColor = MaterialTheme.colorScheme.inverseOnSurface,
-                        inactiveContainerColor = MaterialTheme.colorScheme.surface,
-                        inactiveBorderColor = if (isError) {
-                            MaterialTheme.colorScheme.error
-                        } else {
-                            MaterialTheme.colorScheme.outlineVariant
+    val label = strings(Strings.manual_entry_direction_label)
+    // Neither is preselected: "money out" is the likelier answer, which is
+    // exactly why guessing it would go unnoticed when it is wrong.
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .selectableGroup()
+            .semantics { contentDescription = label },
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Directions.forEach { (direction, labelKey) ->
+            val selected = chosen == direction
+            val shape = RoundedCornerShape(18.dp)
+            Row(
+                modifier = Modifier
+                    .weight(1f)
+                    .heightIn(min = 64.dp)
+                    .clip(shape)
+                    .background(if (selected) FinAiPalette.Green.copy(alpha = 0.12f) else Mint.card())
+                    .border(
+                        width = if (selected || isError) 1.5.dp else 1.dp,
+                        color = when {
+                            selected -> FinAiPalette.Green
+                            isError -> MaterialTheme.colorScheme.error
+                            else -> Mint.edge()
                         },
-                    ),
-                    modifier = Modifier.heightIn(min = 48.dp),
-                ) {
-                    Text(strings(labelKey), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                }
+                        shape = shape,
+                    )
+                    .selectable(selected = selected, role = Role.RadioButton, onClick = { onChosen(direction) })
+                    .padding(horizontal = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center,
+            ) {
+                val tint = if (selected) Mint.greenText() else MaterialTheme.colorScheme.onSurfaceVariant
+                FinAiIcon(
+                    if (direction == TransactionDirection.CREDIT) Icons.Filled.ArrowUpward else Icons.Filled.ArrowDownward,
+                    tint = tint,
+                    size = 22.dp,
+                )
+                Spacer(Modifier.width(10.dp))
+                Text(
+                    strings(labelKey),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+                    color = if (selected) Mint.greenText() else MaterialTheme.colorScheme.onSurface,
+                    // Two lines at a large font size, rather than "Mone…".
+                    maxLines = 2,
+                )
             }
         }
     }
 }
 
+/**
+ * The account, as the design has it: its bank tile, its name and kind, and a
+ * chevron. Tapping opens the same account sheet, with "Add an account".
+ */
+@Composable
+private fun AccountField(state: ManualEntryUiState, onClick: () -> Unit, isError: Boolean) {
+    val label = strings(Strings.manual_entry_account_label)
+    val account = state.account
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        FieldLabel(label)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 68.dp)
+                .fieldFrame(focused = false, isError = isError)
+                .clickable(role = Role.Button, onClickLabel = label, onClick = onClick)
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            val index = state.accounts.indexOfFirst { it.id == account?.id }.coerceAtLeast(0)
+            IconTile(Icons.Filled.AccountBalance, AccountTints[index % AccountTints.size], size = 44.dp, iconSize = 22.dp)
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    text = account?.name ?: strings(Strings.manual_entry_account_placeholder),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = if (account == null) muted.copy(alpha = 0.7f) else MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                account?.let { chosen ->
+                    val detail = listOfNotNull(chosen.kind.labelKey?.let { strings(it) }, chosen.currency.ifBlank { null })
+                        .joinToString(" · ")
+                    if (detail.isNotBlank()) {
+                        Text(detail, style = MaterialTheme.typography.bodyMedium, color = muted, maxLines = 1)
+                    }
+                }
+            }
+            FinAiIcon(Icons.Filled.KeyboardArrowDown, tint = muted, size = 24.dp)
+        }
+    }
+}
+
+// In first, as the design has it. Order only: neither is chosen until tapped.
 private val Directions = listOf(
-    TransactionDirection.DEBIT to Strings.manual_entry_direction_out,
     TransactionDirection.CREDIT to Strings.manual_entry_direction_in,
+    TransactionDirection.DEBIT to Strings.manual_entry_direction_out,
 )
 
 @OptIn(ExperimentalMaterial3Api::class)

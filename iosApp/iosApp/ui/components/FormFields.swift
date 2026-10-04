@@ -79,12 +79,21 @@ struct WizardField: View {
     var isError = false
     var submitLabel: SubmitLabel = .return
     var onSubmit: () -> Void = {}
+    /// An SF Symbol drawn before the text, when the design gives the field one.
+    var leading: String?
     @Binding var text: String
     @FocusState private var focused: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             FieldLabel(text: label)
+            HStack(spacing: 12) {
+                if let leading {
+                    Image(systemName: leading)
+                        .font(.body)
+                        .foregroundColor(Brand.textMuted)
+                        .accessibilityHidden(true)
+                }
             TextField("", text: $text, prompt: Text(placeholder).foregroundColor(Brand.textMuted.opacity(0.6)))
                 .font(.body)
                 .keyboardType(keyboard)
@@ -95,6 +104,7 @@ struct WizardField: View {
                 .focused($focused)
                 .tint(Brand.green)
                 .accessibilityLabel(label)
+            }
                 .padding(.horizontal, 16)
                 .frame(minHeight: 56)
                 .fieldFrame(focused: focused, isError: isError)
@@ -120,20 +130,30 @@ struct PickerField: View {
     let value: String?
     let placeholder: String
     var isError = false
+    /// An SF Symbol drawn before the value, when the design gives the field one.
+    var leading: String?
+    /// The mark at the end: a chooser opens below by default.
+    var trailing = "chevron.down"
     let action: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             FieldLabel(text: label)
             Button(action: action) {
-                HStack {
+                HStack(spacing: 12) {
+                    if let leading {
+                        Image(systemName: leading)
+                            .font(.body)
+                            .foregroundColor(Brand.textMuted)
+                            .accessibilityHidden(true)
+                    }
                     Text(value ?? placeholder)
                         .font(.body)
                         .foregroundColor(value == nil ? Brand.textMuted.opacity(0.6) : .primary)
-                        .lineLimit(1)
+                        .lineLimit(2)
                         .truncationMode(.tail)
                     Spacer(minLength: 8)
-                    Image(systemName: "chevron.down")
+                    Image(systemName: trailing)
                         .font(.footnote.weight(.semibold))
                         .foregroundColor(Brand.textMuted)
                         .accessibilityHidden(true)

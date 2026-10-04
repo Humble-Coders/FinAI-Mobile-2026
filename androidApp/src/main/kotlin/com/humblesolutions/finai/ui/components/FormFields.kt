@@ -12,10 +12,13 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
@@ -29,6 +32,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -152,6 +156,7 @@ internal fun WizardField(
     isError: Boolean = false,
     placeholder: String? = null,
     onDone: (() -> Unit)? = null,
+    leading: ImageVector? = null,
 ) {
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
@@ -178,20 +183,26 @@ internal fun WizardField(
                 .fieldFrame(focused, isError)
                 .semantics { contentDescription = label },
             decorationBox = { inner ->
-                Box(
+                Row(
                     modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
-                    contentAlignment = Alignment.CenterStart,
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    if (value.isEmpty() && placeholder != null) {
-                        Text(
-                            text = placeholder,
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = muted.copy(alpha = 0.6f),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
+                    if (leading != null) {
+                        FinAiIcon(leading, tint = muted, size = 22.dp)
+                        Spacer(Modifier.width(12.dp))
                     }
-                    inner()
+                    Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+                        if (value.isEmpty() && placeholder != null) {
+                            Text(
+                                text = placeholder,
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = muted.copy(alpha = 0.6f),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                        inner()
+                    }
                 }
             },
         )
@@ -221,26 +232,41 @@ internal fun PickerField(
     onClick: () -> Unit,
     isError: Boolean = false,
     enabled: Boolean = true,
+    leading: ImageVector? = null,
+    trailing: ImageVector? = null,
+    end: (@Composable () -> Unit)? = null,
 ) {
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         FieldLabel(label)
-        Box(
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(56.dp)
+                // At least, not exactly: at a large font size the value takes
+                // a second line rather than being cut off beside the extras.
+                .heightIn(min = 56.dp)
                 .fieldFrame(focused = false, isError = isError)
                 .clickable(enabled = enabled, role = Role.Button, onClickLabel = label, onClick = onClick)
-                .padding(horizontal = 16.dp),
-            contentAlignment = Alignment.CenterStart,
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
+            if (leading != null) {
+                FinAiIcon(leading, tint = muted, size = 22.dp)
+                Spacer(Modifier.width(12.dp))
+            }
             Text(
                 text = value ?: placeholder,
                 style = MaterialTheme.typography.bodyLarge,
                 color = if (value == null) muted.copy(alpha = 0.6f) else MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
+                maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
             )
+            end?.invoke()
+            if (trailing != null) {
+                Spacer(Modifier.width(8.dp))
+                FinAiIcon(trailing, tint = muted, size = 20.dp)
+            }
         }
     }
 }
