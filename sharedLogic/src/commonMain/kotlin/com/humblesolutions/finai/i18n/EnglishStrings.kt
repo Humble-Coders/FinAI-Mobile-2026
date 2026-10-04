@@ -220,6 +220,8 @@ val EnglishStrings: Map<String, String> = mapOf(
     Strings.dashboard_recent_debit to "− {0}",
     Strings.dashboard_recent_row to "{0}, {1}, {2}, {3}",
     Strings.dashboard_trend_label to "Net by month",
+    Strings.dashboard_daily_tick to "{0} {1}",
+    Strings.dashboard_daily_description to "Balance by day, {0}: {1} on the first day, {2} on the latest. Lowest {3}, highest {4}.",
     Strings.commitment_edit_title to "Edit commitment",
     Strings.commitment_edit_name to "Name",
     Strings.commitment_edit_amount to "Monthly amount",

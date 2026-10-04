@@ -30,6 +30,18 @@ struct DashboardView: View {
     @Environment(\.colorScheme) private var scheme
     private var dark: Bool { scheme == .dark }
 
+    /// Where the header sat before any scrolling, and how far it has moved up since.
+    @State private var restingTop: CGFloat?
+    @State private var scrolled: CGFloat = 0
+
+    /// The scroll over which the header shrinks into the bar: about its own height.
+    private static let collapseDistance: CGFloat = 64
+
+    /// How far the header has shrunk into the bar, 0 to 1.
+    private var collapsed: CGFloat { min(max(scrolled / Self.collapseDistance, 0), 1) }
+
+    private var headerOpacity: Double { Double(1 - min(collapsed * 2, 1)) }
+
     var body: some View {
         ScrollView {
             VStack(spacing: 0) {
@@ -37,7 +49,9 @@ struct DashboardView: View {
                 sheet.padding(.top, -Field.sheetOverlap)
             }
         }
+        .coordinateSpace(name: Self.space)
         .scrollBounceBehavior(.basedOnSize)
+        .overlay(alignment: .top) { compactHeader }
         // Green above, the sheet's ground below, so pulling past either end
         // shows the colour already there rather than a strip of the other.
         .background(
@@ -52,6 +66,8 @@ struct DashboardView: View {
         .sheet(isPresented: commitmentShown) { CommitmentEditor(model: model) }
     }
 
+    private static let space = "home"
+
     private var commitmentShown: Binding<Bool> {
         Binding(get: { model.showsCommitmentEditor }, set: { if !$0 { model.cancelCommitment() } })
     }
@@ -61,16 +77,28 @@ struct DashboardView: View {
     private var field: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
+                // Out over the first half of the stretch; the bar comes in
+                // over the second, so the two greetings never show together.
+                .opacity(headerOpacity)
+                .onGeometryChange(for: CGFloat.self) { proxy in
+                    proxy.frame(in: .named(Self.space)).minY
+                } action: { (top: CGFloat) in
+                    let rest: CGFloat = restingTop ?? top
+                    if restingTop == nil { restingTop = top }
+                    scrolled = rest - top
+                }
             hero.padding(.top, 26)
-            if let chart = model.chart {
-                TrendChart(chart: chart, labels: model.chartLabels)
-                    .frame(height: 172)
-                    .accessibilityElement(children: .ignore)
-                    .accessibilityLabel(
-                        L.t(Strings.shared.dashboard_trend_label) + ": "
-                            + model.trendDescriptions.joined(separator: "; ")
-                    )
-                    .padding(.top, 18)
+            if let chart = model.dailyChart {
+                DailyChart(
+                    chart: chart,
+                    ticks: model.dailyTicks,
+                    value: model.dailyMarkerValue,
+                    isLoss: model.dailyMarkerIsLoss
+                )
+                .frame(height: 128)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(model.dailyDescription)
+                .padding(.top, 14)
             }
             Group {
                 if model.loadFailed {
@@ -121,28 +149,68 @@ struct DashboardView: View {
             }
             Spacer(minLength: 0)
 
-            // The bell is the review queue, and its dot means something: rows
-            // are waiting. A badge that never changes teaches people to ignore
-            // it.
-            Button(action: onReview) {
-                ZStack(alignment: .topTrailing) {
-                    Circle().fill(Field.glass)
-                    Circle().stroke(Field.glassEdge, lineWidth: 1)
-                    FinAiIcon(symbol: "bell.fill", tint: Field.ink(), size: 20)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    if model.hasPending {
-                        Circle()
-                            .fill(Brand.red)
-                            .overlay(Circle().stroke(Field.ink(), lineWidth: 1.5))
-                            .frame(width: 9, height: 9)
-                            .offset(x: -12, y: 11)
-                    }
-                }
-                .frame(width: 48, height: 48)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(model.notificationsLabel)
+            bell(size: 48)
         }
+    }
+
+    /**
+     The header once the page has scrolled: a slim bar pinned over the top, the
+     greeting centred in it and the bell still in reach. It fades in once the
+     big header has faded out. Solid rather than see-through, because figures
+     pass under it. Mirrors Android's `CompactHeader`.
+     */
+    private var compactHeader: some View {
+        let opacity: Double = Double(min(max((collapsed - 0.5) * 2, 0), 1))
+        return ZStack {
+            Text(L.t(Strings.shared.dashboard_greeting))
+                .font(.headline.weight(.bold))
+                .foregroundColor(Field.ink())
+                .lineLimit(1)
+                .padding(.horizontal, 56)
+                .accessibilityAddTraits(.isHeader)
+            HStack {
+                Spacer(minLength: 0)
+                bell(size: 38)
+            }
+        }
+        .padding(.horizontal, 12)
+        .frame(height: 52)
+        .frame(maxWidth: .infinity)
+        .background(
+            Field.top(dark)
+                .shadow(color: .black.opacity(0.18 * opacity), radius: 6, y: 2)
+                .ignoresSafeArea(edges: .top)
+        )
+        .opacity(opacity)
+        // A bar at nothing opacity must not catch a tap meant for the header.
+        .allowsHitTesting(opacity > 0)
+        .accessibilityHidden(opacity == 0)
+    }
+
+    /// The bell is the review queue, and its dot means something: rows are
+    /// waiting. A badge that never changes teaches people to ignore it.
+    private func bell(size: CGFloat) -> some View {
+        Button(action: onReview) {
+            ZStack(alignment: .topTrailing) {
+                Circle().fill(Field.glass)
+                Circle().stroke(Field.glassEdge, lineWidth: 1)
+                FinAiIcon(symbol: "bell.fill", tint: Field.ink(), size: size * 0.42)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                if model.hasPending {
+                    Circle()
+                        .fill(Brand.red)
+                        .overlay(Circle().stroke(Field.ink(), lineWidth: 1.5))
+                        .frame(width: 9, height: 9)
+                        .offset(x: -size * 0.25, y: size * 0.23)
+                }
+            }
+            .frame(width: size, height: size)
+            // Never under 44pt to touch, however small it is drawn.
+            .frame(minWidth: 44, minHeight: 44)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(model.notificationsLabel)
     }
 
     // MARK: - Hero
@@ -350,52 +418,99 @@ struct DashboardView: View {
     }
 
     private func recent(_ rows: [RecentRow]) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 11, style: .continuous)
+                        .fill(Accent.income.icon.opacity(dark ? 0.2 : 0.12))
+                    FinAiIcon(symbol: "list.bullet.rectangle.fill", tint: Accent.income.label(dark), size: 17)
+                }
+                .frame(width: 36, height: 36)
+                .accessibilityHidden(true)
                 Text(L.t(Strings.shared.dashboard_recent_title))
                     .font(.title3.weight(.bold))
+                    .lineLimit(1)
                     .accessibilityAddTraits(.isHeader)
                 Spacer(minLength: 8)
+                // A pill rather than bare words, so it reads as the way in that it is.
                 Button(action: onViewAll) {
                     HStack(spacing: 2) {
-                        Text(L.t(Strings.shared.dashboard_recent_view_all)).font(.subheadline.weight(.medium))
-                        FinAiIcon(symbol: "chevron.right", tint: Brand.textMuted, size: 12)
+                        Text(L.t(Strings.shared.dashboard_recent_view_all)).font(.subheadline.weight(.semibold))
+                        FinAiIcon(symbol: "chevron.right", tint: Accent.income.label(dark), size: 11)
                     }
-                    .foregroundColor(Brand.textMuted)
+                    .foregroundColor(Accent.income.label(dark))
+                    .padding(.leading, 12)
+                    .padding(.trailing, 9)
+                    .padding(.vertical, 6)
+                    .background(Capsule().fill(Accent.income.icon.opacity(dark ? 0.18 : 0.1)))
                     .frame(minHeight: 44)
                 }
+                .buttonStyle(.plain)
             }
-            ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
-                recentLine(row)
-                if index != rows.count - 1 { Divider().overlay(Brand.border) }
-            }
+            ForEach(rows) { row in recentLine(row) }
         }
     }
 
+    /**
+     One row as a soft card: the category's picture on a tile in its colour,
+     with a small arrow on the tile's corner for the direction — into the
+     account or out of it — beside the amount that says it again in words.
+     */
     private func recentLine(_ row: RecentRow) -> some View {
         HStack(spacing: 12) {
+            recentTile(row)
             VStack(alignment: .leading, spacing: 2) {
-                Text(row.title).font(.headline.weight(.regular)).lineLimit(1).truncationMode(.tail)
-                Text(row.date).font(.subheadline).foregroundColor(Brand.textMuted)
-            }
-            Spacer(minLength: 8)
-            VStack(alignment: .trailing, spacing: 2) {
-                Text(row.amount)
-                    .font(.headline.weight(.semibold))
-                    // Green for money in; money out stays plain, and the sign
-                    // says it in words, so colour is never the only cue.
-                    .foregroundColor(row.isCredit ? Accent.income.label(dark) : .primary)
+                Text(row.title).font(.headline.weight(.semibold)).lineLimit(1).truncationMode(.tail)
                 Text(row.category)
                     .font(.subheadline)
                     .foregroundColor(row.isFiled ? Brand.textMuted : Accent.debts.label(dark))
                     .lineLimit(1)
-                    .frame(maxWidth: 160, alignment: .trailing)
+            }
+            Spacer(minLength: 8)
+            VStack(alignment: .trailing, spacing: 2) {
+                Text(row.amount)
+                    .font(.headline.weight(.bold))
+                    .lineLimit(1)
+                    // Green for money in; money out stays plain, and the sign
+                    // says it in words, so colour is never the only cue.
+                    .foregroundColor(row.isCredit ? Accent.income.label(dark) : .primary)
+                Text(row.date).font(.caption).foregroundColor(Brand.textMuted).lineLimit(1)
             }
         }
-        .padding(.vertical, 10)
-        .frame(minHeight: 64)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .frame(minHeight: 72)
+        .background(
+            RoundedRectangle(cornerRadius: 20, style: .continuous).fill(cardSurface)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(dark ? Color.white.opacity(0.06) : Color(red: 0xE8 / 255, green: 0xF1 / 255, blue: 0xEC / 255), lineWidth: 1)
+        )
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(row.description)
+    }
+
+    private func recentTile(_ row: RecentRow) -> some View {
+        let tint = row.icon.tint(dark)
+        let direction = row.isCredit ? Accent.income.label(dark) : Accent.expenses.label(dark)
+        return ZStack(alignment: .bottomTrailing) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 15, style: .continuous).fill(tint.opacity(dark ? 0.2 : 0.12))
+                FinAiIcon(symbol: row.icon.systemName, tint: tint, size: 21)
+            }
+            .frame(width: 46, height: 46)
+            .frame(width: 48, height: 48, alignment: .topLeading)
+            ZStack {
+                Circle().fill(cardSurface)
+                Circle().fill(direction).padding(2)
+                Image(systemName: row.isCredit ? "arrow.down.left" : "arrow.up.right")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundColor(.white)
+            }
+            .frame(width: 20, height: 20)
+        }
+        .accessibilityHidden(true)
     }
 
     private var commitments: some View {
@@ -535,49 +650,57 @@ struct Waves: View {
 // MARK: - The chart
 
 /**
- Net by month, as a line with every figure written on it. The geometry is
- shared (`DashboardTrend`): a gap is never drawn through, so no line invents a
- value for a month nobody recorded; a loss sits below a gain; and when the
- months cross zero a dashed line marks it, so a month in the red is visible as
- one. Each recorded month carries its rounded figure, each month its name; the
- month in view is the right-hand end, marked, with its figure on a pill.
-
- Labels that would collide are left off — the month in view's never — rather
- than drawn over one another. Every figure is in the accessibility label too.
- Mirrors Android's `TrendChart`.
+ The month day by day: the running balance of everything in minus everything
+ out, from the 1st. The geometry is shared (`DashboardTrend.daily`). The axis
+ is the whole calendar month, so a month still running stops part-way with the
+ rest of it ahead; the dashed line is zero, which the scale always includes,
+ so a stretch below it reads as behind for the month. The latest day is
+ marked, with its figure on a pill. Mirrors Android's `DailyChart`.
  */
-private struct TrendChart: View {
-    let chart: DashboardTrend.Chart
-    let labels: [ChartLabel]
+private struct DailyChart: View {
+    let chart: DashboardTrend.DailyChart
+    let ticks: [String]
+    let value: String?
+    let isLoss: Bool
 
-    private let side: CGFloat = 22
-    /// Room above the line for the figures written over it.
-    private let top: CGFloat = 34
-    /// Room below for the month names.
-    private let bottom: CGFloat = 30
+    private let side: CGFloat = 18
+    /// Room above the line for the latest day's figure.
+    private let top: CGFloat = 26
+    /// Room below for the days.
+    private let bottom: CGFloat = 22
 
     var body: some View {
         GeometryReader { geometry in
-            let size = geometry.size
-            ZStack(alignment: .topLeading) {
-                if let zero = chart.zero?.doubleValue {
-                    Path { path in
-                        path.move(to: CGPoint(x: side, y: y(zero, size)))
-                        path.addLine(to: CGPoint(x: size.width - side, y: y(zero, size)))
-                    }
-                    .stroke(Field.ink(0.35), style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
-                }
-                ForEach(Array(chart.segments.enumerated()), id: \.offset) { _, run in
-                    segment(run.map { $0.intValue }, size)
-                }
-                if let index = chart.markerIndex?.intValue {
-                    marker(at(chart.points[index], size), size)
-                }
-                ForEach(placements(size), id: \.key) { placed in
-                    placed.view.position(placed.centre)
-                }
+            canvas(geometry.size)
+        }
+    }
+
+    private func canvas(_ size: CGSize) -> some View {
+        let pts: [CGPoint] = chart.days.map { at($0, size) }
+        let zero: CGFloat = y(chart.zero, size)
+        let dot: CGPoint = pts[Int(chart.markerIndex)]
+        return ZStack(alignment: .topLeading) {
+            rules(size)
+            Path { path in
+                path.move(to: CGPoint(x: side, y: zero))
+                path.addLine(to: CGPoint(x: size.width - side, y: zero))
+            }
+            .stroke(Field.ink(0.35), style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
+            if pts.count > 1 { line(pts, zero: zero, size) }
+            marker(dot, size)
+            if let value { pill(value, dot: dot, size) }
+            ForEach(tickPlacements(size), id: \.index) { placed in
+                Text(ticks[placed.index])
+                    .font(.caption2.weight(placed.index == 0 || placed.index == ticks.count - 1 ? .medium : .regular))
+                    .foregroundColor(Field.ink(0.75))
+                    .fixedSize()
+                    .position(placed.centre)
             }
         }
+    }
+
+    private func x(_ fraction: Double, _ size: CGSize) -> CGFloat {
+        side + CGFloat(fraction) * (size.width - side * 2)
     }
 
     private func y(_ fraction: Double, _ size: CGSize) -> CGFloat {
@@ -585,45 +708,48 @@ private struct TrendChart: View {
         return low - CGFloat(fraction) * (low - top)
     }
 
-    private func at(_ point: DashboardTrend.Point, _ size: CGSize) -> CGPoint {
-        CGPoint(
-            x: side + CGFloat(point.x) * (size.width - side * 2),
-            y: y(point.y?.doubleValue ?? 0, size)
-        )
+    private func at(_ day: DashboardTrend.Day, _ size: CGSize) -> CGPoint {
+        CGPoint(x: x(day.x, size), y: y(day.y, size))
+    }
+
+    /// A faint rule at each named day, so the weeks can be read off.
+    private func rules(_ size: CGSize) -> some View {
+        Path { path in
+            for tick in chart.ticks {
+                let at = x(tick.x, size)
+                path.move(to: CGPoint(x: at, y: top))
+                path.addLine(to: CGPoint(x: at, y: size.height - bottom))
+            }
+        }
+        .stroke(Field.ink(0.07), lineWidth: 1)
     }
 
     @ViewBuilder
-    private func segment(_ run: [Int], _ size: CGSize) -> some View {
-        let pts = run.map { at(chart.points[$0], size) }
-        let floor = size.height - bottom
-        if pts.count > 1 {
-            let line = Path { path in
-                path.move(to: pts[0])
-                // Control points level with each end, so the curve never
-                // overshoots a month above or below its value.
-                for (a, b) in zip(pts, pts.dropFirst()) {
-                    let mid = (a.x + b.x) / 2
-                    path.addCurve(to: b, control1: CGPoint(x: mid, y: a.y), control2: CGPoint(x: mid, y: b.y))
-                }
+    private func line(_ pts: [CGPoint], zero: CGFloat, _ size: CGSize) -> some View {
+        let line = Path { path in
+            path.move(to: pts[0])
+            // Control points level with each end, so the curve never
+            // overshoots a day above or below its value.
+            for (a, b) in zip(pts, pts.dropFirst()) {
+                let mid = (a.x + b.x) / 2
+                path.addCurve(to: b, control1: CGPoint(x: mid, y: a.y), control2: CGPoint(x: mid, y: b.y))
             }
-            let fill = Path { path in
-                path.addPath(line)
-                path.addLine(to: CGPoint(x: pts[pts.count - 1].x, y: floor))
-                path.addLine(to: CGPoint(x: pts[0].x, y: floor))
-                path.closeSubpath()
-            }
-            fill.fill(
-                LinearGradient(
-                    colors: [Field.ink(0.20), Field.ink(0)],
-                    startPoint: UnitPoint(x: 0.5, y: top / max(size.height, 1)),
-                    endPoint: UnitPoint(x: 0.5, y: floor / max(size.height, 1))
-                )
+        }
+        let fill = Path { path in
+            path.addPath(line)
+            path.addLine(to: CGPoint(x: pts[pts.count - 1].x, y: zero))
+            path.addLine(to: CGPoint(x: pts[0].x, y: zero))
+            path.closeSubpath()
+        }
+        let height = max(size.height, 1)
+        fill.fill(
+            LinearGradient(
+                colors: [Field.ink(0.24), Field.ink(0.02)],
+                startPoint: UnitPoint(x: 0.5, y: top / height),
+                endPoint: UnitPoint(x: 0.5, y: (size.height - bottom) / height)
             )
-            line.stroke(Field.ink(0.95), style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
-        }
-        ForEach(Array(pts.enumerated()), id: \.offset) { _, point in
-            Circle().fill(Field.ink(0.95)).frame(width: 7, height: 7).position(point)
-        }
+        )
+        line.stroke(Field.ink(0.95), style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
     }
 
     @ViewBuilder
@@ -633,87 +759,60 @@ private struct TrendChart: View {
             path.addLine(to: CGPoint(x: dot.x, y: size.height - bottom))
         }
         .stroke(Field.ink(0.5), style: StrokeStyle(lineWidth: 1.5, dash: [3, 3]))
-        Circle().fill(Field.ink(0.3)).frame(width: 20, height: 20).position(dot)
-        Circle().fill(Field.ink()).frame(width: 11, height: 11).position(dot)
+        Circle().fill(Field.ink(0.3)).frame(width: 18, height: 18).position(dot)
+        Circle().fill(Field.ink()).frame(width: 10, height: 10).position(dot)
+    }
+
+    /// Below a month behind, where the line dipped to — unless there is no
+    /// room there, when it goes above rather than over the dot.
+    private func pill(_ value: String, dot: CGPoint, _ size: CGSize) -> some View {
+        let width = Self.width(value) + 14
+        let height: CGFloat = 20
+        let x = min(max(dot.x, width / 2), size.width - width / 2)
+        let above = dot.y - 12 - height / 2
+        let below = dot.y + 12 + height / 2
+        let fitsBelow = below + height / 2 <= size.height - bottom
+        let y = (isLoss && fitsBelow) || (above < height / 2 && fitsBelow) ? below : max(above, height / 2)
+        return Text(value)
+            .font(.caption2.weight(.bold))
+            .foregroundColor(Field.ink())
+            .fixedSize()
+            .padding(.horizontal, 7)
+            .padding(.vertical, 2)
+            .background(Capsule().fill(Field.glass))
+            .overlay(Capsule().stroke(Field.glassEdge, lineWidth: 1))
+            .position(x: x, y: y)
     }
 
     private struct Placed {
-        let key: String
+        let index: Int
         let centre: CGPoint
-        let view: AnyView
     }
 
-    /// Every label that fits, centred where it belongs; the month in view first.
-    private func placements(_ size: CGSize) -> [Placed] {
-        let marker = chart.markerIndex?.intValue
-        let order = (marker.map { [$0] } ?? []) + labels.indices.filter { $0 != marker }
-        let gap: CGFloat = 4
+    /// The days that fit along the bottom; the month's two ends first, so they
+    /// are never the ones left off.
+    private func tickPlacements(_ size: CGSize) -> [Placed] {
+        let count = min(ticks.count, chart.ticks.count)
+        guard count > 0 else { return [] }
+        var order = [0, count - 1]
+        order += (1 ..< max(count - 1, 1)).filter { $0 != count - 1 }
+        var taken: [ClosedRange<CGFloat>] = []
         var out: [Placed] = []
-
-        var takenValues: [ClosedRange<CGFloat>] = []
-        for index in order {
-            guard let value = labels[index].value, chart.points[index].y != nil else { continue }
-            let marked = index == marker
-            let width = Self.width(value, bold: marked) + (marked ? 14 : 0)
-            let height: CGFloat = marked ? 20 : 16
-            let dot = at(chart.points[index], size)
-            let x = min(max(dot.x, width / 2), size.width - width / 2)
-            let span = (x - width / 2 - gap)...(x + width / 2 + gap)
-            if takenValues.contains(where: { $0.overlaps(span) }) { continue }
-            takenValues.append(span)
-            // Below a month in the red, where the line dipped to, rather than
-            // across the line it is a label for.
-            let y = labels[index].isLoss
-                ? min(dot.y + 10 + height / 2, size.height - bottom - height / 2)
-                : max(dot.y - 10 - height / 2, height / 2)
-            out.append(Placed(key: "v\(index)", centre: CGPoint(x: x, y: y), view: AnyView(valueLabel(value, marked: marked))))
-        }
-
-        var takenMonths: [ClosedRange<CGFloat>] = []
-        for index in order {
-            let month = labels[index].month
-            let width = Self.width(month, bold: index == marker)
-            let x = min(max(at(chart.points[index], size).x, width / 2), size.width - width / 2)
-            let span = (x - width / 2 - gap)...(x + width / 2 + gap)
-            if takenMonths.contains(where: { $0.overlaps(span) }) { continue }
-            takenMonths.append(span)
-            let recorded = chart.points[index].y != nil
-            out.append(Placed(
-                key: "m\(index)",
-                centre: CGPoint(x: x, y: size.height - 9),
-                view: AnyView(
-                    Text(month)
-                        .font(.caption2.weight(index == marker ? .bold : .regular))
-                        // A month with nothing recorded is named, but quietly.
-                        .foregroundColor(Field.ink(recorded ? 0.8 : 0.45))
-                        .fixedSize()
-                )
-            ))
+        for index in order where !out.contains(where: { $0.index == index }) {
+            let width = Self.width(ticks[index])
+            let centre = min(max(x(chart.ticks[index].x, size), width / 2), size.width - width / 2)
+            let span = (centre - width / 2 - 4)...(centre + width / 2 + 4)
+            if taken.contains(where: { $0.overlaps(span) }) { continue }
+            taken.append(span)
+            out.append(Placed(index: index, centre: CGPoint(x: centre, y: size.height - 9)))
         }
         return out
     }
 
-    @ViewBuilder
-    private func valueLabel(_ value: String, marked: Bool) -> some View {
-        let text = Text(value)
-            .font(.caption2.weight(marked ? .bold : .medium))
-            .foregroundColor(Field.ink(marked ? 1 : 0.85))
-            .fixedSize()
-        if marked {
-            text
-                .padding(.horizontal, 7)
-                .padding(.vertical, 2)
-                .background(Capsule().fill(Field.glass))
-                .overlay(Capsule().stroke(Field.glassEdge, lineWidth: 1))
-        } else {
-            text
-        }
-    }
-
     /// A label's width in the Dynamic Type font it is drawn in.
-    private static func width(_ text: String, bold: Bool) -> CGFloat {
+    private static func width(_ text: String) -> CGFloat {
         let base = UIFont.preferredFont(forTextStyle: .caption2)
-        let font = UIFont.systemFont(ofSize: base.pointSize, weight: bold ? .bold : .medium)
+        let font = UIFont.systemFont(ofSize: base.pointSize, weight: .bold)
         return ceil((text as NSString).size(withAttributes: [.font: font]).width)
     }
 }

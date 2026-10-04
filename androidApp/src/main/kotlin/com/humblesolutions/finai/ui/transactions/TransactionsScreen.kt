@@ -27,32 +27,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.automirrored.filled.Label
-import androidx.compose.material.icons.automirrored.filled.ReceiptLong
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
-import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.CalendarMonth
-import androidx.compose.material.icons.filled.CardGiftcard
-import androidx.compose.material.icons.filled.CreditCard
-import androidx.compose.material.icons.filled.DirectionsCar
-import androidx.compose.material.icons.filled.Flight
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.LocalGroceryStore
-import androidx.compose.material.icons.filled.LocalHospital
-import androidx.compose.material.icons.filled.Payments
-import androidx.compose.material.icons.filled.PhoneAndroid
-import androidx.compose.material.icons.filled.Restaurant
-import androidx.compose.material.icons.filled.Savings
-import androidx.compose.material.icons.filled.School
-import androidx.compose.material.icons.filled.Security
-import androidx.compose.material.icons.filled.ShoppingBag
-import androidx.compose.material.icons.filled.Spa
-import androidx.compose.material.icons.filled.Subscriptions
-import androidx.compose.material.icons.filled.SwapHoriz
-import androidx.compose.material.icons.filled.TheaterComedy
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -95,11 +73,11 @@ import com.humblesolutions.finai.ui.components.LightStatusBarIcons
 import com.humblesolutions.finai.ui.components.SheetRow
 import com.humblesolutions.finai.ui.components.SheetTitle
 import com.humblesolutions.finai.ui.components.Waves
+import com.humblesolutions.finai.ui.components.vector
 import com.humblesolutions.finai.ui.edit.TransactionEditorActions
 import com.humblesolutions.finai.ui.edit.TransactionEditorSheet
 import com.humblesolutions.finai.ui.strings
 import com.humblesolutions.finai.ui.theme.FinAiPalette
-import com.humblesolutions.finai.usecase.CategoryIcon
 import com.humblesolutions.finai.usecase.TransactionBrowsing
 import kotlin.math.min
 
@@ -539,7 +517,7 @@ private fun Card(state: TransactionsUiState, row: Transaction, onEdit: () -> Uni
             contentAlignment = Alignment.Center,
         ) {
             FinAiIcon(
-                iconOf(state.iconFor(row)),
+                state.iconFor(row).vector(),
                 tint = if (filed) FinAiPalette.GreenDeep.takeUnless { dark } ?: FinAiPalette.Green else Color(0xFFB45309),
                 size = 26.dp,
             )
@@ -577,32 +555,6 @@ private fun Card(state: TransactionsUiState, row: Transaction, onEdit: () -> Uni
         Spacer(Modifier.width(4.dp))
         FinAiIcon(Icons.AutoMirrored.Filled.KeyboardArrowRight, tint = MaterialTheme.colorScheme.onSurfaceVariant, size = 20.dp)
     }
-}
-
-/** The shared icon names as Material's pictures. */
-private fun iconOf(icon: CategoryIcon): ImageVector = when (icon) {
-    CategoryIcon.HOME -> Icons.Filled.Home
-    CategoryIcon.TRANSFER -> Icons.Filled.SwapHoriz
-    CategoryIcon.DOCUMENT -> Icons.AutoMirrored.Filled.ReceiptLong
-    CategoryIcon.CAR -> Icons.Filled.DirectionsCar
-    CategoryIcon.BAG -> Icons.Filled.ShoppingBag
-    CategoryIcon.BOLT -> Icons.Filled.Bolt
-    CategoryIcon.DINING -> Icons.Filled.Restaurant
-    CategoryIcon.CART -> Icons.Filled.LocalGroceryStore
-    CategoryIcon.HEART -> Icons.Filled.LocalHospital
-    CategoryIcon.SALARY -> Icons.Filled.Payments
-    CategoryIcon.SHIELD -> Icons.Filled.Security
-    CategoryIcon.SCHOOL -> Icons.Filled.School
-    CategoryIcon.TICKET -> Icons.Filled.TheaterComedy
-    CategoryIcon.GIFT -> Icons.Filled.CardGiftcard
-    CategoryIcon.SPA -> Icons.Filled.Spa
-    CategoryIcon.PIGGY -> Icons.Filled.Savings
-    CategoryIcon.REPEAT -> Icons.Filled.Subscriptions
-    CategoryIcon.PLANE -> Icons.Filled.Flight
-    CategoryIcon.CARD -> Icons.Filled.CreditCard
-    CategoryIcon.PHONE -> Icons.Filled.PhoneAndroid
-    CategoryIcon.TAG -> Icons.AutoMirrored.Filled.Label
-    CategoryIcon.UNFILED -> Icons.AutoMirrored.Filled.HelpOutline
 }
 
 // ── Below the stack ─────────────────────────────────────────────────────

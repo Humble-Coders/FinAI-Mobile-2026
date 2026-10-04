@@ -46,6 +46,13 @@ data class Dashboard(
     /** Oldest first, ending at [month]. */
     val trend: List<MonthPoint> = emptyList(),
 
+    /**
+     * The month's running in-minus-out, one point a day from the 1st, ending
+     * at [net]. Empty for a month with nothing in it — and from a server older
+     * than the field, which a screen treats the same: no chart.
+     */
+    val daily: List<DayPoint> = emptyList(),
+
     /** Rows this month still waiting on a person, and the caveat on the figures. */
     @SerialName("pending_review")
     val pendingReview: Int = 0,
@@ -173,3 +180,13 @@ data class MonthPoint(
 ) {
     val hasData: Boolean get() = net != null
 }
+
+/**
+ * One day of the month's running balance: everything in minus everything out
+ * from the 1st up to and including [day]. A quiet day carries the day before's.
+ */
+@Serializable
+data class DayPoint(
+    val day: String = "",
+    val net: String = "0",
+)

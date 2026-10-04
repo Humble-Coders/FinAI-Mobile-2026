@@ -5,11 +5,13 @@ import com.humblesolutions.finai.model.Category
 import com.humblesolutions.finai.model.Commitment
 import com.humblesolutions.finai.model.CommitmentMatch
 import com.humblesolutions.finai.model.Dashboard
+import com.humblesolutions.finai.model.DayPoint
 import com.humblesolutions.finai.model.Flow
 import com.humblesolutions.finai.model.MonthPoint
 import com.humblesolutions.finai.model.Stock
 import com.humblesolutions.finai.model.Transaction
 import com.humblesolutions.finai.model.TransactionDirection
+import com.humblesolutions.finai.usecase.CategoryIcon
 import kotlinx.datetime.LocalDate
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -31,6 +33,7 @@ class DashboardUiStateTest {
         debts: Stock = Stock("12000.00", "0"),
         commitments: List<Commitment> = emptyList(),
         trend: List<MonthPoint> = emptyList(),
+        daily: List<DayPoint> = emptyList(),
         pendingReview: Int = 0,
     ) = Dashboard(
         month = "2026-08-01",
@@ -43,6 +46,7 @@ class DashboardUiStateTest {
         debts = debts,
         commitments = commitments,
         trend = trend,
+        daily = daily,
         pendingReview = pendingReview,
     )
 
@@ -195,25 +199,10 @@ class DashboardUiStateTest {
     }
 
     @Test
-    fun a_month_with_no_rows_is_heard_as_a_gap() {
-        // The line says nothing to somebody who cannot see it.
-        val descriptions = state(
-            august(
-                trend = listOf(
-                    MonthPoint("2026-06-01", "300.00"),
-                    MonthPoint("2026-07-01", null),
-                    MonthPoint("2026-08-01", "1500.00"),
-                ),
-            ),
-        ).trendDescriptions
-
-        assertEquals("Jul: nothing recorded", descriptions[1])
-        assertEquals(3, descriptions.size)
-    }
-
-    @Test
-    fun there_is_no_chart_until_a_month_holds_something() {
-        assertNull(state(august(trend = listOf(MonthPoint("2026-07-01", null)))).chart)
+    fun there_is_no_chart_for_a_month_with_no_days() {
+        // An empty month, and a server older than the field, look the same.
+        assertNull(state(august()).dailyChart)
+        assertTrue(state(august()).dailyTicks.isEmpty())
     }
 
     // ── The recent list ─────────────────────────────────────────────────
@@ -324,6 +313,7 @@ class DashboardUiStateTest {
                 investments = Stock("40000.00", "500.00"),
                 commitments = listOf(Commitment(name = "Rent", expected = "1800.00")),
                 trend = listOf(MonthPoint("2026-07-01", null)),
+                daily = listOf(DayPoint("2026-08-01", "5000.00"), DayPoint("2026-08-02", "4200.00")),
                 pendingReview = 2,
             ),
         )
@@ -336,7 +326,8 @@ class DashboardUiStateTest {
             month.commitmentsSummary,
             month.pendingReviewLabel,
             month.commitments.single().detail,
-            month.trendDescriptions.single(),
+            month.dailyDescription.takeIf { it.isNotEmpty() },
+            *month.dailyTicks.toTypedArray(),
         )
         shown.forEach { assertEquals(it, LocalizationRegistry.get(it), "raw key reached the screen: $it") }
     }
@@ -345,34 +336,53 @@ class DashboardUiStateTest {
 
     private fun charted() = state(
         august(
-            trend = listOf(
-                MonthPoint("2026-05-01", null),
-                MonthPoint("2026-06-01", "1500.00"),
-                MonthPoint("2026-07-01", null),
-                MonthPoint("2026-08-01", "-610.00"),
+            net = "-610.00",
+            daily = listOf(
+                DayPoint("2026-08-01", "1500.00"),
+                DayPoint("2026-08-02", "1500.00"),
+                DayPoint("2026-08-03", "-610.00"),
             ),
         ),
     )
 
     @Test
-    fun each_point_is_labelled_with_its_month_and_its_rounded_figure() {
-        val labels = charted().chartLabels
-
-        // May is before the first recorded month, so the chart starts at June.
-        assertEquals(listOf("Jun", "Jul", "Aug"), labels.map { it.month })
-        assertEquals(listOf("$1.5k", null, "-$610"), labels.map { it.value })
+    fun the_days_are_named_with_the_month_at_each_end() {
+        assertEquals(listOf("Aug 1", "8", "15", "22", "Aug 31"), charted().dailyTicks)
     }
 
     @Test
-    fun a_month_in_the_red_is_marked_so_its_figure_goes_below_the_line() {
-        assertEquals(listOf(false, false, true), charted().chartLabels.map { it.isLoss })
+    fun the_marker_carries_the_latest_days_rounded_figure() {
+        assertEquals("-$610", charted().dailyMarkerValue)
+        assertTrue(charted().dailyMarkerIsLoss, "a month behind writes its figure below the line")
     }
 
     @Test
-    fun hiding_amounts_takes_the_figures_off_the_chart_but_not_the_months() {
-        val labels = charted().copy(amountsHidden = true).chartLabels
+    fun hiding_amounts_takes_the_figure_off_the_chart_but_not_the_days() {
+        val hidden = charted().copy(amountsHidden = true)
 
-        assertEquals(listOf("Jun", "Jul", "Aug"), labels.map { it.month })
-        assertTrue(labels.all { it.value == null })
+        assertNull(hidden.dailyMarkerValue)
+        assertEquals(5, hidden.dailyTicks.size)
+        assertFalse(hidden.dailyDescription.contains("610"), "a masked screen must not leak a figure")
+    }
+
+    @Test
+    fun the_line_is_described_in_words() {
+        val description = charted().dailyDescription
+
+        assertTrue(description.contains("Aug 2026"))
+        assertTrue(description.contains("$1,500.00"))
+        assertTrue(description.contains("-$610.00") || description.contains("−$610.00"), description)
+    }
+
+    @Test
+    fun a_recent_row_is_drawn_with_its_categorys_icon() {
+        val filed = state(august()).copy(
+            recent = listOf(row()),
+            categories = listOf(groceries.copy(slug = "groceries")),
+        ).recentRows.single()
+        val unfiled = state(august()).copy(recent = listOf(row(categoryId = null))).recentRows.single()
+
+        assertEquals(CategoryIcon.CART, filed.icon)
+        assertEquals(CategoryIcon.UNFILED, unfiled.icon)
     }
 }

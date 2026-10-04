@@ -1,5 +1,6 @@
 package com.humblesolutions.finai.usecase
 
+import com.humblesolutions.finai.model.DayPoint
 import com.humblesolutions.finai.model.MonthPoint
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -98,5 +99,61 @@ class DashboardTrendTest {
     fun there_is_no_zero_line_when_every_month_is_on_one_side() {
         assertNull(assertNotNull(DashboardTrend.chart(listOf(month(7, "100"), month(8, "300")))).zero)
         assertNull(assertNotNull(DashboardTrend.chart(listOf(month(7, "-100"), month(8, "-300")))).zero)
+    }
+
+    // ── The month, day by day ───────────────────────────────────────────
+
+    private fun day(d: Int, net: String, m: Int = 8) = DayPoint("2026-${m.toString().padStart(2, '0')}-${d.toString().padStart(2, '0')}", net)
+
+    @Test
+    fun no_days_is_no_daily_chart() {
+        assertNull(DashboardTrend.daily(emptyList(), "2026-08-01"), "an empty month, or an older server")
+        assertNull(DashboardTrend.daily(listOf(day(3, "10")), "not a month"))
+    }
+
+    @Test
+    fun the_axis_is_the_whole_month_so_a_running_month_stops_part_way() {
+        val chart = assertNotNull(DashboardTrend.daily((1..16).map { day(it, "100") }, "2026-08-01"))
+
+        assertEquals(0.0, chart.days.first().x)
+        assertEquals(0.5, chart.days.last().x, "the 16th of 31 days is halfway")
+        assertEquals(15, chart.markerIndex, "the marker is the latest day")
+    }
+
+    @Test
+    fun the_ticks_are_the_first_each_week_and_the_last_day() {
+        val august = assertNotNull(DashboardTrend.daily(listOf(day(1, "1")), "2026-08-01"))
+        val february = assertNotNull(DashboardTrend.daily(listOf(day(1, "1", m = 2)), "2026-02-01"))
+
+        assertEquals(listOf(1, 8, 15, 22, 31), august.ticks.map { it.day })
+        assertEquals(listOf(1, 8, 15, 22, 28), february.ticks.map { it.day })
+        assertEquals(1.0, february.ticks.last().x)
+    }
+
+    @Test
+    fun zero_is_always_on_the_scale() {
+        // All ahead: zero is the floor the line is read against.
+        val ahead = assertNotNull(DashboardTrend.daily(listOf(day(1, "500"), day(2, "900")), "2026-08-01"))
+        assertTrue(ahead.zero in 0.0..1.0, "zero is drawn, not off the bottom: ${ahead.zero}")
+        assertTrue(ahead.zero < ahead.days.minOf { it.y })
+
+        // Dipping behind: the line crosses it, a day in the red sits below.
+        val dips = assertNotNull(DashboardTrend.daily(listOf(day(1, "500"), day(2, "-300")), "2026-08-01"))
+        assertTrue(dips.days[1].y < dips.zero && dips.zero < dips.days[0].y)
+    }
+
+    @Test
+    fun days_outside_the_month_or_unreadable_are_left_off_and_order_is_by_day() {
+        val chart = assertNotNull(
+            DashboardTrend.daily(listOf(day(3, "30"), day(1, "10"), day(31, "5", m = 7), day(2, "x")), "2026-08-01"),
+        )
+
+        assertEquals(listOf("2026-08-01", "2026-08-03"), chart.days.map { it.day })
+    }
+
+    @Test
+    fun a_month_of_zeroes_is_a_flat_line_on_the_zero_mark() {
+        val chart = assertNotNull(DashboardTrend.daily(listOf(day(1, "0"), day(2, "0")), "2026-08-01"))
+        assertEquals(chart.zero, chart.days.first().y)
     }
 }

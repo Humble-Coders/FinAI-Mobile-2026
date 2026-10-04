@@ -263,6 +263,8 @@ object Strings {
     const val dashboard_recent_debit = "dashboard_recent_debit" // "− {0}"
     const val dashboard_recent_row = "dashboard_recent_row" // "{0}, {1}, {2}, {3}"
     const val dashboard_trend_label = "dashboard_trend_label" // "Net by month"
+    const val dashboard_daily_tick = "dashboard_daily_tick" // "{0} {1}" — month, day: "Aug 1"
+    const val dashboard_daily_description = "dashboard_daily_description" // "Balance by day, {0}: …"
     const val commitment_edit_title = "commitment_edit_title" // "Edit commitment"
     const val commitment_edit_name = "commitment_edit_name" // "Name"
     const val commitment_edit_amount = "commitment_edit_amount" // "Monthly amount"

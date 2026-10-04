@@ -41,6 +41,9 @@ internal object Field {
         if (dark) listOf(DarkTop, DarkBottom) else listOf(LightTop, LightBottom),
     )
 
+    /** The field's top colour, solid: the bar home's header shrinks into sits on it. */
+    fun top(dark: Boolean): Color = if (dark) DarkTop else LightTop
+
     /** White at a strength, for everything written on the field. */
     fun ink(alpha: Float = 1f): Color = Color.White.copy(alpha = alpha)
 

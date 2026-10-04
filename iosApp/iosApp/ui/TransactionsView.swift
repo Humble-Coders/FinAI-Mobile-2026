@@ -303,7 +303,7 @@ struct TransactionsView: View {
                 ZStack {
                     RoundedRectangle(cornerRadius: 16, style: .continuous)
                         .fill((filed ? Brand.green : Brand.amber).opacity(0.14))
-                    Image(systemName: Self.symbol(model.iconFor(row)))
+                    Image(systemName: model.iconFor(row).systemName)
                         .font(.title3)
                         .foregroundColor(filed ? (dark ? Brand.green : Brand.greenDeep) : unfiledInk)
                 }
@@ -348,34 +348,6 @@ struct TransactionsView: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(model.rowDescription(row))
         .accessibilityHint(model.editLabel(row))
-    }
-
-    /// The shared icon names as SF Symbols.
-    private static func symbol(_ icon: CategoryIcon) -> String {
-        switch icon {
-        case .home: "house.fill"
-        case .transfer: "arrow.left.arrow.right"
-        case .document: "doc.text.fill"
-        case .car: "car.fill"
-        case .bag: "bag.fill"
-        case .bolt: "bolt.fill"
-        case .dining: "fork.knife"
-        case .cart: "cart.fill"
-        case .heart: "cross.case.fill"
-        case .salary: "banknote.fill"
-        case .shield: "shield.fill"
-        case .school: "graduationcap.fill"
-        case .ticket: "ticket.fill"
-        case .gift: "gift.fill"
-        case .spa: "leaf.fill"
-        case .piggy: "dollarsign.circle.fill"
-        case .repeat: "repeat"
-        case .plane: "airplane"
-        case .card: "creditcard.fill"
-        case .phone: "iphone"
-        case .tag: "tag.fill"
-        case .unfiled: "questionmark.circle.fill"
-        }
     }
 
     // MARK: - Below the stack

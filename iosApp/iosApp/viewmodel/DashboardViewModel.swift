@@ -27,7 +27,7 @@ final class DashboardViewModel: ObservableObject {
         expenses: SharedLogic.Flow(actual: "0", expected: nil),
         investments: Stock(balance: "0", moved: "0"),
         debts: Stock(balance: "0", moved: "0"),
-        commitments: [], trend: [], pendingReview: 0
+        commitments: [], trend: [], daily: [], pendingReview: 0
     )
     @Published private(set) var locale = "en"
     @Published private(set) var loading = true
@@ -514,36 +514,58 @@ final class DashboardViewModel: ObservableObject {
         return L.t(Strings.shared.dashboard_pending_review, String(pending))
     }
 
-    /// Where each month sits on the chart — shared geometry, so both apps
-    /// draw the same line. Nil until some month in the window holds anything.
-    var chart: DashboardTrend.Chart? { DashboardTrend.shared.chart(trend: data.trend) }
+    /// The month day by day — shared geometry, so both apps draw the same
+    /// line. Nil for a month with nothing in it, and from a server too old to
+    /// send the days: no chart rather than a flat line that looks measured.
+    var dailyChart: DashboardTrend.DailyChart? {
+        DashboardTrend.shared.daily(daily: data.daily, month: data.month.isEmpty ? month.description : data.month)
+    }
 
-    /// Each month in words, for VoiceOver: the line says nothing to somebody
-    /// who cannot see it, and a gap must be heard as a gap.
-    var trendDescriptions: [String] {
-        data.trend.map { point in
-            let label = Dates.shared.parse(iso: point.month)
-                .map { Dates.shared.monthShort(date: $0, language: locale) } ?? ""
-            return point.net.map { L.t(Strings.shared.dashboard_trend_month, label, money($0)) }
-                ?? L.t(Strings.shared.dashboard_trend_no_data_month, label)
+    /// Under the chart: "Aug 1", the weeks as plain days, and "Aug 31".
+    var dailyTicks: [String] {
+        guard let ticks = dailyChart?.ticks else { return [] }
+        let name = Dates.shared.monthShort(date: month, language: locale)
+        return ticks.enumerated().map { index, tick in
+            index == 0 || index == ticks.count - 1
+                ? L.t(Strings.shared.dashboard_daily_tick, name, String(tick.day))
+                : String(tick.day)
         }
     }
 
-    /// What is written on the chart, one per point it draws: the month, and its
-    /// figure rounded for a label ("$1.5k") — left off while amounts are hidden,
-    /// and for a month with nothing recorded. Mirrors Android's `chartLabels`.
-    var chartLabels: [ChartLabel] {
-        (chart?.points ?? []).map { point in
-            let net = data.trend.first { $0.month == point.month }?.net
-            return ChartLabel(
-                month: Dates.shared.parse(iso: point.month)
-                    .map { Dates.shared.monthShort(date: $0, language: locale) } ?? "",
-                value: amountsHidden ? nil : net.map {
-                    Money.shared.compact(amount: $0, currency: data.currency, locale: locale)
-                },
-                isLoss: net.map { Money.shared.signOf(raw: $0, fractionDigits: digits) < 0 } ?? false
-            )
+    private var latestDay: DayPoint? {
+        guard let chart = dailyChart else { return nil }
+        let day = chart.days[Int(chart.markerIndex)].day
+        return data.daily.first { $0.day == day }
+    }
+
+    /// The latest day's figure, rounded ("$1.5k"), on the marker. Nil while
+    /// amounts are hidden.
+    var dailyMarkerValue: String? {
+        amountsHidden ? nil : latestDay.map {
+            Money.shared.compact(amount: $0.net, currency: data.currency, locale: locale)
         }
+    }
+
+    /// A month behind so far, whose figure goes below its point.
+    var dailyMarkerIsLoss: Bool {
+        latestDay.map { Money.shared.signOf(raw: $0.net, fractionDigits: digits) < 0 } ?? false
+    }
+
+    /// The line in words, for VoiceOver. Mirrors Android's `dailyDescription`.
+    var dailyDescription: String {
+        let days = data.daily.filter { Double($0.net) != nil }
+        guard let first = days.first, let last = days.last,
+              let lowest = days.min(by: { Double($0.net)! < Double($1.net)! }),
+              let highest = days.max(by: { Double($0.net)! < Double($1.net)! })
+        else { return "" }
+        return L.t(
+            Strings.shared.dashboard_daily_description,
+            monthLabel,
+            money(first.net),
+            money(last.net),
+            money(lowest.net),
+            money(highest.net)
+        )
     }
 
     /// The recent list, worded. Signed in words — "+ $5.00" or "− $5.00" — so
@@ -562,6 +584,7 @@ final class DashboardViewModel: ObservableObject {
             let title = ImportedRows.shared.titleOf(row: row)
             return RecentRow(
                 id: row.id,
+                icon: CategoryIcons.shared.forSlug(slug: category?.slug),
                 title: title,
                 date: date,
                 amount: amount,
@@ -589,6 +612,8 @@ struct CommitmentRow: Identifiable {
 /// One row of the recent list, already worded.
 struct RecentRow: Identifiable {
     let id: String
+    /// What the tile beside it shows; `.unfiled` for a row nothing filed.
+    let icon: CategoryIcon
     let title: String
     let date: String
     let amount: String
@@ -599,12 +624,3 @@ struct RecentRow: Identifiable {
     /// The whole row as one sentence, read once by VoiceOver.
     let description: String
 }
-
-/// One point's writing on the chart: its month, and its rounded figure if shown.
-struct ChartLabel {
-    let month: String
-    let value: String?
-    /// A month in the red, whose figure is written below its point.
-    let isLoss: Bool
-}
-

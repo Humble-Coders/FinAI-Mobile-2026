@@ -1,6 +1,11 @@
 package com.humblesolutions.finai.usecase
 
+import com.humblesolutions.finai.model.DayPoint
 import com.humblesolutions.finai.model.MonthPoint
+import kotlinx.datetime.DatePeriod
+import kotlinx.datetime.LocalDate
+import kotlinx.datetime.minus
+import kotlinx.datetime.plus
 
 /**
  * Where the trend's points sit on the dashboard's chart (PRD F3).
@@ -43,6 +48,73 @@ object DashboardTrend {
         val markerIndex: Int?,
         val zero: Double? = null,
     )
+
+    /**
+     * One day of the month's running balance on the chart.
+     *
+     * @property day the ISO date, as the server sent it.
+     * @property x where the day falls in the whole month: 0 on the 1st, 1 on
+     *   the last day — so a month still running stops part-way across.
+     * @property y 0 at the bottom, 1 at the top.
+     */
+    data class Day(
+        val day: String,
+        val x: Double,
+        val y: Double,
+    )
+
+    /** A day named along the bottom, at [x]. */
+    data class Tick(val day: Int, val x: Double)
+
+    /**
+     * @property zero where nothing gained and nothing lost sits. Always on the
+     *   chart: a running balance is read against it — above is ahead for the
+     *   month, below is behind — so the scale is stretched to include it.
+     * @property markerIndex the latest day, which is the figure the hero shows.
+     * @property ticks the days named along the bottom: the 1st, each week
+     *   after, and the month's last day.
+     */
+    data class DailyChart(
+        val days: List<Day>,
+        val zero: Double,
+        val markerIndex: Int,
+        val ticks: List<Tick>,
+    )
+
+    /**
+     * The month drawn day by day, or null when there is nothing to draw — a
+     * month with no rows, or a server too old to send the series.
+     *
+     * The x axis is the whole calendar month whatever the series holds, so a
+     * month in progress reads as one: the line stops at today with the rest of
+     * the month still ahead of it.
+     */
+    fun daily(daily: List<DayPoint>, month: String): DailyChart? {
+        val first = runCatching { LocalDate.parse(month) }.getOrNull()?.let { LocalDate(it.year, it.month, 1) }
+            ?: return null
+        val length = first.plus(DatePeriod(months = 1)).minus(DatePeriod(days = 1)).day
+        fun xOf(dayOfMonth: Int) = (dayOfMonth - 1).toDouble() / (length - 1)
+
+        val known = daily.mapNotNull { point ->
+            val date = runCatching { LocalDate.parse(point.day) }.getOrNull() ?: return@mapNotNull null
+            val value = point.net.toDoubleOrNull() ?: return@mapNotNull null
+            if (date.year != first.year || date.month != first.month) return@mapNotNull null
+            Triple(point.day, date.day, value)
+        }.sortedBy { it.second }
+        if (known.isEmpty()) return null
+
+        val low = minOf(known.minOf { it.third }, 0.0)
+        val high = maxOf(known.maxOf { it.third }, 0.0)
+        val days = known.map { (iso, dayOfMonth, value) -> Day(iso, xOf(dayOfMonth), scale(value, low, high)) }
+        val ticks = (listOf(1, 8, 15, 22) + length).map { Tick(it, xOf(it)) }
+
+        return DailyChart(
+            days = days,
+            zero = scale(0.0, low, high),
+            markerIndex = days.lastIndex,
+            ticks = ticks,
+        )
+    }
 
     /** Headroom above and below, so the line never runs along an edge. */
     private const val PADDING = 0.14

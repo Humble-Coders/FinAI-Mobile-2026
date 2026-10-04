@@ -5,8 +5,11 @@ import com.humblesolutions.finai.i18n.Strings
 import com.humblesolutions.finai.model.Category
 import com.humblesolutions.finai.model.Commitment
 import com.humblesolutions.finai.model.Dashboard
+import com.humblesolutions.finai.model.DayPoint
 import com.humblesolutions.finai.model.Transaction
 import com.humblesolutions.finai.model.TransactionDirection
+import com.humblesolutions.finai.usecase.CategoryIcon
+import com.humblesolutions.finai.usecase.CategoryIcons
 import com.humblesolutions.finai.usecase.CommitmentBlock
 import com.humblesolutions.finai.usecase.CommitmentDraft
 import com.humblesolutions.finai.usecase.CommitmentEdit
@@ -217,33 +220,48 @@ data class DashboardUiState(
     }
 
     /**
-     * Where each month sits on the chart — shared geometry, so the two apps
-     * draw the same line. Null until some month in the window holds anything.
+     * The month day by day — shared geometry, so the two apps draw the same
+     * line. Null for a month with nothing in it, and from a server too old to
+     * send the days: no chart rather than a flat line that looks measured.
      */
-    val chart: DashboardTrend.Chart? get() = DashboardTrend.chart(data.trend)
+    val dailyChart: DashboardTrend.DailyChart? get() = DashboardTrend.daily(data.daily, data.month.ifEmpty { month.toString() })
 
-    /**
-     * Each month in words, for a screen reader: the line itself says nothing
-     * to somebody who cannot see it, and a gap must be heard as a gap.
-     */
-    val trendDescriptions: List<String> get() = data.trend.map { point ->
-        val label = Dates.parse(point.month)?.let { Dates.monthShort(it, locale) }.orEmpty()
-        point.net?.let { text(Strings.dashboard_trend_month, label, money(it)) }
-            ?: text(Strings.dashboard_trend_no_data_month, label)
+    /** Under the chart: "Aug 1", the weeks as plain days, and "Aug 31". */
+    val dailyTicks: List<String> get() {
+        val ticks = dailyChart?.ticks ?: return emptyList()
+        val name = Dates.monthShort(month, locale)
+        return ticks.mapIndexed { index, tick ->
+            if (index == 0 || index == ticks.lastIndex) {
+                text(Strings.dashboard_daily_tick, name, tick.day.toString())
+            } else {
+                tick.day.toString()
+            }
+        }
     }
 
-    /**
-     * What is written on the chart, one per point the chart draws: the month,
-     * and its figure rounded for a label ("$1.5k"). The figure is left off
-     * while amounts are hidden, like every other figure on the screen, and for
-     * a month with nothing recorded, which has no figure to write.
-     */
-    val chartLabels: List<ChartLabel> get() = chart?.points.orEmpty().map { point ->
-        val net = data.trend.firstOrNull { it.month == point.month }?.net
-        ChartLabel(
-            month = Dates.parse(point.month)?.let { Dates.monthShort(it, locale) }.orEmpty(),
-            value = if (amountsHidden) null else net?.let { Money.compact(it, data.currency, locale) },
-            isLoss = net?.let { Money.signOf(it, digits) < 0 } ?: false,
+    private val latestDay: DayPoint? get() = dailyChart?.let { chart ->
+        data.daily.firstOrNull { it.day == chart.days[chart.markerIndex].day }
+    }
+
+    /** The latest day's figure, rounded ("$1.5k"), on the marker. Null while amounts are hidden. */
+    val dailyMarkerValue: String? get() = if (amountsHidden) null else latestDay?.let { Money.compact(it.net, data.currency, locale) }
+
+    /** A month behind so far, whose figure is written below its point rather than across the line. */
+    val dailyMarkerIsLoss: Boolean get() = latestDay?.let { Money.signOf(it.net, digits) < 0 } ?: false
+
+    /** The line in words, for somebody who cannot see it. */
+    val dailyDescription: String get() {
+        val days = data.daily.filter { it.net.toDoubleOrNull() != null }
+        if (days.isEmpty()) return ""
+        val lowest = days.minBy { it.net.toDouble() }
+        val highest = days.maxBy { it.net.toDouble() }
+        return text(
+            Strings.dashboard_daily_description,
+            monthLabel,
+            money(days.first().net),
+            money(days.last().net),
+            money(lowest.net),
+            money(highest.net),
         )
     }
 
@@ -260,6 +278,7 @@ data class DashboardUiState(
         val title = ImportedRows.titleOf(row)
         RecentRow(
             id = row.id,
+            icon = CategoryIcons.forSlug(category?.slug),
             title = title,
             date = date,
             amount = amount,
@@ -287,6 +306,8 @@ data class CommitmentRow(
 /** One row of the recent list, already worded. */
 data class RecentRow(
     val id: String,
+    /** What the tile beside it shows; [CategoryIcon.UNFILED] for a row nothing filed. */
+    val icon: CategoryIcon = CategoryIcon.UNFILED,
     val title: String,
     val date: String,
     /** Signed in words — "+ $5.00" or "− $5.00" — so colour is never the only cue. */
@@ -297,12 +318,4 @@ data class RecentRow(
     val isFiled: Boolean,
     /** The whole row as one sentence, read once by a screen reader. */
     val description: String,
-)
-
-/** One point's writing on the chart: its month, and its rounded figure if shown. */
-data class ChartLabel(
-    val month: String,
-    val value: String?,
-    /** A month in the red, whose figure is written below its point, not over the line. */
-    val isLoss: Boolean = false,
 )
