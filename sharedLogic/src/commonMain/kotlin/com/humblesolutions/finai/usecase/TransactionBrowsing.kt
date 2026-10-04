@@ -132,6 +132,41 @@ object TransactionBrowsing {
      */
     fun startingMonth(rows: List<Transaction>, today: LocalDate): LocalDate = monthsOf(rows).maxOrNull() ?: DashboardMonths.first(today)
 
+    /**
+     * The month to show once the ledger has changed.
+     *
+     * Where the change landed, when it added rows: an import of October while
+     * August is on screen opens October, because staying on August reads as
+     * the import having gone missing — the new rows exist, behind a chip
+     * nobody tapped. When nothing was added — a row corrected or deleted —
+     * the month being looked at stays, so an edit never throws somebody to
+     * another month.
+     *
+     * @param knownIds the rows seen before the change. Empty on a first load,
+     *   or when there were none: then it is simply [startingMonth].
+     */
+    fun monthAfterChange(current: LocalDate?, knownIds: Set<String>, rows: List<Transaction>, today: LocalDate): LocalDate {
+        if (current == null || knownIds.isEmpty()) return startingMonth(rows, today)
+        return monthsOf(rows.filter { it.id !in knownIds }).maxOrNull() ?: current
+    }
+
+    /**
+     * The statement to show once the list of them may have changed: one that
+     * was not there before (the import just made), else the one on screen
+     * while it is still offered, else the newest.
+     */
+    fun statementAfterChange(
+        current: String?,
+        before: List<StatementImportSummary>,
+        imports: List<StatementImportSummary>,
+    ): String? {
+        val offered = statementsFrom(imports)
+        val had = before.map { it.id }.toSet()
+        return offered.firstOrNull { it.id !in had }?.id
+            ?: current?.takeIf { id -> offered.any { it.id == id } }
+            ?: offered.firstOrNull()?.id
+    }
+
     private fun monthsOf(rows: List<Transaction>): List<LocalDate> = rows.mapNotNull { row -> Dates.parse(row.occurredOn)?.let { DashboardMonths.first(it) } }
 
     /**

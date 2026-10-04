@@ -70,7 +70,9 @@ final class TransactionsViewModel: ObservableObject {
         importsRepository = KtorStatementImportRepository(baseUrl: base, tokens: tokens, logging: logging)
         categoriesRepository = KtorCategoriesRepository(baseUrl: base, tokens: tokens, logging: logging)
         listenForChanges()
-        loadSlices()
+        // Coming back — to the tab, or from an import that covered it — is
+        // a change like any other: the rows read last time say what is new.
+        loadSlices(afterChange: !knownIds.isEmpty)
     }
 
     func unbind() {
@@ -94,6 +96,7 @@ final class TransactionsViewModel: ObservableObject {
         loadFailed = false
         errorKey = nil
         owner = nil
+        knownIds = []
         generation += 1
     }
 
@@ -104,17 +107,25 @@ final class TransactionsViewModel: ObservableObject {
         listener = Task { [weak self] in
             for await _ in LedgerChanged.events {
                 guard let self, !Task.isCancelled else { return }
-                self.refreshMonths()
-                self.load(refresh: true)
+                // Statements, months and the slice together, so the screen
+                // moves to what just landed rather than sitting on the month
+                // it was showing.
+                self.loadSlices(afterChange: true)
             }
         }
     }
 
-    /// The statements and months on offer, then the first page of the default slice.
-    private func loadSlices() {
+    /// The rows seen at the last read, so a change can tell which ones it added.
+    private var knownIds: Set<String> = []
+
+    /// The statements and months on offer, then the first page of the slice to
+    /// show: the newest on a first load, or — `afterChange` — wherever the
+    /// change landed (`TransactionBrowsing.monthAfterChange`).
+    private func loadSlices(afterChange: Bool = false) {
         guard let importsRepository else { return }
         let categoriesRepository = self.categoriesRepository
         let started = generation
+        if afterChange { refreshing = true }
         Task { [weak self] in
             guard let self else { return }
             // The pickers steer the screen; the rows are the screen. Losing
@@ -126,13 +137,23 @@ final class TransactionsViewModel: ObservableObject {
             let everything = await self.readAll()
             guard started == self.generation else { return }
             let today = Self.today
-            let offered = TransactionBrowsing.shared.statementsFrom(imports: imports)
-            self.statements = offered
+            let known = afterChange ? self.knownIds : []
+            self.knownIds = Set(everything.map { $0.id })
+            self.statementId = TransactionBrowsing.shared.statementAfterChange(
+                current: afterChange ? self.statementId : nil,
+                before: afterChange ? self.statements : [],
+                imports: imports
+            )
+            self.statements = TransactionBrowsing.shared.statementsFrom(imports: imports)
             self.months = TransactionBrowsing.shared.monthsWithRows(rows: everything, today: today)
-            self.month = TransactionBrowsing.shared.startingMonth(rows: everything, today: today)
+            self.month = TransactionBrowsing.shared.monthAfterChange(
+                current: afterChange ? self.month : nil,
+                knownIds: known,
+                rows: everything,
+                today: today
+            )
             self.categories = categories ?? []
-            self.statementId = offered.first?.id
-            self.load()
+            self.load(refresh: afterChange)
         }
     }
 
@@ -160,17 +181,6 @@ final class TransactionsViewModel: ObservableObject {
             return rows
         } catch {
             return []
-        }
-    }
-
-    /// Re-read which months have rows, keeping the one being looked at. Run when
-    /// the ledger changed: an import may have brought months nobody could
-    /// choose before.
-    private func refreshMonths() {
-        Task { [weak self] in
-            guard let self else { return }
-            let everything = await self.readAll()
-            self.months = TransactionBrowsing.shared.monthsWithRows(rows: everything, today: Self.today)
         }
     }
 

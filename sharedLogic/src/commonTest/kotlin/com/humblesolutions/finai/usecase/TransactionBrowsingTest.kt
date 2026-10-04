@@ -226,4 +226,65 @@ class TransactionBrowsingTest {
     fun with_nothing_at_all_the_list_opens_on_the_current_month() {
         assertEquals(LocalDate(2026, 10, 1), TransactionBrowsing.startingMonth(emptyList(), LocalDate(2026, 10, 4)))
     }
+
+    // ── After the ledger changed ────────────────────────────────────────
+
+    private fun on(id: String, date: String) = Transaction(id = id, occurredOn = date)
+
+    private val august = LocalDate(2026, 8, 1)
+    private val october = LocalDate(2026, 10, 1)
+    private val todayInOctober = LocalDate(2026, 10, 4)
+
+    @Test
+    fun an_import_opens_the_month_it_landed_in() {
+        val before = listOf(on("a", "2026-08-03"), on("b", "2026-10-01"))
+        val after = before + on("c", "2026-10-04")
+
+        assertEquals(
+            october,
+            TransactionBrowsing.monthAfterChange(august, before.map { it.id }.toSet(), after, todayInOctober),
+            "October already had rows; the new one still has to be shown",
+        )
+    }
+
+    @Test
+    fun an_import_of_an_older_month_opens_that_month() {
+        val before = listOf(on("a", "2026-10-01"))
+        val after = before + on("old", "2026-07-15")
+
+        assertEquals(
+            LocalDate(2026, 7, 1),
+            TransactionBrowsing.monthAfterChange(october, setOf("a"), after, todayInOctober),
+        )
+    }
+
+    @Test
+    fun an_edit_keeps_the_month_being_looked_at() {
+        val rows = listOf(on("a", "2026-08-03"), on("b", "2026-10-01"))
+        assertEquals(august, TransactionBrowsing.monthAfterChange(august, setOf("a", "b"), rows, todayInOctober))
+    }
+
+    @Test
+    fun a_first_load_opens_on_the_newest_month_with_rows() {
+        val rows = listOf(on("a", "2026-08-03"))
+        assertEquals(august, TransactionBrowsing.monthAfterChange(null, emptySet(), rows, todayInOctober))
+        assertEquals(august, TransactionBrowsing.monthAfterChange(october, emptySet(), rows, todayInOctober))
+    }
+
+    private fun statement(id: String) = StatementImportSummary(id = id, saved = 3)
+
+    @Test
+    fun a_new_statement_is_the_one_shown() {
+        val before = listOf(statement("old"))
+        val after = listOf(statement("new"), statement("old"))
+        assertEquals("new", TransactionBrowsing.statementAfterChange("old", before, after))
+    }
+
+    @Test
+    fun with_no_new_statement_the_one_on_screen_stays() {
+        val list = listOf(statement("newest"), statement("older"))
+        assertEquals("older", TransactionBrowsing.statementAfterChange("older", list, list))
+        assertEquals("newest", TransactionBrowsing.statementAfterChange("gone", list, list))
+        assertEquals("newest", TransactionBrowsing.statementAfterChange(null, emptyList(), list))
+    }
 }

@@ -48,6 +48,9 @@ class TransactionsViewModel : ViewModel() {
 
     private var listening = false
 
+    /** The rows seen at the last read, so a change can tell which ones it added. */
+    private var knownIds: Set<String> = emptySet()
+
     fun bind(userId: String, logging: Boolean) = bind(userId) {
         Supabase.clientOrNull()?.let { client ->
             val tokens = SupabaseTokenSource(client)
@@ -64,6 +67,7 @@ class TransactionsViewModel : ViewModel() {
         repositories?.close()
         generation++
         boundTo = userId
+        knownIds = emptySet()
         _uiState.value = TransactionsUiState()
         repositories = build() ?: return
         listenForChanges()
@@ -83,17 +87,22 @@ class TransactionsViewModel : ViewModel() {
         if (listening) return
         listening = true
         viewModelScope.launch {
-            LedgerChanged.events.collect {
-                refreshMonths()
-                load(refresh = true)
-            }
+            // Statements, months and the slice on screen together, so the
+            // screen can move to what just landed rather than sit on the
+            // month it was showing.
+            LedgerChanged.events.collect { loadSlices(afterChange = true) }
         }
     }
 
-    /** The statements and months on offer, then the first page of the default slice. */
-    private fun loadSlices() {
+    /**
+     * The statements and months on offer, then the first page of the slice to
+     * show: the newest on a first load, or — [afterChange] — wherever the
+     * change landed; see [TransactionBrowsing.monthAfterChange].
+     */
+    private fun loadSlices(afterChange: Boolean = false) {
         val repos = repositories ?: return
         val started = generation
+        if (afterChange) _uiState.update { it.copy(refreshing = true) }
         viewModelScope.launch {
             val imports = try {
                 repos.imports.list().imports
@@ -117,29 +126,22 @@ class TransactionsViewModel : ViewModel() {
             val everything = orEmpty { readAll(repos) }
             if (started != generation) return@launch
             val today = DashboardMonths.current()
+            val known = if (afterChange) knownIds else emptySet()
+            knownIds = everything.map { it.id }.toSet()
             _uiState.update {
                 it.copy(
                     statements = TransactionBrowsing.statementsFrom(imports),
                     months = TransactionBrowsing.monthsWithRows(everything, today),
                     categories = categories,
-                    statementId = TransactionBrowsing.statementsFrom(imports).firstOrNull()?.id,
-                    month = TransactionBrowsing.startingMonth(everything, today),
+                    statementId = TransactionBrowsing.statementAfterChange(
+                        current = it.statementId.takeIf { afterChange },
+                        before = if (afterChange) it.statements else emptyList(),
+                        imports = imports,
+                    ),
+                    month = TransactionBrowsing.monthAfterChange(it.month.takeIf { afterChange }, known, everything, today),
                 )
             }
-            load()
-        }
-    }
-
-    /**
-     * Re-read which months have rows, keeping the one being looked at. Run
-     * when the ledger changed: an import may have brought months nobody could
-     * choose before.
-     */
-    private fun refreshMonths() {
-        val repos = repositories ?: return
-        viewModelScope.launch {
-            val everything = orEmpty { readAll(repos) }
-            _uiState.update { it.copy(months = TransactionBrowsing.monthsWithRows(everything, DashboardMonths.current())) }
+            load(refresh = afterChange)
         }
     }
 

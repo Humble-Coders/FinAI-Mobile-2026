@@ -81,7 +81,7 @@ class TransactionsViewModelTest {
         override fun close() = Unit
     }
 
-    private class FakeImports(private val imports: List<StatementImportSummary>) : StatementImportRepository {
+    private class FakeImports(var imports: List<StatementImportSummary>) : StatementImportRepository {
         var fail: ApiException? = null
 
         override suspend fun list(): StatementImports {
@@ -435,5 +435,52 @@ class TransactionsViewModelTest {
         assertEquals(listOf(now, last, before), model.uiState.value.months)
         assertEquals(last, model.uiState.value.month, "not an empty current month")
         assertEquals(DashboardMonths.wire(last), repo.asks.last().month)
+    }
+
+    // ── After an import ─────────────────────────────────────────────────
+
+    private val now = DashboardMonths.current()
+    private val earlier = DashboardMonths.previous(DashboardMonths.previous(now))
+
+    private fun on(id: String, month: kotlinx.datetime.LocalDate) = Transaction(id = id, occurredOn = DashboardMonths.wire(month) + "-03")
+
+    @Test
+    fun an_import_while_an_older_month_is_shown_opens_the_month_it_landed_in() = runTest {
+        // The reported bug: October's rows imported while August was on
+        // screen, and the list stayed on August — the rows were there,
+        // behind a chip nobody tapped.
+        val repo = FakeTransactions(ReviewPage(rows = listOf(on("old", now), on("a", earlier))))
+        val model = model(repo)
+        model.showMonth(earlier)
+
+        repo.page = ReviewPage(rows = listOf(on("new", now), on("old", now), on("a", earlier)))
+        LedgerChanged.announce()
+
+        assertEquals(now, model.uiState.value.month)
+        assertEquals(DashboardMonths.wire(now), repo.asks.last().month)
+        assertEquals(listOf("new", "old"), model.uiState.value.visibleRows.map { it.id })
+    }
+
+    @Test
+    fun an_edit_elsewhere_keeps_the_month_being_looked_at() = runTest {
+        val repo = FakeTransactions(ReviewPage(rows = listOf(on("old", now), on("a", earlier))))
+        val model = model(repo)
+        model.showMonth(earlier)
+
+        LedgerChanged.announce()
+
+        assertEquals(earlier, model.uiState.value.month)
+    }
+
+    @Test
+    fun an_import_selects_its_statement() = runTest {
+        val imports = FakeImports(listOf(statement("imp-1")))
+        val model = model(imports = imports)
+        model.showMode(TransactionBrowsing.Mode.BY_STATEMENT)
+
+        imports.imports = listOf(statement("imp-2"), statement("imp-1"))
+        LedgerChanged.announce()
+
+        assertEquals("imp-2", model.uiState.value.statementId)
     }
 }
