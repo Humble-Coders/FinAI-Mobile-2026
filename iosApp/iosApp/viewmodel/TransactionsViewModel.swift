@@ -307,7 +307,7 @@ final class TransactionsViewModel: ObservableObject {
                 .map { group in
                     TransactionSection(
                         title: categories.first { $0.id == group.categoryId }?.name
-                            ?? L.t(Strings.shared.import_extracted_uncategorised),
+                            ?? (group.categoryId == nil ? L.t(Strings.shared.import_extracted_uncategorised) : ""),
                         total: money(group.headline),
                         totalIsIn: group.headlineIsIn,
                         rows: group.rows
@@ -374,12 +374,13 @@ final class TransactionsViewModel: ObservableObject {
     func titleOf(_ row: SharedLogic.Transaction) -> String { ImportedRows.shared.titleOf(row: row) }
 
     func categoryLabel(_ row: SharedLogic.Transaction) -> String {
-        ImportedRows.shared.categoryOf(row: row, categories: categories)?.name
-            ?? L.t(Strings.shared.import_extracted_uncategorised)
+        ImportedRows.shared.categoryLabel(
+            row: row, categories: categories, unfiled: L.t(Strings.shared.import_extracted_uncategorised)
+        ) ?? ""
     }
 
     func isFiled(_ row: SharedLogic.Transaction) -> Bool {
-        ImportedRows.shared.categoryOf(row: row, categories: categories) != nil
+        ImportedRows.shared.isFiled(row: row)
     }
 
     func rowDescription(_ row: SharedLogic.Transaction) -> String {

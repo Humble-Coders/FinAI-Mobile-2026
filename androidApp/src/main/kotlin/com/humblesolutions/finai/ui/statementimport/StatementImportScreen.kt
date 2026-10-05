@@ -652,10 +652,11 @@ private fun ImportedRow(state: StatementImportUiState, row: Transaction) {
 /** What it was filed as — or that nothing filed it, which is the useful case. */
 @Composable
 private fun CategoryChip(state: StatementImportUiState, row: Transaction) {
-    val category = ImportedRows.categoryOf(row, state.categories)
-    val filed = category != null
+    val filed = ImportedRows.isFiled(row)
+    // Filed, with the names not to hand: no chip, rather than a wrong one.
+    val label = ImportedRows.categoryLabel(row, state.categories, strings(Strings.import_extracted_uncategorised)) ?: return
     Text(
-        text = category?.name ?: strings(Strings.import_extracted_uncategorised),
+        text = label,
         style = MaterialTheme.typography.labelSmall,
         color = if (filed) {
             MaterialTheme.colorScheme.onSurfaceVariant

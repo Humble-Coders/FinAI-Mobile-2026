@@ -71,7 +71,11 @@ struct RootView: View {
             || (showingEntry && entryModel.loading)
             || (showingImport && (importModel.working || importModel.accountsLoading))
             || (showingReview && reviewModel.loading)
+            // Home's first read: figures, not a screen of zeroes, until they arrive.
+            || (showingHome && dashboardModel.loading)
     }
+
+    private var showingHome: Bool { atHome && homeRoute == HomeRoute.home.rawValue }
 
     private var atHome: Bool {
         model.configurationProblemKey == nil

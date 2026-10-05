@@ -250,7 +250,7 @@ class DashboardUiStateTest {
     fun a_row_nothing_filed_says_so_rather_than_leaving_a_blank() {
         val line = state(august()).copy(recent = listOf(row(categoryId = null))).recentRows.single()
 
-        assertEquals("Not filed yet", line.category)
+        assertEquals("No category yet", line.category)
         assertFalse(line.isFiled)
     }
 
