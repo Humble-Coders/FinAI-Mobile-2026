@@ -120,7 +120,8 @@ class StatementImportViewModel(private val saved: SavedStateHandle) : ViewModel(
     fun loadAccounts() {
         val accounts = repositories?.accounts ?: return
         val started = generation
-        _uiState.update { it.copy(accountsLoading = true, accountsErrorKey = null) }
+        // A first load only; see ManualEntryViewModel.load.
+        _uiState.update { it.copy(accountsLoading = it.accounts.isEmpty(), accountsErrorKey = null) }
         viewModelScope.launch {
             try {
                 val list = accounts.list()

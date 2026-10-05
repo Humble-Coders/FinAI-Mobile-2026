@@ -126,7 +126,11 @@ class ManualEntryViewModel internal constructor(
     fun load() {
         val repositories = repositories ?: return
         val started = generation
-        _uiState.update { it.copy(loading = true, loadFailed = false, errorKey = null) }
+        // The coin covers a first load only. Coming back with the accounts
+        // already known opens straight to the form and refreshes behind it:
+        // the loader stays two seconds at least, which on every visit was two
+        // seconds of waiting for data already on the phone.
+        _uiState.update { it.copy(loading = it.accounts.isEmpty(), loadFailed = false, errorKey = null) }
         viewModelScope.launch {
             try {
                 val accounts = repositories.accounts.list()

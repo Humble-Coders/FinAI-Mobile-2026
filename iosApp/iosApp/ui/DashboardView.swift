@@ -164,7 +164,7 @@ struct DashboardView: View {
     private var compactHeader: some View {
         let opacity: Double = Double(min(max((collapsed - 0.5) * 2, 0), 1))
         return ZStack {
-            Text(L.t(Strings.shared.dashboard_greeting))
+            Text(L.t(Strings.shared.tab_home))
                 .font(.headline.weight(.bold))
                 .foregroundColor(Field.ink())
                 .lineLimit(1)

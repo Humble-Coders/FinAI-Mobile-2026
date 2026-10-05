@@ -187,7 +187,11 @@ final class ManualEntryViewModel: ObservableObject {
         let categoriesRepository = self.categoriesRepository
         let capabilitiesRepository = self.capabilitiesRepository
         let started = generation
-        loading = true
+        // The coin covers a first load only. Coming back with the accounts
+        // already known opens straight to the form and refreshes behind it:
+        // the loader stays two seconds at least, which on every visit was two
+        // seconds of waiting for data already on the phone.
+        loading = accounts.isEmpty
         loadFailed = false
         errorKey = nil
         Task { [weak self] in
