@@ -272,7 +272,7 @@ private fun CompactHeader(state: DashboardUiState, dark: Boolean, collapsed: () 
             .padding(horizontal = 12.dp),
     ) {
         Text(
-            text = strings(Strings.dashboard_greeting),
+            text = strings(Strings.tab_home),
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold,
             color = Field.ink(),

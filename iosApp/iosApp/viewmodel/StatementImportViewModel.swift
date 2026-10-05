@@ -316,7 +316,8 @@ final class StatementImportViewModel: ObservableObject, NewAccountHost {
     func loadAccounts() {
         guard let accountsRepository else { return }
         let started = generation
-        accountsLoading = true
+        // A first load only; see ManualEntryViewModel.load.
+        accountsLoading = accounts.isEmpty
         accountsErrorKey = nil
         Task { [weak self] in
             guard let self else { return }

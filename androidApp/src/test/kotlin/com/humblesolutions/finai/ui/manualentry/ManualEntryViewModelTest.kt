@@ -544,6 +544,35 @@ class ManualEntryViewModelTest {
         transactions: FakeTransactions = FakeTransactions(),
     ) = ManualEntryRepositories(accounts, categories, transactions, FakeCapabilities())
 
+    // ── The loader ──────────────────────────────────────────────────────
+
+    @Test
+    fun a_first_load_shows_the_loader_until_the_accounts_arrive() {
+        val accounts = FakeAccounts().apply { listGate = CompletableDeferred() }
+        val model = model()
+        model.bind("alice") { repositories(accounts = accounts) }
+
+        assertTrue(model.uiState.value.loading)
+        accounts.listGate?.complete(Unit)
+        assertFalse(model.uiState.value.loading)
+    }
+
+    @Test
+    fun coming_back_with_the_accounts_known_opens_without_the_loader() {
+        // The loader stays two seconds at least; on every visit that was two
+        // seconds of waiting for accounts already on the phone.
+        val accounts = FakeAccounts()
+        val model = model()
+        model.bind("alice") { repositories(accounts = accounts) }
+        accounts.listGate = CompletableDeferred()
+
+        model.load()
+
+        assertFalse(model.uiState.value.loading, "the form shows while the accounts refresh")
+        assertEquals(2, accounts.lists, "they are still refreshed")
+        accounts.listGate?.complete(Unit)
+    }
+
     private inner class FakeAccounts(
         private val stored: List<Account> = listOf(chequing),
         var failList: Boolean = false,
@@ -553,8 +582,12 @@ class ManualEntryViewModelTest {
         var lists = 0
         val created = mutableListOf<NewAccount>()
 
+        /** Holds the list back until completed, to see the screen while it waits. */
+        var listGate: CompletableDeferred<Unit>? = null
+
         override suspend fun list(): List<Account> {
             lists++
+            listGate?.await()
             if (failList) throw ApiException.Network(RuntimeException("offline"))
             return stored
         }

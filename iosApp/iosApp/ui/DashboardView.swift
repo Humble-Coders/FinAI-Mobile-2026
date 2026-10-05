@@ -162,7 +162,7 @@ struct DashboardView: View {
      */
     private var compactHeader: some View {
         ZStack {
-            Text(L.t(Strings.shared.dashboard_greeting))
+            Text(L.t(Strings.shared.tab_home))
                 .font(.headline.weight(.bold))
                 .foregroundColor(Field.ink())
                 .lineLimit(1)
