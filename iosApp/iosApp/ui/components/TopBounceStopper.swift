@@ -25,10 +25,14 @@ struct TopBounceStopper: UIViewRepresentable {
                 let top = -scroll.adjustedContentInset.top
                 // No bounce while at the top, so a pull down does nothing; the
                 // bounce comes back once scrolled, for the bottom.
-                let atTop = scroll.contentOffset.y <= top + 0.5
+                //
+                // Only `bounces` is ever touched here, never the offset. Setting
+                // the offset from inside its own observer re-entered this
+                // closure, and with the offset snapped to the screen's pixels
+                // it never settled exactly on `top` — so it recursed until the
+                // stack ran out, which froze the app and then crashed it.
+                let atTop = scroll.contentOffset.y <= top + 1
                 if scroll.bounces == atTop { scroll.bounces = !atTop }
-                // A fling back up can still overshoot before that takes hold.
-                if scroll.contentOffset.y < top { scroll.contentOffset.y = top }
             }
         }
 
