@@ -41,6 +41,8 @@ struct DashboardView: View {
                 field
                 sheet.padding(.top, -Field.sheetOverlap)
             }
+            // The top of the page stays put: no pulling the header down.
+            .background(TopBounceStopper().frame(width: 0, height: 0))
         }
         .coordinateSpace(name: Self.space)
         .scrollBounceBehavior(.basedOnSize)

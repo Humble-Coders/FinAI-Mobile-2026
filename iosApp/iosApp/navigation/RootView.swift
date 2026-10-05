@@ -202,28 +202,31 @@ struct RootView: View {
     private var tabs: some View {
         let userId = model.me?.user.id ?? ""
         let goHome = { homeRoute = HomeRoute.home.rawValue }
-        return TabView(selection: $homeRoute) {
-            DashboardView(
-                model: dashboardModel,
-                userId: userId,
-                onImportStatement: { homeRoute = HomeRoute.importStatement.rawValue },
-                onAddTransaction: { homeRoute = HomeRoute.add.rawValue },
-                onReview: { homeRoute = HomeRoute.review.rawValue },
-                onViewAll: { homeRoute = HomeRoute.transactions.rawValue },
-                onSignOut: { model.signOut() }
-            )
-            .tabItem { Label(L.t(Strings.shared.tab_home), systemImage: "house.fill") }
-            .tag(HomeRoute.home.rawValue)
-
-            TransactionsView(model: transactionsModel, userId: userId, onClose: goHome, showsBack: false)
-                .tabItem { Label(L.t(Strings.shared.tab_transactions), systemImage: "list.bullet.rectangle.fill") }
-                .tag(HomeRoute.transactions.rawValue)
-
-            ReviewView(model: reviewModel, userId: userId, onClose: goHome, showsBack: false)
-                .tabItem { Label(L.t(Strings.shared.tab_review), systemImage: "checkmark.circle.fill") }
-                .tag(HomeRoute.review.rawValue)
+        return HomeTabs(
+            selection: $homeRoute,
+            tabs: [
+                HomeTab(id: HomeRoute.home.rawValue, titleKey: Strings.shared.tab_home, symbol: "house"),
+                HomeTab(id: HomeRoute.transactions.rawValue, titleKey: Strings.shared.tab_transactions, symbol: "list.bullet.rectangle"),
+                HomeTab(id: HomeRoute.review.rawValue, titleKey: Strings.shared.tab_review, symbol: "checkmark.circle"),
+            ]
+        ) { tab in
+            switch tab {
+            case HomeRoute.transactions.rawValue:
+                TransactionsView(model: transactionsModel, userId: userId, onClose: goHome, showsBack: false)
+            case HomeRoute.review.rawValue:
+                ReviewView(model: reviewModel, userId: userId, onClose: goHome, showsBack: false)
+            default:
+                DashboardView(
+                    model: dashboardModel,
+                    userId: userId,
+                    onImportStatement: { homeRoute = HomeRoute.importStatement.rawValue },
+                    onAddTransaction: { homeRoute = HomeRoute.add.rawValue },
+                    onReview: { homeRoute = HomeRoute.review.rawValue },
+                    onViewAll: { homeRoute = HomeRoute.transactions.rawValue },
+                    onSignOut: { model.signOut() }
+                )
+            }
         }
-        .tint(Brand.greenDeep)
     }
 
     private var failureKey: String {
