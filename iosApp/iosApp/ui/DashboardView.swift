@@ -26,6 +26,8 @@ struct DashboardView: View {
     /// what still needs a person.
     let onViewAll: () -> Void
     let onSignOut: () -> Void
+    /// Income, Expenses, Investments or Debts — opened from its card.
+    var onOpenMoney: (MoneyKind) -> Void = { _ in }
 
     @Environment(\.colorScheme) private var scheme
     private var dark: Bool { scheme == .dark }
@@ -290,28 +292,43 @@ struct DashboardView: View {
 
     private var figures: some View {
         EqualGrid(spacing: 12) {
-            FigureCard(
-                symbol: "wallet.bifold.fill", accent: .income, dark: dark,
-                label: L.t(Strings.shared.dashboard_income),
-                amount: model.incomeAmount, detail: model.incomeExpectation
-            )
-            FigureCard(
-                symbol: "creditcard.fill", accent: .expenses, dark: dark,
-                label: L.t(Strings.shared.dashboard_expenses),
-                amount: model.expensesAmount, detail: model.expensesExpectation,
-                detailIsWarning: model.expensesAreOver
-            )
-            FigureCard(
-                symbol: "dollarsign.circle.fill", accent: .investments, dark: dark,
-                label: L.t(Strings.shared.dashboard_investments),
-                amount: model.investmentsAmount, detail: model.investmentsMovement
-            )
-            FigureCard(
-                symbol: "doc.text.fill", accent: .debts, dark: dark,
-                label: L.t(Strings.shared.dashboard_debts),
-                amount: model.debtsAmount, detail: model.debtsMovement
-            )
+            opening(.income, L.t(Strings.shared.dashboard_income)) {
+                FigureCard(
+                    symbol: "wallet.bifold.fill", accent: .income, dark: dark,
+                    label: L.t(Strings.shared.dashboard_income),
+                    amount: model.incomeAmount, detail: model.incomeExpectation
+                )
+            }
+            opening(.expenses, L.t(Strings.shared.dashboard_expenses)) {
+                FigureCard(
+                    symbol: "creditcard.fill", accent: .expenses, dark: dark,
+                    label: L.t(Strings.shared.dashboard_expenses),
+                    amount: model.expensesAmount, detail: model.expensesExpectation,
+                    detailIsWarning: model.expensesAreOver
+                )
+            }
+            opening(.investments, L.t(Strings.shared.dashboard_investments)) {
+                FigureCard(
+                    symbol: "dollarsign.circle.fill", accent: .investments, dark: dark,
+                    label: L.t(Strings.shared.dashboard_investments),
+                    amount: model.investmentsAmount, detail: model.investmentsMovement
+                )
+            }
+            opening(.debts, L.t(Strings.shared.dashboard_debts)) {
+                FigureCard(
+                    symbol: "doc.text.fill", accent: .debts, dark: dark,
+                    label: L.t(Strings.shared.dashboard_debts),
+                    amount: model.debtsAmount, detail: model.debtsMovement
+                )
+            }
         }
+    }
+
+    /// A card as the button it always looked like: its chevron now opens it.
+    private func opening<Card: View>(_ kind: MoneyKind, _ label: String, @ViewBuilder card: () -> Card) -> some View {
+        Button { onOpenMoney(kind) } label: { card() }
+            .buttonStyle(.plain)
+            .accessibilityHint(L.t(Strings.shared.money_open_hint, label))
     }
 
     // MARK: - The ways in

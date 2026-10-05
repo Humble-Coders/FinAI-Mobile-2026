@@ -39,6 +39,9 @@ data class Debt(
     /** A percentage as typed, e.g. "5.25"; the server stores basis points. */
     @SerialName("interest_rate_percent")
     val interestRatePercent: String? = null,
+    /** The day of the month the payment falls due, when the person said. */
+    @SerialName("due_day")
+    val dueDay: Int? = null,
 )
 
 @Serializable
@@ -52,4 +55,7 @@ data class Obligation(
     val name: String = "",
     @SerialName("monthly_amount")
     val monthlyAmount: String = "",
+    /** The day of the month it falls due, when the person said. */
+    @SerialName("due_day")
+    val dueDay: Int? = null,
 )

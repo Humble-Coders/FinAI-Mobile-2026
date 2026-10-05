@@ -58,6 +58,7 @@ import com.humblesolutions.finai.ui.dashboard.DashboardRoute
 import com.humblesolutions.finai.ui.manualentry.ManualEntryActions
 import com.humblesolutions.finai.ui.manualentry.ManualEntryScreen
 import com.humblesolutions.finai.ui.manualentry.ManualEntryViewModel
+import com.humblesolutions.finai.ui.money.MoneyDetailRoute
 import com.humblesolutions.finai.ui.onboarding.CodeScreen
 import com.humblesolutions.finai.ui.onboarding.ConsentScreen
 import com.humblesolutions.finai.ui.onboarding.FailedScreen
@@ -77,6 +78,7 @@ import com.humblesolutions.finai.ui.statementimport.StatementImportRoute
 import com.humblesolutions.finai.ui.strings
 import com.humblesolutions.finai.ui.transactions.TransactionsRoute
 import com.humblesolutions.finai.usecase.Destination
+import com.humblesolutions.finai.usecase.MoneyKind
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
@@ -281,10 +283,13 @@ private fun SetupRoute(userId: String, onFinished: () -> Unit) {
 }
 
 /** Where the signed-in, set-up person is: home, or one of the two ways money gets in. */
-private enum class HomeRoute { HOME, ADD, IMPORT, ADD_AFTER_IMPORT, REVIEW, TRANSACTIONS }
+private enum class HomeRoute { HOME, ADD, IMPORT, ADD_AFTER_IMPORT, REVIEW, TRANSACTIONS, INCOME, EXPENSES, INVESTMENTS, DEBTS }
 
 /** The three places the bar moves between; everything else is a flow over them. */
 private val TABS = listOf(HomeRoute.HOME, HomeRoute.TRANSACTIONS, HomeRoute.REVIEW)
+
+/** Income, Expenses, Investments and Debts, opened from Home's cards. */
+private val MONEY = listOf(HomeRoute.INCOME, HomeRoute.EXPENSES, HomeRoute.INVESTMENTS, HomeRoute.DEBTS)
 
 /**
  * Home and what opens from it: the statement import (#31), manual entry — from
@@ -323,6 +328,14 @@ private fun HomeOrEntry(userId: String, onSignOut: () -> Unit) {
                         onAddTransaction = { route = HomeRoute.ADD },
                         onViewAll = { route = HomeRoute.TRANSACTIONS },
                         onSignOut = onSignOut,
+                        onOpenMoney = { kind ->
+                            route = when (kind) {
+                                MoneyKind.INCOME -> HomeRoute.INCOME
+                                MoneyKind.EXPENSES -> HomeRoute.EXPENSES
+                                MoneyKind.INVESTMENTS -> HomeRoute.INVESTMENTS
+                                MoneyKind.DEBTS -> HomeRoute.DEBTS
+                            }
+                        },
                     )
 
                     HomeRoute.ADD -> ManualEntryRoute(userId = userId, fromUnreadable = false, onClose = { route = HomeRoute.HOME })
@@ -342,6 +355,16 @@ private fun HomeOrEntry(userId: String, onSignOut: () -> Unit) {
 
                     HomeRoute.TRANSACTIONS ->
                         TransactionsRoute(userId = userId, onClose = { route = HomeRoute.HOME }, showsBack = false)
+
+                    // The four money screens open over the bar, like a flow,
+                    // and back returns home.
+                    HomeRoute.INCOME -> MoneyDetailRoute(userId, MoneyKind.INCOME, onBack = { route = HomeRoute.HOME })
+
+                    HomeRoute.EXPENSES -> MoneyDetailRoute(userId, MoneyKind.EXPENSES, onBack = { route = HomeRoute.HOME })
+
+                    HomeRoute.INVESTMENTS -> MoneyDetailRoute(userId, MoneyKind.INVESTMENTS, onBack = { route = HomeRoute.HOME })
+
+                    HomeRoute.DEBTS -> MoneyDetailRoute(userId, MoneyKind.DEBTS, onBack = { route = HomeRoute.HOME })
                 }
             }
         }
@@ -390,6 +413,13 @@ private fun homeTransition(from: HomeRoute, to: HomeRoute): ContentTransform = w
         fadeIn(tween(240)) togetherWith (fadeOut(tween(220)) + slideOutVertically(tween(260)) { it / 12 })
 
     from in TABS && to in TABS -> fadeIn(tween(220)) togetherWith fadeOut(tween(160))
+
+    // Out of a card on Home: rises in, and settles back down on the way out.
+    from == HomeRoute.HOME && to in MONEY ->
+        (fadeIn(tween(260)) + slideInVertically(tween(300)) { it / 14 }) togetherWith fadeOut(tween(180))
+
+    from in MONEY && to == HomeRoute.HOME ->
+        fadeIn(tween(220)) togetherWith (fadeOut(tween(200)) + slideOutVertically(tween(240)) { it / 14 })
 
     else -> EnterTransition.None togetherWith ExitTransition.None
 }

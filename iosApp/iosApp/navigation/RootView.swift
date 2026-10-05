@@ -24,6 +24,11 @@ struct RootView: View {
 
     /// Everything the household has (#F3).
     @StateObject private var transactionsModel = TransactionsViewModel()
+    /// Income, Expenses, Investments and Debts, opened from Home's cards.
+    @StateObject private var moneyModel = MoneyDetailViewModel()
+    /// The quick entry those screens open — its own model, so a draft there
+    /// and one on the full manual entry screen never meet.
+    @StateObject private var moneyEntryModel = ManualEntryViewModel()
     /// Where the signed-in, set-up person is: home, or one of the two ways
     /// money gets in. Scene storage, so the app coming back after iOS
     /// reclaimed it reopens that screen rather than dropping them on home.
@@ -160,6 +165,15 @@ struct RootView: View {
             switch HomeRoute(rawValue: homeRoute) ?? .home {
             case .home, .transactions, .review:
                 tabs
+            case .income, .expenses, .investments, .debts:
+                MoneyDetailView(
+                    model: moneyModel,
+                    entry: moneyEntryModel,
+                    userId: model.me?.user.id ?? "",
+                    kind: moneyKind(homeRoute),
+                    onBack: { withAnimation(.easeOut(duration: 0.25)) { homeRoute = HomeRoute.home.rawValue } }
+                )
+                .transition(.opacity.combined(with: .offset(y: 30)))
             case .add, .addAfterImport:
                 ManualEntryView(
                     model: entryModel,
@@ -206,7 +220,10 @@ struct RootView: View {
                 onAddTransaction: { homeRoute = HomeRoute.add.rawValue },
                 onReview: { homeRoute = HomeRoute.review.rawValue },
                 onViewAll: { homeRoute = HomeRoute.transactions.rawValue },
-                onSignOut: { model.signOut() }
+                onSignOut: { model.signOut() },
+                onOpenMoney: { kind in
+                    withAnimation(.easeOut(duration: 0.3)) { homeRoute = HomeRoute.route(for: kind).rawValue }
+                }
             )
             .tabItem { Label(L.t(Strings.shared.tab_home), systemImage: "house.fill") }
             .tag(HomeRoute.home.rawValue)
@@ -255,4 +272,27 @@ private enum HomeRoute: String {
     case review
     /// Everything the household has, by statement or by month (#F3).
     case transactions
+    /// The four money screens, from Home's cards.
+    case income
+    case expenses
+    case investments
+    case debts
+
+    static func route(for kind: MoneyKind) -> HomeRoute {
+        switch kind {
+        case .income: .income
+        case .expenses: .expenses
+        case .investments: .investments
+        case .debts: .debts
+        }
+    }
+}
+
+private func moneyKind(_ raw: String) -> MoneyKind {
+    switch HomeRoute(rawValue: raw) {
+    case .income: .income
+    case .investments: .investments
+    case .debts: .debts
+    default: .expenses
+    }
 }

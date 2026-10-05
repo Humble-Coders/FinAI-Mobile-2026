@@ -129,4 +129,41 @@ class CommitmentEditTest {
         val after = CommitmentEdit.removed(setup(Obligation("Rent", "1800.00"), Obligation("Rent", "1800.00")), rent)
         assertEquals(1, assertNotNull(after).obligations.size)
     }
+
+    // ── Due days ────────────────────────────────────────────────────────
+
+    @Test
+    fun a_due_day_is_optional_but_must_be_a_day_of_a_month() {
+        val ok = CommitmentDraft(name = "Rent", amount = "1800", dueDay = "")
+        kotlin.test.assertNull(CommitmentEdit.blockingReasonForNew(ok, "CAD", existing = 0))
+        kotlin.test.assertNull(CommitmentEdit.blockingReasonForNew(ok.copy(dueDay = "31"), "CAD", existing = 0))
+        for (bad in listOf("0", "32", "x")) {
+            kotlin.test.assertEquals(
+                CommitmentBlock.DUE_DAY_INVALID,
+                CommitmentEdit.blockingReasonForNew(ok.copy(dueDay = bad), "CAD", existing = 0),
+                bad,
+            )
+        }
+    }
+
+    @Test
+    fun an_added_commitment_keeps_its_due_day_and_an_edit_can_change_it() {
+        val setup = com.humblesolutions.finai.model.FinancialSetup(currency = "CAD")
+        val added = kotlin.test.assertNotNull(CommitmentEdit.added(setup, CommitmentDraft("Rent", "1800", "5")))
+        kotlin.test.assertEquals(5, added.obligations.single().dueDay)
+
+        val original = com.humblesolutions.finai.model.Commitment(name = "Rent", expected = "1800.00", dueDay = 5)
+        val moved = kotlin.test.assertNotNull(CommitmentEdit.applied(added, original, CommitmentDraft("Rent", "1800", "1")))
+        kotlin.test.assertEquals(1, moved.obligations.single().dueDay)
+    }
+
+    @Test
+    fun changing_only_the_due_day_is_a_change() {
+        val original = com.humblesolutions.finai.model.Commitment(name = "Rent", expected = "1800.00", dueDay = 5)
+        kotlin.test.assertNull(CommitmentEdit.blockingReason(original, CommitmentDraft("Rent", "1800", "6"), "CAD"))
+        kotlin.test.assertEquals(
+            CommitmentBlock.NOTHING_CHANGED,
+            CommitmentEdit.blockingReason(original, CommitmentEdit.draftOf(original), "CAD"),
+        )
+    }
 }

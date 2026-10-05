@@ -392,7 +392,7 @@ struct ManualEntryView: View {
 
 /// The calendar. Days after today cannot be picked — the limit the shared rule
 /// holds Save to. Nothing is taken until Done.
-private struct DateSheet: View {
+struct DateSheet: View {
     let chosen: Kotlinx_datetimeLocalDate?
     let today: Kotlinx_datetimeLocalDate
     let onChosen: (Kotlinx_datetimeLocalDate) -> Void
