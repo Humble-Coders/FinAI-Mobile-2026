@@ -216,11 +216,11 @@ struct RootView: View {
             .tag(HomeRoute.home.rawValue)
 
             TransactionsView(model: transactionsModel, userId: userId, onClose: goHome, showsBack: false)
-                    .tabItem { Label(L.t(Strings.shared.tab_transactions), systemImage: "list.bullet.rectangle.fill") }
+                .tabItem { Label(L.t(Strings.shared.tab_transactions), systemImage: "list.bullet.rectangle.fill") }
                 .tag(HomeRoute.transactions.rawValue)
 
             ReviewView(model: reviewModel, userId: userId, onClose: goHome, showsBack: false)
-                    .tabItem { Label(L.t(Strings.shared.tab_review), systemImage: "checkmark.circle.fill") }
+                .tabItem { Label(L.t(Strings.shared.tab_review), systemImage: "checkmark.circle.fill") }
                 .tag(HomeRoute.review.rawValue)
         }
         .tint(Brand.greenDeep)
