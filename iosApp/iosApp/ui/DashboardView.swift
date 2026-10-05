@@ -59,7 +59,9 @@ struct DashboardView: View {
             .ignoresSafeArea()
         )
         .onAppear { model.bind(userId: userId) }
-        .onDisappear { model.unbind() }
+        // Not on disappearing: switching tab fires that, and closing and
+        // rebuilding this tab's clients on every switch was the lag coming
+        // back to it. RootView unbinds the tabs when they are left for good.
         .sheet(isPresented: commitmentShown) { CommitmentEditor(model: model) }
     }
 
