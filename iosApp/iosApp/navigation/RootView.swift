@@ -71,7 +71,11 @@ struct RootView: View {
             || (showingEntry && entryModel.loading)
             || (showingImport && (importModel.working || importModel.accountsLoading))
             || (showingReview && reviewModel.loading)
+            // Home's first read: figures, not a screen of zeroes, until they arrive.
+            || (showingHome && dashboardModel.loading)
     }
+
+    private var showingHome: Bool { atHome && homeRoute == HomeRoute.home.rawValue }
 
     private var atHome: Bool {
         model.configurationProblemKey == nil
@@ -220,6 +224,15 @@ struct RootView: View {
                 .tag(HomeRoute.review.rawValue)
         }
         .tint(Brand.greenDeep)
+        // Leaving the tabs for good — for the import, an entry, signing out —
+        // closes their clients. Switching between them does not: a tab keeps
+        // its connections and its figures, and stays current through
+        // LedgerChanged while it is out of sight.
+        .onDisappear {
+            dashboardModel.unbind()
+            transactionsModel.unbind()
+            reviewModel.unbind()
+        }
     }
 
     private var failureKey: String {

@@ -143,7 +143,10 @@ final class ReviewViewModel: ObservableObject {
         transactionsRepository = KtorTransactionsRepository(baseUrl: base, tokens: tokens, logging: logging)
         categoriesRepository = KtorCategoriesRepository(baseUrl: base, tokens: tokens, logging: logging)
         capabilitiesRepository = KtorCapabilitiesRepository(baseUrl: base, tokens: tokens, logging: logging)
-        load()
+        // Back on a tab already read: refresh behind what is on screen. A
+        // first load blanked the figures and, on Review, raised the coin
+        // for two seconds — on every switch of tab.
+        load(refresh: loadedOnce)
     }
 
     func unbind() {
@@ -158,7 +161,11 @@ final class ReviewViewModel: ObservableObject {
         generation += 1
     }
 
+    /// Whether the queue has been read once for this person, so a return is a refresh.
+    private var loadedOnce = false
+
     private func reset() {
+        loadedOnce = false
         undoTimer?.cancel()
         undoTimer = nil
         generation += 1
@@ -213,6 +220,7 @@ final class ReviewViewModel: ObservableObject {
                 if let categories { self.categories = categories }
                 if let locale = capabilities?.locale, !locale.isEmpty { self.locale = locale }
                 self.today = ManualEntry.shared.today()
+                self.loadedOnce = true
                 self.loading = false
                 self.refreshing = false
                 self.restoreCorrection()

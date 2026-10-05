@@ -35,7 +35,9 @@ struct ReviewView: View {
         }
         .safeAreaInset(edge: .top, spacing: 0) { header }
         .onAppear { model.bind(userId: userId, restoring: stored) }
-        .onDisappear { model.unbind() }
+        // Not on disappearing: switching tab fires that, and closing and
+        // rebuilding this tab's clients on every switch was the lag coming
+        // back to it. RootView unbinds the tabs when they are left for good.
         .onChange(of: model.snapshot) { _, snapshot in stored = snapshot }
         .sheet(isPresented: editingShown) { CorrectionSheet(model: model) }
     }

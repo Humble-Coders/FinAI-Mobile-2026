@@ -108,8 +108,7 @@ data class StatementImportUiState(
         Strings.import_extracted_row,
         listOf(
             ImportedRows.titleOf(row),
-            ImportedRows.categoryOf(row, categories)?.name
-                ?: LocalizationRegistry.get(Strings.import_extracted_uncategorised, locale),
+            ImportedRows.categoryLabel(row, categories, LocalizationRegistry.get(Strings.import_extracted_uncategorised, locale)).orEmpty(),
             amountLabel(row),
         ),
         locale,

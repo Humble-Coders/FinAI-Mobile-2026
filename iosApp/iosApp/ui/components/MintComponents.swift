@@ -23,6 +23,11 @@ enum Mint {
         )
     }
 
+    /// The ground's top colour, solid: what a pinned header becomes once content passes under it.
+    static func groundTop(_ dark: Bool) -> Color {
+        dark ? Color(red: 0x0C / 255, green: 0x1E / 255, blue: 0x14 / 255) : Color(red: 0xE6 / 255, green: 0xF6 / 255, blue: 0xEC / 255)
+    }
+
     static func hill(_ dark: Bool) -> Color { dark ? .white.opacity(0.03) : Brand.green.opacity(0.07) }
 
     /// The panel the form sits on. White on light; a lifted grey on dark.
@@ -106,7 +111,12 @@ struct MintHeader: View {
     var step: Int?
     var steps = 3
     var backDisabled = false
+    /// Content has scrolled under the header: it turns solid, with a hairline,
+    /// so what passes beneath cannot show through its title. Clear at rest, so
+    /// the ground's glow behind it stays.
+    var solid = false
     let onBack: () -> Void
+    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
         VStack(spacing: 6) {
@@ -141,6 +151,35 @@ struct MintHeader: View {
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel(L.t(Strings.shared.import_step, String(step), String(steps)))
             }
+        }
+        .padding(.bottom, 6)
+        .background(
+            Mint.groundTop(scheme == .dark)
+                .opacity(solid ? 1 : 0)
+                .overlay(alignment: .bottom) { Divider().opacity(solid ? 1 : 0) }
+                .ignoresSafeArea(edges: .top)
+                .animation(.easeOut(duration: 0.15), value: solid)
+        )
+    }
+}
+
+/**
+ Whether a scroll view's content has moved up from where it rests — what a
+ header pinned over it needs to know to turn solid. Changes only as the content
+ leaves rest or returns to it, so it costs nothing while scrolling.
+ */
+struct ScrolledUnder: ViewModifier {
+    @Binding var scrolled: Bool
+    @State private var rest: CGFloat?
+
+    func body(content: Content) -> some View {
+        content.onGeometryChange(for: CGFloat.self) { proxy in
+            proxy.frame(in: .global).minY
+        } action: { (top: CGFloat) in
+            let base: CGFloat = rest ?? top
+            if rest == nil { rest = top }
+            let now = base - top > 2
+            if now != scrolled { scrolled = now }
         }
     }
 }

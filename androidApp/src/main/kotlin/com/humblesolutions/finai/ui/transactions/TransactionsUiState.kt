@@ -88,7 +88,7 @@ data class TransactionsUiState(
 
     fun titleOf(row: Transaction): String = ImportedRows.titleOf(row)
 
-    fun categoryLabel(row: Transaction): String = ImportedRows.categoryOf(row, categories)?.name ?: text(Strings.import_extracted_uncategorised)
+    fun categoryLabel(row: Transaction): String = ImportedRows.categoryLabel(row, categories, text(Strings.import_extracted_uncategorised)).orEmpty()
 
     fun isFiled(row: Transaction): Boolean = ImportedRows.categoryOf(row, categories) != null
 
@@ -127,8 +127,9 @@ data class TransactionsUiState(
     val categoryGroups: List<TransactionBrowsing.CategoryGroup>
         get() = TransactionBrowsing.byCategory(visibleRows, categories, digits)
 
-    /** A category heading's name: the category's, or "Not filed yet". */
-    fun categoryHeading(group: TransactionBrowsing.CategoryGroup): String = categories.firstOrNull { it.id == group.categoryId }?.name ?: text(Strings.import_extracted_uncategorised)
+    /** A category heading's name: the category's, or "No category yet" for rows nothing filed. */
+    fun categoryHeading(group: TransactionBrowsing.CategoryGroup): String = categories.firstOrNull { it.id == group.categoryId }?.name
+        ?: if (group.categoryId == null) text(Strings.import_extracted_uncategorised) else ""
 
     /**
      * The list in sections, whichever way it is sliced: by category, one per

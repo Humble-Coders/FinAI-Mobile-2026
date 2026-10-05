@@ -1,6 +1,7 @@
 package com.humblesolutions.finai.ui.dashboard
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.LocalOverscrollFactory
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -61,6 +62,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -155,49 +157,53 @@ fun DashboardScreen(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background),
     ) {
-        Column(
-            Modifier
-                .fillMaxSize()
-                .verticalScroll(scroll),
-        ) {
-            Box(
+        // No stretch when pulled past either end: dragged down, the header
+        // came away from the status bar, which the design does not do.
+        CompositionLocalProvider(LocalOverscrollFactory provides null) {
+            Column(
                 Modifier
-                    .fillMaxWidth()
-                    .background(Field.brush(dark)),
+                    .fillMaxSize()
+                    .verticalScroll(scroll),
             ) {
-                Waves(Modifier.matchParentSize())
-                Column(
+                Box(
                     Modifier
-                        .align(Alignment.TopCenter)
-                        .widthIn(max = 560.dp)
                         .fillMaxWidth()
-                        // The field runs under the status bar, as in the design;
-                        // its contents do not.
-                        .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
-                        .padding(horizontal = 20.dp)
-                        .padding(top = 12.dp, bottom = SHEET_OVERLAP + 28.dp),
+                        .background(Field.brush(dark)),
                 ) {
-                    // Out over the first half of the stretch; the bar comes in over the
-                    // second, so the two greetings are never on screen together.
-                    Header(state, onReview, Modifier.graphicsLayer { alpha = 1f - (collapsed() * 2f).coerceAtMost(1f) })
-                    Spacer(Modifier.height(26.dp))
-                    Hero(state, onToggleAmounts, onPreviousMonth, onNextMonth)
-                    state.dailyChart?.let { chart ->
-                        Spacer(Modifier.height(14.dp))
-                        DailyChart(chart, state, Modifier.fillMaxWidth().height(CHART_HEIGHT))
+                    Waves(Modifier.matchParentSize())
+                    Column(
+                        Modifier
+                            .align(Alignment.TopCenter)
+                            .widthIn(max = 560.dp)
+                            .fillMaxWidth()
+                            // The field runs under the status bar, as in the design;
+                            // its contents do not.
+                            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
+                            .padding(horizontal = 20.dp)
+                            .padding(top = 12.dp, bottom = SHEET_OVERLAP + 28.dp),
+                    ) {
+                        // Out over the first half of the stretch; the bar comes in over the
+                        // second, so the two greetings are never on screen together.
+                        Header(state, onReview, Modifier.graphicsLayer { alpha = 1f - (collapsed() * 2f).coerceAtMost(1f) })
+                        Spacer(Modifier.height(26.dp))
+                        Hero(state, onToggleAmounts, onPreviousMonth, onNextMonth)
+                        state.dailyChart?.let { chart ->
+                            Spacer(Modifier.height(14.dp))
+                            DailyChart(chart, state, Modifier.fillMaxWidth().height(CHART_HEIGHT))
+                        }
+                        Spacer(Modifier.height(22.dp))
+                        when {
+                            state.loadFailed -> LoadFailed(state, onRetry)
+                            state.showsEmptyState -> Unit
+                            else -> Figures(state, dark)
+                        }
+                        Spacer(Modifier.height(26.dp))
+                        Actions(state, dark, onImportStatement, onAddTransaction, onReview)
                     }
-                    Spacer(Modifier.height(22.dp))
-                    when {
-                        state.loadFailed -> LoadFailed(state, onRetry)
-                        state.showsEmptyState -> Unit
-                        else -> Figures(state, dark)
-                    }
-                    Spacer(Modifier.height(26.dp))
-                    Actions(state, dark, onImportStatement, onAddTransaction, onReview)
                 }
-            }
 
-            Sheet(state, onViewAll, onSignOut, commitments)
+                Sheet(state, onViewAll, onSignOut, commitments)
+            }
         }
 
         CompactHeader(state, dark, collapsed, onReview)
@@ -272,7 +278,7 @@ private fun CompactHeader(state: DashboardUiState, dark: Boolean, collapsed: () 
             .padding(horizontal = 12.dp),
     ) {
         Text(
-            text = strings(Strings.dashboard_greeting),
+            text = strings(Strings.tab_home),
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold,
             color = Field.ink(),

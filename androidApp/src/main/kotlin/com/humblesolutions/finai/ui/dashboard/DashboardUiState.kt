@@ -273,7 +273,7 @@ data class DashboardUiState(
             money(row.amount),
         )
         val category = ImportedRows.categoryOf(row, categories)
-        val categoryName = category?.name ?: text(Strings.import_extracted_uncategorised)
+        val categoryName = ImportedRows.categoryLabel(row, categories, text(Strings.import_extracted_uncategorised)).orEmpty()
         val date = Dates.parse(row.occurredOn)?.let { Dates.display(it) } ?: row.occurredOn
         val title = ImportedRows.titleOf(row)
         RecentRow(
@@ -284,7 +284,7 @@ data class DashboardUiState(
             amount = amount,
             isCredit = isCredit,
             category = categoryName,
-            isFiled = category != null,
+            isFiled = ImportedRows.isFiled(row),
             description = text(Strings.dashboard_recent_row, title, date, amount, categoryName),
         )
     }

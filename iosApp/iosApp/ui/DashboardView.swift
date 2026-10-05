@@ -30,17 +30,10 @@ struct DashboardView: View {
     @Environment(\.colorScheme) private var scheme
     private var dark: Bool { scheme == .dark }
 
-    /// Where the header sat before any scrolling, and how far it has moved up since.
-    @State private var restingTop: CGFloat?
-    @State private var scrolled: CGFloat = 0
-
-    /// The scroll over which the header shrinks into the bar: about its own height.
-    private static let collapseDistance: CGFloat = 64
-
-    /// How far the header has shrunk into the bar, 0 to 1.
-    private var collapsed: CGFloat { min(max(scrolled / Self.collapseDistance, 0), 1) }
-
-    private var headerOpacity: Double { Double(1 - min(collapsed * 2, 1)) }
+    /// How far the header has shrunk into the bar. Read only by the header's
+    /// fade and the bar, never by this body, so scrolling redraws those two
+    /// and not the whole screen; see `HeaderCollapse`.
+    @State private var collapse = HeaderCollapse()
 
     var body: some View {
         ScrollView {
@@ -48,10 +41,14 @@ struct DashboardView: View {
                 field
                 sheet.padding(.top, -Field.sheetOverlap)
             }
+            // The top of the page stays put: no pulling the header down.
+            .background(TopBounceStopper().frame(width: 0, height: 0))
         }
         .coordinateSpace(name: Self.space)
         .scrollBounceBehavior(.basedOnSize)
-        .overlay(alignment: .top) { compactHeader }
+        .overlay(alignment: .top) {
+            CollapsingBar(collapse: collapse, dark: dark) { compactHeader }
+        }
         // Green above, the sheet's ground below, so pulling past either end
         // shows the colour already there rather than a strip of the other.
         .background(
@@ -62,11 +59,17 @@ struct DashboardView: View {
             .ignoresSafeArea()
         )
         .onAppear { model.bind(userId: userId) }
-        .onDisappear { model.unbind() }
+        // Not on disappearing: switching tab fires that, and closing and
+        // rebuilding this tab's clients on every switch was the lag coming
+        // back to it. RootView unbinds the tabs when they are left for good.
         .sheet(isPresented: commitmentShown) { CommitmentEditor(model: model) }
     }
 
     private static let space = "home"
+
+    /// How far the field's ground reaches above its top: past any status bar,
+    /// and past a pull down from the top.
+    private static let fieldBleed: CGFloat = 400
 
     private var commitmentShown: Binding<Bool> {
         Binding(get: { model.showsCommitmentEditor }, set: { if !$0 { model.cancelCommitment() } })
@@ -79,13 +82,11 @@ struct DashboardView: View {
             header
                 // Out over the first half of the stretch; the bar comes in
                 // over the second, so the two greetings never show together.
-                .opacity(headerOpacity)
+                .modifier(HeaderFade(collapse: collapse))
                 .onGeometryChange(for: CGFloat.self) { proxy in
                     proxy.frame(in: .named(Self.space)).minY
                 } action: { (top: CGFloat) in
-                    let rest: CGFloat = restingTop ?? top
-                    if restingTop == nil { restingTop = top }
-                    scrolled = rest - top
+                    collapse.track(top: top)
                 }
             hero.padding(.top, 26)
             if let chart = model.dailyChart {
@@ -120,9 +121,13 @@ struct DashboardView: View {
                 Field.gradient(dark)
                 Waves().accessibilityHidden(true)
             }
-            // The field runs under the status bar, as in the design; its
-            // contents do not.
-            .ignoresSafeArea(edges: .top)
+            // The field runs on up under the status bar, as in the design, and
+            // scrolls with the page. `ignoresSafeArea` does nothing inside a
+            // scroll view, so the strip behind the clock showed the scroll
+            // view's own flat green instead — a band with a seam under it that
+            // the page then slid beneath. Grown upward instead; its contents
+            // stay where they are.
+            .padding(.top, -Self.fieldBleed)
         )
     }
 
@@ -160,9 +165,8 @@ struct DashboardView: View {
      pass under it. Mirrors Android's `CompactHeader`.
      */
     private var compactHeader: some View {
-        let opacity: Double = Double(min(max((collapsed - 0.5) * 2, 0), 1))
-        return ZStack {
-            Text(L.t(Strings.shared.dashboard_greeting))
+        ZStack {
+            Text(L.t(Strings.shared.tab_home))
                 .font(.headline.weight(.bold))
                 .foregroundColor(Field.ink())
                 .lineLimit(1)
@@ -176,15 +180,6 @@ struct DashboardView: View {
         .padding(.horizontal, 12)
         .frame(height: 52)
         .frame(maxWidth: .infinity)
-        .background(
-            Field.top(dark)
-                .shadow(color: .black.opacity(0.18 * opacity), radius: 6, y: 2)
-                .ignoresSafeArea(edges: .top)
-        )
-        .opacity(opacity)
-        // A bar at nothing opacity must not catch a tap meant for the header.
-        .allowsHitTesting(opacity > 0)
-        .accessibilityHidden(opacity == 0)
     }
 
     /// The bell is the review queue, and its dot means something: rows are
@@ -1174,3 +1169,71 @@ struct FieldVectors: View {
         .allowsHitTesting(false)
     }
 }
+
+// MARK: - Collapsing header
+
+/**
+ How far Home's header has shrunk into the bar, 0 to 1 — observed by the
+ header's fade and the bar alone.
+
+ Kept out of `DashboardView`'s state on purpose. As `@State` there, every point
+ scrolled re-ran the whole screen's body — chart, cards, rows — sixty times a
+ second, which is the lag scrolling home had. Here only the two views that read
+ `progress` redraw, and only while it changes: it is clamped and stepped, so
+ past the header's own height scrolling changes nothing at all.
+ */
+@Observable
+final class HeaderCollapse {
+    /// The scroll over which the header shrinks into the bar: about its own height.
+    static let distance: CGFloat = 64
+
+    private(set) var progress: CGFloat = 0
+
+    /// Where the header sat before any scrolling: the first position seen.
+    @ObservationIgnored private var restingTop: CGFloat?
+
+    func track(top: CGFloat) {
+        let rest = restingTop ?? top
+        if restingTop == nil { restingTop = top }
+        let raw = min(max((rest - top) / Self.distance, 0), 1)
+        // Thirty-two steps: smooth to the eye, and no update for a change too
+        // small to see.
+        let stepped = (raw * 32).rounded() / 32
+        if stepped != progress { progress = stepped }
+    }
+}
+
+/// The big header, fading out over the first half of the collapse.
+private struct HeaderFade: ViewModifier {
+    let collapse: HeaderCollapse
+
+    func body(content: Content) -> some View {
+        content.opacity(Double(1 - min(collapse.progress * 2, 1)))
+    }
+}
+
+/**
+ The slim bar the header shrinks into, fading in over the second half. Solid,
+ because figures pass under it, and reaching up under the status bar. Mirrors
+ Android's `CompactHeader`.
+ */
+private struct CollapsingBar<Content: View>: View {
+    let collapse: HeaderCollapse
+    let dark: Bool
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+        let opacity = Double(min(max((collapse.progress - 0.5) * 2, 0), 1))
+        content()
+            .background(
+                Field.top(dark)
+                    .shadow(color: .black.opacity(0.18 * opacity), radius: 6, y: 2)
+                    .ignoresSafeArea(edges: .top)
+            )
+            .opacity(opacity)
+            // A bar at nothing opacity must not catch a tap meant for the header.
+            .allowsHitTesting(opacity > 0)
+            .accessibilityHidden(opacity == 0)
+    }
+}
+

@@ -396,7 +396,7 @@ object Strings {
     const val import_extracted_in = "import_extracted_in" // "{0} in"
     const val import_extracted_waiting = "import_extracted_waiting" // "{0} need you"
     const val import_extracted_waiting_one = "import_extracted_waiting_one" // "1 needs you"
-    const val import_extracted_uncategorised = "import_extracted_uncategorised" // "Not filed yet"
+    const val import_extracted_uncategorised = "import_extracted_uncategorised" // "No category yet"
     const val import_extracted_failed = "import_extracted_failed" // "We could not load the list, but the import worked."
     const val import_extracted_retry = "import_extracted_retry" // "Show them"
     const val import_extracted_row = "import_extracted_row" // "{0}, {1}, {2}"

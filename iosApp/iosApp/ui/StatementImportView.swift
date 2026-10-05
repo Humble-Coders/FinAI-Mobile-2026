@@ -26,6 +26,8 @@ struct StatementImportView: View {
     /// Held here only — never in scene storage — and cleared once used.
     @State private var password = ""
     @Environment(\.colorScheme) private var scheme
+    /// Content has scrolled under the header, which then turns solid.
+    @State private var scrolledUnder = false
 
     var body: some View {
         ZStack {
@@ -34,6 +36,7 @@ struct StatementImportView: View {
                 VStack(alignment: .leading, spacing: 16) {
                     content
                 }
+                .modifier(ScrolledUnder(scrolled: $scrolledUnder))
                 .frame(maxWidth: 560)
                 .frame(maxWidth: .infinity)
                 .padding(.horizontal, 20)
@@ -89,7 +92,7 @@ struct StatementImportView: View {
     }
 
     private var header: some View {
-        MintHeader(title: L.t(Strings.shared.import_title), step: stepNumber, backDisabled: model.working) {
+        MintHeader(title: L.t(Strings.shared.import_title), step: stepNumber, backDisabled: model.working, solid: scrolledUnder) {
             if model.step == .chooseFile { model.backToAccount() } else if !model.working { close() }
         }
         .padding(.bottom, 4)
@@ -454,13 +457,16 @@ struct StatementImportView: View {
         HStack(alignment: .center, spacing: 10) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(model.titleOf(row)).font(.body).lineLimit(1).truncationMode(.tail)
-                Text(model.categoryLabel(row))
-                    .font(.caption2)
-                    .foregroundColor(model.isFiled(row) ? Brand.textMuted : Brand.amber)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(model.isFiled(row) ? Brand.surfaceField : Brand.amber.opacity(0.12))
-                    .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                // Filed, with the names not to hand: no chip, rather than a wrong one.
+                if let label = model.categoryLabel(row) {
+                    Text(label)
+                        .font(.caption2)
+                        .foregroundColor(model.isFiled(row) ? Brand.textMuted : Brand.amber)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(model.isFiled(row) ? Brand.surfaceField : Brand.amber.opacity(0.12))
+                        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                }
             }
             Spacer()
             Text(model.amountLabel(row))
