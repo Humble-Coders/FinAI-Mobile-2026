@@ -202,31 +202,31 @@ struct RootView: View {
     private var tabs: some View {
         let userId = model.me?.user.id ?? ""
         let goHome = { homeRoute = HomeRoute.home.rawValue }
-        return HomeTabs(
-            selection: $homeRoute,
-            tabs: [
-                HomeTab(id: HomeRoute.home.rawValue, titleKey: Strings.shared.tab_home, symbol: "house"),
-                HomeTab(id: HomeRoute.transactions.rawValue, titleKey: Strings.shared.tab_transactions, symbol: "list.bullet.rectangle"),
-                HomeTab(id: HomeRoute.review.rawValue, titleKey: Strings.shared.tab_review, symbol: "checkmark.circle"),
-            ]
-        ) { tab in
-            switch tab {
-            case HomeRoute.transactions.rawValue:
-                TransactionsView(model: transactionsModel, userId: userId, onClose: goHome, showsBack: false)
-            case HomeRoute.review.rawValue:
-                ReviewView(model: reviewModel, userId: userId, onClose: goHome, showsBack: false)
-            default:
-                DashboardView(
-                    model: dashboardModel,
-                    userId: userId,
-                    onImportStatement: { homeRoute = HomeRoute.importStatement.rawValue },
-                    onAddTransaction: { homeRoute = HomeRoute.add.rawValue },
-                    onReview: { homeRoute = HomeRoute.review.rawValue },
-                    onViewAll: { homeRoute = HomeRoute.transactions.rawValue },
-                    onSignOut: { model.signOut() }
-                )
-            }
+        return TabView(selection: $homeRoute) {
+            DashboardView(
+                model: dashboardModel,
+                userId: userId,
+                onImportStatement: { homeRoute = HomeRoute.importStatement.rawValue },
+                onAddTransaction: { homeRoute = HomeRoute.add.rawValue },
+                onReview: { homeRoute = HomeRoute.review.rawValue },
+                onViewAll: { homeRoute = HomeRoute.transactions.rawValue },
+                onSignOut: { model.signOut() }
+            )
+            .modifier(TabAppear())
+            .tabItem { Label(L.t(Strings.shared.tab_home), systemImage: "house.fill") }
+            .tag(HomeRoute.home.rawValue)
+
+            TransactionsView(model: transactionsModel, userId: userId, onClose: goHome, showsBack: false)
+                .modifier(TabAppear())
+                .tabItem { Label(L.t(Strings.shared.tab_transactions), systemImage: "list.bullet.rectangle.fill") }
+                .tag(HomeRoute.transactions.rawValue)
+
+            ReviewView(model: reviewModel, userId: userId, onClose: goHome, showsBack: false)
+                .modifier(TabAppear())
+                .tabItem { Label(L.t(Strings.shared.tab_review), systemImage: "checkmark.circle.fill") }
+                .tag(HomeRoute.review.rawValue)
         }
+        .tint(Brand.greenDeep)
     }
 
     private var failureKey: String {
@@ -263,3 +263,22 @@ private enum HomeRoute: String {
     /// Everything the household has, by statement or by month (#F3).
     case transactions
 }
+
+/**
+ A tab's content easing in each time its tab is chosen. The system tab bar
+ switches with a cut and cannot be animated itself; this softens what is under
+ it while the bar stays the system's own. A short fade only with Reduce Motion.
+ */
+private struct TabAppear: ViewModifier {
+    @State private var shown = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(shown ? 1 : 0)
+            .offset(y: shown || reduceMotion ? 0 : 6)
+            .onAppear { withAnimation(.easeOut(duration: reduceMotion ? 0.12 : 0.24)) { shown = true } }
+            .onDisappear { shown = false }
+    }
+}
+

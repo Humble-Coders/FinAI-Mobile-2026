@@ -234,7 +234,10 @@ struct TransactionsView: View {
             starts.append(running)
             running += section.rows.count
         }
-        return VStack(alignment: .leading, spacing: 0) {
+        // Lazy: only the cards on or near the screen are built. A plain stack
+        // laid out every card of the slice — each with its shadow and its
+        // scroll effect — before the tab could appear.
+        return LazyVStack(alignment: .leading, spacing: 0) {
             ForEach(Array(sections.enumerated()), id: \.offset) { s, section in
                 heading(section)
                 ForEach(Array(section.rows.enumerated()), id: \.element.id) { i, row in
