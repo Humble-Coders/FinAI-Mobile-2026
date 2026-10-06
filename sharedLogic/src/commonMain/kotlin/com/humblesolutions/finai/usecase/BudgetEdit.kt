@@ -20,22 +20,6 @@ enum class BudgetBlock(val messageKey: String) {
 }
 
 /**
- * How Home and the Budget tab each order the same lines.
- *
- * Both put what is over budget first — that is the thing someone opened the
- * screen to find — and differ only in what they do with the rest. Kept as one
- * fold with a parameter rather than two functions, so the shared half cannot
- * drift between the two screens.
- */
-enum class BudgetOrder {
-    /** The Budget tab (#47): everything, biggest spend first. */
-    BY_SPENT,
-
-    /** Home (#46): the few lines closest to their allocation. */
-    BY_NEAREST_ALLOCATION,
-}
-
-/**
  * Editing a budget line, and folding a budget into what a screen shows
  * (PRD F4).
  *
@@ -128,50 +112,60 @@ object BudgetEdit {
     fun isBudgetable(slug: String): Boolean = slug !in NOT_BUDGETABLE
 
     /**
-     * [lines] ordered for a screen: over budget first, then by [order].
+     * [lines] in the order every screen shows them: over budget first, then
+     * the ones closest to their allocation (PO decision, #50).
      *
-     * Over-budget lines lead because they are the only ones asking for a
-     * decision. Within each group the order is total, so two phones showing
-     * the same budget show it in the same order — ties break on name, then
-     * on category id, rather than on whatever order the server happened to
-     * send.
+     * One order for Home and the Budget tab alike, so the four lines Home
+     * shows are the top four of the list "See budget" opens, and the same
+     * budget never appears in two orders. Earlier this took the secondary
+     * sort as a parameter because #46 and #47 specified different ones.
+     *
+     * "Closest" is how much of the allocation is used, not how many dollars
+     * are left: a $90-of-$100 line is nearer its limit than a
+     * $400-of-$2,000 one. Over-budget lines are ranked the same way, so the
+     * one furthest over leads — with only four places on Home, the worst
+     * overspends must be the ones that show, not whichever come first
+     * alphabetically.
+     *
+     * The order is total, so two phones show one budget the same way: ties
+     * break on name, then category id, never on the order the server sent.
      */
-    fun ordered(
-        lines: List<BudgetLine>,
-        currency: String,
-        order: BudgetOrder = BudgetOrder.BY_SPENT,
-    ): List<BudgetLine> {
+    fun ordered(lines: List<BudgetLine>, currency: String): List<BudgetLine> {
         val digits = Money.fractionDigits(currency)
         return lines.sortedWith(
             compareByDescending<BudgetLine> { it.isOver(digits) }
-                .thenByDescending { rank(it, digits, order) }
+                .thenByDescending { pressure(it, digits) }
                 .thenBy { it.name }
                 .thenBy { it.categoryId },
         )
     }
 
     /**
-     * How urgent a line is within its group, larger first.
+     * How much of a line's allocation is used, as a sort key: 0.9 for $90 of
+     * $100, 1.2 for $120 of $100.
      *
-     * A ratio for [BudgetOrder.BY_NEAREST_ALLOCATION] — Home wants the lines
-     * closest to their limit whatever their size, so a $90-of-$100 line beats
-     * a $400-of-$2000 one. A spend for [BudgetOrder.BY_SPENT] — the Budget tab
-     * lists everything, and there the biggest numbers are what the eye wants
-     * first. Both are sort keys, never shown.
+     * Unlike [BudgetLine.fraction] this is not capped at 1 — that cap is
+     * right for a bar, which cannot be longer than its track, and wrong for
+     * a ranking, where it would make every overspend tie. Spending against
+     * an allocation of zero is as far over as a line can be. The doubles are
+     * a ratio for sorting, never shown; [BudgetLine.isOver] decides the
+     * groups on the decimal strings themselves.
      */
-    private fun rank(line: BudgetLine, digits: Int, order: BudgetOrder): Double = when (order) {
-        BudgetOrder.BY_NEAREST_ALLOCATION -> line.fraction(digits)
-        BudgetOrder.BY_SPENT -> Money.normalize(line.spent, digits)?.toDoubleOrNull() ?: 0.0
+    private fun pressure(line: BudgetLine, digits: Int): Double {
+        val spent = Money.normalize(line.spent, digits)?.toDoubleOrNull() ?: return 0.0
+        val allocated = Money.normalize(line.allocated, digits)?.toDoubleOrNull() ?: return 0.0
+        return when {
+            allocated > 0.0 -> spent / allocated
+            spent > 0.0 -> Double.POSITIVE_INFINITY
+            else -> 0.0
+        }
     }
 
     /**
-     * The first [count] lines Home shows, already ordered.
-     *
-     * Home has room for a few; the Budget tab has room for all of them. Both
-     * read [ordered], so the ones Home shows are always the top of the list
-     * the tab shows.
+     * The first [count] lines Home shows: the top of [ordered], which is the
+     * same list the Budget tab shows in full.
      */
-    fun forHome(budget: Budget, count: Int = 4): List<BudgetLine> = ordered(budget.lines, budget.currency, BudgetOrder.BY_NEAREST_ALLOCATION).take(count)
+    fun forHome(budget: Budget, count: Int = 4): List<BudgetLine> = ordered(budget.lines, budget.currency).take(count)
 
     /**
      * The months the selector offers, newest first, as `YYYY-MM`.

@@ -118,33 +118,53 @@ class BudgetEditTest {
     }
 
     // ── Ordering ────────────────────────────────────────────────────────
+    // One order for Home and the Budget tab: over budget first, then closest
+    // to the allocation (PO decision on #50).
 
+    /** The worked example from the decision: the same four lines, one order everywhere. */
     @Test
-    fun over_budget_lines_come_first_whichever_order_is_asked_for() {
-        val within = line(name = "Groceries", id = "a", allocated = "400", spent = "100")
-        val over = line(name = "Dining", id = "b", slug = "dining", allocated = "50", spent = "60")
+    fun over_budget_leads_and_the_rest_follow_by_how_close_they_are_to_their_limit() {
+        val lines = listOf(
+            line(name = "Rent", id = "rent", slug = "rent", allocated = "2000", spent = "400"),
+            line(name = "Groceries", id = "groceries", slug = "groceries", allocated = "440", spent = "380"),
+            line(name = "Coffee", id = "coffee", slug = "coffee", allocated = "100", spent = "90"),
+            line(name = "Dining", id = "dining", slug = "dining", allocated = "50", spent = "60"),
+        )
 
-        for (order in BudgetOrder.entries) {
-            val sorted = BudgetEdit.ordered(listOf(within, over), "CAD", order)
-            assertEquals(listOf("Dining", "Groceries"), sorted.map { it.name }, "order $order")
-        }
+        assertEquals(
+            listOf("Dining", "Coffee", "Groceries", "Rent"),
+            BudgetEdit.ordered(lines, "CAD").map { it.name },
+        )
+    }
+
+    /** Closeness is the share of the allocation used, not the dollars left. */
+    @Test
+    fun a_small_line_nearly_spent_comes_before_a_big_line_barely_touched() {
+        val big = line(name = "Rent", id = "a", slug = "rent", allocated = "2000", spent = "400")
+        val tight = line(name = "Coffee", id = "b", slug = "coffee", allocated = "100", spent = "90")
+
+        assertEquals(listOf("Coffee", "Rent"), BudgetEdit.ordered(listOf(big, tight), "CAD").map { it.name })
+    }
+
+    /**
+     * Among overspends the furthest over leads. Home has four places; the
+     * worst overspends must be the ones that show, not the alphabetically
+     * first — which is what a bar fraction capped at 1 would have produced.
+     */
+    @Test
+    fun the_line_furthest_over_its_allocation_leads_the_overspends() {
+        val slightly = line(name = "Alpha", id = "a", slug = "a", allocated = "50", spent = "60")
+        val badly = line(name = "Zulu", id = "z", slug = "z", allocated = "10", spent = "30")
+
+        assertEquals(listOf("Zulu", "Alpha"), BudgetEdit.ordered(listOf(slightly, badly), "CAD").map { it.name })
     }
 
     @Test
-    fun the_budget_tab_sorts_the_rest_by_spend_and_home_by_how_close_they_are() {
-        // Big spend, lots of room: first by spend, last by closeness.
-        val big = line(name = "Rent", id = "a", slug = "rent", allocated = "2000", spent = "400")
-        // Small spend, nearly full: last by spend, first by closeness.
-        val tight = line(name = "Coffee", id = "b", slug = "coffee", allocated = "100", spent = "90")
+    fun spending_against_nothing_allocated_is_as_far_over_as_a_line_can_be() {
+        val nothingAllocated = line(name = "Alpha", id = "a", slug = "a", allocated = "0", spent = "1")
+        val tripled = line(name = "Zulu", id = "z", slug = "z", allocated = "10", spent = "30")
 
-        assertEquals(
-            listOf("Rent", "Coffee"),
-            BudgetEdit.ordered(listOf(tight, big), "CAD", BudgetOrder.BY_SPENT).map { it.name },
-        )
-        assertEquals(
-            listOf("Coffee", "Rent"),
-            BudgetEdit.ordered(listOf(big, tight), "CAD", BudgetOrder.BY_NEAREST_ALLOCATION).map { it.name },
-        )
+        assertEquals(listOf("Alpha", "Zulu"), BudgetEdit.ordered(listOf(tripled, nothingAllocated), "CAD").map { it.name })
     }
 
     /** Two phones showing one budget must show it in one order. */
@@ -159,18 +179,15 @@ class BudgetEditTest {
         )
     }
 
+    /** "See budget" opens a list whose top four are the four Home showed. */
     @Test
-    fun home_takes_the_top_of_the_list_the_tab_shows() {
+    fun home_shows_the_top_of_the_list_the_budget_tab_shows() {
         val lines = (1..6).map {
             line(name = "Cat $it", id = "id-$it", slug = "s$it", allocated = "100", spent = (it * 10).toString())
         }
         val budget = Budget(currency = "CAD", lines = lines)
 
-        val home = BudgetEdit.forHome(budget)
-        val all = BudgetEdit.ordered(lines, "CAD", BudgetOrder.BY_NEAREST_ALLOCATION)
-
-        assertEquals(4, home.size)
-        assertEquals(all.take(4), home)
+        assertEquals(BudgetEdit.ordered(lines, "CAD").take(4), BudgetEdit.forHome(budget))
     }
 
     // ── Months ──────────────────────────────────────────────────────────

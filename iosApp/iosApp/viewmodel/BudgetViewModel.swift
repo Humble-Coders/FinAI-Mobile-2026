@@ -316,10 +316,11 @@ final class BudgetViewModel: ObservableObject {
 
     var learning: LearningProgress? { budget?.learning }
 
-    /// The spending lines, over budget first.
+    /// The spending lines: over budget first (furthest over leading), then
+    /// closest to their allocation — the same order Home uses.
     var lines: [BudgetLine] {
         guard let budget else { return [] }
-        return BudgetEdit.shared.ordered(lines: budget.lines, currency: budget.currency, order: .bySpent)
+        return BudgetEdit.shared.ordered(lines: budget.lines, currency: budget.currency)
     }
 
     var savings: BudgetLine? { budget?.savings }
