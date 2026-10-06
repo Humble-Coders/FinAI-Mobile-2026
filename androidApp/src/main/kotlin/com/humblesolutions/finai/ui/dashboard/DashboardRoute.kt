@@ -24,8 +24,8 @@ internal fun DashboardRoute(
     onViewAll: () -> Unit,
     onSignOut: () -> Unit,
     onOpenMoney: (MoneyKind) -> Unit = {},
-    /** Null when there is no Budget tab, which hides "See budget". */
-    onOpenBudget: (() -> Unit)? = null,
+    /** The Budget tab on a month (`YYYY-MM`); null when there is none, which hides "See budget". */
+    onOpenBudget: ((String) -> Unit)? = null,
 ) {
     val model: DashboardViewModel = viewModel()
     val state by model.uiState.collectAsStateWithLifecycle()

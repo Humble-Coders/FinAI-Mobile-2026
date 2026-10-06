@@ -16,10 +16,22 @@ internal fun BudgetRoute(
     onClose: () -> Unit,
     onReview: () -> Unit,
     onImport: () -> Unit,
+    /** A month (`YYYY-MM`) to open on — Home's "See budget" — or null for wherever it was. */
+    requestedMonth: String? = null,
+    /** Called once [requestedMonth] is shown, so a later visit opens where the person left it. */
+    onRequestedMonthShown: () -> Unit = {},
 ) {
     val model: BudgetViewModel = viewModel()
     val state by model.uiState.collectAsStateWithLifecycle()
     LaunchedEffect(userId) { model.bind(userId, logging = BuildConfig.DEBUG) }
+    // After the bind above, which would otherwise reset a first visit to the
+    // current month.
+    LaunchedEffect(requestedMonth) {
+        requestedMonth?.let {
+            model.showMonth(it)
+            onRequestedMonthShown()
+        }
+    }
     // Only a first load earns the coin; changing month refreshes underneath.
     LoaderSignal(key = "budget", active = state.loading)
     BackHandler { onClose() }

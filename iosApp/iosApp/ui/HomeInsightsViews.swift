@@ -66,13 +66,34 @@ struct ScoreFieldCard: View {
     let onOpen: () -> Void
 
     var body: some View {
-        Button(action: onOpen) {
+        // A past month's card shows the score kept then; the breakdown is
+        // today's, so only the running month's card opens it.
+        if card.canOpen {
+            Button(action: onOpen) { content }
+                .buttonStyle(.plain)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(card.accessibility)
+                .accessibilityHint(L.t(Strings.shared.home_score_open))
+                .accessibilityAddTraits(.isButton)
+        } else {
+            content
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(card.accessibility)
+        }
+    }
+
+    private var content: some View {
             HStack(spacing: 14) {
                 Gauge(value: card.fraction) {
                     EmptyView()
                 } currentValueLabel: {
+                    // Sized to the ring, not to Dynamic Type: the gauge does
+                    // not grow with the text, so a scaled number would clip.
+                    // The card's label reads the score aloud regardless.
                     Text(card.score)
-                        .font(.title3.weight(.bold))
+                        .font(.system(size: 20, weight: .bold))
+                        .minimumScaleFactor(0.5)
+                        .lineLimit(1)
                         .foregroundColor(Field.ink())
                 }
                 .gaugeStyle(.accessoryCircularCapacity)
@@ -102,19 +123,15 @@ struct ScoreFieldCard: View {
                     }
                 }
                 Spacer(minLength: 8)
-                FinAiIcon(symbol: "chevron.right", tint: Field.ink(0.85), size: 14)
+                if card.canOpen {
+                    FinAiIcon(symbol: "chevron.right", tint: Field.ink(0.85), size: 14)
+                }
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 14)
             .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
             .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(Field.glass))
             .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(Field.glassEdge, lineWidth: 1))
-        }
-        .buttonStyle(.plain)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(card.accessibility)
-        .accessibilityHint(L.t(Strings.shared.home_score_open))
-        .accessibilityAddTraits(.isButton)
     }
 }
 

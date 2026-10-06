@@ -235,9 +235,15 @@ struct RootView: View {
                 onOpenMoney: { kind in
                     withAnimation(.easeOut(duration: 0.3)) { homeRoute = HomeRoute.route(for: kind).rawValue }
                 },
-                // "See budget" only where the bar has a Budget tab to go to.
+                // "See budget" only where the bar has a Budget tab to go to,
+                // and on the month Home is showing. Bound first: a first bind
+                // resets the model to the current month.
                 onOpenBudget: features.showsBudget(onBudget: false)
-                    ? { homeRoute = HomeRoute.budget.rawValue }
+                    ? { month in
+                        budgetModel.bind(userId: userId)
+                        budgetModel.showMonth(month)
+                        homeRoute = HomeRoute.budget.rawValue
+                    }
                     : nil
             )
             .tabItem { Label(L.t(Strings.shared.tab_home), systemImage: "house.fill") }

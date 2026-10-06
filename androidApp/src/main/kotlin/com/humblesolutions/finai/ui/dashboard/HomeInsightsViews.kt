@@ -126,6 +126,13 @@ internal fun FreshnessText(line: FreshnessLine, onImport: () -> Unit) {
 @Composable
 internal fun ScoreFieldCard(card: ScoreCard, onOpen: () -> Unit) {
     val shape = RoundedCornerShape(20.dp)
+    // A past month's card shows the score kept then; the breakdown is today's,
+    // so only the running month's card opens it.
+    val opens = if (card.canOpen) {
+        Modifier.clickable(role = Role.Button, onClickLabel = strings(Strings.home_score_open), onClick = onOpen)
+    } else {
+        Modifier
+    }
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -133,7 +140,7 @@ internal fun ScoreFieldCard(card: ScoreCard, onOpen: () -> Unit) {
             .clip(shape)
             .background(Field.Glass)
             .border(1.dp, Field.GlassEdge, shape)
-            .clickable(role = Role.Button, onClickLabel = strings(Strings.home_score_open), onClick = onOpen)
+            .then(opens)
             .padding(horizontal = 16.dp, vertical = 14.dp)
             .clearAndSetSemantics { contentDescription = card.accessibility },
         verticalAlignment = Alignment.CenterVertically,
@@ -179,7 +186,9 @@ internal fun ScoreFieldCard(card: ScoreCard, onOpen: () -> Unit) {
                 Text(text = it, style = MaterialTheme.typography.labelMedium, color = Field.ink(0.75f))
             }
         }
-        FinAiIcon(Icons.AutoMirrored.Filled.KeyboardArrowRight, tint = Field.ink(0.85f), size = 20.dp)
+        if (card.canOpen) {
+            FinAiIcon(Icons.AutoMirrored.Filled.KeyboardArrowRight, tint = Field.ink(0.85f), size = 20.dp)
+        }
     }
 }
 
@@ -502,6 +511,10 @@ class InsightActions(
     val onCloseBreakdown: () -> Unit = {},
     val onRetryBreakdown: () -> Unit = {},
     val onToggleSpending: () -> Unit = {},
-    /** Null when there is no Budget tab to open, which hides "See budget". */
-    val onOpenBudget: (() -> Unit)? = null,
+    /**
+     * Open the Budget tab on a month (`YYYY-MM`) — the one Home is showing, so
+     * "See budget" under August's budget opens August. Null when there is no
+     * Budget tab, which hides the link.
+     */
+    val onOpenBudget: ((String) -> Unit)? = null,
 )

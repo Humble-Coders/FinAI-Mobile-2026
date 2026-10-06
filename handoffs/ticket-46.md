@@ -27,7 +27,7 @@ All wording lives in shared code (`usecase/HomeInsights.kt`), and both apps call
 | `repository/HealthScoreRepository.kt`, `data/KtorHealthScoreRepository.kt` (new) | `GET /health-score`, with `@Throws` on the suspend function. |
 | `usecase/HomeInsights.kt` (new) | **Sections:** `sections(…)` and `sectionsNow(…)` produce `HomeSections` (freshness, learning, score card, budget card and spending card). **Breakdown:** `breakdown(…)`. **Gating:** constants for the two feature keys, the top-five and four-line limits, and the 30-day staleness threshold. |
 | `i18n/Strings.kt`, `i18n/EnglishStrings.kt` | 43 `home_*` strings: the section titles, freshness wording, score labels and accessibility text, the breakdown, one title and two sentences per score part, and the disclaimer. Retry and the budget's line wording reuse existing keys. |
-| `commonTest/.../HomeInsightsTest.kt` (new) | 20 tests, decoding real `/dashboard` and `/health-score` JSON. |
+| `commonTest/.../HomeInsightsTest.kt` (new) | 21 tests, decoding real `/dashboard` and `/health-score` JSON. |
 
 **Android**
 
@@ -52,7 +52,7 @@ All wording lives in shared code (`usecase/HomeInsights.kt`), and both apps call
 
 ## How to test
 
-1. Run `./gradlew ktlintCheck :androidApp:assembleDebug :androidApp:testDebugUnitTest :sharedLogic:testAndroidHostTest`. Expect 552 shared tests passing, including `HomeInsightsTest` (20), and the Android tests passing, including `DashboardInsightsTest` (7).
+1. Run `./gradlew ktlintCheck :androidApp:assembleDebug :androidApp:testDebugUnitTest :sharedLogic:testAndroidHostTest`. Expect 552 shared tests passing, including `HomeInsightsTest` (21), and the Android tests passing, including `DashboardInsightsTest` (7).
 2. Build iOS:
    ```
    cd iosApp
@@ -101,6 +101,11 @@ Each shared rule was also checked by breaking it, and a test failed every time. 
   - "Over by" uses the server's `over`. `overBy` is only a fallback for budgets without that field.
 - **Capabilities come from Home's own existing fetch.** The dashboard already read them on every load for the locale. They're now kept in state rather than taken from the navigation's `FeaturesViewModel`. A failed read keeps the last payload.
 - **The held score (backend #62)** shows a note on the card: "Sep isn't imported yet · score from Sep 15, 2026". It's worded from the notice's `code`, not the server's English `message`.
+- **Only the running month's score card opens the breakdown (review fix).** `/health-score` is today's score, while a past month's card shows the score saved at that month's end. Opening today's parts under it explained a different number. `ScoreCard.canOpen` is true only on the current month; elsewhere the card shows no chevron and isn't tappable.
+- **"See budget" opens the month Home is showing (review fix).**
+  - **Android:** the month goes through `AppNavigation` (`budgetMonth`) to `BudgetRoute(requestedMonth = …)`, which shows it after binding and then clears it, so tapping the tab later opens wherever the person left it.
+  - **iOS:** `RootView` binds the budget model before `showMonth`, because a first bind resets the model to the current month.
+- **The iOS ring's number is sized to the ring (review fix):** 20 pt, scaling down to fit, not following Dynamic Type, since the `Gauge` doesn't grow with text. The card's accessibility label reads the score at any size.
 - **When the server is ready but sends no score** (nothing scorable, or nothing to hold), no score card is drawn.
 - **iOS ring:** a system `Gauge` with `.accessoryCircularCapacity`, enlarged slightly with `scaleEffect(1.15)`. It's native, so there's no custom drawing.
 
@@ -108,4 +113,5 @@ Each shared rule was also checked by breaking it, and a test failed every time. 
 
 - **Not run on a device or simulator** (standing rule). Every visual check in the ticket's UI standards still needs doing by hand: both themes, the largest font size, the smallest and largest phones, landscape, and each state.
 - **The part sentences are tied to formula v1** (for example, "20% or more"). When the formula changes to v2, these strings need revisiting along with it.
-- **iOS `Gauge` at the largest Dynamic Type sizes:** worth a look on a device, since that style is designed for small sizes.
+- **The iOS ring at the largest Dynamic Type sizes:** the number now fits the ring, but the card's text beside it is still worth a look on a device.
+- **No automated test for "See budget" carrying the month.** It's navigation wiring on each platform, built but not exercised on a device.

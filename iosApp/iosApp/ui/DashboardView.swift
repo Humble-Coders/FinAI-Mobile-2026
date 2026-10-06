@@ -28,8 +28,9 @@ struct DashboardView: View {
     let onSignOut: () -> Void
     /// Income, Expenses, Investments or Debts — opened from its card.
     var onOpenMoney: (MoneyKind) -> Void = { _ in }
-    /// The Budget tab (#47); nil when there is none, which hides "See budget".
-    var onOpenBudget: (() -> Void)?
+    /// The Budget tab (#47) on a month (`YYYY-MM`) — the one Home is showing.
+    /// Nil when there is no Budget tab, which hides "See budget".
+    var onOpenBudget: ((String) -> Void)?
 
     @Environment(\.colorScheme) private var scheme
     private var dark: Bool { scheme == .dark }
@@ -432,7 +433,11 @@ struct DashboardView: View {
             // Above the recent rows: how the month sits against its budget,
             // then where the money went.
             if let budget = sections.budget {
-                BudgetSection(card: budget, onOpenBudget: onOpenBudget).padding(.bottom, 28)
+                BudgetSection(
+                    card: budget,
+                    onOpenBudget: onOpenBudget.map { open in { open(DashboardMonths.shared.wire(month: model.month)) } }
+                )
+                .padding(.bottom, 28)
             }
             if let spending = sections.spending {
                 SpendingSection(card: spending, expanded: model.spendingExpanded, onToggle: model.toggleSpending)

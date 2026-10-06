@@ -116,6 +116,7 @@ import com.humblesolutions.finai.ui.components.tint
 import com.humblesolutions.finai.ui.components.vector
 import com.humblesolutions.finai.ui.strings
 import com.humblesolutions.finai.ui.theme.FinAiPalette
+import com.humblesolutions.finai.usecase.DashboardMonths
 import com.humblesolutions.finai.usecase.DashboardTrend
 import com.humblesolutions.finai.usecase.HomeSections
 import com.humblesolutions.finai.usecase.MoneyKind
@@ -1014,7 +1015,7 @@ private fun Sheet(
             // Above the recent rows: how the month sits against its budget,
             // then where the money went.
             sections.budget?.let {
-                BudgetSection(it, insights.onOpenBudget)
+                BudgetSection(it, insights.onOpenBudget?.let { open -> { open(DashboardMonths.wire(state.month)) } })
                 Spacer(Modifier.height(28.dp))
             }
             sections.spending?.let {

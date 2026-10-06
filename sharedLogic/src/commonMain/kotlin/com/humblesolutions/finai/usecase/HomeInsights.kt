@@ -82,7 +82,7 @@ object HomeInsights {
         return HomeSections(
             freshness = freshness(data, words, today, timeZone),
             learning = learning,
-            score = if (showsScore && learning == null) scoreCard(data, words) else null,
+            score = if (showsScore && learning == null) scoreCard(data, words, today) else null,
             budget = if (showsBudget && learning == null) budgetCard(data, words) else null,
             spending = spending(data.spendByCategory, words),
         )
@@ -114,7 +114,7 @@ object HomeInsights {
 
     // ── The score ───────────────────────────────────────────────────────
 
-    private fun scoreCard(data: Dashboard, words: Words): ScoreCard? {
+    private fun scoreCard(data: Dashboard, words: Words, today: LocalDate): ScoreCard? {
         val health = data.healthScore ?: return null
         if (!health.isReady) return null
         val score = health.score ?: return null
@@ -136,6 +136,11 @@ object HomeInsights {
             change < 0 -> words.text(Strings.home_score_a11y_down, score.toString(), (-change).toString())
             else -> words.text(Strings.home_score_a11y_same, score.toString())
         }
+        // `/health-score` is today's score. A past month's card shows the score
+        // kept at its end, so opening today's parts under it would explain a
+        // number the person is not looking at.
+        val shown = Dates.parse(data.month)
+        val isCurrentMonth = shown != null && shown.year == today.year && shown.month == today.month
         return ScoreCard(
             score = score.toString(),
             fraction = (score.coerceIn(0, 100) / 100.0),
@@ -143,6 +148,7 @@ object HomeInsights {
             changeIsDown = change != null && change < 0,
             held = held,
             accessibility = listOfNotNull(spoken, held).joinToString(". "),
+            canOpen = isCurrentMonth,
         )
     }
 
@@ -286,6 +292,11 @@ data class ScoreCard(
     val held: String?,
     /** "Money Health Score 72 out of 100, up 4 since last month". */
     val accessibility: String,
+    /**
+     * Whether the card opens the breakdown: only on the month that is running,
+     * where the card and `/health-score` are the same score.
+     */
+    val canOpen: Boolean,
 )
 
 data class BudgetCard(

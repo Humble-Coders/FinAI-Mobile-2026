@@ -149,6 +149,15 @@ class HomeInsightsTest {
     }
 
     @Test
+    fun only_the_running_month_s_score_opens_its_breakdown() {
+        // `/health-score` is today's; August's card shows the score kept at August's end.
+        val august = dashboard(ready.replace("\"month\": \"2026-10-01\"", "\"month\": \"2026-08-01\""))
+
+        assertTrue(sections(dashboard(ready)).score!!.canOpen)
+        assertFalse(sections(august).score!!.canOpen)
+    }
+
+    @Test
     fun the_score_is_not_money_and_stays_visible_when_amounts_are_hidden() {
         assertEquals("72", sections(dashboard(ready), hidden = true).score?.score)
     }
