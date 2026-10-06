@@ -103,6 +103,10 @@ internal fun BudgetEditorSheet(state: BudgetUiState, actions: BudgetEditorAction
                 // iOS has no return key on a decimal pad and Android's is
                 // easy to miss; Done closes the keyboard, Save submits.
                 imeAction = ImeAction.Done,
+                // Locked while the amount is in flight (#47 UI standards):
+                // typing then would leave the field showing one figure while
+                // the server answers about another.
+                enabled = !busy,
             )
 
             // The reason Save is off, in the words the shared rule chose.

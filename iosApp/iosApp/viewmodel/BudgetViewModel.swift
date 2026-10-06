@@ -356,12 +356,17 @@ final class BudgetViewModel: ObservableObject {
      and are re-read on bind, and a stale copy restored from disk is exactly
      the kind of number this screen must not invent.
 
-     Tab-separated because a decimal string and a category id cannot contain
-     a tab, and a format the system stores needs no parser of its own.
+     Tab-separated, with tabs taken out of the category name: a household's
+     own category is named in free text, and a tab there would shift every
+     field after it. The name is only shown until the budget is read again,
+     when `settle` replaces the whole line, so losing a tab from it costs
+     nothing. Anything else malformed fails the field count and is dropped
+     rather than half-restored.
      */
     var snapshot: String {
         guard let editing, let owner else { return "" }
-        return [owner, month, editing.categoryId, editing.slug, editing.name,
+        return [owner, month, editing.categoryId, editing.slug,
+                editing.name.replacingOccurrences(of: "\t", with: " "),
                 editing.suggested, editing.allocated, editing.isUserSet ? "1" : "0",
                 editing.spent, editingIsNew ? "1" : "0", draftAmount]
             .joined(separator: "\t")

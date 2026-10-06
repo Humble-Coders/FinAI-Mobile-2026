@@ -243,7 +243,7 @@ struct RootView: View {
                 .tabItem { Label(L.t(Strings.shared.tab_transactions), systemImage: "list.bullet.rectangle.fill") }
                 .tag(HomeRoute.transactions.rawValue)
 
-            if features.budgetEnabled {
+            if features.showsBudget(onBudget: homeRoute == HomeRoute.budget.rawValue) {
                 BudgetView(
                     model: budgetModel,
                     userId: userId,
@@ -261,8 +261,11 @@ struct RootView: View {
         .task(id: userId) { features.bind(userId: userId) }
         // A tab that goes away under the person — the feature turned off
         // between reads — leaves them on a screen with no way back to it.
-        .onChange(of: features.budgetEnabled) { _, enabled in
-            if !enabled && homeRoute == HomeRoute.budget.rawValue { goHome() }
+        // Keyed on what is known rather than on the tab: from "not read" to
+        // "off" the tab never changes, so watching it would miss exactly the
+        // case where a restored person must be moved.
+        .onChange(of: features.budgetGate) { _, _ in
+            if features.leavesBudget(onBudget: homeRoute == HomeRoute.budget.rawValue) { goHome() }
         }
         .tint(Brand.greenDeep)
         // Leaving the tabs for good — for the import, an entry, signing out —

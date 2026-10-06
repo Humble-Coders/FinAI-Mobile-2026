@@ -163,9 +163,17 @@ The first review of this PR found the saved-state restore — claimed as working
 
 | Finding | Fix |
 |---|---|
-| **Android sent a person restored onto Budget back to Home.** The saved route came back as Budget before capabilities had been read, and the gate treated "not read yet" as "off" — so the restored draft sat unseen until the next tap on Budget. | `tabsFor` keeps Budget for someone already on it until the payload says no, and `leavesBudget` only fires on a payload that has been read. Both are now `internal` and tested in `BudgetTabTest`; the restore case was confirmed to **fail** against the old logic. iOS was not affected: its `onChange` never fires for the first value. |
+| **Android sent a person restored onto Budget back to Home.** The saved route came back as Budget before capabilities had been read, and the gate treated "not read yet" as "off" — so the restored draft sat unseen until the next tap on Budget. | `tabsFor` keeps Budget for someone already on it until the payload says no, and `leavesBudget` only fires on a payload that has been read. Both are now `internal` and tested in `BudgetTabTest`; the restore case was confirmed to **fail** against the old logic. On iOS the explicit bounce could not happen (its `onChange` never fires for the first value), but a `TabView` selection matching no tab was left to SwiftUI — **this row originally said "iOS was not affected", which was not verified.** See the third review. |
 | A restored editor kept a stale copy of its line | `settle` swaps the line for its current self by `categoryId`, keeping what was typed. Tested on Android; iOS by build. |
 | Step 12 said "force-stop" next to `am kill` | Reworded — Force stop discards saved state by design. |
+
+## Fixed after the third review
+
+| Finding | Fix |
+|---|---|
+| **The amount field stayed editable while a save was in flight**, against the UI standard "saving: busy button, inputs locked". Typing during a slow save left the field showing one figure while the server answered about another. | Android: `AmountField` gains `enabled` (default `true`, so every other screen is unchanged) and the editor passes `!busy`. iOS: `.disabled(model.busy)` on the field. |
+| **iOS restore window, unverified.** After a restore the scene-stored route is `"budget"` before the Budget tab exists in the `TabView`, and what SwiftUI does with a selection matching no tab was not established. | Not left to SwiftUI. `FeaturesViewModel.showsBudget(onBudget:)` keeps the tab for someone already on it while capabilities are unknown, and `leavesBudget(onBudget:)` fires only on a payload that says off — the same rule as Android's `tabsFor` / `leavesBudget`. Navigation reacts to `budgetGate` (unknown / on / off), because from "not read" to "off" the tab itself never changes. The now-unused `budgetEnabled` was removed. **Built, not run**: there is no iOS test target. |
+| The snapshot's comment said nothing in it could contain a tab; a household's category name can | Tabs are taken out of the name when writing; the comment says why that is safe — `settle` replaces the line once the budget is read. |
 
 ## Verification
 

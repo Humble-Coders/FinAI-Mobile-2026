@@ -33,6 +33,11 @@ struct BudgetEditorSheet: View {
                         )
                         .keyboardType(.decimalPad)
                         .focused($amountFocused)
+                        // Locked while the amount is in flight (#47 UI
+                        // standards): typing then would leave the field
+                        // showing one figure while the server answers about
+                        // another.
+                        .disabled(model.busy)
                     }
                 } header: {
                     Text(L.t(Strings.shared.budget_edit_amount))

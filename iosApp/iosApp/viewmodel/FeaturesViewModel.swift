@@ -32,8 +32,33 @@ final class FeaturesViewModel: ObservableObject {
     private let logging = false
     #endif
 
-    /// Whether the Budget tab has a place on the bar (#47).
-    var budgetEnabled: Bool { capabilities?.isEnabled(featureKey: "auto_budget") == true }
+    /// What is known about the Budget tab (#47): not yet read, on, or off. Equatable,
+    /// so navigation can react to the payload arriving — not only to the tab
+    /// flipping, which from "not read" to "off" it never visibly does.
+    enum BudgetGate: Equatable { case unknown, on, off }
+
+    var budgetGate: BudgetGate {
+        guard let capabilities else { return .unknown }
+        return capabilities.isEnabled(featureKey: "auto_budget") ? .on : .off
+    }
+
+    /**
+     Whether the bar draws Budget. Android's `tabsFor`.
+
+     **Not known is not the same as off.** After iOS reclaims the app, the
+     scene-stored route puts the person back on Budget before capabilities
+     have been read. A `TabView` whose selection matches no tab is left to
+     SwiftUI to resolve, and it may resolve it by selecting the first tab —
+     sending them home and stranding the edit they came back for. So someone
+     already on Budget keeps the tab until the payload actually says no.
+     */
+    func showsBudget(onBudget: Bool) -> Bool {
+        budgetGate == .on || (budgetGate == .unknown && onBudget)
+    }
+
+    /// True when the person is on Budget and the payload has *said* it is off.
+    /// Never on a payload not yet read. Android's `leavesBudget`.
+    func leavesBudget(onBudget: Bool) -> Bool { onBudget && budgetGate == .off }
 
     func bind(userId: String) {
         guard !userId.isEmpty else { return }
