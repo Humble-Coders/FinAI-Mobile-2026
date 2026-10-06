@@ -91,6 +91,8 @@ internal fun AmountField(
     isError: Boolean = false,
     large: Boolean = true,
     imeAction: ImeAction = ImeAction.Next,
+    /** False while what was typed is being sent, so it cannot change underneath the request. */
+    enabled: Boolean = true,
 ) {
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
@@ -103,8 +105,12 @@ internal fun AmountField(
             value = value,
             onValueChange = onValueChange,
             singleLine = true,
+            enabled = enabled,
             interactionSource = interaction,
-            textStyle = figure.copy(color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold),
+            textStyle = figure.copy(
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (enabled) 1f else 0.6f),
+                fontWeight = FontWeight.SemiBold,
+            ),
             cursorBrush = SolidColor(FinAiPalette.Green),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = imeAction),
             modifier = Modifier

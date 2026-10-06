@@ -30,6 +30,9 @@ internal object ApiErrorMapper {
     private const val TOO_MANY_TRANSACTIONS = "too_many_transactions"
     private const val PARSE_FAILED = "parse_failed"
     private const val AI_PROCESSING_UNAVAILABLE = "ai_processing_unavailable"
+    private const val NOT_BUDGETABLE = "not_budgetable"
+    private const val INVALID_MONTH = "invalid_month"
+    private const val MONTH_IN_FUTURE = "month_in_future"
 
     fun fromResponse(status: Int, body: String): ApiException = when (status) {
         401 -> ApiException.Unauthorized("token rejected")
@@ -118,6 +121,12 @@ internal object ApiErrorMapper {
 
                 AI_POLICY_VERSION_MISMATCH ->
                     return ApiException.AiPolicyChanged(detail.string("current_version"))
+
+                NOT_BUDGETABLE -> return ApiException.NotBudgetable(detail.string("field"))
+
+                INVALID_MONTH -> return ApiException.InvalidMonth()
+
+                MONTH_IN_FUTURE -> return ApiException.MonthInFuture()
             }
         }
         return ApiException.Validation(status)

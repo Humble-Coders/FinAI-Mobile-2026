@@ -226,6 +226,34 @@ sealed class ApiException(message: String, cause: Throwable? = null) : Exception
         override val messageKey: String = Strings.import_unavailable
     }
 
+    // ── The budget (#47) ────────────────────────────────────────────────
+    // Each refusal of `/budgets` gets its own words. "Something went wrong"
+    // for a category that cannot hold a budget line tells the person nothing
+    // and leaves them tapping the same row again.
+
+    /**
+     * `income` and `transfers` are money moving, not money spent, so neither
+     * can hold a line. The picker already leaves them out — this is the
+     * server saying so when something else got through.
+     */
+    class NotBudgetable(val field: String?) : ApiException("category cannot hold a budget line") {
+        override val messageKey: String = Strings.budget_error_not_budgetable
+    }
+
+    /** A month the server could not read. The client builds these, so this is a bug, not a typo. */
+    class InvalidMonth : ApiException("month not understood") {
+        override val messageKey: String = Strings.budget_error_invalid_month
+    }
+
+    /**
+     * A month that has not begun. There is nothing to budget it from that the
+     * current month does not already use, so the server refuses rather than
+     * inventing one.
+     */
+    class MonthInFuture : ApiException("month has not begun") {
+        override val messageKey: String = Strings.budget_error_month_in_future
+    }
+
     class Server(val status: Int) : ApiException("server error $status") {
         override val messageKey: String = Strings.error_server
     }
