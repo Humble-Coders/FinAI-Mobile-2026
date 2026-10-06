@@ -27,7 +27,8 @@ final class DashboardViewModel: ObservableObject {
         expenses: SharedLogic.Flow(actual: "0", expected: nil, previous: nil),
         investments: Stock(balance: "0", moved: "0", previousMoved: nil, withdrawn: "0"),
         debts: Stock(balance: "0", moved: "0", previousMoved: nil, withdrawn: "0"),
-        commitments: [], trend: [], daily: [], pendingReview: 0
+        commitments: [], trend: [], daily: [], pendingReview: 0,
+        spendByCategory: [], budget: nil, healthScore: nil, asOf: nil, learning: nil
     )
     @Published private(set) var locale = "en"
     @Published private(set) var loading = true
@@ -54,11 +55,26 @@ final class DashboardViewModel: ObservableObject {
     @Published private(set) var commitmentSaving = false
     @Published private(set) var commitmentErrorKey: String?
 
+    // MARK: The score, the budget, spending and freshness (#46)
+    /// The capabilities payload, read with the month. Nil until it has been
+    /// read, which draws neither the budget nor the score: a section arriving
+    /// a moment late is better than one wrongly shown.
+    @Published private(set) var capabilities: Capabilities?
+    /// "Where it went" shows every category rather than the top five.
+    @Published private(set) var spendingExpanded = false
+    /// The score's breakdown sheet is up; bound to `.sheet`.
+    @Published var breakdownOpen = false
+    /// `GET /health-score`, read when the sheet opens; nil until it answers.
+    @Published private(set) var breakdown: HealthScore?
+    @Published private(set) var breakdownLoading = false
+    @Published private(set) var breakdownFailed = false
+
     private var dashboardRepository: DashboardRepository?
     private var capabilitiesRepository: CapabilitiesRepository?
     private var transactionsRepository: TransactionsRepository?
     private var categoriesRepository: CategoriesRepository?
     private var setupRepository: FinancialSetupRepository?
+    private var healthScoreRepository: HealthScoreRepository?
     private var owner: String?
     /// The recent list's own counter: it does not follow the month, so a step
     /// back to August must not cancel a read of what happened most recently.
@@ -69,6 +85,8 @@ final class DashboardViewModel: ObservableObject {
 
     /// One observer for the model's life; see `listenForChanges`.
     private var listener: Task<Void, Never>?
+    /// The budget-change observer, beside `listener`; see `listenForChanges`.
+    private var budgetListener: Task<Void, Never>?
 
     #if DEBUG
     private let logging = true
@@ -90,6 +108,7 @@ final class DashboardViewModel: ObservableObject {
         transactionsRepository = KtorTransactionsRepository(baseUrl: base, tokens: tokens, logging: logging)
         categoriesRepository = KtorCategoriesRepository(baseUrl: base, tokens: tokens, logging: logging)
         setupRepository = KtorFinancialSetupRepository(baseUrl: base, tokens: tokens, logging: logging)
+        healthScoreRepository = KtorHealthScoreRepository(baseUrl: base, tokens: tokens, logging: logging)
         listenForChanges()
         // Back on a tab already read: refresh behind what is on screen. A
         // first load blanked the figures and, on Review, raised the coin
@@ -101,6 +120,8 @@ final class DashboardViewModel: ObservableObject {
     func unbind() {
         listener?.cancel()
         listener = nil
+        budgetListener?.cancel()
+        budgetListener = nil
         dashboardRepository?.close()
         dashboardRepository = nil
         capabilitiesRepository?.close()
@@ -111,6 +132,8 @@ final class DashboardViewModel: ObservableObject {
         categoriesRepository = nil
         setupRepository?.close()
         setupRepository = nil
+        healthScoreRepository?.close()
+        healthScoreRepository = nil
         generation += 1
         recentGeneration += 1
     }
@@ -128,6 +151,12 @@ final class DashboardViewModel: ObservableObject {
         loadFailed = false
         errorKey = nil
         recent = []
+        capabilities = nil
+        spendingExpanded = false
+        breakdownOpen = false
+        breakdown = nil
+        breakdownLoading = false
+        breakdownFailed = false
         owner = nil
         generation += 1
     }
@@ -153,6 +182,9 @@ final class DashboardViewModel: ObservableObject {
                 guard started == self.generation else { return }
                 self.data = answer
                 if let locale = capabilities?.locale, !locale.isEmpty { self.locale = locale }
+                // A failed read keeps the payload it had, rather than hiding
+                // the score and the budget on a blip.
+                if let capabilities { self.capabilities = capabilities }
                 self.loadedOnce = true
                 self.loading = false
                 self.refreshing = false
@@ -396,6 +428,58 @@ final class DashboardViewModel: ObservableObject {
                 self.loadRecent()
             }
         }
+        // A line set on the Budget tab moves Home's budget section and, with
+        // it, the score's spending part; the ledger is untouched, so only the
+        // month is re-read.
+        budgetListener = Task { [weak self] in
+            for await _ in BudgetChanged.events {
+                guard let self, !Task.isCancelled else { return }
+                self.load(refresh: true)
+            }
+        }
+    }
+
+    // MARK: - The score's breakdown and "Where it went" (#46)
+
+    /// Open the breakdown and read the score's parts; they cost nothing until wanted.
+    func openBreakdown() {
+        breakdownOpen = true
+        loadBreakdown()
+    }
+
+    func retryBreakdown() { loadBreakdown() }
+
+    private func loadBreakdown() {
+        guard let healthScoreRepository else { return }
+        breakdownLoading = true
+        breakdownFailed = false
+        Task { [weak self] in
+            let answer = try? await healthScoreRepository.current()
+            guard let self else { return }
+            if let answer { self.breakdown = answer }
+            self.breakdownLoading = false
+            // A breakdown already read stays up; only nothing at all is a failure.
+            self.breakdownFailed = answer == nil && self.breakdown == nil
+        }
+    }
+
+    /// "Show all" and back in "Where it went".
+    func toggleSpending() { spendingExpanded.toggle() }
+
+    /// The score, the budget, spending and freshness, worded once in shared
+    /// code (`HomeInsights`), the same call Android's UI state makes.
+    var sections: HomeSections {
+        HomeInsights.shared.sectionsNow(
+            data: data,
+            capabilities: capabilities,
+            locale: locale,
+            amountsHidden: amountsHidden
+        )
+    }
+
+    /// The breakdown sheet's rows, or nil until `/health-score` answers with a score.
+    var breakdownView: ScoreBreakdown? {
+        breakdown.flatMap { HomeInsights.shared.breakdown(health: $0, locale: locale) }
     }
 
     private func show(_ next: Kotlinx_datetimeLocalDate) {

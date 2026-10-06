@@ -24,6 +24,8 @@ internal fun DashboardRoute(
     onViewAll: () -> Unit,
     onSignOut: () -> Unit,
     onOpenMoney: (MoneyKind) -> Unit = {},
+    /** Null when there is no Budget tab, which hides "See budget". */
+    onOpenBudget: (() -> Unit)? = null,
 ) {
     val model: DashboardViewModel = viewModel()
     val state by model.uiState.collectAsStateWithLifecycle()
@@ -54,6 +56,13 @@ internal fun DashboardRoute(
             onAskDelete = model::askDeleteCommitment,
             onDelete = model::deleteCommitment,
             onKeep = model::keepCommitment,
+        ),
+        insights = InsightActions(
+            onOpenBreakdown = model::openBreakdown,
+            onCloseBreakdown = model::closeBreakdown,
+            onRetryBreakdown = model::retryBreakdown,
+            onToggleSpending = model::toggleSpending,
+            onOpenBudget = onOpenBudget,
         ),
     )
 }

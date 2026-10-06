@@ -220,7 +220,8 @@ final class BudgetViewModel: ObservableObject {
             suggested: "0",
             allocated: "0",
             isUserSet: false,
-            spent: "0"
+            spent: "0",
+            over: nil
         )
         editingIsNew = true
         draftAmount = ""
@@ -393,7 +394,8 @@ final class BudgetViewModel: ObservableObject {
             suggested: parts[5],
             allocated: parts[6],
             isUserSet: parts[7] == "1",
-            spent: parts[8]
+            spent: parts[8],
+            over: nil
         )
         editingIsNew = parts[9] == "1"
         draftAmount = parts[10]

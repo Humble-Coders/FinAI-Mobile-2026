@@ -8,6 +8,7 @@ import com.humblesolutions.finai.data.KtorCapabilitiesRepository
 import com.humblesolutions.finai.data.KtorCategoriesRepository
 import com.humblesolutions.finai.data.KtorDashboardRepository
 import com.humblesolutions.finai.data.KtorFinancialSetupRepository
+import com.humblesolutions.finai.data.KtorHealthScoreRepository
 import com.humblesolutions.finai.data.KtorTransactionsRepository
 import com.humblesolutions.finai.data.SupabaseTokenSource
 import com.humblesolutions.finai.i18n.Strings
@@ -17,10 +18,12 @@ import com.humblesolutions.finai.repository.CapabilitiesRepository
 import com.humblesolutions.finai.repository.CategoriesRepository
 import com.humblesolutions.finai.repository.DashboardRepository
 import com.humblesolutions.finai.repository.FinancialSetupRepository
+import com.humblesolutions.finai.repository.HealthScoreRepository
 import com.humblesolutions.finai.repository.TransactionsRepository
 import com.humblesolutions.finai.usecase.CommitmentDraft
 import com.humblesolutions.finai.usecase.CommitmentEdit
 import com.humblesolutions.finai.usecase.DashboardMonths
+import com.humblesolutions.finai.util.BudgetChanged
 import com.humblesolutions.finai.util.LedgerChanged
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -71,6 +74,7 @@ class DashboardViewModel : ViewModel() {
                 transactions = KtorTransactionsRepository(ApiConfig.BASE_URL, tokens, logging),
                 categories = KtorCategoriesRepository(ApiConfig.BASE_URL, tokens, logging),
                 setup = KtorFinancialSetupRepository(ApiConfig.BASE_URL, tokens, logging),
+                healthScore = KtorHealthScoreRepository(ApiConfig.BASE_URL, tokens, logging),
             )
         }
     }
@@ -107,6 +111,12 @@ class DashboardViewModel : ViewModel() {
                 loadRecent()
             }
         }
+        // A line set on the Budget tab moves Home's budget section and, with
+        // it, the score's spending part; the ledger is untouched, so only the
+        // month is re-read.
+        viewModelScope.launch {
+            BudgetChanged.events.collect { load(refresh = true) }
+        }
     }
 
     override fun onCleared() {
@@ -129,12 +139,16 @@ class DashboardViewModel : ViewModel() {
         viewModelScope.launch {
             try {
                 val data = repos.dashboard.read(DashboardMonths.wire(month))
-                val locale = orNull { repos.capabilities.fetch() }?.locale.orEmpty()
+                val capabilities = orNull { repos.capabilities.fetch() }
+                val locale = capabilities?.locale.orEmpty()
                 if (started != generation) return@launch
                 _uiState.update {
                     it.copy(
                         data = data,
                         locale = locale.ifBlank { it.locale },
+                        // A failed read keeps the payload it had, rather than
+                        // hiding the score and the budget on a blip.
+                        capabilities = capabilities ?: it.capabilities,
                         loading = false,
                         refreshing = false,
                         loadFailed = false,
@@ -302,6 +316,37 @@ class DashboardViewModel : ViewModel() {
         }
     }
 
+    // ── The score's breakdown and "Where it went" (#46) ─────────────────
+
+    /** Open the breakdown and read the score's parts; they cost nothing until wanted. */
+    fun openBreakdown() {
+        _uiState.update { it.copy(breakdownOpen = true) }
+        loadBreakdown()
+    }
+
+    fun closeBreakdown() = _uiState.update { it.copy(breakdownOpen = false) }
+
+    fun retryBreakdown() = loadBreakdown()
+
+    private fun loadBreakdown() {
+        val repository = repositories?.healthScore ?: return
+        _uiState.update { it.copy(breakdownLoading = true, breakdownFailed = false) }
+        viewModelScope.launch {
+            val answer = orNull { repository.current() }
+            _uiState.update {
+                it.copy(
+                    breakdown = answer ?: it.breakdown,
+                    breakdownLoading = false,
+                    // A breakdown already read stays up; only nothing at all is a failure.
+                    breakdownFailed = answer == null && it.breakdown == null,
+                )
+            }
+        }
+    }
+
+    /** "Show all" and back in "Where it went". */
+    fun toggleSpending() = _uiState.update { it.copy(spendingExpanded = !it.spendingExpanded) }
+
     /** Mask or unmask every figure on screen. */
     fun toggleAmounts() = _uiState.update { it.copy(amountsHidden = !it.amountsHidden) }
 
@@ -340,6 +385,7 @@ internal class DashboardRepositories(
     val transactions: TransactionsRepository? = null,
     val categories: CategoriesRepository? = null,
     val setup: FinancialSetupRepository? = null,
+    val healthScore: HealthScoreRepository? = null,
 ) {
     fun close() {
         dashboard.close()
@@ -347,6 +393,7 @@ internal class DashboardRepositories(
         transactions?.close()
         categories?.close()
         setup?.close()
+        healthScore?.close()
     }
 }
 

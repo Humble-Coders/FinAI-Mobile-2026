@@ -2,10 +2,12 @@ package com.humblesolutions.finai.ui.dashboard
 
 import com.humblesolutions.finai.i18n.LocalizationRegistry
 import com.humblesolutions.finai.i18n.Strings
+import com.humblesolutions.finai.model.Capabilities
 import com.humblesolutions.finai.model.Category
 import com.humblesolutions.finai.model.Commitment
 import com.humblesolutions.finai.model.Dashboard
 import com.humblesolutions.finai.model.DayPoint
+import com.humblesolutions.finai.model.HealthScore
 import com.humblesolutions.finai.model.Transaction
 import com.humblesolutions.finai.model.TransactionDirection
 import com.humblesolutions.finai.usecase.CategoryIcon
@@ -15,7 +17,10 @@ import com.humblesolutions.finai.usecase.CommitmentDraft
 import com.humblesolutions.finai.usecase.CommitmentEdit
 import com.humblesolutions.finai.usecase.DashboardMonths
 import com.humblesolutions.finai.usecase.DashboardTrend
+import com.humblesolutions.finai.usecase.HomeInsights
+import com.humblesolutions.finai.usecase.HomeSections
 import com.humblesolutions.finai.usecase.ImportedRows
+import com.humblesolutions.finai.usecase.ScoreBreakdown
 import com.humblesolutions.finai.util.Dates
 import com.humblesolutions.finai.util.Money
 import kotlinx.datetime.LocalDate
@@ -64,6 +69,22 @@ data class DashboardUiState(
     val commitmentDraft: CommitmentDraft = CommitmentDraft(),
     val commitmentSaving: Boolean = false,
     val commitmentErrorKey: String? = null,
+
+    // ── The score, the budget, spending and freshness (#46) ─────────────
+    /**
+     * The capabilities payload, read with the month. Null until it has been
+     * read, which draws neither the budget nor the score: a section arriving
+     * a moment late is better than one wrongly shown.
+     */
+    val capabilities: Capabilities? = null,
+    /** "Where it went" shows every category rather than the top five. */
+    val spendingExpanded: Boolean = false,
+    /** The score's breakdown sheet is up. */
+    val breakdownOpen: Boolean = false,
+    /** `GET /health-score`, read when the sheet opens; null until it answers. */
+    val breakdown: HealthScore? = null,
+    val breakdownLoading: Boolean = false,
+    val breakdownFailed: Boolean = false,
 ) {
     private val digits: Int get() = data.fractionDigits
 
@@ -288,6 +309,16 @@ data class DashboardUiState(
             description = text(Strings.dashboard_recent_row, title, date, amount, categoryName),
         )
     }
+
+    /**
+     * The score, the budget, spending and freshness, worded once in shared
+     * code ([HomeInsights]) so the two apps cannot word them apart. Each is
+     * null when it is not to be drawn.
+     */
+    val sections: HomeSections get() = HomeInsights.sectionsNow(data, capabilities, locale, amountsHidden)
+
+    /** The breakdown sheet's rows, or null until `/health-score` answers with a score. */
+    val breakdownView: ScoreBreakdown? get() = breakdown?.let { HomeInsights.breakdown(it, locale) }
 
     /** Nothing recorded at all, so the screen offers a first step instead of zeroes. */
     val showsEmptyState: Boolean get() = !loading && !loadFailed && data.isEmpty

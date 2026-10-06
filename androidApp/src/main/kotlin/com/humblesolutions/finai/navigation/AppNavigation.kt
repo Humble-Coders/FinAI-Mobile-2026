@@ -382,6 +382,8 @@ private fun HomeOrEntry(userId: String, onSignOut: () -> Unit) {
                                 MoneyKind.DEBTS -> HomeRoute.DEBTS
                             }
                         },
+                        // "See budget" only where the bar has a Budget tab to go to.
+                        onOpenBudget = if (HomeRoute.BUDGET in tabs) ({ route = HomeRoute.BUDGET }) else null,
                     )
 
                     HomeRoute.ADD -> ManualEntryRoute(userId = userId, fromUnreadable = false, onClose = { route = HomeRoute.HOME })

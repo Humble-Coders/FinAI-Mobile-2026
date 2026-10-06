@@ -107,6 +107,7 @@ import com.humblesolutions.finai.ui.components.ErrorText
 import com.humblesolutions.finai.ui.components.Field
 import com.humblesolutions.finai.ui.components.FinAiIcon
 import com.humblesolutions.finai.ui.components.GradientButton
+import com.humblesolutions.finai.ui.components.LearningFieldCard
 import com.humblesolutions.finai.ui.components.LightStatusBarIcons
 import com.humblesolutions.finai.ui.components.ProviderButton
 import com.humblesolutions.finai.ui.components.Waves
@@ -116,6 +117,7 @@ import com.humblesolutions.finai.ui.components.vector
 import com.humblesolutions.finai.ui.strings
 import com.humblesolutions.finai.ui.theme.FinAiPalette
 import com.humblesolutions.finai.usecase.DashboardTrend
+import com.humblesolutions.finai.usecase.HomeSections
 import com.humblesolutions.finai.usecase.MoneyKind
 
 /**
@@ -144,9 +146,21 @@ fun DashboardScreen(
     onSignOut: () -> Unit,
     commitments: CommitmentActions = CommitmentActions(),
     onOpenMoney: (MoneyKind) -> Unit = {},
+    insights: InsightActions = InsightActions(),
 ) {
     val dark = isSystemInDarkTheme()
     if (state.showsCommitmentEditor) CommitmentEditor(state, commitments)
+    if (state.breakdownOpen) {
+        ScoreBreakdownSheet(
+            breakdown = state.breakdownView,
+            loading = state.breakdownLoading,
+            failed = state.breakdownFailed,
+            onRetry = insights.onRetryBreakdown,
+            onDismiss = insights.onCloseBreakdown,
+        )
+    }
+    // Worded once per recomposition, not once per section.
+    val sections = state.sections
     LightStatusBarIcons(dark)
 
     val scroll = rememberScrollState()
@@ -190,9 +204,22 @@ fun DashboardScreen(
                         Header(state, onReview, Modifier.graphicsLayer { alpha = 1f - (collapsed() * 2f).coerceAtMost(1f) })
                         Spacer(Modifier.height(26.dp))
                         Hero(state, onToggleAmounts, onPreviousMonth, onNextMonth)
+                        sections.freshness?.let {
+                            Spacer(Modifier.height(10.dp))
+                            FreshnessText(it, onImportStatement)
+                        }
                         state.dailyChart?.let { chart ->
                             Spacer(Modifier.height(14.dp))
                             DailyChart(chart, state, Modifier.fillMaxWidth().height(CHART_HEIGHT))
+                        }
+                        // One card where the score and the budget would be, while learning.
+                        sections.learning?.let {
+                            Spacer(Modifier.height(18.dp))
+                            LearningFieldCard(it, onImport = onImportStatement)
+                        }
+                        sections.score?.let {
+                            Spacer(Modifier.height(18.dp))
+                            ScoreFieldCard(it, insights.onOpenBreakdown)
                         }
                         Spacer(Modifier.height(22.dp))
                         when {
@@ -205,7 +232,7 @@ fun DashboardScreen(
                     }
                 }
 
-                Sheet(state, onViewAll, onSignOut, commitments)
+                Sheet(state, sections, onViewAll, onSignOut, commitments, insights)
             }
         }
 
@@ -594,16 +621,16 @@ private val CHART_BOTTOM = 22.dp
 // ── The four cards ──────────────────────────────────────────────────────
 
 /** One card's colours: the icon, its tile, and a label dark enough to read. */
-private class Accent(val icon: Color, val label: Color, val darkLabel: Color) {
+internal class Accent(val icon: Color, val label: Color, val darkLabel: Color) {
     fun labelFor(dark: Boolean) = if (dark) darkLabel else label
 }
 
 // Labels use the deeper tone of each accent on a white card: the bright ones
 // read at under 3:1 there (amber at 1.7:1). Dark cards take the bright tone.
-private val IncomeAccent = Accent(FinAiPalette.Green, Color(0xFF15803D), FinAiPalette.Green)
-private val ExpensesAccent = Accent(FinAiPalette.Red, Color(0xFFDC2626), Color(0xFFF87171))
-private val InvestmentsAccent = Accent(FinAiPalette.Blue, Color(0xFF2563EB), Color(0xFF60A5FA))
-private val DebtsAccent = Accent(FinAiPalette.Amber, Color(0xFFB45309), FinAiPalette.Amber)
+internal val IncomeAccent = Accent(FinAiPalette.Green, Color(0xFF15803D), FinAiPalette.Green)
+internal val ExpensesAccent = Accent(FinAiPalette.Red, Color(0xFFDC2626), Color(0xFFF87171))
+internal val InvestmentsAccent = Accent(FinAiPalette.Blue, Color(0xFF2563EB), Color(0xFF60A5FA))
+internal val DebtsAccent = Accent(FinAiPalette.Amber, Color(0xFFB45309), FinAiPalette.Amber)
 
 @Composable
 private fun Figures(state: DashboardUiState, dark: Boolean, onOpen: (MoneyKind) -> Unit) {
@@ -960,7 +987,14 @@ private fun LoadFailed(state: DashboardUiState, onRetry: () -> Unit) {
 
 /** Rising over the field with the newest rows, and the month's commitments. */
 @Composable
-private fun Sheet(state: DashboardUiState, onViewAll: () -> Unit, onSignOut: () -> Unit, commitments: CommitmentActions) {
+private fun Sheet(
+    state: DashboardUiState,
+    sections: HomeSections,
+    onViewAll: () -> Unit,
+    onSignOut: () -> Unit,
+    commitments: CommitmentActions,
+    insights: InsightActions,
+) {
     Box(
         Modifier
             .fillMaxWidth()
@@ -977,6 +1011,16 @@ private fun Sheet(state: DashboardUiState, onViewAll: () -> Unit, onSignOut: () 
                 .padding(horizontal = 20.dp)
                 .padding(top = 24.dp, bottom = 16.dp),
         ) {
+            // Above the recent rows: how the month sits against its budget,
+            // then where the money went.
+            sections.budget?.let {
+                BudgetSection(it, insights.onOpenBudget)
+                Spacer(Modifier.height(28.dp))
+            }
+            sections.spending?.let {
+                SpendingSection(it, state.spendingExpanded, insights.onToggleSpending)
+                Spacer(Modifier.height(28.dp))
+            }
             val rows = state.recentRows
             // Shown once there is anything at all: its header carries View all,
             // which is the way into every transaction.

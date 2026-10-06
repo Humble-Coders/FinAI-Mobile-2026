@@ -60,7 +60,8 @@ final class MoneyDetailViewModel: ObservableObject {
         expenses: SharedLogic.Flow(actual: "0", expected: nil, previous: nil),
         investments: Stock(balance: "0", moved: "0", previousMoved: nil, withdrawn: "0"),
         debts: Stock(balance: "0", moved: "0", previousMoved: nil, withdrawn: "0"),
-        commitments: [], trend: [], daily: [], pendingReview: 0
+        commitments: [], trend: [], daily: [], pendingReview: 0,
+        spendByCategory: [], budget: nil, healthScore: nil, asOf: nil, learning: nil
     )
 
     // MARK: - Lifecycle

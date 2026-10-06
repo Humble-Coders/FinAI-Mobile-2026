@@ -234,7 +234,11 @@ struct RootView: View {
                 onSignOut: { model.signOut() },
                 onOpenMoney: { kind in
                     withAnimation(.easeOut(duration: 0.3)) { homeRoute = HomeRoute.route(for: kind).rawValue }
-                }
+                },
+                // "See budget" only where the bar has a Budget tab to go to.
+                onOpenBudget: features.showsBudget(onBudget: false)
+                    ? { homeRoute = HomeRoute.budget.rawValue }
+                    : nil
             )
             .tabItem { Label(L.t(Strings.shared.tab_home), systemImage: "house.fill") }
             .tag(HomeRoute.home.rawValue)
