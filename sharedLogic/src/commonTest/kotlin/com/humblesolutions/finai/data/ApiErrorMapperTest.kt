@@ -38,6 +38,35 @@ class ApiErrorMapperTest {
         assertEquals("investments.1.amount", error.field)
     }
 
+    // ── The budget (#47) ───────────────────────────────────────────────
+    // Each has its own words on screen. A typo in the code string here would
+    // fall through to the generic rejection without failing anything else.
+
+    @Test
+    fun `a category that cannot hold a budget line is its own error`() {
+        val error = ApiErrorMapper.fromResponse(
+            422,
+            """{"detail":{"code":"not_budgetable","field":"category_id","message":"income is money moving, not money spent."}}""",
+        )
+        assertIs<ApiException.NotBudgetable>(error)
+        assertEquals("category_id", error.field)
+        assertEquals(Strings.budget_error_not_budgetable, error.messageKey)
+    }
+
+    @Test
+    fun `a month the server cannot read is its own error`() {
+        val error = ApiErrorMapper.fromResponse(422, """{"detail":{"code":"invalid_month","message":"Expected YYYY-MM."}}""")
+        assertIs<ApiException.InvalidMonth>(error)
+        assertEquals(Strings.budget_error_invalid_month, error.messageKey)
+    }
+
+    @Test
+    fun `a month that has not begun is its own error`() {
+        val error = ApiErrorMapper.fromResponse(422, """{"detail":{"code":"month_in_future","message":"That month has not begun."}}""")
+        assertIs<ApiException.MonthInFuture>(error)
+        assertEquals(Strings.budget_error_month_in_future, error.messageKey)
+    }
+
     @Test
     fun `a 409 without a known code stays a generic rejection`() {
         val error = ApiErrorMapper.fromResponse(409, """{"detail":{"code":"something_else"}}""")
