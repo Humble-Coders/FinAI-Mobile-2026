@@ -90,7 +90,7 @@ class GoalEditTest {
 
     @Test
     fun a_new_goal_sends_normalised_amounts_and_leaves_out_what_was_not_given() {
-        val goal = assertNotNull(GoalEdit.newGoal(draft(name = " Car ", target = "6,000", contribution = "250"), "CAD"))
+        val goal = assertNotNull(GoalEdit.goalToCreate(draft(name = " Car ", target = "6,000", contribution = "250"), "CAD"))
 
         assertEquals("Car", goal.name)
         assertEquals("6000.00", goal.target)

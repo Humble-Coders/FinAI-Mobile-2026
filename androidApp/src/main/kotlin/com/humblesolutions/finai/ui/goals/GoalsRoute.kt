@@ -41,9 +41,9 @@ internal fun GoalsRoute(userId: String, onClose: () -> Unit) {
             onDelete = { state.editingId?.let(model::askDelete) },
         ),
     )
-    AddMoneySheet(
+    AddToGoalSheet(
         state = state,
-        actions = AddMoneyActions(onAmountChange = model::onAddAmountChange, onAdd = model::add, onCancel = model::cancelAdd),
+        actions = AddToGoalActions(onAmountChange = model::onAddAmountChange, onAdd = model::add, onCancel = model::cancelAdd),
     )
     DeleteGoalDialog(state = state, onConfirm = model::delete, onDismiss = model::cancelDelete)
 }

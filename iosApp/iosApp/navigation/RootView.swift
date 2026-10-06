@@ -29,6 +29,9 @@ struct RootView: View {
     /// only once `features` says the household has it.
     @StateObject private var budgetModel = BudgetViewModel()
 
+    /// The household's goals (#52), on the tab gated by `goals`.
+    @StateObject private var goalsModel = GoalsViewModel()
+
     /// What the tab bar may offer. Read once per signed-in user.
     @StateObject private var features = FeaturesViewModel()
     /// Income, Expenses, Investments and Debts, opened from Home's cards.
@@ -40,6 +43,9 @@ struct RootView: View {
     /// money gets in. Scene storage, so the app coming back after iOS
     /// reclaimed it reopens that screen rather than dropping them on home.
     @SceneStorage("home.route") private var homeRoute = HomeRoute.home.rawValue
+    /// Where Review's back arrow goes: the tab it was opened from. Kept with the
+    /// route, so a restored Review still knows its way out.
+    @SceneStorage("home.reviewFrom") private var reviewFrom = HomeRoute.home.rawValue
     /// One coin loader for the whole app: centred, everything behind it blurred,
     /// for at least two seconds.
     @StateObject private var loader = AppLoader()
@@ -174,8 +180,16 @@ struct RootView: View {
             UpdateRequiredView()
         case .home:
             switch HomeRoute(rawValue: homeRoute) ?? .home {
-            case .home, .transactions, .budget, .review:
+            case .home, .transactions, .budget, .goals:
                 tabs
+            case .review:
+                ReviewView(
+                    model: reviewModel,
+                    userId: model.me?.user.id ?? "",
+                    onClose: { withAnimation(.easeOut(duration: 0.25)) { homeRoute = reviewFrom } },
+                    showsBack: true
+                )
+                .transition(.opacity.combined(with: .offset(y: 30)))
             case .income, .expenses, .investments, .debts:
                 MoneyDetailView(
                     model: moneyModel,
@@ -199,7 +213,7 @@ struct RootView: View {
                     userId: model.me?.user.id ?? "",
                     onClose: { homeRoute = HomeRoute.home.rawValue },
                     onTypeInstead: { homeRoute = HomeRoute.addAfterImport.rawValue },
-                    onReview: { homeRoute = HomeRoute.review.rawValue }
+                    onReview: { openReview() }
                 )
             }
         case .failed:
@@ -229,7 +243,7 @@ struct RootView: View {
                 userId: userId,
                 onImportStatement: { homeRoute = HomeRoute.importStatement.rawValue },
                 onAddTransaction: { homeRoute = HomeRoute.add.rawValue },
-                onReview: { homeRoute = HomeRoute.review.rawValue },
+                onReview: { openReview() },
                 onViewAll: { homeRoute = HomeRoute.transactions.rawValue },
                 onSignOut: { model.signOut() },
                 onOpenMoney: { kind in
@@ -238,12 +252,15 @@ struct RootView: View {
                 // "See budget" only where the bar has a Budget tab to go to,
                 // and on the month Home is showing. Bound first: a first bind
                 // resets the model to the current month.
-                onOpenBudget: features.showsBudget(onBudget: false)
+                onOpenBudget: features.shows(FeaturesViewModel.budgetFeature, onTab: false)
                     ? { month in
                         budgetModel.bind(userId: userId)
                         budgetModel.showMonth(month)
                         homeRoute = HomeRoute.budget.rawValue
                     }
+                    : nil,
+                onOpenGoals: features.shows(FeaturesViewModel.goalsFeature, onTab: false)
+                    ? { homeRoute = HomeRoute.goals.rawValue }
                     : nil
             )
             .tabItem { Label(L.t(Strings.shared.tab_home), systemImage: "house.fill") }
@@ -253,20 +270,22 @@ struct RootView: View {
                 .tabItem { Label(L.t(Strings.shared.tab_transactions), systemImage: "list.bullet.rectangle.fill") }
                 .tag(HomeRoute.transactions.rawValue)
 
-            if features.showsBudget(onBudget: homeRoute == HomeRoute.budget.rawValue) {
+            if features.shows(FeaturesViewModel.budgetFeature, onTab: homeRoute == HomeRoute.budget.rawValue) {
                 BudgetView(
                     model: budgetModel,
                     userId: userId,
-                    onReview: { homeRoute = HomeRoute.review.rawValue },
+                    onReview: { openReview() },
                     onImport: { homeRoute = HomeRoute.importStatement.rawValue }
                 )
                 .tabItem { Label(L.t(Strings.shared.tab_budget), systemImage: "chart.pie.fill") }
                 .tag(HomeRoute.budget.rawValue)
             }
 
-            ReviewView(model: reviewModel, userId: userId, onClose: goHome, showsBack: false)
-                .tabItem { Label(L.t(Strings.shared.tab_review), systemImage: "checkmark.circle.fill") }
-                .tag(HomeRoute.review.rawValue)
+            if features.shows(FeaturesViewModel.goalsFeature, onTab: homeRoute == HomeRoute.goals.rawValue) {
+                GoalsView(model: goalsModel, userId: userId)
+                    .tabItem { Label(L.t(Strings.shared.tab_goals), systemImage: "flag.fill") }
+                    .tag(HomeRoute.goals.rawValue)
+            }
         }
         .task(id: userId) { features.bind(userId: userId) }
         // A tab that goes away under the person — the feature turned off
@@ -274,8 +293,13 @@ struct RootView: View {
         // Keyed on what is known rather than on the tab: from "not read" to
         // "off" the tab never changes, so watching it would miss exactly the
         // case where a restored person must be moved.
-        .onChange(of: features.budgetGate) { _, _ in
-            if features.leavesBudget(onBudget: homeRoute == HomeRoute.budget.rawValue) { goHome() }
+        .onChange(of: features.gates) { _, _ in
+            let onBudget = homeRoute == HomeRoute.budget.rawValue
+            let onGoals = homeRoute == HomeRoute.goals.rawValue
+            if features.leaves(FeaturesViewModel.budgetFeature, onTab: onBudget)
+                || features.leaves(FeaturesViewModel.goalsFeature, onTab: onGoals) {
+                goHome()
+            }
         }
         .tint(Brand.greenDeep)
         // Leaving the tabs for good — for the import, an entry, signing out —
@@ -287,7 +311,17 @@ struct RootView: View {
             transactionsModel.unbind()
             reviewModel.unbind()
             budgetModel.unbind()
+            goalsModel.unbind()
         }
+    }
+
+    /// Open Review, remembering the tab to go back to — Home when it is opened
+    /// at the end of an import, which is finished by then. Android's `reviewReturnsTo`.
+    private func openReview() {
+        let tabs: [HomeRoute] = [.home, .transactions, .budget, .goals]
+        let from = HomeRoute(rawValue: homeRoute) ?? .home
+        reviewFrom = (tabs.contains(from) ? from : .home).rawValue
+        homeRoute = HomeRoute.review.rawValue
     }
 
     private var failureKey: String {
@@ -316,11 +350,14 @@ struct RootView: View {
 private enum HomeRoute: String {
     case home
     case budget
+    /// The household's savings goals (#52) — the tab that took Review's place.
+    case goals
     case add
     case importStatement = "import"
     /// Manual entry opened because a statement could not be read (#31).
     case addAfterImport = "add_after_import"
-    /// The review queue (#32), from home or from an import that left rows.
+    /// The review queue (#32), from Home, from an import that left rows, and from
+    /// the Budget tab's unfiled note. A flow over the bar since #52.
     case review
     /// Everything the household has, by statement or by month (#F3).
     case transactions

@@ -209,7 +209,7 @@ class GoalsViewModel(
         viewModelScope.launch {
             try {
                 val goal = if (state.creating) {
-                    val new = GoalEdit.newGoal(state.draft, state.currency) ?: return@launch update { it.copy(saving = false) }
+                    val new = GoalEdit.goalToCreate(state.draft, state.currency) ?: return@launch update { it.copy(saving = false) }
                     repos.goals.create(new)
                 } else {
                     val original = state.editing ?: return@launch update { it.copy(saving = false) }

@@ -31,6 +31,8 @@ struct DashboardView: View {
     /// The Budget tab (#47) on a month (`YYYY-MM`) — the one Home is showing.
     /// Nil when there is no Budget tab, which hides "See budget".
     var onOpenBudget: ((String) -> Void)?
+    /// The Goals tab (#52); nil when there is none, which leaves the card without its link.
+    var onOpenGoals: (() -> Void)?
 
     @Environment(\.colorScheme) private var scheme
     private var dark: Bool { scheme == .dark }
@@ -438,6 +440,10 @@ struct DashboardView: View {
                     onOpenBudget: onOpenBudget.map { open in { open(DashboardMonths.shared.wire(month: model.month)) } }
                 )
                 .padding(.bottom, 28)
+            }
+            // Below the budget: goals are where the money set aside goes.
+            if let goals = model.goalsCard {
+                GoalsSection(card: goals, onOpenGoals: onOpenGoals).padding(.bottom, 28)
             }
             if let spending = sections.spending {
                 SpendingSection(card: spending, expanded: model.spendingExpanded, onToggle: model.toggleSpending)

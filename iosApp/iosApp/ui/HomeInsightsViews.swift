@@ -266,6 +266,69 @@ struct BudgetSection: View {
     }
 }
 
+/// Home's goals (#52): up to three in priority order with their progress, or an
+/// invitation to set one. Android's `GoalsSection`.
+struct GoalsSection: View {
+    let card: HomeGoals
+    let onOpenGoals: (() -> Void)?
+    @Environment(\.colorScheme) private var scheme
+
+    var body: some View {
+        let dark = scheme == .dark
+        VStack(alignment: .leading, spacing: 10) {
+            SectionHeader(symbol: "flag.fill", title: L.t(Strings.shared.goals_title)) {
+                if let onOpenGoals {
+                    Button(action: onOpenGoals) {
+                        HStack(spacing: 2) {
+                            Text(L.t(Strings.shared.home_goals_see)).font(.subheadline.weight(.semibold))
+                            FinAiIcon(symbol: "chevron.right", tint: Accent.income.label(dark), size: 11)
+                        }
+                        .foregroundColor(Accent.income.label(dark))
+                        .padding(.leading, 12)
+                        .padding(.trailing, 9)
+                        .padding(.vertical, 6)
+                        .background(Capsule().fill(Accent.income.icon.opacity(dark ? 0.18 : 0.1)))
+                        .frame(minHeight: 44)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            if card.isEmpty {
+                SheetCard {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(L.t(Strings.shared.goals_empty_title)).font(.headline.weight(.semibold))
+                        Text(L.t(Strings.shared.goals_empty_body)).font(.subheadline).foregroundColor(Brand.textMuted)
+                    }
+                }
+                .onTapGesture { onOpenGoals?() }
+            } else {
+                ForEach(Array(card.rows.enumerated()), id: \.offset) { _, row in
+                    SheetCard {
+                        HStack(spacing: 12) {
+                            CategoryTile(icon: row.icon)
+                            VStack(alignment: .leading, spacing: 8) {
+                                HStack(spacing: 8) {
+                                    Text(row.name).font(.headline.weight(.semibold)).lineLimit(1).truncationMode(.tail)
+                                    Spacer(minLength: 0)
+                                    Text(row.amounts).font(.subheadline).foregroundColor(Brand.textMuted).lineLimit(1)
+                                }
+                                ProgressView(value: Double(row.fraction)).tint(row.icon.tint(dark))
+                                if !row.status.isEmpty {
+                                    Text(row.status).font(.caption).foregroundColor(Brand.textMuted)
+                                }
+                            }
+                        }
+                    }
+                    .onTapGesture { onOpenGoals?() }
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(row.accessibility)
+                    .accessibilityAddTraits(onOpenGoals == nil ? [] : .isButton)
+                }
+            }
+        }
+    }
+}
+
 /// "Where it went": the month's spending by category, the top five, then all.
 struct SpendingSection: View {
     let card: SpendingCard

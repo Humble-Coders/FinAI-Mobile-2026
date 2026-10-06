@@ -301,7 +301,7 @@ private fun GoalDateDialog(chosen: LocalDate?, today: LocalDate, onChosen: (Loca
 }
 
 /** What "Add money" can do. */
-internal data class AddMoneyActions(
+internal data class AddToGoalActions(
     val onAmountChange: (String) -> Unit,
     val onAdd: () -> Unit,
     val onCancel: () -> Unit,
@@ -310,7 +310,7 @@ internal data class AddMoneyActions(
 /** Adding to one goal: a single amount field, locked while it is sent. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun AddMoneySheet(state: GoalsUiState, actions: AddMoneyActions) {
+internal fun AddToGoalSheet(state: GoalsUiState, actions: AddToGoalActions) {
     val goal = state.addingTo ?: return
     val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val busy = state.adding

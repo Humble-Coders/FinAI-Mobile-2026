@@ -176,8 +176,12 @@ object GoalEdit {
 
     private fun optional(raw: String, currency: String): String? = raw.takeIf { it.isNotBlank() }?.let { normalized(it, currency) }
 
-    /** The goal [draft] describes, ready to send; null if it would be refused. */
-    fun newGoal(draft: GoalDraft, currency: String): NewGoal? {
+    /**
+     * The goal [draft] describes, ready to send; null if it would be refused.
+     * Not `newGoal`: Kotlin/Native renames anything starting `new` for
+     * Objective-C, and Swift would have to call it `doNewGoal`.
+     */
+    fun goalToCreate(draft: GoalDraft, currency: String): NewGoal? {
         val horizon = draft.horizon?.takeIf { it != GoalHorizon.UNKNOWN } ?: return null
         if (draft.name.isBlank() || MoneyInput.problem(draft.target, currency) != null) return null
         return NewGoal(
