@@ -19,8 +19,8 @@ The only subtraction anywhere is `BudgetLine.overBy`, which is the difference of
 |---|---|
 | `model/Budget.kt` *(new, 234)* | `Budget`, `BudgetLine`, `BudgetStatus`, `LearningProgress`, `LearningNeeds`, decoding `BudgetOut`. Defaults on every field. Per-line derivations: `fraction`, `isOver`, `overBy`, `differsFromSuggestion`. |
 | `repository/BudgetRepository.kt` *(new)* | `get` / `setLine` / `resetLine`, each `@Throws`. The doc records that all three answer with the whole budget. |
-| `data/KtorBudgetRepository.kt` *(new)* | The three calls over Ktor, one implementation for both platforms. |
-| `data/ApiErrorMapper.kt` *(+9)* | Maps `not_budgetable`, `invalid_month`, `month_in_future`; they previously fell through to a generic `Validation`. |
+| `data/KtorBudgetRepository.kt` *(new)* | The three calls over Ktor, one implementation for both platforms. Request shapes pinned by `KtorBudgetRepositoryTest` (5 tests). |
+| `data/ApiErrorMapper.kt` *(+9)* | Maps `not_budgetable`, `invalid_month`, `month_in_future`; they previously fell through to a generic `Validation`. One `ApiErrorMapperTest` case each. |
 | `model/ApiException.kt` *(+28)* | The three types those codes map to, each with its own message key. |
 | `usecase/BudgetEdit.kt` *(new, 206)* | `blockingReason` / `blockingReasonForNew`, the `ordered` fold with `BudgetOrder`, `forHome`, `months`, `monthKeyOf`, `isBudgetable`. |
 | `i18n/Strings.kt`, `EnglishStrings.kt` *(+93)* | 37 keys: the screen, the editor, the picker, five blocking reasons, three refusals, two screen-reader sentences, and the shared "Still learning" copy. |
@@ -175,16 +175,27 @@ The first review of this PR found the saved-state restore — claimed as working
 | **iOS restore window, unverified.** After a restore the scene-stored route is `"budget"` before the Budget tab exists in the `TabView`, and what SwiftUI does with a selection matching no tab was not established. | Not left to SwiftUI. `FeaturesViewModel.showsBudget(onBudget:)` keeps the tab for someone already on it while capabilities are unknown, and `leavesBudget(onBudget:)` fires only on a payload that says off — the same rule as Android's `tabsFor` / `leavesBudget`. Navigation reacts to `budgetGate` (unknown / on / off), because from "not read" to "off" the tab itself never changes. The now-unused `budgetEnabled` was removed. **Built, not run**: there is no iOS test target. |
 | The snapshot's comment said nothing in it could contain a tab; a household's category name can | Tabs are taken out of the name when writing; the comment says why that is safe — `settle` replaces the line once the budget is read. |
 
+## Fixed after the fourth review
+
+No behaviour was found wrong; two gaps in what the tests could see.
+
+| Finding | Fix |
+|---|---|
+| The three new error codes were the only 3 of 19 with no test. A typo in one would fall through to the generic rejection and fail nothing. | One `ApiErrorMapperTest` case each, asserting the type and `messageKey` (and `field` for `not_budgetable`). |
+| `KtorBudgetRepository`'s requests were unpinned. A wrong `PUT` body key comes back as FastAPI's own 422 — a `detail` list, so the generic rejection — and every save would read as refused. | `KtorBudgetRepositoryTest`: method and path of all three calls, the exact `PUT` body, a decoded `BudgetOut`, and two refusals end to end. |
+
+Both were checked to **fail** against the bug they guard — a misspelt `month_in_future`, and the body key renamed — before the source was restored.
+
 ## Verification
 
 ```
 ./gradlew ktlintCheck                            clean
 ./gradlew :androidApp:assembleDebug              BUILD SUCCESSFUL
 ./gradlew :androidApp:testDebugUnitTest          252 tests, 0 failures
-./gradlew :sharedLogic:iosSimulatorArm64Test     517 tests, 0 failures
-./gradlew :sharedLogic:testAndroidHostTest       524 tests, 0 failures (incl. the SKIE @Throws guard)
+./gradlew :sharedLogic:iosSimulatorArm64Test     525 tests, 0 failures
+./gradlew :sharedLogic:testAndroidHostTest       532 tests, 0 failures (incl. the SKIE @Throws guard)
 xcodebuild -workspace iosApp.xcworkspace -scheme iosApp -sdk iphonesimulator
                                                  ** BUILD SUCCEEDED **
 ```
 
-New with this ticket: 22 Android view-model tests, 5 navigation tests and 28 shared tests (17 in `BudgetEditTest`, 11 in `BudgetTest` — the latter decoding the real `BudgetOut` shapes for ready, learning and shortfall, plus a payload missing everything optional and an unknown status).
+New with this ticket: 22 Android view-model tests, 5 navigation tests and 36 shared tests (17 in `BudgetEditTest`, 11 in `BudgetTest`, 5 in `KtorBudgetRepositoryTest`, 3 in `ApiErrorMapperTest` — the latter decoding the real `BudgetOut` shapes for ready, learning and shortfall, plus a payload missing everything optional and an unknown status).
