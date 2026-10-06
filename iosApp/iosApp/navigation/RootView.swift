@@ -24,6 +24,13 @@ struct RootView: View {
 
     /// Everything the household has (#F3).
     @StateObject private var transactionsModel = TransactionsViewModel()
+
+    /// The month's budget (#47). Gated by `auto_budget`, so the tab is drawn
+    /// only once `features` says the household has it.
+    @StateObject private var budgetModel = BudgetViewModel()
+
+    /// What the tab bar may offer. Read once per signed-in user.
+    @StateObject private var features = FeaturesViewModel()
     /// Income, Expenses, Investments and Debts, opened from Home's cards.
     @StateObject private var moneyModel = MoneyDetailViewModel()
     /// The quick entry those screens open — its own model, so a draft there
@@ -167,7 +174,7 @@ struct RootView: View {
             UpdateRequiredView()
         case .home:
             switch HomeRoute(rawValue: homeRoute) ?? .home {
-            case .home, .transactions, .review:
+            case .home, .transactions, .budget, .review:
                 tabs
             case .income, .expenses, .investments, .debts:
                 MoneyDetailView(
@@ -236,9 +243,26 @@ struct RootView: View {
                 .tabItem { Label(L.t(Strings.shared.tab_transactions), systemImage: "list.bullet.rectangle.fill") }
                 .tag(HomeRoute.transactions.rawValue)
 
+            if features.budgetEnabled {
+                BudgetView(
+                    model: budgetModel,
+                    userId: userId,
+                    onReview: { homeRoute = HomeRoute.review.rawValue },
+                    onImport: { homeRoute = HomeRoute.importStatement.rawValue }
+                )
+                .tabItem { Label(L.t(Strings.shared.tab_budget), systemImage: "chart.pie.fill") }
+                .tag(HomeRoute.budget.rawValue)
+            }
+
             ReviewView(model: reviewModel, userId: userId, onClose: goHome, showsBack: false)
                 .tabItem { Label(L.t(Strings.shared.tab_review), systemImage: "checkmark.circle.fill") }
                 .tag(HomeRoute.review.rawValue)
+        }
+        .task(id: userId) { features.bind(userId: userId) }
+        // A tab that goes away under the person — the feature turned off
+        // between reads — leaves them on a screen with no way back to it.
+        .onChange(of: features.budgetEnabled) { _, enabled in
+            if !enabled && homeRoute == HomeRoute.budget.rawValue { goHome() }
         }
         .tint(Brand.greenDeep)
         // Leaving the tabs for good — for the import, an entry, signing out —
@@ -249,6 +273,7 @@ struct RootView: View {
             dashboardModel.unbind()
             transactionsModel.unbind()
             reviewModel.unbind()
+            budgetModel.unbind()
         }
     }
 
@@ -277,6 +302,7 @@ struct RootView: View {
 /// Home, and the screens opened from it.
 private enum HomeRoute: String {
     case home
+    case budget
     case add
     case importStatement = "import"
     /// Manual entry opened because a statement could not be read (#31).
