@@ -671,7 +671,8 @@ object Strings {
     const val goals_a11y_with_status = "goals_a11y_with_status" // "{0}, {1}"
     const val goals_move_up = "goals_move_up" // "Move up"
     const val goals_move_down = "goals_move_down" // "Move down"
-    const val goals_reorder_hint = "goals_reorder_hint" // "Drag to reorder"
+    const val goals_reorder_hint = "goals_reorder_hint" // "Reorder"
+    const val home_goals_see = "home_goals_see" // "See goals"
 
     // The editor.
     const val goals_edit_title_new = "goals_edit_title_new" // "New goal"

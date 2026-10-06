@@ -21,12 +21,12 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ReceiptLong
 import androidx.compose.material.icons.automirrored.outlined.ReceiptLong
+import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.PieChart
-import androidx.compose.material.icons.filled.TaskAlt
+import androidx.compose.material.icons.outlined.Flag
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.PieChart
-import androidx.compose.material.icons.outlined.TaskAlt
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -59,6 +59,7 @@ import com.humblesolutions.finai.ui.components.LoaderHost
 import com.humblesolutions.finai.ui.components.LoaderSignal
 import com.humblesolutions.finai.ui.components.LoadingCard
 import com.humblesolutions.finai.ui.dashboard.DashboardRoute
+import com.humblesolutions.finai.ui.goals.GoalsRoute
 import com.humblesolutions.finai.ui.manualentry.ManualEntryActions
 import com.humblesolutions.finai.ui.manualentry.ManualEntryScreen
 import com.humblesolutions.finai.ui.manualentry.ManualEntryViewModel
@@ -287,20 +288,32 @@ private fun SetupRoute(userId: String, onFinished: () -> Unit) {
 }
 
 /** Where the signed-in, set-up person is: home, or one of the two ways money gets in. */
-internal enum class HomeRoute { HOME, ADD, IMPORT, ADD_AFTER_IMPORT, REVIEW, TRANSACTIONS, BUDGET, INCOME, EXPENSES, INVESTMENTS, DEBTS }
-
-/** The places the bar always offers; everything else is a flow over them. */
-private val BASE_TABS = listOf(HomeRoute.HOME, HomeRoute.TRANSACTIONS, HomeRoute.REVIEW)
-
-/** Every route the bar can hold, gated or not — what counts as a tab switch. */
-private val ALL_TABS = listOf(HomeRoute.HOME, HomeRoute.TRANSACTIONS, HomeRoute.BUDGET, HomeRoute.REVIEW)
-
-/** The capability that earns the Budget tab a place on the bar (#47). */
-private const val BUDGET_FEATURE = "auto_budget"
+internal enum class HomeRoute { HOME, ADD, IMPORT, ADD_AFTER_IMPORT, REVIEW, TRANSACTIONS, BUDGET, GOALS, INCOME, EXPENSES, INVESTMENTS, DEBTS }
 
 /**
- * The bar for a household, with Budget between Transactions and Review when
- * capabilities allow it.
+ * The places the bar always offers; everything else is a flow over them.
+ *
+ * Review is not among them since #52: Goals took its place on the bar. It is
+ * reached from Home, from an import that left rows waiting, and from the
+ * Budget tab's unfiled note, and opens over the bar with a way back.
+ */
+private val BASE_TABS = listOf(HomeRoute.HOME, HomeRoute.TRANSACTIONS)
+
+/** A tab the bar offers only when capabilities enable its feature. */
+private class GatedTab(val route: HomeRoute, val feature: String)
+
+/** In bar order, after [BASE_TABS]: Budget (#47), then Goals (#52). */
+private val GATED_TABS = listOf(
+    GatedTab(HomeRoute.BUDGET, "auto_budget"),
+    GatedTab(HomeRoute.GOALS, "goals"),
+)
+
+/** Every route the bar can hold, gated or not — what counts as a tab switch. */
+private val ALL_TABS = BASE_TABS + GATED_TABS.map { it.route }
+
+/**
+ * The bar for a household: Home · Transactions, then Budget and Goals when
+ * capabilities allow them.
  *
  * Absent rather than disabled: a tab that cannot be opened is a worse answer
  * than no tab, and the payload is the one place that decides (CLAUDE.md →
@@ -308,21 +321,27 @@ private const val BUDGET_FEATURE = "auto_budget"
  *
  * **Not known is not the same as off.** Capabilities are null until the first
  * read lands — which, after Android reclaims the process, is *after* the
- * saved route has already put the person back on Budget. Hiding the tab then
+ * saved route has already put the person back on their tab. Hiding it then
  * would send them home and strand the edit they came back for, so a person
- * already on Budget keeps it until the payload actually says no.
+ * already on a gated tab keeps it until the payload actually says no. One rule
+ * for every gated tab, so the next one cannot be added without it.
  */
-internal fun tabsFor(capabilities: Capabilities?, current: HomeRoute): List<HomeRoute> = when {
-    capabilities?.isEnabled(BUDGET_FEATURE) == true -> ALL_TABS
-    capabilities == null && current == HomeRoute.BUDGET -> ALL_TABS
-    else -> BASE_TABS
-}
+internal fun tabsFor(capabilities: Capabilities?, current: HomeRoute): List<HomeRoute> = BASE_TABS + GATED_TABS.filter { shows(it, capabilities, current) }.map { it.route }
+
+private fun shows(tab: GatedTab, capabilities: Capabilities?, current: HomeRoute): Boolean = capabilities?.isEnabled(tab.feature) == true || (capabilities == null && current == tab.route)
 
 /**
- * True when the person is on Budget and the payload has *said* it is off —
- * turned off between reads. Never on a payload not yet read; see [tabsFor].
+ * True when the person is on a gated tab and the payload has *said* its
+ * feature is off — turned off between reads. Never on a payload not yet
+ * read; see [tabsFor].
  */
-internal fun leavesBudget(capabilities: Capabilities?, current: HomeRoute): Boolean = current == HomeRoute.BUDGET && capabilities != null && !capabilities.isEnabled(BUDGET_FEATURE)
+internal fun leavesGatedTab(capabilities: Capabilities?, current: HomeRoute): Boolean = capabilities != null && GATED_TABS.any { it.route == current && !capabilities.isEnabled(it.feature) }
+
+/**
+ * Where Review's back arrow goes: the tab it was opened from. Opened at the
+ * end of an import, that flow is finished, so home.
+ */
+internal fun reviewReturnsTo(from: HomeRoute): HomeRoute = if (from in ALL_TABS) from else HomeRoute.HOME
 
 /** Income, Expenses, Investments and Debts, opened from Home's cards. */
 private val MONEY = listOf(HomeRoute.INCOME, HomeRoute.EXPENSES, HomeRoute.INVESTMENTS, HomeRoute.DEBTS)
@@ -354,7 +373,14 @@ private fun HomeOrEntry(userId: String, onSignOut: () -> Unit) {
     // on the payload rather than the tabs, and only once it has been read:
     // the first version keyed on the tabs and sent everyone restored onto
     // Budget home before capabilities arrived.
-    LaunchedEffect(capabilities) { if (leavesBudget(capabilities, route)) route = HomeRoute.HOME }
+    LaunchedEffect(capabilities) { if (leavesGatedTab(capabilities, route)) route = HomeRoute.HOME }
+    // Where Review goes back to. Saveable with the route, so a restored Review
+    // still knows its way out.
+    var reviewFrom by rememberSaveable { mutableStateOf(HomeRoute.HOME) }
+    val openReview = {
+        reviewFrom = reviewReturnsTo(route)
+        route = HomeRoute.REVIEW
+    }
     val tabbed = route in tabs
     Column(Modifier.fillMaxSize()) {
         Box(
@@ -373,7 +399,7 @@ private fun HomeOrEntry(userId: String, onSignOut: () -> Unit) {
                     HomeRoute.HOME -> DashboardRoute(
                         userId = userId,
                         onImportStatement = { route = HomeRoute.IMPORT },
-                        onReview = { route = HomeRoute.REVIEW },
+                        onReview = openReview,
                         onAddTransaction = { route = HomeRoute.ADD },
                         onViewAll = { route = HomeRoute.TRANSACTIONS },
                         onSignOut = onSignOut,
@@ -395,6 +421,11 @@ private fun HomeOrEntry(userId: String, onSignOut: () -> Unit) {
                         } else {
                             null
                         },
+                        onOpenGoals = if (HomeRoute.GOALS in tabs) {
+                            { route = HomeRoute.GOALS }
+                        } else {
+                            null
+                        },
                     )
 
                     HomeRoute.ADD -> ManualEntryRoute(userId = userId, fromUnreadable = false, onClose = { route = HomeRoute.HOME })
@@ -406,11 +437,12 @@ private fun HomeOrEntry(userId: String, onSignOut: () -> Unit) {
                         userId = userId,
                         onClose = { route = HomeRoute.HOME },
                         onTypeInstead = { route = HomeRoute.ADD_AFTER_IMPORT },
-                        onReview = { route = HomeRoute.REVIEW },
+                        onReview = openReview,
                     )
 
-                    // Back from a tab goes home, as the bar would.
-                    HomeRoute.REVIEW -> ReviewRoute(userId = userId, onClose = { route = HomeRoute.HOME }, showsBack = false)
+                    // A flow over the bar since #52, with a back arrow to the
+                    // tab it was opened from.
+                    HomeRoute.REVIEW -> ReviewRoute(userId = userId, onClose = { route = reviewFrom }, showsBack = true)
 
                     HomeRoute.TRANSACTIONS ->
                         TransactionsRoute(userId = userId, onClose = { route = HomeRoute.HOME }, showsBack = false)
@@ -418,11 +450,13 @@ private fun HomeOrEntry(userId: String, onSignOut: () -> Unit) {
                     HomeRoute.BUDGET -> BudgetRoute(
                         userId = userId,
                         onClose = { route = HomeRoute.HOME },
-                        onReview = { route = HomeRoute.REVIEW },
+                        onReview = openReview,
                         onImport = { route = HomeRoute.IMPORT },
                         requestedMonth = budgetMonth,
                         onRequestedMonthShown = { budgetMonth = null },
                     )
+
+                    HomeRoute.GOALS -> GoalsRoute(userId = userId, onClose = { route = HomeRoute.HOME })
 
                     // The four money screens open over the bar, like a flow,
                     // and back returns home.
@@ -457,7 +491,7 @@ private fun HomeBar(tabs: List<HomeRoute>, current: HomeRoute, onSelect: (HomeRo
 
                 HomeRoute.BUDGET -> Triple(Icons.Filled.PieChart, Icons.Outlined.PieChart, Strings.tab_budget)
 
-                else -> Triple(Icons.Filled.TaskAlt, Icons.Outlined.TaskAlt, Strings.tab_review)
+                else -> Triple(Icons.Filled.Flag, Icons.Outlined.Flag, Strings.tab_goals)
             }
             NavigationBarItem(
                 selected = selected,
@@ -483,6 +517,13 @@ private fun homeTransition(from: HomeRoute, to: HomeRoute): ContentTransform = w
         fadeIn(tween(240)) togetherWith (fadeOut(tween(220)) + slideOutVertically(tween(260)) { it / 12 })
 
     from in ALL_TABS && to in ALL_TABS -> fadeIn(tween(220)) togetherWith fadeOut(tween(160))
+
+    // Review opens over the bar like the money screens do (#52).
+    to == HomeRoute.REVIEW && from in ALL_TABS ->
+        (fadeIn(tween(260)) + slideInVertically(tween(300)) { it / 14 }) togetherWith fadeOut(tween(180))
+
+    from == HomeRoute.REVIEW && to in ALL_TABS ->
+        fadeIn(tween(220)) togetherWith (fadeOut(tween(200)) + slideOutVertically(tween(240)) { it / 14 })
 
     // Out of a card on Home: rises in, and settles back down on the way out.
     from == HomeRoute.HOME && to in MONEY ->

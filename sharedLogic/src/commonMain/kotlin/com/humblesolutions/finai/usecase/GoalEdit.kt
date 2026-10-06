@@ -386,4 +386,41 @@ object GoalEdit {
         val open = page.goals.filterNot { it.isAchieved }
         return (open.ifEmpty { page.goals }).take(HOME_COUNT)
     }
+
+    /**
+     * Home's goals card, worded — the same card on both apps. No rows means
+     * the household has no goals yet, and the card invites them to set one.
+     * Figures follow Home's eye toggle through [words].
+     */
+    fun homeCard(page: GoalsPage, words: Words): HomeGoals = HomeGoals(
+        forHome(page).map { goal ->
+            HomeGoalRow(
+                id = goal.id,
+                name = goal.name,
+                amounts = amountsLine(goal, words),
+                status = statusLine(goal, words),
+                fraction = goal.fraction,
+                icon = iconOf(goal.kind),
+                accessibility = description(goal, words),
+            )
+        },
+    )
 }
+
+/** Home's goals card: up to three goals, or none and an invitation. */
+data class HomeGoals(val rows: List<HomeGoalRow>) {
+    val isEmpty: Boolean get() = rows.isEmpty()
+}
+
+/** One goal on Home's card, already in words. */
+data class HomeGoalRow(
+    val id: String,
+    val name: String,
+    val amounts: String,
+    val status: String,
+    /** The bar's length, from the server's percentage. */
+    val fraction: Float,
+    val icon: CategoryIcon,
+    /** The row as one sentence for a screen reader. */
+    val accessibility: String,
+)

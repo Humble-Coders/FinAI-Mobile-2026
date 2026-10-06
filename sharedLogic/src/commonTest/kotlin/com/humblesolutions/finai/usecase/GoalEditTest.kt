@@ -273,6 +273,24 @@ class GoalEditTest {
         assertEquals(listOf("g2", "g3", "g4"), GoalEdit.forHome(GoalsPage(goals = goals)).map { it.id })
     }
 
+    @Test
+    fun home_s_card_words_each_goal_the_way_the_goals_tab_does() {
+        val card = GoalEdit.homeCard(GoalsPage(goals = listOf(car)), words)
+        val row = card.rows.single()
+
+        assertEquals("Car", row.name)
+        assertEquals(GoalEdit.amountsLine(car, words), row.amounts)
+        assertEquals(GoalEdit.statusLine(car, words), row.status)
+        assertEquals(GoalEdit.description(car, words), row.accessibility)
+        assertEquals(CategoryIcon.CAR, row.icon)
+    }
+
+    /** No goals at all is an invitation, not a missing card. */
+    @Test
+    fun home_s_card_with_no_goals_is_empty_rather_than_absent() {
+        assertTrue(GoalEdit.homeCard(GoalsPage(), words).isEmpty)
+    }
+
     /** A card of nothing would read as no goals at all. */
     @Test
     fun home_shows_reached_goals_when_nothing_else_is_left() {

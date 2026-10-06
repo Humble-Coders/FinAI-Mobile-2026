@@ -638,7 +638,8 @@ val EnglishStrings: Map<String, String> = mapOf(
     Strings.goals_a11y_with_status to "{0}, {1}",
     Strings.goals_move_up to "Move up",
     Strings.goals_move_down to "Move down",
-    Strings.goals_reorder_hint to "Drag to reorder",
+    Strings.goals_reorder_hint to "Reorder",
+    Strings.home_goals_see to "See goals",
 
     // The editor.
     Strings.goals_edit_title_new to "New goal",

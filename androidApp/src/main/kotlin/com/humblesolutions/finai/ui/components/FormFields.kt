@@ -163,6 +163,8 @@ internal fun WizardField(
     placeholder: String? = null,
     onDone: (() -> Unit)? = null,
     leading: ImageVector? = null,
+    /** False while what was typed is being sent, so it cannot change underneath the request. */
+    enabled: Boolean = true,
 ) {
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
@@ -174,6 +176,7 @@ internal fun WizardField(
             value = value,
             onValueChange = onValueChange,
             singleLine = true,
+            enabled = enabled,
             interactionSource = interaction,
             textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
             cursorBrush = SolidColor(FinAiPalette.Green),

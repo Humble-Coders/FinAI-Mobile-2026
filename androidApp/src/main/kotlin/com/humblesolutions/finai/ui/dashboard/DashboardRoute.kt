@@ -26,6 +26,8 @@ internal fun DashboardRoute(
     onOpenMoney: (MoneyKind) -> Unit = {},
     /** The Budget tab on a month (`YYYY-MM`); null when there is none, which hides "See budget". */
     onOpenBudget: ((String) -> Unit)? = null,
+    /** The Goals tab; null when there is none, which leaves the card without its link. */
+    onOpenGoals: (() -> Unit)? = null,
 ) {
     val model: DashboardViewModel = viewModel()
     val state by model.uiState.collectAsStateWithLifecycle()
@@ -63,6 +65,7 @@ internal fun DashboardRoute(
             onRetryBreakdown = model::retryBreakdown,
             onToggleSpending = model::toggleSpending,
             onOpenBudget = onOpenBudget,
+            onOpenGoals = onOpenGoals,
         ),
     )
 }

@@ -8,6 +8,7 @@ import com.humblesolutions.finai.data.KtorCapabilitiesRepository
 import com.humblesolutions.finai.data.KtorCategoriesRepository
 import com.humblesolutions.finai.data.KtorDashboardRepository
 import com.humblesolutions.finai.data.KtorFinancialSetupRepository
+import com.humblesolutions.finai.data.KtorGoalsRepository
 import com.humblesolutions.finai.data.KtorHealthScoreRepository
 import com.humblesolutions.finai.data.KtorTransactionsRepository
 import com.humblesolutions.finai.data.SupabaseTokenSource
@@ -18,12 +19,14 @@ import com.humblesolutions.finai.repository.CapabilitiesRepository
 import com.humblesolutions.finai.repository.CategoriesRepository
 import com.humblesolutions.finai.repository.DashboardRepository
 import com.humblesolutions.finai.repository.FinancialSetupRepository
+import com.humblesolutions.finai.repository.GoalsRepository
 import com.humblesolutions.finai.repository.HealthScoreRepository
 import com.humblesolutions.finai.repository.TransactionsRepository
 import com.humblesolutions.finai.usecase.CommitmentDraft
 import com.humblesolutions.finai.usecase.CommitmentEdit
 import com.humblesolutions.finai.usecase.DashboardMonths
 import com.humblesolutions.finai.util.BudgetChanged
+import com.humblesolutions.finai.util.GoalsChanged
 import com.humblesolutions.finai.util.LedgerChanged
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -65,6 +68,9 @@ class DashboardViewModel : ViewModel() {
     /** The recent list's own counter; see [loadRecent]. */
     private var recentGeneration = 0
 
+    /** The goals card's own counter; see [loadGoals]. */
+    private var goalsGeneration = 0
+
     fun bind(userId: String, logging: Boolean) = bind(userId) {
         Supabase.clientOrNull()?.let { client ->
             val tokens = SupabaseTokenSource(client)
@@ -75,6 +81,7 @@ class DashboardViewModel : ViewModel() {
                 categories = KtorCategoriesRepository(ApiConfig.BASE_URL, tokens, logging),
                 setup = KtorFinancialSetupRepository(ApiConfig.BASE_URL, tokens, logging),
                 healthScore = KtorHealthScoreRepository(ApiConfig.BASE_URL, tokens, logging),
+                goals = KtorGoalsRepository(ApiConfig.BASE_URL, tokens, logging),
             )
         }
     }
@@ -117,6 +124,11 @@ class DashboardViewModel : ViewModel() {
         viewModelScope.launch {
             BudgetChanged.events.collect { load(refresh = true) }
         }
+        // A goal created, topped up or reordered on the Goals tab moves only
+        // the goals card; the month itself is untouched.
+        viewModelScope.launch {
+            GoalsChanged.events.collect { loadGoals() }
+        }
     }
 
     override fun onCleared() {
@@ -155,6 +167,7 @@ class DashboardViewModel : ViewModel() {
                         errorKey = null,
                     )
                 }
+                loadGoals()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: ApiException) {
@@ -193,6 +206,23 @@ class DashboardViewModel : ViewModel() {
             _uiState.update {
                 it.copy(recent = rows, categories = categories ?: it.categories)
             }
+        }
+    }
+
+    /**
+     * The goals for Home's card (#52), read only when capabilities enable
+     * them. Its own counter, like the recent rows, and quiet on failure: the
+     * card is simply not drawn, rather than a blip turning Home into an error.
+     */
+    private fun loadGoals() {
+        val repos = repositories ?: return
+        val goals = repos.goals ?: return
+        if (_uiState.value.capabilities?.isEnabled(GOALS_FEATURE) != true) return
+        val started = ++goalsGeneration
+        viewModelScope.launch {
+            val page = orNull { goals.list() } ?: return@launch
+            if (started != goalsGeneration) return@launch
+            _uiState.update { it.copy(goals = page) }
         }
     }
 
@@ -386,6 +416,7 @@ internal class DashboardRepositories(
     val categories: CategoriesRepository? = null,
     val setup: FinancialSetupRepository? = null,
     val healthScore: HealthScoreRepository? = null,
+    val goals: GoalsRepository? = null,
 ) {
     fun close() {
         dashboard.close()
@@ -394,6 +425,7 @@ internal class DashboardRepositories(
         categories?.close()
         setup?.close()
         healthScore?.close()
+        goals?.close()
     }
 }
 

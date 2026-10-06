@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.PieChart
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.UploadFile
@@ -60,6 +61,8 @@ import com.humblesolutions.finai.usecase.BreakdownRow
 import com.humblesolutions.finai.usecase.BudgetCard
 import com.humblesolutions.finai.usecase.BudgetRow
 import com.humblesolutions.finai.usecase.FreshnessLine
+import com.humblesolutions.finai.usecase.HomeGoalRow
+import com.humblesolutions.finai.usecase.HomeGoals
 import com.humblesolutions.finai.usecase.ScoreBreakdown
 import com.humblesolutions.finai.usecase.ScoreCard
 import com.humblesolutions.finai.usecase.SpendRow
@@ -305,6 +308,69 @@ internal fun BudgetSection(card: BudgetCard, onOpenBudget: (() -> Unit)?) {
     }
 }
 
+/**
+ * Home's goals (#52): up to three in priority order with their progress, or an
+ * invitation to set one. "See goals" opens the tab when there is one.
+ */
+@Composable
+internal fun GoalsSection(card: HomeGoals, onOpenGoals: (() -> Unit)?) {
+    SectionHeader(
+        icon = Icons.Filled.Flag,
+        title = strings(Strings.goals_title),
+        action = onOpenGoals?.let { open -> { SectionLink(strings(Strings.home_goals_see), open) } },
+    )
+    Spacer(Modifier.height(10.dp))
+    if (card.isEmpty) {
+        SheetCard(Modifier.then(if (onOpenGoals != null) Modifier.clickable(role = Role.Button, onClick = onOpenGoals) else Modifier)) {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(strings(Strings.goals_empty_title), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Text(strings(Strings.goals_empty_body), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        return
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        card.rows.forEach { GoalCard(it, onOpenGoals) }
+    }
+}
+
+@Composable
+private fun GoalCard(row: HomeGoalRow, onOpenGoals: (() -> Unit)?) {
+    SheetCard(
+        Modifier
+            .then(if (onOpenGoals != null) Modifier.clickable(role = Role.Button, onClick = onOpenGoals) else Modifier)
+            .clearAndSetSemantics { contentDescription = row.accessibility },
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            CategoryTile(row.icon)
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = row.name,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(row.amounts, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                }
+                Spacer(Modifier.height(8.dp))
+                LinearProgressIndicator(
+                    progress = { row.fraction },
+                    modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)),
+                )
+                if (row.status.isNotEmpty()) {
+                    Spacer(Modifier.height(6.dp))
+                    Text(row.status, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun BudgetLineCard(row: BudgetRow) {
     val dark = isSystemInDarkTheme()
@@ -517,4 +583,6 @@ class InsightActions(
      * Budget tab, which hides the link.
      */
     val onOpenBudget: ((String) -> Unit)? = null,
+    /** Open the Goals tab (#52). Null when there is none, which hides the card's link. */
+    val onOpenGoals: (() -> Unit)? = null,
 )
