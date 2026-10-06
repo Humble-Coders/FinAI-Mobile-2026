@@ -248,11 +248,13 @@ object HomeInsights {
         )
     }
 
-    /** The parts formula v1 has; a part from a newer formula is listed under a general title. */
+    /** The parts formulas v1 and v2 have; a part from a newer formula is listed under a general title. */
     private val PARTS = mapOf(
         "savings_consistency" to Part(Strings.home_part_savings, Strings.home_part_savings_counted, Strings.home_part_savings_not_counted),
         "spending_vs_budget" to Part(Strings.home_part_budget, Strings.home_part_budget_counted, Strings.home_part_budget_not_counted),
         "debt_payments" to Part(Strings.home_part_debt, Strings.home_part_debt_counted, Strings.home_part_debt_not_counted),
+        // Formula v2 (backend #66).
+        "goal_completion" to Part(Strings.home_part_goals, Strings.home_part_goals_counted, Strings.home_part_goals_not_counted),
     )
 
     private class Part(val title: String, val counted: String, val notCounted: String)

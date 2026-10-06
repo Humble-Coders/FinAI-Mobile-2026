@@ -33,6 +33,9 @@ internal object ApiErrorMapper {
     private const val NOT_BUDGETABLE = "not_budgetable"
     private const val INVALID_MONTH = "invalid_month"
     private const val MONTH_IN_FUTURE = "month_in_future"
+    private const val GOAL_LIMIT_REACHED = "goal_limit_reached"
+    private const val DATE_IN_PAST = "date_in_past"
+    private const val ORDER_MISMATCH = "order_mismatch"
 
     fun fromResponse(status: Int, body: String): ApiException = when (status) {
         401 -> ApiException.Unauthorized("token rejected")
@@ -127,6 +130,12 @@ internal object ApiErrorMapper {
                 INVALID_MONTH -> return ApiException.InvalidMonth()
 
                 MONTH_IN_FUTURE -> return ApiException.MonthInFuture()
+
+                GOAL_LIMIT_REACHED -> return ApiException.GoalLimitReached(detail.string("limit")?.toIntOrNull())
+
+                DATE_IN_PAST -> return ApiException.DateInPast()
+
+                ORDER_MISMATCH -> return ApiException.OrderMismatch()
             }
         }
         return ApiException.Validation(status)

@@ -4,6 +4,7 @@ import com.humblesolutions.finai.i18n.Strings
 import com.humblesolutions.finai.model.Budget
 import com.humblesolutions.finai.model.BudgetLine
 import com.humblesolutions.finai.util.Money
+import com.humblesolutions.finai.util.MoneyInput
 
 /** A budget line as the person is editing it. */
 data class BudgetDraft(
@@ -48,19 +49,6 @@ enum class BudgetOrder {
  */
 object BudgetEdit {
 
-    /**
-     * A scale wide enough that anything a person types by hand fits inside
-     * it, used to tell "too many decimal places" apart from "not a number".
-     *
-     * [Money.normalize] refuses both the same way, with a null — it does not
-     * truncate, it declines — so `"500.999"` and `"five hundred"` are
-     * indistinguishable at the currency's own scale. Reading the draft again
-     * at this scale separates them: a figure that is money here and not
-     * there had too much precision, and deserves to be told so rather than
-     * being called nonsense.
-     */
-    private const val WIDE_SCALE = 9
-
     /** The categories that can never hold a line; the server refuses them too. */
     val NOT_BUDGETABLE = setOf("income", "transfers")
 
@@ -93,36 +81,17 @@ object BudgetEdit {
     fun blockingReasonForNew(draft: BudgetDraft, currency: String): BudgetBlock? = valid(draft, currency)
 
     /**
-     * The reasons shared by setting a line and adding one, in the order the
-     * person would notice them.
-     *
-     * Negative is checked on the raw text, before [Money.normalize], because
-     * normalize treats a minus sign as "not money at all" and would report it
-     * as such — true, but useless next to a field where the person has
-     * plainly just typed a minus.
+     * The reasons shared by setting a line and adding one. The amount checks
+     * themselves are [MoneyInput]'s, shared with goals, so the subtle one —
+     * too precise versus not a number — is written once.
      */
-    private fun valid(draft: BudgetDraft, currency: String): BudgetBlock? {
-        if (draft.amount.isBlank()) return BudgetBlock.NO_AMOUNT
-        if (draft.amount.trim().startsWith("-")) return BudgetBlock.AMOUNT_NEGATIVE
-        val digits = Money.fractionDigits(currency)
-        if (Money.normalize(draft.amount, digits) != null) return null
-        return if (isTooPrecise(draft.amount)) BudgetBlock.AMOUNT_TOO_PRECISE else BudgetBlock.AMOUNT_NOT_MONEY
+    private fun valid(draft: BudgetDraft, currency: String): BudgetBlock? = when (MoneyInput.problem(draft.amount, currency)) {
+        MoneyInput.Problem.BLANK -> BudgetBlock.NO_AMOUNT
+        MoneyInput.Problem.NEGATIVE -> BudgetBlock.AMOUNT_NEGATIVE
+        MoneyInput.Problem.NOT_MONEY -> BudgetBlock.AMOUNT_NOT_MONEY
+        MoneyInput.Problem.TOO_PRECISE -> BudgetBlock.AMOUNT_TOO_PRECISE
+        null -> null
     }
-
-    /**
-     * Whether [raw] is a real figure that simply has too many decimal places
-     * for its currency — as opposed to not being a figure at all.
-     *
-     * Only asked once the currency's own scale has already refused it.
-     * Decided by [Money] rather than by counting characters: whether the dot
-     * in `"1.200"` is a decimal point or a thousands separator is exactly
-     * the judgement [Money.normalize] already makes, and a second opinion
-     * here would eventually disagree with it.
-     *
-     * A currency with no cents is covered by the same question: `"60000.5"`
-     * yen is money at a wider scale and not at zero, so it is too precise.
-     */
-    private fun isTooPrecise(raw: String): Boolean = Money.normalize(raw, WIDE_SCALE) != null
 
     /** True when [slug] is a category a line can be set for. */
     fun isBudgetable(slug: String): Boolean = slug !in NOT_BUDGETABLE

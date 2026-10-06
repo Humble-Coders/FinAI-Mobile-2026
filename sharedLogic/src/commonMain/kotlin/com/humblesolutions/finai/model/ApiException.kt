@@ -254,6 +254,30 @@ sealed class ApiException(message: String, cause: Throwable? = null) : Exception
         override val messageKey: String = Strings.budget_error_month_in_future
     }
 
+    // ── Goals (#52) ─────────────────────────────────────────────────────
+
+    /**
+     * Twenty goals are already open (409 `goal_limit_reached`). Also answered
+     * to an **edit** that re-opens an achieved goal — lowering what was saved
+     * below the target — so the editor must expect it, not only "New goal".
+     */
+    class GoalLimitReached(val limit: Int?) : ApiException("goal limit reached") {
+        override val messageKey: String = Strings.goals_error_limit
+    }
+
+    /** A target date before today. The date picker prevents it; this is the server agreeing. */
+    class DateInPast : ApiException("date in the past") {
+        override val messageKey: String = Strings.goals_error_date_in_past
+    }
+
+    /**
+     * A reorder that was not every goal exactly once — the list changed on
+     * another phone since it was read. Reload and let the person try again.
+     */
+    class OrderMismatch : ApiException("goal order out of date") {
+        override val messageKey: String = Strings.goals_error_order_changed
+    }
+
     class Server(val status: Int) : ApiException("server error $status") {
         override val messageKey: String = Strings.error_server
     }
