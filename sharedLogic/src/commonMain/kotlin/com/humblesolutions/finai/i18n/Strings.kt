@@ -552,6 +552,58 @@ object Strings {
     const val month_short_11 = "month_short_11" // "Nov"
     const val month_short_12 = "month_short_12" // "Dec"
 
+    // ── Still learning (PRD F8) ─────────────────────────────────────────
+    // Shown by the Budget tab (#47) and, once it lands, by Home (#46). One
+    // wording for both: a person who sees "still learning" in two places
+    // should not have to work out whether they mean the same thing.
+    const val learning_title = "learning_title" // "Still learning your patterns"
+    const val learning_body = "learning_body" // "Import another statement and we'll build a budget from what you actually spend."
+    const val learning_months = "learning_months" // "{0} of {1} full months"
+    const val learning_months_one = "learning_months_one" // "{0} of 1 full month"
+    const val learning_transactions = "learning_transactions" // "{0} of {1} transactions"
+    const val learning_import = "learning_import" // "Import a statement"
+
+    // ── The budget (PRD F4, #47) ────────────────────────────────────────
+    const val budget_tab = "budget_tab" // "Budget"
+    const val budget_title = "budget_title" // "Your budget"
+    const val budget_spent_of = "budget_spent_of" // "Spent {0} of {1}"
+    const val budget_expected_income = "budget_expected_income" // "Expected income"
+    const val budget_set_aside = "budget_set_aside" // "Set aside {0}"
+    const val budget_shortfall = "budget_shortfall" // "Your budget is {0} more than your income"
+    const val budget_line_amounts = "budget_line_amounts" // "{0} of {1}"
+    const val budget_over_by = "budget_over_by" // "Over by {0}"
+    const val budget_suggested = "budget_suggested" // "Suggested {0}"
+    const val budget_debt_caption = "budget_debt_caption" // "At least your minimums"
+    const val budget_add_category = "budget_add_category" // "Add a category"
+    const val budget_unfiled = "budget_unfiled" // "{0} transactions aren't filed yet, so they aren't in your budget"
+    const val budget_unfiled_one = "budget_unfiled_one" // "1 transaction isn't filed yet, so it isn't in your budget"
+    const val budget_unfiled_action = "budget_unfiled_action" // "Review them"
+    const val budget_empty = "budget_empty" // "No lines yet. Add a category to start budgeting by hand."
+    const val budget_unavailable = "budget_unavailable" // "Budgets aren't available on your plan yet"
+
+    // The line editor.
+    const val budget_edit_amount = "budget_edit_amount" // "Monthly amount"
+    const val budget_edit_use_suggestion = "budget_edit_use_suggestion" // "Use suggestion ({0})"
+    const val budget_edit_saving = "budget_edit_saving" // "Saving…"
+    const val budget_picker_title = "budget_picker_title" // "Choose a category"
+    const val budget_picker_empty = "budget_picker_empty" // "Every category already has a line."
+
+    // Why a line cannot be saved — BudgetBlock.messageKey.
+    const val budget_block_no_amount = "budget_block_no_amount" // "Enter an amount."
+    const val budget_block_amount_invalid = "budget_block_amount_invalid" // "That isn't an amount."
+    const val budget_block_amount_negative = "budget_block_amount_negative" // "A budget can't be negative."
+    const val budget_block_amount_too_precise = "budget_block_amount_too_precise" // "{0} doesn't use that many decimal places."
+    const val budget_block_unchanged = "budget_block_unchanged" // "That's already the amount."
+
+    // Refusals from /budgets — ApiException.messageKey.
+    const val budget_error_not_budgetable = "budget_error_not_budgetable" // "That category is money moving, not money spent, so it can't hold a budget."
+    const val budget_error_invalid_month = "budget_error_invalid_month" // "We couldn't read that month."
+    const val budget_error_month_in_future = "budget_error_month_in_future" // "That month hasn't started yet."
+
+    // Spoken by screen readers. Colour never carries "over" on its own.
+    const val budget_line_a11y = "budget_line_a11y" // "{0}, spent {1} of {2}"
+    const val budget_line_a11y_over = "budget_line_a11y_over" // "{0}, spent {1} of {2}, over by {3}"
+
     // Throwaway demo screen (ticket #6), replaced in M2.
     const val demo_title = "demo_title" // "API check"
     const val demo_phone_label = "demo_phone_label" // "Test phone number"
