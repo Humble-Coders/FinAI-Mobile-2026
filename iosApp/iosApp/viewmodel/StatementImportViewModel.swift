@@ -229,21 +229,23 @@ final class StatementImportViewModel: ObservableObject, NewAccountHost {
     }
 
     /// What it was filed as, or that nothing filed it — the useful case.
-    func categoryLabel(_ row: SharedLogic.Transaction) -> String {
-        ImportedRows.shared.categoryOf(row: row, categories: importedCategories)?.name
-            ?? L.t(Strings.shared.import_extracted_uncategorised)
+    /// Nil when it is filed but the names are not to hand: drawn as nothing, never as unfiled.
+    func categoryLabel(_ row: SharedLogic.Transaction) -> String? {
+        ImportedRows.shared.categoryLabel(
+            row: row,
+            categories: importedCategories,
+            unfiled: L.t(Strings.shared.import_extracted_uncategorised)
+        )
     }
 
-    func isFiled(_ row: SharedLogic.Transaction) -> Bool {
-        ImportedRows.shared.categoryOf(row: row, categories: importedCategories) != nil
-    }
+    func isFiled(_ row: SharedLogic.Transaction) -> Bool { ImportedRows.shared.isFiled(row: row) }
 
     /// The whole row as one sentence, so VoiceOver announces it once instead of
     /// stopping at the name, the category and the amount in turn.
     func rowDescription(_ row: SharedLogic.Transaction) -> String {
         L.t(
             Strings.shared.import_extracted_row,
-            titleOf(row), categoryLabel(row), amountLabel(row)
+            titleOf(row), categoryLabel(row) ?? "", amountLabel(row)
         )
     }
 
@@ -279,10 +281,13 @@ final class StatementImportViewModel: ObservableObject, NewAccountHost {
                     statementImportId: importId, month: nil, needsReview: nil, cursor: nil
                 )
                 // A name beside each row is a nicety; the rows are the point.
-                let categories = try? await categoriesRepository?.list()
+                // Once more if the first try fails: without the names every row
+                // would read as unfiled. Kept from before if both fail.
+                var categories = try? await categoriesRepository?.list()
+                if categories == nil { categories = try? await categoriesRepository?.list() }
                 guard started == self.generation else { return }
                 self.imported = page.rows
-                self.importedCategories = categories ?? []
+                if let categories { self.importedCategories = categories }
                 self.importedLoading = false
                 self.importedErrorKey = nil
             } catch {

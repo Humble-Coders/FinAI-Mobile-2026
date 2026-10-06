@@ -28,6 +28,8 @@ struct ManualEntryView: View {
     @State private var choosingCategory = false
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.colorScheme) private var scheme
+    /// Content has scrolled under the header, which then turns solid.
+    @State private var scrolledUnder = false
 
     var body: some View {
         ZStack {
@@ -93,7 +95,7 @@ struct ManualEntryView: View {
     }
 
     private var header: some View {
-        MintHeader(title: L.t(Strings.shared.manual_entry_title)) { close() }
+        MintHeader(title: L.t(Strings.shared.manual_entry_title), solid: scrolledUnder) { close() }
     }
 
     private func close() {
@@ -124,6 +126,9 @@ struct ManualEntryView: View {
         VStack(spacing: 0) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
+                    // A marker for where the content rests; the negative padding takes back
+                    // the stack's spacing, so it adds no gap.
+                    Color.clear.frame(height: 0).padding(.bottom, -20).modifier(ScrolledUnder(scrolled: $scrolledUnder))
                     if fromUnreadable {
                         Text(L.t(Strings.shared.manual_entry_from_unreadable))
                             .font(.subheadline)

@@ -399,6 +399,14 @@ class StatementImportViewModel(private val saved: SavedStateHandle) : ViewModel(
      * rows are worth showing and not worth turning a finished import into an
      * error screen over.
      */
+    private suspend fun categoriesOrNull(repos: ImportRepositories): List<com.humblesolutions.finai.model.Category>? = try {
+        repos.categories.list()
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: ApiException) {
+        null
+    }
+
     private fun loadImported(importId: String) {
         val repos = repositories ?: return
         if (importId.isBlank()) return
@@ -407,19 +415,15 @@ class StatementImportViewModel(private val saved: SavedStateHandle) : ViewModel(
         viewModelScope.launch {
             try {
                 val page = repos.transactions.list(statementImportId = importId)
-                val categories = try {
-                    repos.categories.list()
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: ApiException) {
-                    // A name beside each row is a nicety; the rows are the point.
-                    emptyList()
-                }
+                // A name beside each row is a nicety; the rows are the point. Tried
+                // twice, and kept from before if both fail: without the names a
+                // row cannot say what it was filed as.
+                val categories = categoriesOrNull(repos) ?: categoriesOrNull(repos)
                 if (started != generation) return@launch
                 _uiState.update {
                     it.copy(
                         imported = page.rows,
-                        categories = categories,
+                        categories = categories ?: it.categories,
                         importedLoading = false,
                         importedErrorKey = null,
                     )

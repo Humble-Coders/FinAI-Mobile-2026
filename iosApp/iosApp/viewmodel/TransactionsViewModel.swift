@@ -10,16 +10,16 @@ import SharedLogic
 @MainActor
 final class TransactionsViewModel: ObservableObject {
 
-    @Published private(set) var mode: TransactionBrowsing.Mode = TransactionBrowsing.Mode.byMonth
+    @Published private(set) var mode: TransactionBrowsing.Mode = TransactionBrowsing.Mode.byMonth { didSet { derivedCache = nil } }
     @Published private(set) var statements: [StatementImportSummary] = []
     @Published private(set) var months: [Kotlinx_datetimeLocalDate] = []
     @Published private(set) var statementId: String?
     @Published private(set) var month: Kotlinx_datetimeLocalDate = DashboardMonths.shared.current(
         timeZone: Kotlinx_datetimeTimeZone.companion.currentSystemDefault()
-    )
+    ) { didSet { derivedCache = nil } }
 
-    @Published private(set) var rows: [SharedLogic.Transaction] = []
-    @Published private(set) var categories: [SharedLogic.Category] = []
+    @Published private(set) var rows: [SharedLogic.Transaction] = [] { didSet { derivedCache = nil } }
+    @Published private(set) var categories: [SharedLogic.Category] = [] { didSet { derivedCache = nil } }
     @Published private(set) var nextCursor: String?
     @Published private(set) var loading = true
     /// Changing slice with rows on screen. They stay up until the new ones
@@ -71,8 +71,12 @@ final class TransactionsViewModel: ObservableObject {
         importsRepository = KtorStatementImportRepository(baseUrl: base, tokens: tokens, logging: logging)
         categoriesRepository = KtorCategoriesRepository(baseUrl: base, tokens: tokens, logging: logging)
         listenForChanges()
-        // Coming back — to the tab, or from an import that covered it — is
-        // a change like any other: the rows read last time say what is new.
+        // Coming back with nothing changed since: what is on screen is still
+        // right, so it is shown as it was. Every return used to read the
+        // whole history again, page after page, on each switch of tab.
+        if !knownIds.isEmpty && seenVersion == LedgerChanged.version { return }
+        // Coming back after a change — an import, an edit — is handled as
+        // one: the rows read last time say what is new.
         loadSlices(afterChange: !knownIds.isEmpty)
     }
 
@@ -122,8 +126,12 @@ final class TransactionsViewModel: ObservableObject {
     /// The statements and months on offer, then the first page of the slice to
     /// show: the newest on a first load, or — `afterChange` — wherever the
     /// change landed (`TransactionBrowsing.monthAfterChange`).
+    /// The ledger's version when the rows were last read; see `bind`.
+    private var seenVersion = -1
+
     private func loadSlices(afterChange: Bool = false) {
         guard let importsRepository else { return }
+        seenVersion = LedgerChanged.version
         let categoriesRepository = self.categoriesRepository
         let started = generation
         if afterChange { refreshing = true }
@@ -294,6 +302,34 @@ final class TransactionsViewModel: ObservableObject {
 
     var browsingByStatement: Bool { mode == TransactionBrowsing.Mode.byStatement }
 
+    /// What the list draws, worked out once per change of rows, slice or
+    /// categories — not on every redraw. As computed properties these ran the
+    /// shared grouping over every row each time the screen redrew, several
+    /// times a redraw, which is where opening the tab hung.
+    private struct Derived {
+        let visibleRows: [SharedLogic.Transaction]
+        let sections: [TransactionSection]
+        let totalIn: String?
+        let totalOut: String?
+    }
+
+    private var derivedCache: Derived?
+
+    private var derived: Derived {
+        if let derivedCache { return derivedCache }
+        let visible = mode == TransactionBrowsing.Mode.byMonth
+            ? TransactionBrowsing.shared.inMonth(rows: rows, month: month)
+            : rows
+        let made = Derived(
+            visibleRows: visible,
+            sections: makeSections(visible),
+            totalIn: ImportedRows.shared.totalIn(rows: visible, fractionDigits: digits).map(money),
+            totalOut: ImportedRows.shared.totalOut(rows: visible, fractionDigits: digits).map(money)
+        )
+        derivedCache = made
+        return made
+    }
+
     /// The rows under a heading per month, newest first.
     var monthGroups: [TransactionBrowsing.MonthGroup] { TransactionBrowsing.shared.byMonth(rows: visibleRows) }
 
@@ -301,20 +337,23 @@ final class TransactionsViewModel: ObservableObject {
 
     /// The list in sections, whichever way it is sliced: by category, one per
     /// category with its total; otherwise one per month.
-    var sections: [TransactionSection] {
+    var sections: [TransactionSection] { derived.sections }
+
+    private func makeSections(_ visible: [SharedLogic.Transaction]) -> [TransactionSection] {
         if browsingByCategory {
-            return TransactionBrowsing.shared.byCategory(rows: visibleRows, categories: categories, fractionDigits: digits)
+            return TransactionBrowsing.shared.byCategory(rows: visible, categories: categories, fractionDigits: digits)
                 .map { group in
                     TransactionSection(
                         title: categories.first { $0.id == group.categoryId }?.name
-                            ?? L.t(Strings.shared.import_extracted_uncategorised),
+                            ?? (group.categoryId == nil ? L.t(Strings.shared.import_extracted_uncategorised) : ""),
                         total: money(group.headline),
                         totalIsIn: group.headlineIsIn,
                         rows: group.rows
                     )
                 }
         }
-        return monthGroups.map { TransactionSection(title: monthHeading($0.month), total: nil, totalIsIn: false, rows: $0.rows) }
+        return TransactionBrowsing.shared.byMonth(rows: visible)
+            .map { TransactionSection(title: monthHeading($0.month), total: nil, totalIsIn: false, rows: $0.rows) }
     }
 
     /// "Aug 2026", for a heading.
@@ -345,19 +384,13 @@ final class TransactionsViewModel: ObservableObject {
 
     /// The rows to draw. By month, only the month being looked at's — whatever
     /// the server sent; see `TransactionBrowsing.inMonth`.
-    var visibleRows: [SharedLogic.Transaction] {
-        mode == TransactionBrowsing.Mode.byMonth ? TransactionBrowsing.shared.inMonth(rows: rows, month: month) : rows
-    }
+    var visibleRows: [SharedLogic.Transaction] { derived.visibleRows }
 
     var days: [ImportedRows.Day] { ImportedRows.shared.byDate(rows: visibleRows) }
 
-    var totalOut: String? {
-        ImportedRows.shared.totalOut(rows: visibleRows, fractionDigits: digits).map(money)
-    }
+    var totalOut: String? { derived.totalOut }
 
-    var totalIn: String? {
-        ImportedRows.shared.totalIn(rows: visibleRows, fractionDigits: digits).map(money)
-    }
+    var totalIn: String? { derived.totalIn }
 
     private func money(_ amount: String) -> String {
         Money.shared.format(amount: amount, currency: listCurrency, locale: locale)
@@ -374,12 +407,13 @@ final class TransactionsViewModel: ObservableObject {
     func titleOf(_ row: SharedLogic.Transaction) -> String { ImportedRows.shared.titleOf(row: row) }
 
     func categoryLabel(_ row: SharedLogic.Transaction) -> String {
-        ImportedRows.shared.categoryOf(row: row, categories: categories)?.name
-            ?? L.t(Strings.shared.import_extracted_uncategorised)
+        ImportedRows.shared.categoryLabel(
+            row: row, categories: categories, unfiled: L.t(Strings.shared.import_extracted_uncategorised)
+        ) ?? ""
     }
 
     func isFiled(_ row: SharedLogic.Transaction) -> Bool {
-        ImportedRows.shared.categoryOf(row: row, categories: categories) != nil
+        ImportedRows.shared.isFiled(row: row)
     }
 
     func rowDescription(_ row: SharedLogic.Transaction) -> String {

@@ -427,7 +427,7 @@ val EnglishStrings: Map<String, String> = mapOf(
     Strings.import_extracted_in to "{0} in",
     Strings.import_extracted_waiting to "{0} need you",
     Strings.import_extracted_waiting_one to "1 needs you",
-    Strings.import_extracted_uncategorised to "Not filed yet",
+    Strings.import_extracted_uncategorised to "No category yet",
     Strings.import_extracted_failed to "We could not load the list, but the import worked.",
     Strings.import_extracted_retry to "Show them",
     Strings.import_extracted_row to "{0}, {1}, {2}",

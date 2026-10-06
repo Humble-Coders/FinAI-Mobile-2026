@@ -91,7 +91,10 @@ final class DashboardViewModel: ObservableObject {
         categoriesRepository = KtorCategoriesRepository(baseUrl: base, tokens: tokens, logging: logging)
         setupRepository = KtorFinancialSetupRepository(baseUrl: base, tokens: tokens, logging: logging)
         listenForChanges()
-        load()
+        // Back on a tab already read: refresh behind what is on screen. A
+        // first load blanked the figures and, on Review, raised the coin
+        // for two seconds — on every switch of tab.
+        load(refresh: loadedOnce)
         loadRecent()
     }
 
@@ -112,7 +115,11 @@ final class DashboardViewModel: ObservableObject {
         recentGeneration += 1
     }
 
+    /// Whether this person's figures have been read once, so a return is a refresh.
+    private var loadedOnce = false
+
     private func reset() {
+        loadedOnce = false
         month = DashboardMonths.shared.current(
             timeZone: Kotlinx_datetimeTimeZone.companion.currentSystemDefault()
         )
@@ -146,6 +153,7 @@ final class DashboardViewModel: ObservableObject {
                 guard started == self.generation else { return }
                 self.data = answer
                 if let locale = capabilities?.locale, !locale.isEmpty { self.locale = locale }
+                self.loadedOnce = true
                 self.loading = false
                 self.refreshing = false
                 self.loadFailed = false
@@ -578,7 +586,9 @@ final class DashboardViewModel: ObservableObject {
                 money(row.amount)
             )
             let category = ImportedRows.shared.categoryOf(row: row, categories: categories)
-            let categoryName = category?.name ?? L.t(Strings.shared.import_extracted_uncategorised)
+            let categoryName = ImportedRows.shared.categoryLabel(
+                row: row, categories: categories, unfiled: L.t(Strings.shared.import_extracted_uncategorised)
+            ) ?? ""
             let date = Dates.shared.parse(iso: row.occurredOn).map { Dates.shared.display(date: $0) }
                 ?? row.occurredOn
             let title = ImportedRows.shared.titleOf(row: row)
@@ -590,7 +600,7 @@ final class DashboardViewModel: ObservableObject {
                 amount: amount,
                 isCredit: isCredit,
                 category: categoryName,
-                isFiled: category != nil,
+                isFiled: ImportedRows.shared.isFiled(row: row),
                 description: L.t(Strings.shared.dashboard_recent_row, title, date, amount, categoryName)
             )
         }

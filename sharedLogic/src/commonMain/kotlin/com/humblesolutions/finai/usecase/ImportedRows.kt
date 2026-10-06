@@ -73,6 +73,18 @@ object ImportedRows {
      */
     fun categoryOf(row: Transaction, categories: List<Category>): Category? = row.categoryId?.let { id -> categories.firstOrNull { it.id == id } }
 
+    /** Whether something filed this row — known from the row itself, never from whether the category names have loaded. */
+    fun isFiled(row: Transaction): Boolean = row.categoryId != null
+
+    /**
+     * What a row's category line says: the category's name; [unfiled] when
+     * nothing filed it; and null when it is filed but the names are not to
+     * hand. Null is drawn as nothing — never as [unfiled]. Inferring "no
+     * category" from a list that failed to load labelled every row of a
+     * categorised import "Not filed yet".
+     */
+    fun categoryLabel(row: Transaction, categories: List<Category>, unfiled: String): String? = categoryOf(row, categories)?.name ?: if (isFiled(row)) null else unfiled
+
     /**
      * What a question about one row names it by — its title, amount and day —
      * so "Delete this transaction?" says which, in both apps the same way.

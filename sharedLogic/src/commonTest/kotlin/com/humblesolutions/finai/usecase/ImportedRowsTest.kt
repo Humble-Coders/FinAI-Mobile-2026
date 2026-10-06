@@ -142,4 +142,17 @@ class ImportedRowsTest {
     fun a_category_the_client_does_not_know_resolves_to_nothing_rather_than_crashing() {
         assertNull(ImportedRows.categoryOf(row(categoryId = "gone"), listOf(Category(id = "c1"))))
     }
+
+    @Test
+    fun a_filed_row_is_never_called_unfiled_because_the_names_did_not_load() {
+        val filed = Transaction(id = "a", categoryId = "groceries-id")
+        val unfiled = Transaction(id = "b")
+        val groceries = Category(id = "groceries-id", name = "Groceries")
+
+        assertEquals("Groceries", ImportedRows.categoryLabel(filed, listOf(groceries), "No category yet"))
+        assertNull(ImportedRows.categoryLabel(filed, emptyList(), "No category yet"), "names missing: say nothing")
+        assertEquals("No category yet", ImportedRows.categoryLabel(unfiled, emptyList(), "No category yet"))
+        assertTrue(ImportedRows.isFiled(filed))
+        assertTrue(!ImportedRows.isFiled(unfiled))
+    }
 }
