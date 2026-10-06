@@ -287,7 +287,7 @@ private fun SetupRoute(userId: String, onFinished: () -> Unit) {
 }
 
 /** Where the signed-in, set-up person is: home, or one of the two ways money gets in. */
-private enum class HomeRoute { HOME, ADD, IMPORT, ADD_AFTER_IMPORT, REVIEW, TRANSACTIONS, BUDGET, INCOME, EXPENSES, INVESTMENTS, DEBTS }
+internal enum class HomeRoute { HOME, ADD, IMPORT, ADD_AFTER_IMPORT, REVIEW, TRANSACTIONS, BUDGET, INCOME, EXPENSES, INVESTMENTS, DEBTS }
 
 /** The places the bar always offers; everything else is a flow over them. */
 private val BASE_TABS = listOf(HomeRoute.HOME, HomeRoute.TRANSACTIONS, HomeRoute.REVIEW)
@@ -305,12 +305,24 @@ private const val BUDGET_FEATURE = "auto_budget"
  * Absent rather than disabled: a tab that cannot be opened is a worse answer
  * than no tab, and the payload is the one place that decides (CLAUDE.md →
  * Region & feature gating).
+ *
+ * **Not known is not the same as off.** Capabilities are null until the first
+ * read lands — which, after Android reclaims the process, is *after* the
+ * saved route has already put the person back on Budget. Hiding the tab then
+ * would send them home and strand the edit they came back for, so a person
+ * already on Budget keeps it until the payload actually says no.
  */
-private fun tabsFor(capabilities: Capabilities?): List<HomeRoute> = if (capabilities?.isEnabled(BUDGET_FEATURE) == true) {
-    listOf(HomeRoute.HOME, HomeRoute.TRANSACTIONS, HomeRoute.BUDGET, HomeRoute.REVIEW)
-} else {
-    BASE_TABS
+internal fun tabsFor(capabilities: Capabilities?, current: HomeRoute): List<HomeRoute> = when {
+    capabilities?.isEnabled(BUDGET_FEATURE) == true -> ALL_TABS
+    capabilities == null && current == HomeRoute.BUDGET -> ALL_TABS
+    else -> BASE_TABS
 }
+
+/**
+ * True when the person is on Budget and the payload has *said* it is off —
+ * turned off between reads. Never on a payload not yet read; see [tabsFor].
+ */
+internal fun leavesBudget(capabilities: Capabilities?, current: HomeRoute): Boolean = current == HomeRoute.BUDGET && capabilities != null && !capabilities.isEnabled(BUDGET_FEATURE)
 
 /** Income, Expenses, Investments and Debts, opened from Home's cards. */
 private val MONEY = listOf(HomeRoute.INCOME, HomeRoute.EXPENSES, HomeRoute.INVESTMENTS, HomeRoute.DEBTS)
@@ -333,10 +345,13 @@ private fun HomeOrEntry(userId: String, onSignOut: () -> Unit) {
     val features: FeaturesViewModel = viewModel()
     val capabilities by features.capabilities.collectAsStateWithLifecycle()
     LaunchedEffect(userId) { features.bind(userId, logging = BuildConfig.DEBUG) }
-    val tabs = tabsFor(capabilities)
+    val tabs = tabsFor(capabilities, route)
     // A tab that goes away under the person — the feature turned off between
-    // reads — leaves them on a screen with no way back to it, so home.
-    LaunchedEffect(tabs) { if (route == HomeRoute.BUDGET && HomeRoute.BUDGET !in tabs) route = HomeRoute.HOME }
+    // reads — leaves them on a screen with no way back to it, so home. Keyed
+    // on the payload rather than the tabs, and only once it has been read:
+    // the first version keyed on the tabs and sent everyone restored onto
+    // Budget home before capabilities arrived.
+    LaunchedEffect(capabilities) { if (leavesBudget(capabilities, route)) route = HomeRoute.HOME }
     val tabbed = route in tabs
     Column(Modifier.fillMaxSize()) {
         Box(

@@ -366,6 +366,31 @@ class BudgetViewModelTest {
         assertTrue(state.isReady)
     }
 
+    /**
+     * A restored editor holds the line as it was. Once the budget is read
+     * again the line is current — the new suggestion, the new allocation —
+     * and only what the person typed is kept.
+     */
+    @Test
+    fun a_restored_editor_shows_today_s_line_and_keeps_what_was_typed() = runTest {
+        val saved = SavedStateHandle()
+        BudgetViewModel(saved).also {
+            it.bind("user-1") { BudgetRepositories(FakeBudgets(), FakeCategories(), FakeCapabilities()) }
+            it.edit("cat-groceries")
+            it.onAmountChange("6")
+        }
+
+        // Meanwhile the line was changed elsewhere.
+        val budgets = FakeBudgets(answer = ready(allocated = "650.00"))
+        val second = BudgetViewModel(saved).also {
+            it.bind("user-1") { BudgetRepositories(budgets, FakeCategories(), FakeCapabilities()) }
+        }
+
+        val state = second.uiState.value
+        assertEquals("650.00", state.editing?.allocated)
+        assertEquals("6", state.draft.amount)
+    }
+
     /** Someone else signing in on the same phone must not inherit a draft. */
     @Test
     fun a_different_person_does_not_inherit_the_draft() = runTest {

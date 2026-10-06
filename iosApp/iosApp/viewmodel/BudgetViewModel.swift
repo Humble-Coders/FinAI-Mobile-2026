@@ -161,6 +161,15 @@ final class BudgetViewModel: ObservableObject {
 
     private func settle(_ answer: Budget, categories fetched: [SharedLogic.Category], payload: Capabilities?) {
         budget = answer
+        // An editor restored from the scene, or open while an import moved
+        // the figures, holds the line as it was when it opened. Swap it for
+        // its current self so "Use suggestion" and "nothing changed" read
+        // today's numbers; what the person typed is left alone. A line added
+        // by hand has nothing to refresh from yet. Android's `freshEditing`.
+        if let held = editing, !editingIsNew,
+           let fresh = answer.allLines.first(where: { $0.categoryId == held.categoryId }) {
+            editing = fresh
+        }
         if !fetched.isEmpty { categories = fetched }
         if let found = payload?.locale, !found.isEmpty { locale = found }
         loading = false

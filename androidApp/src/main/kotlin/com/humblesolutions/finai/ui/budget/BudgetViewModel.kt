@@ -168,6 +168,7 @@ class BudgetViewModel(
         update {
             it.copy(
                 budget = budget,
+                editing = freshEditing(it, budget),
                 // An empty list here is a failed categories call, not a
                 // household with no categories — keep the ones we have, as
                 // `failed` does. Losing them costs "Add a category".
@@ -179,6 +180,25 @@ class BudgetViewModel(
                 errorKey = null,
             )
         }
+    }
+
+    /**
+     * The line being edited, as the budget just read describes it.
+     *
+     * An editor restored after the process was reclaimed — or open while an
+     * import moved the figures — holds the line as it was when it opened, so
+     * "Use suggestion" would offer an old suggestion and "nothing changed"
+     * would compare against an old allocation. The line is swapped for its
+     * current self; what the person typed is left alone.
+     *
+     * A line added by hand has nothing on the server to refresh from yet, and
+     * one removed elsewhere is kept as it was — saving it recreates it, which
+     * `PUT` is allowed to do.
+     */
+    private fun freshEditing(state: BudgetUiState, budget: Budget): BudgetLine? {
+        val held = state.editing ?: return null
+        if (state.editingIsNew) return held
+        return budget.allLines.firstOrNull { it.categoryId == held.categoryId } ?: held
     }
 
     private fun failed(error: Throwable, categories: List<Category>, capabilities: Capabilities?) {

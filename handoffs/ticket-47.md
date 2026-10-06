@@ -38,7 +38,8 @@ The only subtraction anywhere is `BudgetLine.overBy`, which is the difference of
 | `util/BudgetChanged.kt` *(new)* | The allocation-moved signal. |
 | `navigation/FeaturesViewModel.kt` *(new)* | Reads capabilities once so the bar can be built from them. |
 | `navigation/AppNavigation.kt` *(+56/−9)* | `HomeRoute.BUDGET`, `tabsFor(capabilities)`, the route, the bar item, and `ALL_TABS` so a tab switch still cross-fades. |
-| `ui/budget/BudgetViewModelTest.kt` *(new)* | 21 tests. |
+| `ui/budget/BudgetViewModelTest.kt` *(new)* | 22 tests. |
+| `navigation/BudgetTabTest.kt` *(new)* | 5 tests: the tab gate, including a restore before capabilities land. |
 
 ### iOS
 
@@ -82,7 +83,11 @@ Then, on a device or simulator, signed in as a household with at least one compl
 9. **Unfiled.** With uncategorised spending, the sheet says so and "Review them" opens the Review tab.
 10. **Learning.** On a household under the threshold: the "Still learning" card with correct progress, *plus* any hand-set lines and "Add a category".
 11. **Gating.** With `auto_budget` disabled for the household, the tab is absent.
-12. **The draft survives.** Type an amount, background the app, force-stop it (Android: `adb shell am kill`), reopen — the editor comes back with what you typed, and the figures are re-read.
+12. **The draft survives.** On the Budget tab, open a line and type an amount, then press Home to background the app.
+    - **Android:** `adb shell am kill com.humblesolutions.finai`, then reopen. **Not** Settings → Force stop: that discards saved state by design, and the draft vanishing then is correct.
+    - **iOS:** force-quit from the app switcher, then reopen.
+
+    Expected on both: back on the Budget tab with the editor showing what you typed, the line's figures current, and the budget re-read.
 
 Also check, in both themes and at the largest font scale, on the smallest and largest phone: nothing clips, long category names ellipsize, touch targets stay ≥48dp/44pt.
 
@@ -97,7 +102,7 @@ Also check, in both themes and at the largest font scale, on the smallest and la
 | 5 | Save disabled with the right reason for empty / not a number / negative / too precise / unchanged, from one shared function | **Met** — `BudgetEditTest` (8 tests) + `a_draft_the_screen_would_refuse_is_never_sent` |
 | 6 | A failed save keeps the sheet open with the input and the error; nothing half-applied | **Met** — `a_failed_save_keeps_the_sheet_open_with_what_was_typed` |
 | 7 | Below the threshold, the learning card with correct progress, and no empty budget | **Met** — `a_learning_household_keeps_the_lines_it_set_by_hand`; see *Deviations* for what "no empty budget" was taken to mean |
-| 8 | `auto_budget` disabled hides the tab; a 403 shows its own message | **Met** — the tab is built from `tabsFor(capabilities)` in `AppNavigation.kt` / `features.budgetEnabled` in `RootView.swift` (no unit test: the gate is private to navigation); the 403 by `a_403_shows_the_feature_s_own_reason` |
+| 8 | `auto_budget` disabled hides the tab; a 403 shows its own message | **Met** — the tab is built from `tabsFor(capabilities)` in `AppNavigation.kt` / `features.budgetEnabled` in `RootView.swift` (`BudgetTabTest`); the 403 by `a_403_shows_the_feature_s_own_reason` |
 | 9 | After a save or reset, Home's budget card shows the new figure | **Not met — moved to #46.** There is no Home budget card yet. This ticket emits `BudgetChanged` (tested, including that a failed write announces nothing); #46 subscribes and tests the round trip |
 | 10 | "Transactions not filed" opens the Review tab | **Met** — `onReviewUnfiled` / `onReview` wired to the Review route on both platforms |
 | 11 | Previous months reachable and show their kept budgets | **Met** — month strip + `showMonth`; `changing_month_reads_that_month` |
@@ -154,16 +159,24 @@ The first review of this PR found the saved-state restore — claimed as working
 
 **The iOS restore fix has no automated test**: the project has no iOS test target. It is verified by the build and needs manual step 12 below on a device.
 
+## Fixed after the second review
+
+| Finding | Fix |
+|---|---|
+| **Android sent a person restored onto Budget back to Home.** The saved route came back as Budget before capabilities had been read, and the gate treated "not read yet" as "off" — so the restored draft sat unseen until the next tap on Budget. | `tabsFor` keeps Budget for someone already on it until the payload says no, and `leavesBudget` only fires on a payload that has been read. Both are now `internal` and tested in `BudgetTabTest`; the restore case was confirmed to **fail** against the old logic. iOS was not affected: its `onChange` never fires for the first value. |
+| A restored editor kept a stale copy of its line | `settle` swaps the line for its current self by `categoryId`, keeping what was typed. Tested on Android; iOS by build. |
+| Step 12 said "force-stop" next to `am kill` | Reworded — Force stop discards saved state by design. |
+
 ## Verification
 
 ```
 ./gradlew ktlintCheck                            clean
 ./gradlew :androidApp:assembleDebug              BUILD SUCCESSFUL
-./gradlew :androidApp:testDebugUnitTest          246 tests, 0 failures
+./gradlew :androidApp:testDebugUnitTest          252 tests, 0 failures
 ./gradlew :sharedLogic:iosSimulatorArm64Test     517 tests, 0 failures
 ./gradlew :sharedLogic:testAndroidHostTest       524 tests, 0 failures (incl. the SKIE @Throws guard)
 xcodebuild -workspace iosApp.xcworkspace -scheme iosApp -sdk iphonesimulator
                                                  ** BUILD SUCCEEDED **
 ```
 
-New with this ticket: 21 Android view-model tests and 28 shared tests (17 in `BudgetEditTest`, 11 in `BudgetTest` — the latter decoding the real `BudgetOut` shapes for ready, learning and shortfall, plus a payload missing everything optional and an unknown status).
+New with this ticket: 22 Android view-model tests, 5 navigation tests and 28 shared tests (17 in `BudgetEditTest`, 11 in `BudgetTest` — the latter decoding the real `BudgetOut` shapes for ready, learning and shortfall, plus a payload missing everything optional and an unknown status).
