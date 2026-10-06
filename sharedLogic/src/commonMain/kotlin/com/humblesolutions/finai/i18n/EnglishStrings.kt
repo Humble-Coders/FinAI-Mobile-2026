@@ -541,7 +541,7 @@ val EnglishStrings: Map<String, String> = mapOf(
     Strings.learning_import to "Import a statement",
 
     // The budget (PRD F4, #47).
-    Strings.budget_tab to "Budget",
+    Strings.tab_budget to "Budget",
     Strings.budget_title to "Your budget",
     Strings.budget_spent_of to "Spent {0} of {1}",
     Strings.budget_expected_income to "Expected income",

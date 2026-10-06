@@ -564,7 +564,7 @@ object Strings {
     const val learning_import = "learning_import" // "Import a statement"
 
     // ── The budget (PRD F4, #47) ────────────────────────────────────────
-    const val budget_tab = "budget_tab" // "Budget"
+    const val tab_budget = "tab_budget" // "Budget"
     const val budget_title = "budget_title" // "Your budget"
     const val budget_spent_of = "budget_spent_of" // "Spent {0} of {1}"
     const val budget_expected_income = "budget_expected_income" // "Expected income"

@@ -22,8 +22,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ReceiptLong
 import androidx.compose.material.icons.automirrored.outlined.ReceiptLong
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.PieChart
 import androidx.compose.material.icons.filled.TaskAlt
 import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.PieChart
 import androidx.compose.material.icons.outlined.TaskAlt
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
@@ -47,9 +49,11 @@ import com.humblesolutions.finai.auth.GoogleSignIn
 import com.humblesolutions.finai.auth.GoogleSignInCancelled
 import com.humblesolutions.finai.auth.GoogleSignInNotConfigured
 import com.humblesolutions.finai.i18n.Strings
+import com.humblesolutions.finai.model.Capabilities
 import com.humblesolutions.finai.model.OnboardingStep
 import com.humblesolutions.finai.model.ResetStage
 import com.humblesolutions.finai.model.SocialProvider
+import com.humblesolutions.finai.ui.budget.BudgetRoute
 import com.humblesolutions.finai.ui.components.AppLoader
 import com.humblesolutions.finai.ui.components.LoaderHost
 import com.humblesolutions.finai.ui.components.LoaderSignal
@@ -283,10 +287,30 @@ private fun SetupRoute(userId: String, onFinished: () -> Unit) {
 }
 
 /** Where the signed-in, set-up person is: home, or one of the two ways money gets in. */
-private enum class HomeRoute { HOME, ADD, IMPORT, ADD_AFTER_IMPORT, REVIEW, TRANSACTIONS, INCOME, EXPENSES, INVESTMENTS, DEBTS }
+private enum class HomeRoute { HOME, ADD, IMPORT, ADD_AFTER_IMPORT, REVIEW, TRANSACTIONS, BUDGET, INCOME, EXPENSES, INVESTMENTS, DEBTS }
 
-/** The three places the bar moves between; everything else is a flow over them. */
-private val TABS = listOf(HomeRoute.HOME, HomeRoute.TRANSACTIONS, HomeRoute.REVIEW)
+/** The places the bar always offers; everything else is a flow over them. */
+private val BASE_TABS = listOf(HomeRoute.HOME, HomeRoute.TRANSACTIONS, HomeRoute.REVIEW)
+
+/** Every route the bar can hold, gated or not — what counts as a tab switch. */
+private val ALL_TABS = listOf(HomeRoute.HOME, HomeRoute.TRANSACTIONS, HomeRoute.BUDGET, HomeRoute.REVIEW)
+
+/** The capability that earns the Budget tab a place on the bar (#47). */
+private const val BUDGET_FEATURE = "auto_budget"
+
+/**
+ * The bar for a household, with Budget between Transactions and Review when
+ * capabilities allow it.
+ *
+ * Absent rather than disabled: a tab that cannot be opened is a worse answer
+ * than no tab, and the payload is the one place that decides (CLAUDE.md →
+ * Region & feature gating).
+ */
+private fun tabsFor(capabilities: Capabilities?): List<HomeRoute> = if (capabilities?.isEnabled(BUDGET_FEATURE) == true) {
+    listOf(HomeRoute.HOME, HomeRoute.TRANSACTIONS, HomeRoute.BUDGET, HomeRoute.REVIEW)
+} else {
+    BASE_TABS
+}
 
 /** Income, Expenses, Investments and Debts, opened from Home's cards. */
 private val MONEY = listOf(HomeRoute.INCOME, HomeRoute.EXPENSES, HomeRoute.INVESTMENTS, HomeRoute.DEBTS)
@@ -306,7 +330,14 @@ private val MONEY = listOf(HomeRoute.INCOME, HomeRoute.EXPENSES, HomeRoute.INVES
 @Composable
 private fun HomeOrEntry(userId: String, onSignOut: () -> Unit) {
     var route by rememberSaveable { mutableStateOf(HomeRoute.HOME) }
-    val tabbed = route in TABS
+    val features: FeaturesViewModel = viewModel()
+    val capabilities by features.capabilities.collectAsStateWithLifecycle()
+    LaunchedEffect(userId) { features.bind(userId, logging = BuildConfig.DEBUG) }
+    val tabs = tabsFor(capabilities)
+    // A tab that goes away under the person — the feature turned off between
+    // reads — leaves them on a screen with no way back to it, so home.
+    LaunchedEffect(tabs) { if (route == HomeRoute.BUDGET && HomeRoute.BUDGET !in tabs) route = HomeRoute.HOME }
+    val tabbed = route in tabs
     Column(Modifier.fillMaxSize()) {
         Box(
             Modifier
@@ -356,6 +387,13 @@ private fun HomeOrEntry(userId: String, onSignOut: () -> Unit) {
                     HomeRoute.TRANSACTIONS ->
                         TransactionsRoute(userId = userId, onClose = { route = HomeRoute.HOME }, showsBack = false)
 
+                    HomeRoute.BUDGET -> BudgetRoute(
+                        userId = userId,
+                        onClose = { route = HomeRoute.HOME },
+                        onReview = { route = HomeRoute.REVIEW },
+                        onImport = { route = HomeRoute.IMPORT },
+                    )
+
                     // The four money screens open over the bar, like a flow,
                     // and back returns home.
                     HomeRoute.INCOME -> MoneyDetailRoute(userId, MoneyKind.INCOME, onBack = { route = HomeRoute.HOME })
@@ -368,15 +406,15 @@ private fun HomeOrEntry(userId: String, onSignOut: () -> Unit) {
                 }
             }
         }
-        if (tabbed) HomeBar(route) { route = it }
+        if (tabbed) HomeBar(tabs, route) { route = it }
     }
 }
 
 /** The bottom bar: Material's own, so it looks and behaves as Android's do. */
 @Composable
-private fun HomeBar(current: HomeRoute, onSelect: (HomeRoute) -> Unit) {
+private fun HomeBar(tabs: List<HomeRoute>, current: HomeRoute, onSelect: (HomeRoute) -> Unit) {
     NavigationBar {
-        TABS.forEach { tab ->
+        tabs.forEach { tab ->
             val selected = tab == current
             val (filled, outlined, label) = when (tab) {
                 HomeRoute.HOME -> Triple(Icons.Filled.Home, Icons.Outlined.Home, Strings.tab_home)
@@ -386,6 +424,8 @@ private fun HomeBar(current: HomeRoute, onSelect: (HomeRoute) -> Unit) {
                     Icons.AutoMirrored.Outlined.ReceiptLong,
                     Strings.tab_transactions,
                 )
+
+                HomeRoute.BUDGET -> Triple(Icons.Filled.PieChart, Icons.Outlined.PieChart, Strings.tab_budget)
 
                 else -> Triple(Icons.Filled.TaskAlt, Icons.Outlined.TaskAlt, Strings.tab_review)
             }
@@ -412,7 +452,7 @@ private fun homeTransition(from: HomeRoute, to: HomeRoute): ContentTransform = w
     from == HomeRoute.TRANSACTIONS && to == HomeRoute.HOME ->
         fadeIn(tween(240)) togetherWith (fadeOut(tween(220)) + slideOutVertically(tween(260)) { it / 12 })
 
-    from in TABS && to in TABS -> fadeIn(tween(220)) togetherWith fadeOut(tween(160))
+    from in ALL_TABS && to in ALL_TABS -> fadeIn(tween(220)) togetherWith fadeOut(tween(160))
 
     // Out of a card on Home: rises in, and settles back down on the way out.
     from == HomeRoute.HOME && to in MONEY ->
