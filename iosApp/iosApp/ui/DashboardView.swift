@@ -28,6 +28,9 @@ struct DashboardView: View {
     let onSignOut: () -> Void
     /// Income, Expenses, Investments or Debts — opened from its card.
     var onOpenMoney: (MoneyKind) -> Void = { _ in }
+    /// The Budget tab (#47) on a month (`YYYY-MM`) — the one Home is showing.
+    /// Nil when there is no Budget tab, which hides "See budget".
+    var onOpenBudget: ((String) -> Void)?
 
     @Environment(\.colorScheme) private var scheme
     private var dark: Bool { scheme == .dark }
@@ -65,6 +68,14 @@ struct DashboardView: View {
         // rebuilding this tab's clients on every switch was the lag coming
         // back to it. RootView unbinds the tabs when they are left for good.
         .sheet(isPresented: commitmentShown) { CommitmentEditor(model: model) }
+        .sheet(isPresented: $model.breakdownOpen) {
+            ScoreBreakdownSheet(
+                breakdown: model.breakdownView,
+                loading: model.breakdownLoading,
+                failed: model.breakdownFailed,
+                onRetry: model.retryBreakdown
+            )
+        }
     }
 
     private static let space = "home"
@@ -91,6 +102,10 @@ struct DashboardView: View {
                     collapse.track(top: top)
                 }
             hero.padding(.top, 26)
+            let sections = model.sections
+            if let freshness = sections.freshness {
+                FreshnessText(line: freshness, onImport: onImportStatement).padding(.top, 10)
+            }
             if let chart = model.dailyChart {
                 DailyChart(
                     chart: chart,
@@ -102,6 +117,13 @@ struct DashboardView: View {
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel(model.dailyDescription)
                 .padding(.top, 14)
+            }
+            // One card where the score and the budget would be, while learning.
+            if let learning = sections.learning {
+                LearningFieldCard(progress: learning, onImport: onImportStatement).padding(.top, 18)
+            }
+            if let score = sections.score {
+                ScoreFieldCard(card: score, onOpen: model.openBreakdown).padding(.top, 18)
             }
             Group {
                 if model.loadFailed {
@@ -406,7 +428,21 @@ struct DashboardView: View {
         // Shown once there is anything at all: its header carries View all,
         // which is the way into every transaction.
         let showsRecent = !rows.isEmpty || !model.showsEmptyState
+        let sections = model.sections
         return VStack(alignment: .leading, spacing: 0) {
+            // Above the recent rows: how the month sits against its budget,
+            // then where the money went.
+            if let budget = sections.budget {
+                BudgetSection(
+                    card: budget,
+                    onOpenBudget: onOpenBudget.map { open in { open(DashboardMonths.shared.wire(month: model.month)) } }
+                )
+                .padding(.bottom, 28)
+            }
+            if let spending = sections.spending {
+                SpendingSection(card: spending, expanded: model.spendingExpanded, onToggle: model.toggleSpending)
+                    .padding(.bottom, 28)
+            }
             if showsRecent { recent(rows) }
             // Shown once the month is read, even with none: it is where one is added.
             if model.showsCommitments {
@@ -879,7 +915,7 @@ private struct FittedAmount: View {
 /// One card's colours. Labels use the deeper tone of each accent on a white
 /// card — the bright ones read at under 3:1 there, amber at 1.7:1 — and the
 /// bright tone on a dark card. Mirrors Android's `Accent`.
-private enum Accent {
+enum Accent {
     case income, expenses, investments, debts
 
     var icon: Color {

@@ -342,6 +342,9 @@ private val MONEY = listOf(HomeRoute.INCOME, HomeRoute.EXPENSES, HomeRoute.INVES
 @Composable
 private fun HomeOrEntry(userId: String, onSignOut: () -> Unit) {
     var route by rememberSaveable { mutableStateOf(HomeRoute.HOME) }
+    // The month Home's "See budget" asked the Budget tab to open on; cleared
+    // once shown, so tapping the tab later opens wherever the person left it.
+    var budgetMonth by rememberSaveable { mutableStateOf<String?>(null) }
     val features: FeaturesViewModel = viewModel()
     val capabilities by features.capabilities.collectAsStateWithLifecycle()
     LaunchedEffect(userId) { features.bind(userId, logging = BuildConfig.DEBUG) }
@@ -382,6 +385,16 @@ private fun HomeOrEntry(userId: String, onSignOut: () -> Unit) {
                                 MoneyKind.DEBTS -> HomeRoute.DEBTS
                             }
                         },
+                        // "See budget" only where the bar has a Budget tab to go to,
+                        // and on the month Home is showing.
+                        onOpenBudget = if (HomeRoute.BUDGET in tabs) {
+                            { month ->
+                                budgetMonth = month
+                                route = HomeRoute.BUDGET
+                            }
+                        } else {
+                            null
+                        },
                     )
 
                     HomeRoute.ADD -> ManualEntryRoute(userId = userId, fromUnreadable = false, onClose = { route = HomeRoute.HOME })
@@ -407,6 +420,8 @@ private fun HomeOrEntry(userId: String, onSignOut: () -> Unit) {
                         onClose = { route = HomeRoute.HOME },
                         onReview = { route = HomeRoute.REVIEW },
                         onImport = { route = HomeRoute.IMPORT },
+                        requestedMonth = budgetMonth,
+                        onRequestedMonthShown = { budgetMonth = null },
                     )
 
                     // The four money screens open over the bar, like a flow,

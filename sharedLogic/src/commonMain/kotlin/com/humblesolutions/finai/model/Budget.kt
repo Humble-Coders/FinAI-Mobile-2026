@@ -186,6 +186,13 @@ data class BudgetLine(
 
     /** This month's countable debits in the category, by the dashboard's rule. */
     val spent: String = "0",
+
+    /**
+     * How far spending is past the allocation, as the server worked it out —
+     * `"0.00"` within it. Sent on `/dashboard`'s budget only; null from
+     * `/budgets`, where [overBy] stands in.
+     */
+    val over: String? = null,
 ) {
     /**
      * How far through the allocation this line's spending is, 0 to 1 — the

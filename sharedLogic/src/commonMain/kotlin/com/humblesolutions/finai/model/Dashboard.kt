@@ -56,6 +56,31 @@ data class Dashboard(
     /** Rows this month still waiting on a person, and the caveat on the figures. */
     @SerialName("pending_review")
     val pendingReview: Int = 0,
+
+    // ── Added by the server in M4 (backend #58). Every one defaults, so a
+    // server older than them decodes to a Home that looks as it did. ──────
+
+    /** The month's spending by category, largest first; the uncategorised entry has no id. */
+    @SerialName("spend_by_category")
+    val spendByCategory: List<CategorySpend> = emptyList(),
+
+    /**
+     * The month's budget, as `GET /budgets/{month}` serves it. Null when the
+     * household does not have the feature, for a month not yet begun, and
+     * from an older server.
+     */
+    val budget: Budget? = null,
+
+    /** The Money Health Score for the month shown; null under the same conditions as [budget]. */
+    @SerialName("health_score")
+    val healthScore: DashboardScore? = null,
+
+    /** How current the figures are (PRD F12): every one is only as fresh as the last import. */
+    @SerialName("as_of")
+    val asOf: DataFreshness? = null,
+
+    /** One "still learning" state for the budget and the score together (PRD F8). */
+    val learning: LearningProgress? = null,
 ) {
     val symbol: String get() = Money.symbol(currency)
 
