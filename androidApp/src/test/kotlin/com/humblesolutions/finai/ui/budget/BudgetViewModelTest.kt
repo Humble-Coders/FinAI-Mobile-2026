@@ -1,5 +1,6 @@
 package com.humblesolutions.finai.ui.budget
 
+import androidx.lifecycle.SavedStateHandle
 import com.humblesolutions.finai.model.ApiException
 import com.humblesolutions.finai.model.Budget
 import com.humblesolutions.finai.model.BudgetLine
@@ -87,7 +88,7 @@ class BudgetViewModelTest {
         budgets: FakeBudgets = FakeBudgets(),
         categories: FakeCategories = FakeCategories(),
         capabilities: FakeCapabilities = FakeCapabilities(),
-    ): BudgetViewModel = BudgetViewModel().also {
+    ): BudgetViewModel = BudgetViewModel(SavedStateHandle()).also {
         it.bind("user-1") { BudgetRepositories(budgets, categories, capabilities) }
     }
 
@@ -318,6 +319,23 @@ class BudgetViewModelTest {
         model.pickCategory("cat-income")
 
         assertNull(model.uiState.value.editing)
+    }
+
+    @Test
+    fun a_half_typed_amount_comes_back_after_the_process_is_reclaimed() = runTest {
+        val saved = SavedStateHandle()
+        val first = BudgetViewModel(saved).also { it.bind("user-1") { BudgetRepositories(FakeBudgets(), FakeCategories(), FakeCapabilities()) } }
+        first.edit("cat-groceries")
+        first.onAmountChange("6")
+
+        // Android reclaims the process; the handle is what comes back.
+        val second = BudgetViewModel(saved)
+
+        assertEquals("6", second.uiState.value.draft.amount)
+        assertEquals("cat-groceries", second.uiState.value.editing?.categoryId)
+        assertEquals(first.uiState.value.month, second.uiState.value.month)
+        // The figures themselves are not restored: they are the server's.
+        assertNull(second.uiState.value.budget)
     }
 
     // ── The signal ──────────────────────────────────────────────────────

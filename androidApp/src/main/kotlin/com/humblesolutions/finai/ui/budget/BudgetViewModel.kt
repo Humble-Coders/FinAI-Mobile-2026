@@ -1,5 +1,6 @@
 package com.humblesolutions.finai.ui.budget
 
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.humblesolutions.finai.config.ApiConfig
@@ -18,6 +19,7 @@ import com.humblesolutions.finai.repository.CapabilitiesRepository
 import com.humblesolutions.finai.repository.CategoriesRepository
 import com.humblesolutions.finai.usecase.BudgetDraft
 import com.humblesolutions.finai.usecase.BudgetEdit
+import com.humblesolutions.finai.usecase.DashboardMonths
 import com.humblesolutions.finai.util.BudgetChanged
 import com.humblesolutions.finai.util.LedgerChanged
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -36,9 +38,11 @@ import kotlin.coroutines.cancellation.CancellationException
  * afterwards. The totals and every other suggestion can move on one edit;
  * a patched copy would briefly show a combination that never existed.
  */
-class BudgetViewModel : ViewModel() {
+class BudgetViewModel(
+    private val saved: SavedStateHandle,
+) : ViewModel() {
 
-    private val _uiState = MutableStateFlow(BudgetUiState())
+    private val _uiState = MutableStateFlow(restored())
     val uiState: StateFlow<BudgetUiState> = _uiState.asStateFlow()
 
     private var repositories: BudgetRepositories? = null
@@ -67,6 +71,7 @@ class BudgetViewModel : ViewModel() {
         generation++
         boundTo = userId
         _uiState.value = BudgetUiState()
+        store(_uiState.value)
         repositories = build() ?: return
         listenForChanges()
         load()
@@ -97,7 +102,7 @@ class BudgetViewModel : ViewModel() {
     fun showMonth(month: String) {
         if (month == _uiState.value.month) return
         generation++
-        _uiState.update { it.copy(month = month, refreshing = true, errorKey = null, loadFailed = false) }
+        update { it.copy(month = month, refreshing = true, errorKey = null, loadFailed = false) }
         load(refresh = true)
     }
 
@@ -105,7 +110,7 @@ class BudgetViewModel : ViewModel() {
         val repos = repositories ?: return
         val started = generation
         val month = _uiState.value.month
-        _uiState.update {
+        update {
             if (refresh) it.copy(refreshing = true) else it.copy(loading = true, loadFailed = false, errorKey = null)
         }
         viewModelScope.launch {
@@ -140,7 +145,7 @@ class BudgetViewModel : ViewModel() {
     }
 
     private fun settle(budget: Budget, categories: List<Category>, capabilities: Capabilities?) {
-        _uiState.update {
+        update {
             it.copy(
                 budget = budget,
                 categories = categories,
@@ -157,7 +162,7 @@ class BudgetViewModel : ViewModel() {
     private fun failed(error: Throwable, categories: List<Category>, capabilities: Capabilities?) {
         val api = error as? ApiException
         val enabled = capabilities?.isEnabled(FEATURE)
-        _uiState.update {
+        update {
             it.copy(
                 categories = categories.ifEmpty { it.categories },
                 locale = capabilities?.locale?.takeIf(String::isNotBlank) ?: it.locale,
@@ -185,15 +190,15 @@ class BudgetViewModel : ViewModel() {
     /** Open the editor on an existing line. */
     fun edit(categoryId: String) {
         val line = _uiState.value.budget?.allLines?.firstOrNull { it.categoryId == categoryId } ?: return
-        _uiState.update {
+        update {
             it.copy(editing = line, editingIsNew = false, draft = BudgetEdit.draftOf(line), editErrorKey = null)
         }
     }
 
     /** Open the picker, to add a line for a category that has none. */
-    fun addCategory() = _uiState.update { it.copy(picking = true) }
+    fun addCategory() = update { it.copy(picking = true) }
 
-    fun cancelPicking() = _uiState.update { it.copy(picking = false) }
+    fun cancelPicking() = update { it.copy(picking = false) }
 
     /**
      * A category chosen from the picker becomes an editor on a line that
@@ -203,7 +208,7 @@ class BudgetViewModel : ViewModel() {
     fun pickCategory(categoryId: String) {
         val category = _uiState.value.categories.firstOrNull { it.id == categoryId } ?: return
         if (!BudgetEdit.isBudgetable(category.slug)) return
-        _uiState.update {
+        update {
             it.copy(
                 picking = false,
                 editing = BudgetLine(categoryId = category.id, slug = category.slug, name = category.name),
@@ -214,9 +219,9 @@ class BudgetViewModel : ViewModel() {
         }
     }
 
-    fun onAmountChange(amount: String) = _uiState.update { it.copy(draft = BudgetDraft(amount), editErrorKey = null) }
+    fun onAmountChange(amount: String) = update { it.copy(draft = BudgetDraft(amount), editErrorKey = null) }
 
-    fun cancelEdit() = _uiState.update {
+    fun cancelEdit() = update {
         it.copy(editing = null, editingIsNew = false, draft = BudgetDraft(), editErrorKey = null)
     }
 
@@ -234,18 +239,18 @@ class BudgetViewModel : ViewModel() {
         val line = state.editing ?: return
         if (state.editBlock != null || state.saving) return
         val amount = state.draft.amount
-        _uiState.update { it.copy(saving = true, editErrorKey = null) }
+        update { it.copy(saving = true, editErrorKey = null) }
         viewModelScope.launch {
             try {
                 val budget = repos.budgets.setLine(state.month, line.categoryId, amount)
-                _uiState.update {
+                update {
                     it.copy(budget = budget, saving = false, editing = null, editingIsNew = false, draft = BudgetDraft())
                 }
                 BudgetChanged.announce()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: ApiException) {
-                _uiState.update { it.copy(saving = false, editErrorKey = e.messageKey) }
+                update { it.copy(saving = false, editErrorKey = e.messageKey) }
             }
         }
     }
@@ -262,25 +267,86 @@ class BudgetViewModel : ViewModel() {
         val state = _uiState.value
         val line = state.editing ?: return
         if (state.resetting || state.editingIsNew) return
-        _uiState.update { it.copy(resetting = true, editErrorKey = null) }
+        update { it.copy(resetting = true, editErrorKey = null) }
         viewModelScope.launch {
             try {
                 val budget = repos.budgets.resetLine(state.month, line.categoryId)
-                _uiState.update {
+                update {
                     it.copy(budget = budget, resetting = false, editing = null, editingIsNew = false, draft = BudgetDraft())
                 }
                 BudgetChanged.announce()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: ApiException) {
-                _uiState.update { it.copy(resetting = false, editErrorKey = e.messageKey) }
+                update { it.copy(resetting = false, editErrorKey = e.messageKey) }
             }
         }
+    }
+
+    /**
+     * The month being looked at and an amount half-typed, brought back after
+     * Android reclaimed the process (#47 UI standards, as manual entry does).
+     *
+     * A `ViewModel` alone survives rotation but not process death, and losing
+     * a figure someone was part-way through typing is the one thing on this
+     * screen they cannot get back by reloading.
+     *
+     * Only the draft is kept, never the budget: those figures are the
+     * server's and are re-read on bind, and a stale copy restored from disk
+     * is exactly the kind of number this screen must not invent.
+     */
+    private fun restored(): BudgetUiState {
+        val editing: BudgetLine? = saved.get<String>(KEY_EDITING_ID)?.let { id ->
+            BudgetLine(
+                categoryId = id,
+                slug = saved[KEY_EDITING_SLUG] ?: "",
+                name = saved[KEY_EDITING_NAME] ?: "",
+                suggested = saved[KEY_EDITING_SUGGESTED] ?: "0",
+                allocated = saved[KEY_EDITING_ALLOCATED] ?: "0",
+                isUserSet = saved[KEY_EDITING_USER_SET] ?: false,
+                spent = saved[KEY_EDITING_SPENT] ?: "0",
+            )
+        }
+        return BudgetUiState(
+            month = saved[KEY_MONTH] ?: DashboardMonths.wire(DashboardMonths.current()),
+            editing = editing,
+            editingIsNew = saved[KEY_EDITING_IS_NEW] ?: false,
+            draft = BudgetDraft(saved[KEY_DRAFT_AMOUNT] ?: ""),
+        )
+    }
+
+    private fun store(state: BudgetUiState) {
+        saved[KEY_MONTH] = state.month
+        saved[KEY_DRAFT_AMOUNT] = state.draft.amount
+        saved[KEY_EDITING_IS_NEW] = state.editingIsNew
+        saved[KEY_EDITING_ID] = state.editing?.categoryId
+        saved[KEY_EDITING_SLUG] = state.editing?.slug
+        saved[KEY_EDITING_NAME] = state.editing?.name
+        saved[KEY_EDITING_SUGGESTED] = state.editing?.suggested
+        saved[KEY_EDITING_ALLOCATED] = state.editing?.allocated
+        saved[KEY_EDITING_USER_SET] = state.editing?.isUserSet
+        saved[KEY_EDITING_SPENT] = state.editing?.spent
+    }
+
+    private fun update(block: (BudgetUiState) -> BudgetUiState) {
+        _uiState.update(block)
+        store(_uiState.value)
     }
 
     internal companion object {
         /** The capability that decides whether the Budget tab is drawn. */
         const val FEATURE = "auto_budget"
+
+        private const val KEY_MONTH = "budget.month"
+        private const val KEY_DRAFT_AMOUNT = "budget.draft.amount"
+        private const val KEY_EDITING_IS_NEW = "budget.editing.isNew"
+        private const val KEY_EDITING_ID = "budget.editing.id"
+        private const val KEY_EDITING_SLUG = "budget.editing.slug"
+        private const val KEY_EDITING_NAME = "budget.editing.name"
+        private const val KEY_EDITING_SUGGESTED = "budget.editing.suggested"
+        private const val KEY_EDITING_ALLOCATED = "budget.editing.allocated"
+        private const val KEY_EDITING_USER_SET = "budget.editing.userSet"
+        private const val KEY_EDITING_SPENT = "budget.editing.spent"
     }
 }
 

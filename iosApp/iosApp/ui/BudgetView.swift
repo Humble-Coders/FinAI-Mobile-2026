@@ -19,6 +19,9 @@ struct BudgetView: View {
     var onReview: () -> Void
     var onImport: () -> Void
 
+    /// The edit in progress as the system keeps it for this scene, so the app
+    /// coming back after iOS reclaimed it reopens the line being typed.
+    @SceneStorage("budget.draft") private var stored = ""
     @Environment(\.colorScheme) private var scheme
 
     var body: some View {
@@ -55,7 +58,11 @@ struct BudgetView: View {
             }
             .scrollBounceBehavior(.basedOnSize)
         }
-        .onAppear { model.bind(userId: userId) }
+        .onAppear {
+            if !stored.isEmpty { model.restore(from: stored) }
+            model.bind(userId: userId)
+        }
+        .onChange(of: model.snapshot) { _, snapshot in stored = snapshot }
         .sheet(isPresented: editingShown) { BudgetEditorSheet(model: model) }
         .sheet(isPresented: $model.picking) { BudgetCategorySheet(model: model) }
     }

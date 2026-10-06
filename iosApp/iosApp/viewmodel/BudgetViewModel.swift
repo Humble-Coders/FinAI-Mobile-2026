@@ -348,6 +348,46 @@ final class BudgetViewModel: ObservableObject {
             }
     }
 
+    // MARK: Surviving the scene going away
+
+    /**
+     The month being looked at and an amount half-typed, as one string the
+     scene can keep (#47 UI standards, as manual entry does).
+
+     Only the draft travels, never the budget: those figures are the server's
+     and are re-read on bind, and a stale copy restored from disk is exactly
+     the kind of number this screen must not invent.
+
+     Tab-separated because a decimal string and a category id cannot contain
+     a tab, and a format the system stores needs no parser of its own.
+     */
+    var snapshot: String {
+        guard let editing else { return "" }
+        return [month, editing.categoryId, editing.slug, editing.name,
+                editing.suggested, editing.allocated, editing.isUserSet ? "1" : "0",
+                editing.spent, editingIsNew ? "1" : "0", draftAmount]
+            .joined(separator: "\t")
+    }
+
+    /// Put a [snapshot] back. Anything unreadable is ignored rather than
+    /// guessed at: an empty editor is a better answer than a wrong figure.
+    func restore(from snapshot: String) {
+        let parts = snapshot.components(separatedBy: "\t")
+        guard parts.count == 10, !parts[1].isEmpty else { return }
+        month = parts[0]
+        editing = BudgetLine(
+            categoryId: parts[1],
+            slug: parts[2],
+            name: parts[3],
+            suggested: parts[4],
+            allocated: parts[5],
+            isUserSet: parts[6] == "1",
+            spent: parts[7]
+        )
+        editingIsNew = parts[8] == "1"
+        draftAmount = parts[9]
+    }
+
     private static func currentMonth() -> String {
         DashboardMonths.shared.wire(
             month: DashboardMonths.shared.current(
