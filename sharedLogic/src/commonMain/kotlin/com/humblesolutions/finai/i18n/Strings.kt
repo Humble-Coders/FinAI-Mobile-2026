@@ -579,7 +579,6 @@ object Strings {
     const val budget_unfiled_one = "budget_unfiled_one" // "1 transaction isn't filed yet, so it isn't in your budget"
     const val budget_unfiled_action = "budget_unfiled_action" // "Review them"
     const val budget_empty = "budget_empty" // "No lines yet. Add a category to start budgeting by hand."
-    const val budget_unavailable = "budget_unavailable" // "Budgets aren't available on your plan yet"
 
     // The line editor.
     const val budget_edit_amount = "budget_edit_amount" // "Monthly amount"

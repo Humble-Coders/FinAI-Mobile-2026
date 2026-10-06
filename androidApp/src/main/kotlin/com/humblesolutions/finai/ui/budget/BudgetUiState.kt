@@ -32,9 +32,6 @@ data class BudgetUiState(
     val loadFailed: Boolean = false,
     val errorKey: String? = null,
 
-    /** False when capabilities do not enable `auto_budget`; the tab is then not drawn. */
-    val available: Boolean = true,
-
     // ── Editing one line ────────────────────────────────────────────────
     /** The line being edited; null when the sheet is closed. */
     val editing: BudgetLine? = null,

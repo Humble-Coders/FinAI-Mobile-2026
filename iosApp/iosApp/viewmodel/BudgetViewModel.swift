@@ -27,14 +27,14 @@ final class BudgetViewModel: ObservableObject {
     @Published private(set) var loadFailed = false
     @Published private(set) var errorKey: String?
 
-    /// False when capabilities do not enable `auto_budget`; the tab is then
-    /// not drawn. The payload decides what is shown, the API what is allowed.
-    @Published private(set) var available = true
-
     // MARK: Editing one line
     @Published private(set) var editing: BudgetLine?
     @Published private(set) var editingIsNew = false
-    @Published var draftAmount = ""
+    @Published var draftAmount = "" {
+        // The server's refusal was of the amount that was sent. Once the
+        // person types again it describes something no longer on screen.
+        didSet { if draftAmount != oldValue { editErrorKey = nil } }
+    }
     @Published private(set) var saving = false
     @Published private(set) var resetting = false
     @Published private(set) var editErrorKey: String?
@@ -52,8 +52,6 @@ final class BudgetViewModel: ObservableObject {
     #else
     private let logging = false
     #endif
-
-    static let feature = "auto_budget"
 
     // MARK: Binding
 
@@ -94,7 +92,6 @@ final class BudgetViewModel: ObservableObject {
         refreshing = false
         loadFailed = false
         errorKey = nil
-        available = true
         cancelEdit()
         picking = false
     }
@@ -166,7 +163,6 @@ final class BudgetViewModel: ObservableObject {
         budget = answer
         if !fetched.isEmpty { categories = fetched }
         if let found = payload?.locale, !found.isEmpty { locale = found }
-        if let payload { available = payload.isEnabled(featureKey: Self.feature) }
         loading = false
         refreshing = false
         loadFailed = false
@@ -183,13 +179,6 @@ final class BudgetViewModel: ObservableObject {
         // them (CLAUDE.md → Data & caching).
         loadFailed = budget == nil
         errorKey = api?.messageKey
-        if api is ApiException.FeatureUnavailable {
-            // The server's own answer about this feature outranks a
-            // capabilities payload that says otherwise.
-            available = false
-        } else if let payload {
-            available = payload.isEnabled(featureKey: Self.feature)
-        }
     }
 
     // MARK: Editing one line
@@ -362,30 +351,38 @@ final class BudgetViewModel: ObservableObject {
      a tab, and a format the system stores needs no parser of its own.
      */
     var snapshot: String {
-        guard let editing else { return "" }
-        return [month, editing.categoryId, editing.slug, editing.name,
+        guard let editing, let owner else { return "" }
+        return [owner, month, editing.categoryId, editing.slug, editing.name,
                 editing.suggested, editing.allocated, editing.isUserSet ? "1" : "0",
                 editing.spent, editingIsNew ? "1" : "0", draftAmount]
             .joined(separator: "\t")
     }
 
-    /// Put a [snapshot] back. Anything unreadable is ignored rather than
-    /// guessed at: an empty editor is a better answer than a wrong figure.
+    /**
+     Put a `snapshot` back. Anything unreadable is ignored rather than guessed
+     at: an empty editor is a better answer than a wrong figure.
+
+     Sets `owner` too. Without it the `bind` that always follows looks like a
+     different person signing in, and its reset throws the restored draft away
+     — which is what the first version of this did. A snapshot belonging to
+     someone else is dropped by that same reset, so it never leaks across.
+     */
     func restore(from snapshot: String) {
         let parts = snapshot.components(separatedBy: "\t")
-        guard parts.count == 10, !parts[1].isEmpty else { return }
-        month = parts[0]
+        guard parts.count == 11, !parts[0].isEmpty, !parts[2].isEmpty else { return }
+        owner = parts[0]
+        month = parts[1]
         editing = BudgetLine(
-            categoryId: parts[1],
-            slug: parts[2],
-            name: parts[3],
-            suggested: parts[4],
-            allocated: parts[5],
-            isUserSet: parts[6] == "1",
-            spent: parts[7]
+            categoryId: parts[2],
+            slug: parts[3],
+            name: parts[4],
+            suggested: parts[5],
+            allocated: parts[6],
+            isUserSet: parts[7] == "1",
+            spent: parts[8]
         )
-        editingIsNew = parts[8] == "1"
-        draftAmount = parts[9]
+        editingIsNew = parts[9] == "1"
+        draftAmount = parts[10]
     }
 
     private static func currentMonth() -> String {

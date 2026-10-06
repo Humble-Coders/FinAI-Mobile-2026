@@ -556,7 +556,6 @@ val EnglishStrings: Map<String, String> = mapOf(
     Strings.budget_unfiled_one to "1 transaction isn't filed yet, so it isn't in your budget",
     Strings.budget_unfiled_action to "Review them",
     Strings.budget_empty to "No lines yet. Add a category to start budgeting by hand.",
-    Strings.budget_unavailable to "Budgets aren't available on your plan yet",
     Strings.budget_edit_amount to "Monthly amount",
     Strings.budget_edit_use_suggestion to "Use suggestion ({0})",
     Strings.budget_edit_saving to "Saving\u2026",

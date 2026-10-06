@@ -46,7 +46,20 @@ class BudgetViewModel(
     val uiState: StateFlow<BudgetUiState> = _uiState.asStateFlow()
 
     private var repositories: BudgetRepositories? = null
-    private var boundTo: String? = null
+
+    /**
+     * Whose budget is on screen, kept in saved state.
+     *
+     * A plain field comes back null after Android reclaims the process, which
+     * makes the first [bind] look like a different person signing in — and
+     * the reset that follows would throw away the draft [restored] had just
+     * brought back.
+     */
+    private var boundTo: String?
+        get() = saved[KEY_OWNER]
+        set(value) {
+            saved[KEY_OWNER] = value
+        }
 
     /** Rises on every bind and month change, so a late answer for a month the
      *  person has left cannot land on the one they are looking at. */
@@ -66,12 +79,19 @@ class BudgetViewModel(
     }
 
     internal fun bind(userId: String, build: () -> BudgetRepositories?) {
-        if (userId.isBlank() || userId == boundTo) return
-        repositories?.close()
-        generation++
-        boundTo = userId
-        _uiState.value = BudgetUiState()
-        store(_uiState.value)
+        if (userId.isBlank()) return
+        // Only a different person clears what is on screen. Coming back from
+        // a reclaimed process is the same person, and their half-typed amount
+        // is the one thing here they cannot get back by reloading.
+        if (userId != boundTo) {
+            repositories?.close()
+            repositories = null
+            generation++
+            boundTo = userId
+            _uiState.value = BudgetUiState()
+            store(_uiState.value)
+        }
+        if (repositories != null) return
         repositories = build() ?: return
         listenForChanges()
         load()
@@ -148,20 +168,21 @@ class BudgetViewModel(
         update {
             it.copy(
                 budget = budget,
-                categories = categories,
+                // An empty list here is a failed categories call, not a
+                // household with no categories — keep the ones we have, as
+                // `failed` does. Losing them costs "Add a category".
+                categories = categories.ifEmpty { it.categories },
                 locale = capabilities?.locale?.takeIf(String::isNotBlank) ?: it.locale,
                 loading = false,
                 refreshing = false,
                 loadFailed = false,
                 errorKey = null,
-                available = capabilities?.isEnabled(FEATURE) ?: it.available,
             )
         }
     }
 
     private fun failed(error: Throwable, categories: List<Category>, capabilities: Capabilities?) {
         val api = error as? ApiException
-        val enabled = capabilities?.isEnabled(FEATURE)
         update {
             it.copy(
                 categories = categories.ifEmpty { it.categories },
@@ -172,15 +193,6 @@ class BudgetViewModel(
                 // zeroing them (CLAUDE.md → Data & caching).
                 loadFailed = it.budget == null,
                 errorKey = api?.messageKey,
-                available = when {
-                    // A 403 is the server's own answer about this feature and
-                    // outranks a capabilities payload that says otherwise.
-                    api is ApiException.FeatureUnavailable -> false
-
-                    enabled != null -> enabled
-
-                    else -> it.available
-                },
             )
         }
     }
@@ -334,9 +346,7 @@ class BudgetViewModel(
     }
 
     internal companion object {
-        /** The capability that decides whether the Budget tab is drawn. */
-        const val FEATURE = "auto_budget"
-
+        private const val KEY_OWNER = "budget.owner"
         private const val KEY_MONTH = "budget.month"
         private const val KEY_DRAFT_AMOUNT = "budget.draft.amount"
         private const val KEY_EDITING_IS_NEW = "budget.editing.isNew"

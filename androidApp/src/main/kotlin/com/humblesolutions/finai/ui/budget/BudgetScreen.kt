@@ -35,8 +35,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -99,6 +102,11 @@ internal fun BudgetScreen(
 
                 val progress = state.learning
                 when {
+                    // The coin loader covers a first load. Drawing the sheet
+                    // under it would flash an empty budget with "Add a
+                    // category" in it — which reads as having no budget.
+                    state.loading && state.budget == null -> Unit
+
                     state.loadFailed -> LoadFailed(state, onRetry)
 
                     progress != null -> {
@@ -281,10 +289,19 @@ private fun LineRow(
         Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
-            .clickable(role = Role.Button, onClick = onClick)
             // One sentence, so the row is heard once and "over by" is heard
-            // in words rather than inferred from a colour.
-            .semantics { contentDescription = state.descriptionOf(line) }
+            // in words rather than inferred from a colour. Cleared rather than
+            // added to: the name, the amounts and the labels below would
+            // otherwise each be read again after it.
+            .clearAndSetSemantics {
+                contentDescription = state.descriptionOf(line)
+                role = Role.Button
+                onClick {
+                    onClick()
+                    true
+                }
+            }
+            .clickable(role = Role.Button, onClick = onClick)
             .heightIn(min = 48.dp)
             .padding(vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),

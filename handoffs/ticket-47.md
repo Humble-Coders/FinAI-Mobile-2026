@@ -38,7 +38,7 @@ The only subtraction anywhere is `BudgetLine.overBy`, which is the difference of
 | `util/BudgetChanged.kt` *(new)* | The allocation-moved signal. |
 | `navigation/FeaturesViewModel.kt` *(new)* | Reads capabilities once so the bar can be built from them. |
 | `navigation/AppNavigation.kt` *(+56/−9)* | `HomeRoute.BUDGET`, `tabsFor(capabilities)`, the route, the bar item, and `ALL_TABS` so a tab switch still cross-fades. |
-| `ui/budget/BudgetViewModelTest.kt` *(new, 424)* | 20 tests. |
+| `ui/budget/BudgetViewModelTest.kt` *(new)* | 21 tests. |
 
 ### iOS
 
@@ -97,7 +97,7 @@ Also check, in both themes and at the largest font scale, on the smallest and la
 | 5 | Save disabled with the right reason for empty / not a number / negative / too precise / unchanged, from one shared function | **Met** — `BudgetEditTest` (8 tests) + `a_draft_the_screen_would_refuse_is_never_sent` |
 | 6 | A failed save keeps the sheet open with the input and the error; nothing half-applied | **Met** — `a_failed_save_keeps_the_sheet_open_with_what_was_typed` |
 | 7 | Below the threshold, the learning card with correct progress, and no empty budget | **Met** — `a_learning_household_keeps_the_lines_it_set_by_hand`; see *Deviations* for what "no empty budget" was taken to mean |
-| 8 | `auto_budget` disabled hides the tab; a 403 shows its own message | **Met** — `the_tab_is_unavailable_when_capabilities_say_so`, `a_403_marks_the_feature_unavailable_whatever_capabilities_said` |
+| 8 | `auto_budget` disabled hides the tab; a 403 shows its own message | **Met** — the tab is built from `tabsFor(capabilities)` in `AppNavigation.kt` / `features.budgetEnabled` in `RootView.swift` (no unit test: the gate is private to navigation); the 403 by `a_403_shows_the_feature_s_own_reason` |
 | 9 | After a save or reset, Home's budget card shows the new figure | **Not met — moved to #46.** There is no Home budget card yet. This ticket emits `BudgetChanged` (tested, including that a failed write announces nothing); #46 subscribes and tests the round trip |
 | 10 | "Transactions not filed" opens the Review tab | **Met** — `onReviewUnfiled` / `onReview` wired to the Review route on both platforms |
 | 11 | Previous months reachable and show their kept budgets | **Met** — month strip + `showMonth`; `changing_month_reads_that_month` |
@@ -124,7 +124,7 @@ Two are verifiable from the diff and are met: **every string goes through `share
 
 5. **One ordering fold with a parameter.** #46 wants Home's lines by how close they are to their allocation, #47 by spend. Both put over-budget first; `BudgetOrder` is the only difference, so the shared half cannot drift. `BudgetEdit.forHome` is there for #46.
 
-6. **The tab is gated above the screen**, by a small `FeaturesViewModel` per platform. A tab has to be absent before anything behind it opens. This is the first use of `Capabilities.isEnabled`, unused in `sharedLogic` since M1. Unknown means hidden; a server 403 outranks a payload that disagrees.
+6. **The tab is gated above the screen**, by a small `FeaturesViewModel` per platform. A tab has to be absent before anything behind it opens. This is the first use of `Capabilities.isEnabled`, unused in `sharedLogic` since M1. Unknown means hidden. The screen holds no gating state of its own: a 403 that still arrives shows the feature's reason through `errorKey`.
 
 7. **`LearningCard` is a component, not inline markup.** Doing 4.5 before 4.4 flipped the ownership the tickets assumed — #46 was to build it and this to reuse it.
 
@@ -137,16 +137,33 @@ Two are verifiable from the diff and are met: **every string goes through `share
 - **The navigation decision needs PO confirmation** — a fourth tab rather than a link from Home was a manager decision of 2026-10-04.
 - **Nothing was run on a simulator.** The manual pass above has not been performed by me.
 
+## Fixed after manager review
+
+The first review of this PR found the saved-state restore — claimed as working in this report and the PR — **did not work on either platform**. The first `bind` after a restore treated the same person as a new one and reset the state, throwing the restored draft away. The test covering it passed because it never called `bind`, which a real restore always does.
+
+| Finding | Fix |
+|---|---|
+| Restore wiped by `bind` (both platforms) | Android: `boundTo` lives in the `SavedStateHandle`, and `bind` separates "reset because the user changed" from "build because nothing is built". iOS: the scene snapshot carries the owner and `restore(from:)` sets it. |
+| The test that missed it | Now binds the restored model, and asserts the figures are re-read rather than restored. Confirmed to **fail** against the original bug before the fix went back in. Plus a test that a different person does not inherit the draft. |
+| `settle()` wiped categories on a failed categories call | `categories.ifEmpty { it.categories }`, as `failed()` and iOS already did. Tested. |
+| iOS kept a server error under the field while the person retyped | `draftAmount`'s `didSet` clears it, as Android's `onAmountChange` does. |
+| `available` computed, never read | Removed on both platforms; the tab is the gate. |
+| Android rows likely announced twice | `clearAndSetSemantics`, matching iOS's `.accessibilityElement(children: .ignore)`. |
+| Empty sheet flashed under the first-load coin | Sheet not drawn while loading with no budget yet. |
+| `budget_unavailable` string, `BudgetChanged.version` (iOS) | Removed — nothing read either. |
+
+**The iOS restore fix has no automated test**: the project has no iOS test target. It is verified by the build and needs manual step 12 below on a device.
+
 ## Verification
 
 ```
 ./gradlew ktlintCheck                            clean
 ./gradlew :androidApp:assembleDebug              BUILD SUCCESSFUL
-./gradlew :androidApp:testDebugUnitTest          245 tests, 0 failures
+./gradlew :androidApp:testDebugUnitTest          246 tests, 0 failures
 ./gradlew :sharedLogic:iosSimulatorArm64Test     517 tests, 0 failures
 ./gradlew :sharedLogic:testAndroidHostTest       524 tests, 0 failures (incl. the SKIE @Throws guard)
 xcodebuild -workspace iosApp.xcworkspace -scheme iosApp -sdk iphonesimulator
                                                  ** BUILD SUCCEEDED **
 ```
 
-New with this ticket: 20 Android view-model tests and 28 shared tests (17 in `BudgetEditTest`, 11 in `BudgetTest` — the latter decoding the real `BudgetOut` shapes for ready, learning and shortfall, plus a payload missing everything optional and an unknown status).
+New with this ticket: 21 Android view-model tests and 28 shared tests (17 in `BudgetEditTest`, 11 in `BudgetTest` — the latter decoding the real `BudgetOut` shapes for ready, learning and shortfall, plus a payload missing everything optional and an unknown status).

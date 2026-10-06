@@ -69,7 +69,11 @@ class BudgetViewModelTest {
     }
 
     private class FakeCategories(var answer: List<Category> = emptyList()) : CategoriesRepository {
-        override suspend fun list(): List<Category> = answer
+        var fail: ApiException? = null
+        override suspend fun list(): List<Category> {
+            fail?.let { throw it }
+            return answer
+        }
         override suspend fun create(name: String): Category = throw UnsupportedOperationException()
         override fun close() = Unit
     }
@@ -155,34 +159,45 @@ class BudgetViewModelTest {
         assertEquals("1400.00", state.budget?.totalAllocated)
     }
 
-    // ── Gating ──────────────────────────────────────────────────────────
+    // ── Refusals ────────────────────────────────────────────────────────
 
+    /**
+     * The tab is gated by navigation; a 403 that still arrives — the feature
+     * turned off since the bar was drawn — says why in the feature's own
+     * words rather than "something went wrong".
+     */
     @Test
-    fun the_tab_is_unavailable_when_capabilities_say_so() = runTest {
-        val model = model(capabilities = FakeCapabilities(answer = disabled()))
-
-        assertFalse(model.uiState.value.available)
-    }
-
-    /** The server's own 403 outranks a payload that says the feature is on. */
-    @Test
-    fun a_403_marks_the_feature_unavailable_whatever_capabilities_said() = runTest {
-        val budgets = FakeBudgets().apply {
-            failRead = ApiException.FeatureUnavailable("auto_budget", FeatureReason.NOT_IN_PLAN)
-        }
-        val model = model(budgets, capabilities = FakeCapabilities(answer = enabled()))
+    fun a_403_shows_the_feature_s_own_reason() = runTest {
+        val refusal = ApiException.FeatureUnavailable("auto_budget", FeatureReason.NOT_IN_PLAN)
+        val model = model(FakeBudgets().apply { failRead = refusal })
 
         val state = model.uiState.value
-        assertFalse(state.available)
-        // And it says why, in the feature's own words rather than "something went wrong".
-        assertEquals(ApiException.FeatureUnavailable("auto_budget", FeatureReason.NOT_IN_PLAN).messageKey, state.errorKey)
+        assertTrue(state.loadFailed)
+        assertEquals(refusal.messageKey, state.errorKey)
     }
 
     @Test
-    fun capabilities_that_cannot_be_read_leave_the_tab_as_it_was() = runTest {
+    fun capabilities_that_cannot_be_read_do_not_stop_the_budget() = runTest {
         val model = model(capabilities = FakeCapabilities().apply { fail = ApiException.Network(RuntimeException()) })
 
-        assertTrue(model.uiState.value.available)
+        assertTrue(model.uiState.value.isReady)
+    }
+
+    /**
+     * An empty list from a failed categories call is not a household with
+     * no categories. Overwriting the ones held would leave "Add a category"
+     * offering nothing until the next successful read.
+     */
+    @Test
+    fun a_categories_call_that_fails_keeps_the_categories_already_held() = runTest {
+        val categories = FakeCategories(listOf(Category(id = "cat-pets", slug = "pets", name = "Pets")))
+        val model = model(categories = categories)
+        assertEquals(listOf("cat-pets"), model.uiState.value.pickable.map { it.id })
+
+        categories.fail = ApiException.Network(RuntimeException("offline"))
+        model.load(refresh = true)
+
+        assertEquals(listOf("cat-pets"), model.uiState.value.pickable.map { it.id })
     }
 
     // ── Editing ─────────────────────────────────────────────────────────
@@ -321,21 +336,52 @@ class BudgetViewModelTest {
         assertNull(model.uiState.value.editing)
     }
 
+    /**
+     * A restored model is always bound straight afterwards, so the test binds
+     * it too. The first version of this test did not, and passed while the
+     * bind threw the restored draft away.
+     */
     @Test
     fun a_half_typed_amount_comes_back_after_the_process_is_reclaimed() = runTest {
         val saved = SavedStateHandle()
-        val first = BudgetViewModel(saved).also { it.bind("user-1") { BudgetRepositories(FakeBudgets(), FakeCategories(), FakeCapabilities()) } }
+        val first = BudgetViewModel(saved).also {
+            it.bind("user-1") { BudgetRepositories(FakeBudgets(), FakeCategories(), FakeCapabilities()) }
+        }
         first.edit("cat-groceries")
         first.onAmountChange("6")
 
-        // Android reclaims the process; the handle is what comes back.
-        val second = BudgetViewModel(saved)
+        // Android reclaims the process; the handle is what comes back, and the
+        // route binds the new model as soon as it is composed.
+        val budgets = FakeBudgets()
+        val second = BudgetViewModel(saved).also {
+            it.bind("user-1") { BudgetRepositories(budgets, FakeCategories(), FakeCapabilities()) }
+        }
 
-        assertEquals("6", second.uiState.value.draft.amount)
-        assertEquals("cat-groceries", second.uiState.value.editing?.categoryId)
-        assertEquals(first.uiState.value.month, second.uiState.value.month)
-        // The figures themselves are not restored: they are the server's.
-        assertNull(second.uiState.value.budget)
+        val state = second.uiState.value
+        assertEquals("6", state.draft.amount)
+        assertEquals("cat-groceries", state.editing?.categoryId)
+        assertEquals(first.uiState.value.month, state.month)
+        // The figures are not restored from disk — they are read again.
+        assertEquals(1, budgets.reads.size)
+        assertTrue(state.isReady)
+    }
+
+    /** Someone else signing in on the same phone must not inherit a draft. */
+    @Test
+    fun a_different_person_does_not_inherit_the_draft() = runTest {
+        val saved = SavedStateHandle()
+        BudgetViewModel(saved).also {
+            it.bind("user-1") { BudgetRepositories(FakeBudgets(), FakeCategories(), FakeCapabilities()) }
+            it.edit("cat-groceries")
+            it.onAmountChange("6")
+        }
+
+        val second = BudgetViewModel(saved).also {
+            it.bind("user-2") { BudgetRepositories(FakeBudgets(), FakeCategories(), FakeCapabilities()) }
+        }
+
+        assertNull(second.uiState.value.editing)
+        assertEquals("", second.uiState.value.draft.amount)
     }
 
     // ── The signal ──────────────────────────────────────────────────────
@@ -374,11 +420,6 @@ class BudgetViewModelTest {
 
     private companion object {
         fun enabled() = Capabilities(locale = "en", features = mapOf("auto_budget" to Feature(enabled = true)))
-
-        fun disabled() = Capabilities(
-            locale = "en",
-            features = mapOf("auto_budget" to Feature(enabled = false, reason = FeatureReason.NOT_IN_PLAN)),
-        )
 
         fun ready(allocated: String = "500.00") = Budget(
             status = BudgetStatus.READY,

@@ -24,13 +24,8 @@ enum BudgetChanged {
 
     static let name = Notification.Name("com.humblesolutions.finai.budgetChanged")
 
-    /// How many allocation changes have been announced since launch — so a
-    /// screen that was away can tell, on coming back, whether it missed one.
-    @MainActor private(set) static var version = 0
-
     /// Called by a writer once the server has confirmed the change.
     @MainActor static func announce() {
-        version += 1
         NotificationCenter.default.post(name: name, object: nil)
     }
 
