@@ -7,6 +7,7 @@ import com.humblesolutions.finai.model.Category
 import com.humblesolutions.finai.model.Commitment
 import com.humblesolutions.finai.model.Dashboard
 import com.humblesolutions.finai.model.DayPoint
+import com.humblesolutions.finai.model.GoalsPage
 import com.humblesolutions.finai.model.HealthScore
 import com.humblesolutions.finai.model.Transaction
 import com.humblesolutions.finai.model.TransactionDirection
@@ -17,6 +18,8 @@ import com.humblesolutions.finai.usecase.CommitmentDraft
 import com.humblesolutions.finai.usecase.CommitmentEdit
 import com.humblesolutions.finai.usecase.DashboardMonths
 import com.humblesolutions.finai.usecase.DashboardTrend
+import com.humblesolutions.finai.usecase.GoalEdit
+import com.humblesolutions.finai.usecase.HomeGoals
 import com.humblesolutions.finai.usecase.HomeInsights
 import com.humblesolutions.finai.usecase.HomeSections
 import com.humblesolutions.finai.usecase.ImportedRows
@@ -77,6 +80,8 @@ data class DashboardUiState(
      * a moment late is better than one wrongly shown.
      */
     val capabilities: Capabilities? = null,
+    /** The household's goals, for Home's card (#52); null until read, or when goals are off. */
+    val goals: GoalsPage? = null,
     /** "Where it went" shows every category rather than the top five. */
     val spendingExpanded: Boolean = false,
     /** The score's breakdown sheet is up. */
@@ -317,6 +322,17 @@ data class DashboardUiState(
      */
     val sections: HomeSections get() = HomeInsights.sectionsNow(data, capabilities, locale, amountsHidden)
 
+    /**
+     * Home's goals card (#52), or null when it is not drawn: goals off for the
+     * household, or not read yet. Its figures follow the eye toggle.
+     */
+    val goalsCard: HomeGoals?
+        get() {
+            if (capabilities?.isEnabled(GOALS_FEATURE) != true) return null
+            val page = goals ?: return null
+            return GoalEdit.homeCard(page, GoalEdit.Words(currency = data.currency, locale = locale, amountsHidden = amountsHidden))
+        }
+
     /** The breakdown sheet's rows, or null until `/health-score` answers with a score. */
     val breakdownView: ScoreBreakdown? get() = breakdown?.let { HomeInsights.breakdown(it, locale) }
 
@@ -350,3 +366,6 @@ data class RecentRow(
     /** The whole row as one sentence, read once by a screen reader. */
     val description: String,
 )
+
+/** The capability that draws Home's goals card, and the Goals tab. */
+internal const val GOALS_FEATURE = "goals"

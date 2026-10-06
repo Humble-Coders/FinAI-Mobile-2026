@@ -163,6 +163,8 @@ internal fun WizardField(
     placeholder: String? = null,
     onDone: (() -> Unit)? = null,
     leading: ImageVector? = null,
+    /** False while what was typed is being sent, so it cannot change underneath the request. */
+    enabled: Boolean = true,
 ) {
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
@@ -174,8 +176,11 @@ internal fun WizardField(
             value = value,
             onValueChange = onValueChange,
             singleLine = true,
+            enabled = enabled,
             interactionSource = interaction,
-            textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
+            // Dimmed while locked, as AmountField is, so a field that will not
+            // take typing does not look as though it would.
+            textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (enabled) 1f else 0.6f)),
             cursorBrush = SolidColor(FinAiPalette.Green),
             keyboardOptions = KeyboardOptions(
                 capitalization = capitalization,

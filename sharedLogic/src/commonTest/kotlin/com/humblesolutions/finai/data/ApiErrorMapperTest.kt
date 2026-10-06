@@ -67,6 +67,30 @@ class ApiErrorMapperTest {
         assertEquals(Strings.budget_error_month_in_future, error.messageKey)
     }
 
+    // ── Goals (#52) ────────────────────────────────────────────────────
+
+    @Test
+    fun `the goal limit is its own error and carries the limit`() {
+        val error = ApiErrorMapper.fromResponse(409, """{"detail":{"code":"goal_limit_reached","limit":20}}""")
+        assertIs<ApiException.GoalLimitReached>(error)
+        assertEquals(20, error.limit)
+        assertEquals(Strings.goals_error_limit, error.messageKey)
+    }
+
+    @Test
+    fun `a target date in the past is its own error`() {
+        val error = ApiErrorMapper.fromResponse(422, """{"detail":{"code":"date_in_past","field":"target_date"}}""")
+        assertIs<ApiException.DateInPast>(error)
+        assertEquals(Strings.goals_error_date_in_past, error.messageKey)
+    }
+
+    @Test
+    fun `a goal order that no longer matches is its own error`() {
+        val error = ApiErrorMapper.fromResponse(422, """{"detail":{"code":"order_mismatch"}}""")
+        assertIs<ApiException.OrderMismatch>(error)
+        assertEquals(Strings.goals_error_order_changed, error.messageKey)
+    }
+
     @Test
     fun `a 409 without a known code stays a generic rejection`() {
         val error = ApiErrorMapper.fromResponse(409, """{"detail":{"code":"something_else"}}""")

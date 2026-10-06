@@ -290,7 +290,8 @@ class HomeInsightsTest {
             {"key": "savings_consistency", "score": 100, "weight": "61.54", "available": true, "inputs": {"months": []}},
             {"key": "spending_vs_budget", "score": null, "weight": "0.00", "available": false, "inputs": {"lines": []}},
             {"key": "debt_payments", "score": 0, "weight": "38.46", "available": true, "inputs": {}},
-            {"key": "goal_completion", "score": 40, "weight": "10.00", "available": true, "inputs": {}}
+            {"key": "goal_completion", "score": 40, "weight": "10.00", "available": true, "inputs": {}},
+            {"key": "investment_activity", "score": 70, "weight": "5.00", "available": true, "inputs": {}}
           ],
           "history": [], "notice": null, "held_from": null
         }
@@ -300,7 +301,13 @@ class HomeInsightsTest {
     fun the_breakdown_lists_every_part_and_never_shows_an_unscored_one_as_zero() {
         val breakdown = assertNotNull(HomeInsights.breakdown(FinAiJson.decodeFromString<HealthScore>(health), "en"))
 
-        assertEquals(listOf("Saving regularly", "Spending against budget", "Debt payments", "Another part of the score"), breakdown.rows.map { it.title })
+        // goal_completion is known since formula v2 (#52); a part from a formula
+        // newer than this build — investment activity, PRD Phase 3 — still gets
+        // a general title rather than being dropped.
+        assertEquals(
+            listOf("Saving regularly", "Spending against budget", "Debt payments", "Keeping pace with your goals", "Another part of the score"),
+            breakdown.rows.map { it.title },
+        )
         val budget = breakdown.rows[1]
         assertFalse(budget.available)
         assertEquals("Not counted yet", budget.score)

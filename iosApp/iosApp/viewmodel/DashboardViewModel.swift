@@ -60,6 +60,8 @@ final class DashboardViewModel: ObservableObject {
     /// read, which draws neither the budget nor the score: a section arriving
     /// a moment late is better than one wrongly shown.
     @Published private(set) var capabilities: Capabilities?
+    /// The household's goals, for Home's card (#52); nil until read, or when goals are off.
+    @Published private(set) var goals: GoalsPage?
     /// "Where it went" shows every category rather than the top five.
     @Published private(set) var spendingExpanded = false
     /// The score's breakdown sheet is up; bound to `.sheet`.
@@ -75,6 +77,8 @@ final class DashboardViewModel: ObservableObject {
     private var categoriesRepository: CategoriesRepository?
     private var setupRepository: FinancialSetupRepository?
     private var healthScoreRepository: HealthScoreRepository?
+    private var goalsRepository: GoalsRepository?
+    private var goalsGeneration = 0
     private var owner: String?
     /// The recent list's own counter: it does not follow the month, so a step
     /// back to August must not cancel a read of what happened most recently.
@@ -87,6 +91,7 @@ final class DashboardViewModel: ObservableObject {
     private var listener: Task<Void, Never>?
     /// The budget-change observer, beside `listener`; see `listenForChanges`.
     private var budgetListener: Task<Void, Never>?
+    private var goalsListener: Task<Void, Never>?
 
     #if DEBUG
     private let logging = true
@@ -109,6 +114,7 @@ final class DashboardViewModel: ObservableObject {
         categoriesRepository = KtorCategoriesRepository(baseUrl: base, tokens: tokens, logging: logging)
         setupRepository = KtorFinancialSetupRepository(baseUrl: base, tokens: tokens, logging: logging)
         healthScoreRepository = KtorHealthScoreRepository(baseUrl: base, tokens: tokens, logging: logging)
+        goalsRepository = KtorGoalsRepository(baseUrl: base, tokens: tokens, logging: logging)
         listenForChanges()
         // Back on a tab already read: refresh behind what is on screen. A
         // first load blanked the figures and, on Review, raised the coin
@@ -122,6 +128,10 @@ final class DashboardViewModel: ObservableObject {
         listener = nil
         budgetListener?.cancel()
         budgetListener = nil
+        goalsListener?.cancel()
+        goalsListener = nil
+        goalsRepository?.close()
+        goalsRepository = nil
         dashboardRepository?.close()
         dashboardRepository = nil
         capabilitiesRepository?.close()
@@ -152,6 +162,11 @@ final class DashboardViewModel: ObservableObject {
         errorKey = nil
         recent = []
         capabilities = nil
+        // Another person's goals must never reach the next one's Home (#53):
+        // cleared here, and the counter moved so an answer still on its way
+        // for the previous account is dropped when it lands.
+        goals = nil
+        goalsGeneration += 1
         spendingExpanded = false
         breakdownOpen = false
         breakdown = nil
@@ -185,6 +200,7 @@ final class DashboardViewModel: ObservableObject {
                 // A failed read keeps the payload it had, rather than hiding
                 // the score and the budget on a blip.
                 if let capabilities { self.capabilities = capabilities }
+                self.loadGoals()
                 self.loadedOnce = true
                 self.loading = false
                 self.refreshing = false
@@ -437,6 +453,13 @@ final class DashboardViewModel: ObservableObject {
                 self.load(refresh: true)
             }
         }
+        // A goal created, topped up or reordered moves only the goals card.
+        goalsListener = Task { [weak self] in
+            for await _ in GoalsChanged.events {
+                guard let self, !Task.isCancelled else { return }
+                self.loadGoals()
+            }
+        }
     }
 
     // MARK: - The score's breakdown and "Where it went" (#46)
@@ -468,6 +491,27 @@ final class DashboardViewModel: ObservableObject {
 
     /// The score, the budget, spending and freshness, worded once in shared
     /// code (`HomeInsights`), the same call Android's UI state makes.
+    /**
+     The goals for Home's card (#52), read only when capabilities enable them.
+     Its own counter, and quiet on failure: the card is simply not drawn.
+     */
+    private func loadGoals() {
+        guard capabilities?.isEnabled(featureKey: FeaturesViewModel.goalsFeature) == true, let goalsRepository else { return }
+        goalsGeneration += 1
+        let started = goalsGeneration
+        Task { [weak self] in
+            guard let page = try? await goalsRepository.list(), let self, started == self.goalsGeneration else { return }
+            self.goals = page
+        }
+    }
+
+    /// Home's goals card, or nil when it is not drawn. Figures follow the eye toggle.
+    var goalsCard: HomeGoals? {
+        guard capabilities?.isEnabled(featureKey: FeaturesViewModel.goalsFeature) == true, let goals else { return nil }
+        let words = GoalEdit.Words(currency: data.currency, locale: locale, amountsHidden: amountsHidden)
+        return GoalEdit.shared.homeCard(page: goals, words: words)
+    }
+
     var sections: HomeSections {
         HomeInsights.shared.sectionsNow(
             data: data,
