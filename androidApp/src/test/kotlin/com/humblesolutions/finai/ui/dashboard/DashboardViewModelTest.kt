@@ -8,18 +8,25 @@ import com.humblesolutions.finai.model.Commitment
 import com.humblesolutions.finai.model.ConfirmOutcome
 import com.humblesolutions.finai.model.Dashboard
 import com.humblesolutions.finai.model.DeleteOutcome
+import com.humblesolutions.finai.model.Feature
 import com.humblesolutions.finai.model.FinancialSetup
 import com.humblesolutions.finai.model.Flow
+import com.humblesolutions.finai.model.Goal
+import com.humblesolutions.finai.model.GoalChanges
+import com.humblesolutions.finai.model.GoalsPage
+import com.humblesolutions.finai.model.NewGoal
 import com.humblesolutions.finai.model.NewTransaction
 import com.humblesolutions.finai.model.Obligation
 import com.humblesolutions.finai.model.PatchOutcome
 import com.humblesolutions.finai.model.ReviewPage
+import com.humblesolutions.finai.model.Terms
 import com.humblesolutions.finai.model.Transaction
 import com.humblesolutions.finai.model.TransactionPatch
 import com.humblesolutions.finai.repository.CapabilitiesRepository
 import com.humblesolutions.finai.repository.CategoriesRepository
 import com.humblesolutions.finai.repository.DashboardRepository
 import com.humblesolutions.finai.repository.FinancialSetupRepository
+import com.humblesolutions.finai.repository.GoalsRepository
 import com.humblesolutions.finai.repository.TransactionsRepository
 import com.humblesolutions.finai.usecase.CommitmentEdit
 import com.humblesolutions.finai.usecase.DashboardMonths
@@ -303,6 +310,71 @@ class DashboardViewModelTest {
         LedgerChanged.announce()
 
         assertEquals(readsBefore + 1, repo.asked.size, "one read per announcement, whoever is bound")
+    }
+
+    // ── The goals card (#52) ────────────────────────────────────────────
+
+    private class GoalsOn : CapabilitiesRepository {
+        override suspend fun fetch(): Capabilities = Capabilities(locale = "en", currency = "CAD", features = mapOf("goals" to Feature(enabled = true)))
+        override fun close() = Unit
+    }
+
+    /** Answers when [gate] is completed, so a test can make one answer late. */
+    private class SlowGoals(private val page: GoalsPage, private val gate: CompletableDeferred<Unit>? = null) : GoalsRepository {
+        override suspend fun list(): GoalsPage {
+            gate?.await()
+            return page
+        }
+        override suspend fun create(goal: NewGoal): Goal = throw UnsupportedOperationException()
+        override suspend fun update(id: String, changes: GoalChanges): Goal = throw UnsupportedOperationException()
+        override suspend fun add(id: String, amount: String): Goal = throw UnsupportedOperationException()
+        override suspend fun reorder(ids: List<String>): GoalsPage = throw UnsupportedOperationException()
+        override suspend fun delete(id: String) = Unit
+        override suspend fun disclaimer(): Terms? = null
+        override fun close() = Unit
+    }
+
+    @Test
+    fun home_shows_the_household_s_goals_when_the_feature_is_on() = runTest {
+        val model = DashboardViewModel()
+        model.bind("alice") {
+            DashboardRepositories(FakeDashboard(), GoalsOn(), goals = SlowGoals(GoalsPage(goals = listOf(Goal(id = "g-a", name = "Alice's car")))))
+        }
+
+        assertEquals(listOf("Alice's car"), model.uiState.value.goalsCard?.rows?.map { it.name })
+    }
+
+    /**
+     * One account's goals must never reach another's Home (#53).
+     *
+     * The dangerous order: Alice's goals answer is still on its way when Bob
+     * signs in, and Bob's own first read fails — so Bob's goals request never
+     * starts and never moves the counter. Alice's answer then lands in Bob's
+     * state, and the moment his retry succeeds the card would show her goals.
+     * Only the counter moving at bind stops it.
+     */
+    @Test
+    fun a_late_answer_for_the_previous_account_never_reaches_the_next_one() = runTest {
+        val alicesAnswer = CompletableDeferred<Unit>()
+        val model = DashboardViewModel()
+        model.bind("alice") {
+            DashboardRepositories(FakeDashboard(), GoalsOn(), goals = SlowGoals(GoalsPage(goals = listOf(Goal(id = "g-a", name = "Alice's car"))), alicesAnswer))
+        }
+        val bobsMonth = FakeDashboard().apply { fail = ApiException.Network(RuntimeException("offline")) }
+        val bobsGoals = CompletableDeferred<Unit>()
+        model.bind("bob") {
+            DashboardRepositories(bobsMonth, GoalsOn(), goals = SlowGoals(GoalsPage(goals = listOf(Goal(id = "g-b", name = "Bob's trip"))), bobsGoals))
+        }
+
+        alicesAnswer.complete(Unit)
+        assertNull(model.uiState.value.goals, "Alice's goals landed in Bob's state")
+
+        // Bob's retry works; until his own goals arrive, the card shows none of Alice's.
+        bobsMonth.fail = null
+        model.load()
+        assertNull(model.uiState.value.goalsCard?.rows?.firstOrNull { it.name == "Alice's car" })
+        bobsGoals.complete(Unit)
+        assertEquals(listOf("Bob's trip"), model.uiState.value.goalsCard?.rows?.map { it.name })
     }
 
     // ── The recent list ─────────────────────────────────────────────────

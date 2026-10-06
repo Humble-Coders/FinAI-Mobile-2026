@@ -655,6 +655,7 @@ val EnglishStrings: Map<String, String> = mapOf(
     Strings.goals_field_date to "Target date (optional)",
     Strings.goals_field_date_none to "No date",
     Strings.goals_field_date_clear to "Remove date",
+    Strings.goals_field_date_change to "Change date",
     Strings.goals_field_contribution to "Monthly amount (optional)",
     Strings.goals_saving to "Saving\u2026",
     Strings.goals_add_money to "Add money",
@@ -676,7 +677,7 @@ val EnglishStrings: Map<String, String> = mapOf(
     Strings.goals_kind_other to "Something else",
 
     // Why a goal cannot be saved — GoalBlock.messageKey. {0} is the currency where used.
-    Strings.goals_block_too_many to "You have 20 goals in progress. Finish or delete one to add another.",
+    Strings.goals_block_too_many to "You have {0} goals in progress. Finish or delete one to add another.",
     Strings.goals_block_no_name to "Give the goal a name.",
     Strings.goals_block_name_too_long to "That name is too long.",
     Strings.goals_block_no_horizon to "Choose short term or long term.",
@@ -698,7 +699,7 @@ val EnglishStrings: Map<String, String> = mapOf(
     Strings.goals_add_block_zero to "Add more than zero.",
 
     // Refusals from /goals — ApiException.messageKey.
-    Strings.goals_error_limit to "You already have 20 goals in progress. Finish or delete one first.",
+    Strings.goals_error_limit to "You've reached the limit on goals in progress. Finish or delete one first.",
     Strings.goals_error_date_in_past to "That date has already passed. Choose one from today on.",
     Strings.goals_error_order_changed to "Your goals changed on another device. Here they are as they are now — try again.",
 

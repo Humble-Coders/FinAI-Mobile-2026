@@ -688,6 +688,7 @@ object Strings {
     const val goals_field_date = "goals_field_date" // "Target date (optional)"
     const val goals_field_date_none = "goals_field_date_none" // "No date"
     const val goals_field_date_clear = "goals_field_date_clear" // "Remove date"
+    const val goals_field_date_change = "goals_field_date_change" // "Change date"
     const val goals_field_contribution = "goals_field_contribution" // "Monthly amount (optional)"
     const val goals_saving = "goals_saving" // "Saving…"
     const val goals_add_money = "goals_add_money" // "Add money"
@@ -709,7 +710,7 @@ object Strings {
     const val goals_kind_other = "goals_kind_other" // "Something else"
 
     // Why a goal cannot be saved — GoalBlock.messageKey. {0} is the currency where used.
-    const val goals_block_too_many = "goals_block_too_many" // "You have 20 goals in progress. Finish or delete one to add another."
+    const val goals_block_too_many = "goals_block_too_many" // "You have {0} goals in progress. Finish or delete one to add another."
     const val goals_block_no_name = "goals_block_no_name" // "Give the goal a name."
     const val goals_block_name_too_long = "goals_block_name_too_long" // "That name is too long."
     const val goals_block_no_horizon = "goals_block_no_horizon" // "Choose short term or long term."
@@ -731,7 +732,7 @@ object Strings {
     const val goals_add_block_zero = "goals_add_block_zero" // "Add more than zero."
 
     // Refusals from /goals — ApiException.messageKey.
-    const val goals_error_limit = "goals_error_limit" // "You already have 20 goals in progress. Finish or delete one first."
+    const val goals_error_limit = "goals_error_limit" // "You've reached the limit on goals in progress. Finish or delete one first."
     const val goals_error_date_in_past = "goals_error_date_in_past" // "That date has already passed. Choose one from today on."
     const val goals_error_order_changed = "goals_error_order_changed" // "Your goals changed on another device. Here they are as they are now — try again."
 

@@ -22,8 +22,8 @@ Everything is built against what backend #65 (5.1) actually merged, which is liv
 | `util/MoneyInput.kt` *(new)* | `BudgetEdit`'s "too precise vs not a number" check, moved out so goals reuse it. Budget behaviour is unchanged. |
 | `usecase/BudgetEdit.kt` | Now calls `MoneyInput`. |
 | `usecase/HomeInsights.kt` | The score breakdown's `goal_completion` part (backend #66, formula v2): its title and sentences. |
-| `i18n/Strings.kt`, `EnglishStrings.kt` | 80 keys in a `// ── Goals (PRD F5, #52) ──` section. |
-| Tests: `GoalEditTest` (25), `GoalTest` (6), `KtorGoalsRepositoryTest` (11), `ApiErrorMapperTest` (+3) | New coverage. |
+| `i18n/Strings.kt`, `EnglishStrings.kt` | 81 keys in a `// ── Goals (PRD F5, #52) ──` section. |
+| Tests: `GoalEditTest` (26), `GoalTest` (6), `KtorGoalsRepositoryTest` (11), `ApiErrorMapperTest` (+3) | New coverage. |
 | `usecase/HomeInsightsTest.kt` | One #46 assertion used `goal_completion` as its example of an *unknown* score part. That part is now known, so the test uses a genuinely unknown key and keeps its intent. |
 
 ### Android
@@ -34,7 +34,7 @@ Everything is built against what backend #65 (5.1) actually merged, which is liv
 | `util/GoalsChanged.kt` *(new)* | The "a goal moved" signal, emitted only after the server confirms. |
 | `navigation/AppNavigation.kt` | `HomeRoute.GOALS`. One gate for every gated tab (`tabsFor` / `leavesGatedTab`). Review as a flow with `reviewReturnsTo`, plus its transition. The Goals bar item. |
 | `ui/components/FormFields.kt` | `enabled` on `WizardField` and `AmountField`, defaulting to `true`, so fields can lock while saving. |
-| `ui/dashboard/*` | `DashboardViewModel` reads goals when the capability is on and re-reads on `GoalsChanged`. `goalsCard` in UiState. `GoalsSection` in `HomeInsightsViews`, placed below the budget. `onOpenGoals` on the route. |
+| `ui/dashboard/*` | `DashboardViewModel` reads goals when the capability is on, re-reads on `GoalsChanged`, and moves the goals counter on bind so a late answer for a previous account is dropped. `goalsCard` in UiState. `GoalsSection` in `HomeInsightsViews`, placed below the budget. `onOpenGoals` on the route. |
 | `navigation/GatedTabsTest.kt` *(renamed from `BudgetTabTest`, 5 → 7 tests)* | Covers both gated tabs, Review leaving the bar, and where Review's back arrow goes. |
 | `ui/goals/GoalsViewModelTest.kt` *(new, 20)* | View-model coverage, listed under the acceptance criteria. |
 
@@ -46,7 +46,7 @@ Everything is built against what backend #65 (5.1) actually merged, which is liv
 | `util/GoalsChanged.swift` *(new)* | The signal. |
 | `viewmodel/FeaturesViewModel.swift` | One gate for every gated tab: `shows(_:onTab:)`, `leaves(_:onTab:)`, `gates`. |
 | `navigation/RootView.swift` | The Goals tab, `.review` as a flow with `reviewFrom` and `openReview()`, the shared `onChange(of: features.gates)`, and `goalsModel` unbound with the others. |
-| `viewmodel/DashboardViewModel.swift`, `ui/DashboardView.swift`, `ui/HomeInsightsViews.swift` | Home's goals card. |
+| `viewmodel/DashboardViewModel.swift`, `ui/DashboardView.swift`, `ui/HomeInsightsViews.swift` | Home's goals card. `reset()` clears it and moves its counter when a different person signs in. |
 
 ### Docs
 `docs/tickets/M5.2-goals-ui.md`: the ticket as drafted. Ticket docs are tracked in this repo.
@@ -102,7 +102,7 @@ Check light and dark, the smallest and largest phone, and the largest font scale
 | 8 | A failed save keeps the sheet and input; the 21st goal shows the limit's message | **Met.** VM: `a_failed_save_keeps_the_sheet_open…`, `at_twenty_open_goals…`, and `the_limit_can_answer_an_edit…`. That last one covers the edit path the ticket didn't foresee. |
 | 9 | Delete confirms, removes, and updates the list and Home | **Met.** VM: `a_goal_is_deleted_only_once_confirmed`. Delete announces `GoalsChanged`. |
 | 10 | Restored onto Goals, the person stays there | **Met in code, unverified on a device.** The gate is tested in `GatedTabsTest`, and the draft-through-`bind` restore in the VM tests. iOS relies on the same gate logic and the build. Needs manual step 12. |
-| 11 | `goals` disabled hides the tab and Home's card; a 403 shows its own message | **Met.** `GatedTabsTest`, `goalsCard`'s capability check, and VM `a_403_shows_the_feature_s_own_reason`. |
+| 11 | `goals` disabled hides the tab and Home's card; a 403 shows its own message | **Met.** `GatedTabsTest`, `goalsCard`'s capability check, and VM `a_403_shows_the_feature_s_own_reason`. One account's goals can't reach another's Home: `a_late_answer_for_the_previous_account_never_reaches_the_next_one` on Android, and `reset()` on iOS (build only). |
 | 12 | No figure computed on the client | **Met.** The only arithmetic is the bar fill from `progress_percent`. |
 | 13 | ktlintCheck, Android build and tests, iOS `xcodebuild` pass; the PR states all three | **Met.** See Verification. |
 
@@ -149,15 +149,24 @@ Check light and dark, the smallest and largest phone, and the largest font scale
   - how debts affect long-term goals
   - the regional disclaimer's text is still a draft placeholder
 
+## Fixed after the first manager review
+
+| Finding | Fix |
+|---|---|
+| **iOS kept one account's goals on the next one's Home.** `reset()` cleared the recent rows and capabilities but not `goals`, and didn't move `goalsGeneration`. After a sign-out and a different sign-in, Home showed the previous account's goals until the new list arrived, or indefinitely if that request failed, and an answer still on its way for the previous account could land. | iOS `reset()` clears `goals` and bumps `goalsGeneration`. Android already replaced its whole state on bind, but had the same late-answer gap when the new account's first read failed: `bind` now bumps the counter too. The Android test runs exactly that order and was **checked to fail** without the bump. A first version of the test passed either way, because the new account's own request also moves the counter, so it was rewritten until it could fail. iOS has no test target; it needs hand check 4 in the review. |
+| **An overdue goal on iOS could have its date moved silently.** The picker only allows today onward, but an overdue goal's selection is in the past, and whether SwiftUI clamps and writes back wasn't established. | Not left to SwiftUI. A past date is shown as text, with "Change date" and "Remove date"; the picker appears only once a new date is chosen. Android was never affected: its picker only writes on Done. |
+| The limit was written into the copy ("20") while `OPEN_LIMIT` and the 409 carry the number | `goals_block_too_many` takes `{0}`. `GoalEdit.blockText` / `addBlockText` give each reason the figure its sentence needs, so no screen has to know which sentence takes which argument. The refusal's own string, which screens render without arguments, is now number-free. Tested. |
+| `WizardField` locked while saving but didn't look it | Dimmed like `AmountField`. |
+
 ## Verification
 
 ```
 ./gradlew ktlintCheck                            clean
 ./gradlew :androidApp:assembleDebug              BUILD SUCCESSFUL
-./gradlew :androidApp:testDebugUnitTest          281 tests, 0 failures
-./gradlew :sharedLogic:testAndroidHostTest       598 tests, 0 failures (incl. the SKIE @Throws guard)
-./gradlew :sharedLogic:iosSimulatorArm64Test     591 tests, 0 failures
+./gradlew :androidApp:testDebugUnitTest          283 tests, 0 failures
+./gradlew :sharedLogic:testAndroidHostTest       599 tests, 0 failures (incl. the SKIE @Throws guard)
+./gradlew :sharedLogic:iosSimulatorArm64Test     592 tests, 0 failures
 xcodebuild … -sdk iphonesimulator                ** BUILD SUCCEEDED **
 ```
 
-New with this ticket: 20 view-model tests, 2 more navigation tests (`GatedTabsTest`, 7 in all) and 45 shared tests (25 `GoalEditTest`, 6 `GoalTest`, 11 `KtorGoalsRepositoryTest`, 3 `ApiErrorMapperTest`).
+New with this ticket: 20 goals view-model tests, 2 Home view-model tests, 2 more navigation tests (`GatedTabsTest`, 7 in all) and 46 shared tests (26 `GoalEditTest`, 6 `GoalTest`, 11 `KtorGoalsRepositoryTest`, 3 `ApiErrorMapperTest`).

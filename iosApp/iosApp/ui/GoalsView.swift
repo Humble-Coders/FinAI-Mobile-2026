@@ -122,7 +122,9 @@ struct GoalsView: View {
                         Text(L.t(Strings.shared.goals_new)).foregroundColor(.primary)
                         // At the limit, said before the editor opens.
                         if model.atLimit {
-                            Text(L.t(Strings.shared.goals_block_too_many)).font(.caption).foregroundColor(.secondary)
+                            Text(GoalEdit.shared.blockText(block: .tooMany, currency: model.currency, locale: model.locale))
+                                .font(.caption)
+                                .foregroundColor(.secondary)
                         }
                     }
                     Spacer(minLength: 0)

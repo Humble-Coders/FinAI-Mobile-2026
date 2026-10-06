@@ -242,6 +242,28 @@ object GoalEdit {
         null -> if (Money.isPositive(normalized(amount, currency), Money.fractionDigits(currency))) null else AddMoneyBlock.ZERO
     }
 
+    /**
+     * [block] in words, with the figure its sentence needs: the limit for
+     * [GoalBlock.TOO_MANY], the currency for the "too many decimal places"
+     * ones. Here rather than at each screen, so neither app has to know which
+     * sentence takes which argument — and the limit is said from
+     * [OPEN_LIMIT], not written into the copy where it would go stale.
+     */
+    fun blockText(block: GoalBlock, currency: String, locale: String = "en"): String = when (block) {
+        GoalBlock.TOO_MANY -> LocalizationRegistry.format(block.messageKey, listOf(OPEN_LIMIT.toString()), locale)
+
+        GoalBlock.TARGET_TOO_PRECISE, GoalBlock.SAVED_TOO_PRECISE, GoalBlock.CONTRIBUTION_TOO_PRECISE ->
+            LocalizationRegistry.format(block.messageKey, listOf(currency), locale)
+
+        else -> LocalizationRegistry.get(block.messageKey, locale)
+    }
+
+    /** [block] in words, as [blockText] does for a goal. */
+    fun addBlockText(block: AddMoneyBlock, currency: String, locale: String = "en"): String = when (block) {
+        AddMoneyBlock.TOO_PRECISE -> LocalizationRegistry.format(block.messageKey, listOf(currency), locale)
+        else -> LocalizationRegistry.get(block.messageKey, locale)
+    }
+
     /** [amount] as it will be sent. Call after [blockingReasonForAdd] said yes. */
     fun addAmount(amount: String, currency: String): String = normalized(amount, currency)
 

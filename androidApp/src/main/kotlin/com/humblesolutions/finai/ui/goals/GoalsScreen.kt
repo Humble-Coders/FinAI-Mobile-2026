@@ -57,6 +57,7 @@ import com.humblesolutions.finai.ui.components.Waves
 import com.humblesolutions.finai.ui.components.tint
 import com.humblesolutions.finai.ui.components.vector
 import com.humblesolutions.finai.ui.strings
+import com.humblesolutions.finai.usecase.GoalBlock
 import com.humblesolutions.finai.usecase.GoalEdit
 
 /** What the Goals tab can ask of its model, passed down rather than reached for. */
@@ -312,7 +313,11 @@ private fun NewGoalRow(state: GoalsUiState, onNew: () -> Unit) {
             Text(strings(Strings.goals_new), style = MaterialTheme.typography.bodyLarge)
             // At the limit, said before the editor opens rather than after five fields.
             if (state.atLimit) {
-                Text(strings(Strings.goals_block_too_many), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    GoalEdit.blockText(GoalBlock.TOO_MANY, state.currency, state.locale),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
     }

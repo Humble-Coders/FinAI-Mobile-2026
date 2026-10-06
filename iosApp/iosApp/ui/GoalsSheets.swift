@@ -60,6 +60,15 @@ struct GoalEditorSheet: View {
                 Section {
                     if model.targetDate == nil {
                         Button(L.t(Strings.shared.goals_field_date)) { model.targetDate = isoDate(Date()) }
+                    } else if let past = pastDate {
+                        // An overdue goal's date is shown, not handed to a
+                        // picker that only allows today onward: how SwiftUI
+                        // resolves a selection outside its range is not ours
+                        // to guess, and if it clamped and wrote back, fixing
+                        // a name would quietly move the date to today (#53).
+                        LabeledContent(L.t(Strings.shared.goals_field_date), value: past)
+                        Button(L.t(Strings.shared.goals_field_date_change)) { model.targetDate = isoDate(Date()) }
+                        Button(L.t(Strings.shared.goals_field_date_clear), role: .destructive) { model.targetDate = nil }
                     } else {
                         DatePicker(
                             L.t(Strings.shared.goals_field_date),
@@ -73,7 +82,7 @@ struct GoalEditorSheet: View {
                     VStack(alignment: .leading, spacing: 4) {
                         // The reason Save is off, in the words the shared rule chose.
                         if let notice = model.editNotice {
-                            Text(L.t(notice.messageKey, model.currency)).foregroundColor(.red)
+                            Text(GoalEdit.shared.blockText(block: notice, currency: model.currency, locale: model.locale)).foregroundColor(.red)
                         }
                         // A refusal from the server, which has the last word.
                         if let errorKey = model.editErrorKey {
@@ -169,6 +178,12 @@ struct GoalEditorSheet: View {
         Binding(get: { model.confirmingDeleteId != nil }, set: { if !$0 { model.confirmingDeleteId = nil } })
     }
 
+    /// The target date written out, when it is before today; nil otherwise.
+    private var pastDate: String? {
+        guard let iso = model.targetDate, let date = parseDate(iso), date < startOfToday() else { return nil }
+        return date.formatted(date: .abbreviated, time: .omitted)
+    }
+
     private var dateBinding: Binding<Date> {
         Binding(
             get: { model.targetDate.flatMap(parseDate) ?? Date() },
@@ -203,7 +218,9 @@ struct AddToGoalSheet: View {
                     Text(L.t(Strings.shared.goals_field_add_amount))
                 } footer: {
                     VStack(alignment: .leading, spacing: 4) {
-                        if let notice = model.addNotice { Text(L.t(notice.messageKey, model.currency)).foregroundColor(.red) }
+                        if let notice = model.addNotice {
+                            Text(GoalEdit.shared.addBlockText(block: notice, currency: model.currency, locale: model.locale)).foregroundColor(.red)
+                        }
                         if let errorKey = model.addErrorKey { Text(L.t(errorKey)).foregroundColor(.red) }
                     }
                 }

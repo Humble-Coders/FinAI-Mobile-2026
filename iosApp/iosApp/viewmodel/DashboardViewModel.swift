@@ -162,6 +162,11 @@ final class DashboardViewModel: ObservableObject {
         errorKey = nil
         recent = []
         capabilities = nil
+        // Another person's goals must never reach the next one's Home (#53):
+        // cleared here, and the counter moved so an answer still on its way
+        // for the previous account is dropped when it lands.
+        goals = nil
+        goalsGeneration += 1
         spendingExpanded = false
         breakdownOpen = false
         breakdown = nil

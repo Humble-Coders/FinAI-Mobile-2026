@@ -178,7 +178,9 @@ internal fun WizardField(
             singleLine = true,
             enabled = enabled,
             interactionSource = interaction,
-            textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
+            // Dimmed while locked, as AmountField is, so a field that will not
+            // take typing does not look as though it would.
+            textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (enabled) 1f else 0.6f)),
             cursorBrush = SolidColor(FinAiPalette.Green),
             keyboardOptions = KeyboardOptions(
                 capitalization = capitalization,

@@ -90,6 +90,9 @@ class DashboardViewModel : ViewModel() {
         if (userId.isBlank() || userId == boundTo) return
         repositories?.close()
         generation++
+        // So a goals answer still on its way for the previous account is
+        // dropped when it lands, rather than shown to this one (#53).
+        goalsGeneration++
         boundTo = userId
         _uiState.value = DashboardUiState()
         repositories = build() ?: return

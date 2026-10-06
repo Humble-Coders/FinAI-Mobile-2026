@@ -195,7 +195,7 @@ internal fun GoalEditorSheet(state: GoalsUiState, actions: GoalEditorActions) {
             )
 
             notice?.let {
-                Text(strings(it.messageKey, state.currency), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                Text(GoalEdit.blockText(it, state.currency, state.locale), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             }
             state.editErrorKey?.let {
                 Text(strings(it), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
@@ -343,7 +343,7 @@ internal fun AddToGoalSheet(state: GoalsUiState, actions: AddToGoalActions) {
                 enabled = !busy,
             )
             state.addNotice?.let {
-                Text(strings(it.messageKey, state.currency), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                Text(GoalEdit.addBlockText(it, state.currency, state.locale), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             }
             state.addErrorKey?.let {
                 Text(strings(it), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)

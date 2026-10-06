@@ -167,6 +167,16 @@ class GoalEditTest {
         assertFalse(changes.clearMonthlyContribution)
     }
 
+    /** The limit is said from the constant, never typed into the copy where it would go stale. */
+    @Test
+    fun each_reason_is_worded_with_the_figure_its_sentence_needs() {
+        assertTrue(GoalEdit.blockText(GoalBlock.TOO_MANY, "CAD").contains(GoalEdit.OPEN_LIMIT.toString()))
+        assertEquals("CAD doesn't use that many decimal places.", GoalEdit.blockText(GoalBlock.TARGET_TOO_PRECISE, "CAD"))
+        assertEquals("Give the goal a name.", GoalEdit.blockText(GoalBlock.NO_NAME, "CAD"))
+        assertEquals("JPY doesn't use that many decimal places.", GoalEdit.addBlockText(AddMoneyBlock.TOO_PRECISE, "JPY"))
+        assertFalse(GoalEdit.blockText(GoalBlock.TOO_MANY, "CAD").contains("{0}"))
+    }
+
     // ── Adding money ────────────────────────────────────────────────────
 
     @Test
