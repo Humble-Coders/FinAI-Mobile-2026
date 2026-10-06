@@ -7,6 +7,7 @@ import com.humblesolutions.finai.model.NewTransaction
 import com.humblesolutions.finai.model.PatchOutcome
 import com.humblesolutions.finai.model.ReviewPage
 import com.humblesolutions.finai.model.Transaction
+import com.humblesolutions.finai.model.TransactionDirection
 import com.humblesolutions.finai.model.TransactionPatch
 import kotlin.coroutines.cancellation.CancellationException
 
@@ -65,6 +66,23 @@ interface TransactionsRepository {
      */
     @Throws(ApiException::class, CancellationException::class)
     suspend fun recent(count: Int): List<Transaction> = list().rows.take(count)
+
+    /**
+     * One page of a month's rows in one direction, or under one category —
+     * what the Income, Expenses, Investments and Debts screens list.
+     *
+     * A server without these filters ignores them and sends the month whole,
+     * so a caller still narrows the page itself
+     * ([com.humblesolutions.finai.usecase.MoneyDetail.rowsFor]). The default
+     * here is that older server, for a fake that has no filters to apply.
+     */
+    @Throws(ApiException::class, CancellationException::class)
+    suspend fun browse(
+        month: String?,
+        direction: TransactionDirection?,
+        categorySlug: String?,
+        cursor: String?,
+    ): ReviewPage = list(month = month, cursor = cursor)
 
     /**
      * Fix a row. Whatever changed, the row has been looked at, so it leaves

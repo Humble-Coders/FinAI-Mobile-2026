@@ -535,7 +535,7 @@ private val Directions = listOf(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun CategorySheet(state: ManualEntryUiState, onChosen: (String?) -> Unit, onDismiss: () -> Unit) {
+internal fun CategorySheet(state: ManualEntryUiState, onChosen: (String?) -> Unit, onDismiss: () -> Unit) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
         SheetTitle(strings(Strings.manual_entry_category_label))
         LazyColumn(Modifier.fillMaxWidth()) {
@@ -568,7 +568,7 @@ private fun CategorySheet(state: ManualEntryUiState, onChosen: (String?) -> Unit
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun DateDialog(
+internal fun DateDialog(
     chosen: LocalDate?,
     today: LocalDate,
     onChosen: (LocalDate) -> Unit,

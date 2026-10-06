@@ -10,7 +10,12 @@ import com.humblesolutions.finai.util.Money
 data class CommitmentDraft(
     val name: String = "",
     val amount: String = "",
-)
+    /** The day of the month it falls due, as typed; blank for "not said". */
+    val dueDay: String = "",
+) {
+    /** The due day as a number, or null when blank or not a day of a month. */
+    val dueDayNumber: Int? get() = dueDay.trim().toIntOrNull()?.takeIf { it in 1..31 }
+}
 
 /** Why a commitment edit cannot be saved yet. */
 enum class CommitmentBlock(val messageKey: String) {
@@ -21,6 +26,7 @@ enum class CommitmentBlock(val messageKey: String) {
     AMOUNT_ZERO(Strings.manual_entry_block_amount_zero),
     NOTHING_CHANGED(Strings.commitment_edit_unchanged),
     TOO_MANY(Strings.commitment_add_limit),
+    DUE_DAY_INVALID(Strings.commitment_due_day_invalid),
 }
 
 /**
@@ -40,13 +46,21 @@ object CommitmentEdit {
     /** The server's limit on a list of wizard items (`MAX_ITEMS` there). */
     const val COUNT_LIMIT = 20
 
-    fun draftOf(commitment: Commitment): CommitmentDraft = CommitmentDraft(name = commitment.name, amount = commitment.expected)
+    fun draftOf(commitment: Commitment): CommitmentDraft = CommitmentDraft(
+        name = commitment.name,
+        amount = commitment.expected,
+        dueDay = commitment.dueDay?.toString().orEmpty(),
+    )
 
     fun blockingReason(original: Commitment, draft: CommitmentDraft, currency: String): CommitmentBlock? {
         valid(draft, currency)?.let { return it }
         val digits = Money.fractionDigits(currency)
         // Compared normalised: "1800" and "1800.00" are the same commitment.
-        if (draft.name.trim() == original.name && Money.normalize(draft.amount, digits) == Money.normalize(original.expected, digits)) {
+        if (
+            draft.name.trim() == original.name &&
+            Money.normalize(draft.amount, digits) == Money.normalize(original.expected, digits) &&
+            draft.dueDayNumber == original.dueDay
+        ) {
             return CommitmentBlock.NOTHING_CHANGED
         }
         return null
@@ -70,6 +84,8 @@ object CommitmentEdit {
         val digits = Money.fractionDigits(currency)
         val amount = Money.normalize(draft.amount, digits) ?: return CommitmentBlock.AMOUNT_NOT_MONEY
         if (!Money.isPositive(amount, digits)) return CommitmentBlock.AMOUNT_ZERO
+        // Optional, but a day no month has is refused rather than dropped.
+        if (draft.dueDay.isNotBlank() && draft.dueDayNumber == null) return CommitmentBlock.DUE_DAY_INVALID
         return null
     }
 
@@ -88,7 +104,7 @@ object CommitmentEdit {
         if (index < 0) return null
         val amount = Money.normalize(draft.amount, Money.fractionDigits(setup.currency)) ?: return null
         val changed = setup.obligations.toMutableList()
-        changed[index] = changed[index].copy(name = draft.name.trim(), monthlyAmount = amount)
+        changed[index] = changed[index].copy(name = draft.name.trim(), monthlyAmount = amount, dueDay = draft.dueDayNumber)
         return setup.copy(obligations = changed)
     }
 
@@ -101,7 +117,7 @@ object CommitmentEdit {
         if (setup.obligations.size >= COUNT_LIMIT) return null
         val amount = Money.normalize(draft.amount, Money.fractionDigits(setup.currency)) ?: return null
         val name = draft.name.trim().takeIf { it.isNotEmpty() } ?: return null
-        return setup.copy(obligations = setup.obligations + Obligation(name = name, monthlyAmount = amount))
+        return setup.copy(obligations = setup.obligations + Obligation(name = name, monthlyAmount = amount, dueDay = draft.dueDayNumber))
     }
 
     /**

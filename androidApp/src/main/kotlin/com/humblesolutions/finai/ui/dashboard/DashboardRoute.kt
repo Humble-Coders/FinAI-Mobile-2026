@@ -7,6 +7,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.humblesolutions.finai.BuildConfig
 import com.humblesolutions.finai.ui.components.LoaderSignal
+import com.humblesolutions.finai.usecase.MoneyKind
 
 /**
  * The dashboard with its own view model (PRD F3).
@@ -22,6 +23,7 @@ internal fun DashboardRoute(
     onReview: () -> Unit,
     onViewAll: () -> Unit,
     onSignOut: () -> Unit,
+    onOpenMoney: (MoneyKind) -> Unit = {},
 ) {
     val model: DashboardViewModel = viewModel()
     val state by model.uiState.collectAsStateWithLifecycle()
@@ -41,6 +43,7 @@ internal fun DashboardRoute(
         onReview = onReview,
         onViewAll = onViewAll,
         onSignOut = onSignOut,
+        onOpenMoney = onOpenMoney,
         commitments = CommitmentActions(
             onEdit = model::editCommitment,
             onAdd = model::addCommitment,

@@ -98,6 +98,8 @@ data class Flow(
     val actual: String = "0",
     /** Null until the wizard is filled in — never zero, which would read as a figure. */
     val expected: String? = null,
+    /** Last month's actual; null when last month has no rows, so no "vs last month" is drawn. */
+    val previous: String? = null,
 ) {
     /** Whether "of X expected" can be shown at all. */
     val hasExpectation: Boolean get() = expected != null
@@ -126,6 +128,11 @@ data class Flow(
 data class Stock(
     val balance: String = "0",
     val moved: String = "0",
+    /** Last month's [moved]; null when last month has no rows. */
+    @SerialName("previous_moved")
+    val previousMoved: String? = null,
+    /** Money taken back out this month (credits under the same category), never netted against [moved]. */
+    val withdrawn: String = "0",
 ) {
     /** Whether anything moved, so the screen can omit a line reading "0.00". */
     val movedThisMonth: Boolean get() = Money.signOf(moved) > 0
@@ -144,6 +151,9 @@ data class Commitment(
     val name: String = "",
     val expected: String = "0",
     val match: CommitmentMatch? = null,
+    /** The day of the month it falls due, when the person said; null otherwise. */
+    @SerialName("due_day")
+    val dueDay: Int? = null,
 ) {
     val wasSeen: Boolean get() = match != null
 
@@ -177,6 +187,13 @@ data class CommitmentMatch(
 data class MonthPoint(
     val month: String = "",
     val net: String? = null,
+    /** The month's parts — all null together with [net] for a month with no rows. */
+    val income: String? = null,
+    val expenses: String? = null,
+    val invested: String? = null,
+    val withdrawn: String? = null,
+    @SerialName("debt_paid")
+    val debtPaid: String? = null,
 ) {
     val hasData: Boolean get() = net != null
 }

@@ -83,6 +83,7 @@ import androidx.compose.ui.layout.SubcomposeLayout
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
@@ -115,6 +116,7 @@ import com.humblesolutions.finai.ui.components.vector
 import com.humblesolutions.finai.ui.strings
 import com.humblesolutions.finai.ui.theme.FinAiPalette
 import com.humblesolutions.finai.usecase.DashboardTrend
+import com.humblesolutions.finai.usecase.MoneyKind
 
 /**
  * The dashboard (PRD F3): one month of what happened, against what was
@@ -141,6 +143,7 @@ fun DashboardScreen(
     onViewAll: () -> Unit,
     onSignOut: () -> Unit,
     commitments: CommitmentActions = CommitmentActions(),
+    onOpenMoney: (MoneyKind) -> Unit = {},
 ) {
     val dark = isSystemInDarkTheme()
     if (state.showsCommitmentEditor) CommitmentEditor(state, commitments)
@@ -195,7 +198,7 @@ fun DashboardScreen(
                         when {
                             state.loadFailed -> LoadFailed(state, onRetry)
                             state.showsEmptyState -> Unit
-                            else -> Figures(state, dark)
+                            else -> Figures(state, dark, onOpenMoney)
                         }
                         Spacer(Modifier.height(26.dp))
                         Actions(state, dark, onImportStatement, onAddTransaction, onReview)
@@ -603,9 +606,17 @@ private val InvestmentsAccent = Accent(FinAiPalette.Blue, Color(0xFF2563EB), Col
 private val DebtsAccent = Accent(FinAiPalette.Amber, Color(0xFFB45309), FinAiPalette.Amber)
 
 @Composable
-private fun Figures(state: DashboardUiState, dark: Boolean) {
+private fun Figures(state: DashboardUiState, dark: Boolean, onOpen: (MoneyKind) -> Unit) {
     EqualGrid(spacing = 12.dp) {
-        FigureCard(Icons.Filled.AccountBalanceWallet, IncomeAccent, dark, strings(Strings.dashboard_income), state.incomeAmount, state.incomeExpectation)
+        FigureCard(
+            Icons.Filled.AccountBalanceWallet,
+            IncomeAccent,
+            dark,
+            strings(Strings.dashboard_income),
+            state.incomeAmount,
+            state.incomeExpectation,
+            onClick = { onOpen(MoneyKind.INCOME) },
+        )
         FigureCard(
             Icons.Filled.CreditCard,
             ExpensesAccent,
@@ -614,9 +625,26 @@ private fun Figures(state: DashboardUiState, dark: Boolean) {
             state.expensesAmount,
             state.expensesExpectation,
             detailIsWarning = state.expensesAreOver,
+            onClick = { onOpen(MoneyKind.EXPENSES) },
         )
-        FigureCard(Icons.Filled.Savings, InvestmentsAccent, dark, strings(Strings.dashboard_investments), state.investmentsAmount, state.investmentsMovement)
-        FigureCard(Icons.AutoMirrored.Filled.ReceiptLong, DebtsAccent, dark, strings(Strings.dashboard_debts), state.debtsAmount, state.debtsMovement)
+        FigureCard(
+            Icons.Filled.Savings,
+            InvestmentsAccent,
+            dark,
+            strings(Strings.dashboard_investments),
+            state.investmentsAmount,
+            state.investmentsMovement,
+            onClick = { onOpen(MoneyKind.INVESTMENTS) },
+        )
+        FigureCard(
+            Icons.AutoMirrored.Filled.ReceiptLong,
+            DebtsAccent,
+            dark,
+            strings(Strings.dashboard_debts),
+            state.debtsAmount,
+            state.debtsMovement,
+            onClick = { onOpen(MoneyKind.DEBTS) },
+        )
     }
 }
 
@@ -656,6 +684,7 @@ private fun FigureCard(
     amount: String,
     detail: String?,
     detailIsWarning: Boolean = false,
+    onClick: () -> Unit = {},
 ) {
     val surface = if (dark) FinAiPalette.DarkSurface else Color.White
     val amountStyle = MaterialTheme.typography.titleLarge.copy(
@@ -668,6 +697,8 @@ private fun FigureCard(
             .background(surface)
             .background(accent.icon.copy(alpha = if (dark) 0.10f else 0.05f))
             .border(1.dp, Color.White.copy(alpha = if (dark) 0.06f else 0.7f), RoundedCornerShape(22.dp))
+            // The chevron always said this opens something; now it does.
+            .clickable(role = Role.Button, onClickLabel = strings(Strings.money_open_hint, label), onClick = onClick)
             .padding(14.dp),
     ) {
         // The design sets the figure beside the icon, which leaves it about

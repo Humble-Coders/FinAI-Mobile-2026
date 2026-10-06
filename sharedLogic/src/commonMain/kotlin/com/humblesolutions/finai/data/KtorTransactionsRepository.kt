@@ -8,6 +8,7 @@ import com.humblesolutions.finai.model.NewTransaction
 import com.humblesolutions.finai.model.PatchOutcome
 import com.humblesolutions.finai.model.ReviewPage
 import com.humblesolutions.finai.model.Transaction
+import com.humblesolutions.finai.model.TransactionDirection
 import com.humblesolutions.finai.model.TransactionPatch
 import com.humblesolutions.finai.repository.SessionTokenSource
 import com.humblesolutions.finai.repository.TransactionsRepository
@@ -49,6 +50,19 @@ class KtorTransactionsRepository internal constructor(
         // "every month", which is what omitting it means.
         if (month != null) parameter("month", month)
         if (needsReview != null) parameter("needs_review", needsReview)
+        if (cursor != null) parameter("cursor", cursor)
+    }
+
+    @Throws(ApiException::class, CancellationException::class)
+    override suspend fun browse(
+        month: String?,
+        direction: TransactionDirection?,
+        categorySlug: String?,
+        cursor: String?,
+    ): ReviewPage = http.getJson("transactions") {
+        if (month != null) parameter("month", month)
+        if (direction != null && direction != TransactionDirection.UNKNOWN) parameter("direction", direction.wire)
+        if (categorySlug != null) parameter("category", categorySlug)
         if (cursor != null) parameter("cursor", cursor)
     }
 

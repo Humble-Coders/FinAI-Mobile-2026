@@ -23,10 +23,10 @@ final class DashboardViewModel: ObservableObject {
     )
     @Published private(set) var data = Dashboard(
         month: "", currency: "", net: "0", previousNet: nil,
-        income: SharedLogic.Flow(actual: "0", expected: nil),
-        expenses: SharedLogic.Flow(actual: "0", expected: nil),
-        investments: Stock(balance: "0", moved: "0"),
-        debts: Stock(balance: "0", moved: "0"),
+        income: SharedLogic.Flow(actual: "0", expected: nil, previous: nil),
+        expenses: SharedLogic.Flow(actual: "0", expected: nil, previous: nil),
+        investments: Stock(balance: "0", moved: "0", previousMoved: nil, withdrawn: "0"),
+        debts: Stock(balance: "0", moved: "0", previousMoved: nil, withdrawn: "0"),
         commitments: [], trend: [], daily: [], pendingReview: 0
     )
     @Published private(set) var locale = "en"
@@ -50,7 +50,7 @@ final class DashboardViewModel: ObservableObject {
     @Published private(set) var addingCommitment = false
     /// Asking "Delete Rent?" before anything is sent.
     @Published var confirmingCommitmentDelete = false
-    @Published private(set) var commitmentDraft = CommitmentDraft(name: "", amount: "")
+    @Published private(set) var commitmentDraft = CommitmentDraft(name: "", amount: "", dueDay: "")
     @Published private(set) var commitmentSaving = false
     @Published private(set) var commitmentErrorKey: String?
 
@@ -216,12 +216,12 @@ final class DashboardViewModel: ObservableObject {
     }
 
     func setCommitmentName(_ name: String) {
-        commitmentDraft = CommitmentDraft(name: name, amount: commitmentDraft.amount)
+        commitmentDraft = CommitmentDraft(name: name, amount: commitmentDraft.amount, dueDay: commitmentDraft.dueDay)
         commitmentErrorKey = nil
     }
 
     func setCommitmentAmount(_ amount: String) {
-        commitmentDraft = CommitmentDraft(name: commitmentDraft.name, amount: amount)
+        commitmentDraft = CommitmentDraft(name: commitmentDraft.name, amount: amount, dueDay: commitmentDraft.dueDay)
         commitmentErrorKey = nil
     }
 
@@ -230,7 +230,7 @@ final class DashboardViewModel: ObservableObject {
         addingCommitment = true
         editingCommitment = nil
         confirmingCommitmentDelete = false
-        commitmentDraft = CommitmentDraft(name: "", amount: "")
+        commitmentDraft = CommitmentDraft(name: "", amount: "", dueDay: "")
         commitmentSaving = false
         commitmentErrorKey = nil
     }
