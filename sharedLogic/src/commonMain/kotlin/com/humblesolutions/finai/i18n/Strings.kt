@@ -647,6 +647,11 @@ object Strings {
     // Spoken by screen readers. Colour never carries "over" on its own.
     const val budget_line_a11y = "budget_line_a11y" // "{0}, spent {1} of {2}"
     const val budget_line_a11y_over = "budget_line_a11y_over" // "{0}, spent {1} of {2}, over by {3}"
+    const val budget_month_change = "budget_month_change" // "Month: {0}. Choose another month"
+    const val budget_month_pick_title = "budget_month_pick_title" // "Choose a month"
+    const val budget_month_previous_year = "budget_month_previous_year" // "Previous year"
+    const val budget_month_next_year = "budget_month_next_year" // "Next year"
+    const val budget_edit_line = "budget_edit_line" // "Edit {0}"
 
     // ── Goals (PRD F5, #52) ────────────────────────────────────────────
     const val tab_goals = "tab_goals" // "Goals"

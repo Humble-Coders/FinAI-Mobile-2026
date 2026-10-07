@@ -122,7 +122,7 @@ class BudgetViewModel(
     fun showMonth(month: String) {
         if (month == _uiState.value.month) return
         generation++
-        update { it.copy(month = month, refreshing = true, errorKey = null, loadFailed = false) }
+        update { it.copy(month = month, refreshing = true, switchingMonth = true, errorKey = null, loadFailed = false) }
         load(refresh = true)
     }
 
@@ -176,6 +176,7 @@ class BudgetViewModel(
                 locale = capabilities?.locale?.takeIf(String::isNotBlank) ?: it.locale,
                 loading = false,
                 refreshing = false,
+                switchingMonth = false,
                 loadFailed = false,
                 errorKey = null,
             )
@@ -209,6 +210,7 @@ class BudgetViewModel(
                 locale = capabilities?.locale?.takeIf(String::isNotBlank) ?: it.locale,
                 loading = false,
                 refreshing = false,
+                switchingMonth = false,
                 // A refresh that fails keeps the figures it had rather than
                 // zeroing them (CLAUDE.md → Data & caching).
                 loadFailed = it.budget == null,

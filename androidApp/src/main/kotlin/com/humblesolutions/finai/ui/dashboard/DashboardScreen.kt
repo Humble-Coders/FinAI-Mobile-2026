@@ -103,6 +103,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.humblesolutions.finai.i18n.Strings
 import com.humblesolutions.finai.ui.components.AmountField
+import com.humblesolutions.finai.ui.components.CollapsingTitleBar
 import com.humblesolutions.finai.ui.components.ErrorText
 import com.humblesolutions.finai.ui.components.Field
 import com.humblesolutions.finai.ui.components.FinAiIcon
@@ -112,6 +113,7 @@ import com.humblesolutions.finai.ui.components.LightStatusBarIcons
 import com.humblesolutions.finai.ui.components.ProviderButton
 import com.humblesolutions.finai.ui.components.Waves
 import com.humblesolutions.finai.ui.components.WizardField
+import com.humblesolutions.finai.ui.components.rememberTitleCollapse
 import com.humblesolutions.finai.ui.components.tint
 import com.humblesolutions.finai.ui.components.vector
 import com.humblesolutions.finai.ui.strings
@@ -165,10 +167,9 @@ fun DashboardScreen(
     LightStatusBarIcons(dark)
 
     val scroll = rememberScrollState()
-    val collapseDistance = with(LocalDensity.current) { COLLAPSE_DISTANCE.toPx() }
     // How far the header has shrunk into the bar, 0 to 1. Read while drawing,
     // not composing, so scrolling redraws two layers and recomposes nothing.
-    val collapsed = { (scroll.value / collapseDistance).coerceIn(0f, 1f) }
+    val collapsed = rememberTitleCollapse(scroll)
 
     Box(
         Modifier
@@ -246,9 +247,6 @@ fun DashboardScreen(
 /** How far the sheet rises over the field. */
 private val SHEET_OVERLAP = 28.dp
 
-/** The scroll over which the header shrinks into the bar: about its own height. */
-private val COLLAPSE_DISTANCE = 64.dp
-
 // ── The header ──────────────────────────────────────────────────────────
 
 @Composable
@@ -283,43 +281,10 @@ private fun Header(state: DashboardUiState, onReview: () -> Unit, modifier: Modi
     }
 }
 
-/**
- * The header once the page has scrolled: a slim bar pinned over the top, the
- * greeting centred in it and the bell still in reach. It fades in once the big
- * header has faded out. Solid rather than see-through, because figures pass
- * under it.
- */
+/** The header once the page has scrolled, with the bell still in reach. */
 @Composable
 private fun CompactHeader(state: DashboardUiState, dark: Boolean, collapsed: () -> Float, onReview: () -> Unit) {
-    val opacity = { ((collapsed() - 0.5f) * 2f).coerceIn(0f, 1f) }
-    // Composed only once there is something to show, so a bar at nothing
-    // opacity cannot catch a tap meant for the header under it.
-    val shown by remember { derivedStateOf { opacity() > 0f } }
-    if (!shown) return
-    Box(
-        Modifier
-            .fillMaxWidth()
-            .graphicsLayer {
-                alpha = opacity()
-                shadowElevation = 6.dp.toPx() * opacity()
-            }
-            .background(Field.top(dark))
-            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
-            .height(56.dp)
-            .padding(horizontal = 12.dp),
-    ) {
-        Text(
-            text = strings(Strings.tab_home),
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold,
-            color = Field.ink(),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier
-                .align(Alignment.Center)
-                .padding(horizontal = 52.dp)
-                .semantics { heading() },
-        )
+    CollapsingTitleBar(strings(Strings.tab_home), dark, collapsed) {
         Bell(state, onReview, 40.dp, Modifier.align(Alignment.CenterEnd))
     }
 }

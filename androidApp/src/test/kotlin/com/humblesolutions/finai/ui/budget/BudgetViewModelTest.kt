@@ -16,6 +16,7 @@ import com.humblesolutions.finai.repository.CapabilitiesRepository
 import com.humblesolutions.finai.repository.CategoriesRepository
 import com.humblesolutions.finai.usecase.BudgetBlock
 import com.humblesolutions.finai.util.BudgetChanged
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
@@ -47,8 +48,12 @@ class BudgetViewModelTest {
         var failRead: ApiException? = null
         var failWrite: ApiException? = null
 
+        /** When set, a read waits on it, so a test can look while it is in flight. */
+        var gate: CompletableDeferred<Unit>? = null
+
         override suspend fun get(month: String): Budget {
             reads += month
+            gate?.await()
             failRead?.let { throw it }
             return answer
         }
@@ -120,6 +125,42 @@ class BudgetViewModelTest {
         assertEquals(12, state.learning?.transactions)
         // Still shown: manual budgeting is available before the threshold.
         assertEquals(1, state.lines.size)
+    }
+
+    @Test
+    fun changing_month_raises_the_loader_until_that_month_arrives() = runTest {
+        val budgets = FakeBudgets()
+        val model = model(budgets)
+        budgets.gate = CompletableDeferred()
+
+        model.showMonth("2026-08")
+
+        assertTrue(model.uiState.value.switchingMonth, "the coin covers the change")
+        budgets.gate?.complete(Unit)
+        assertFalse(model.uiState.value.switchingMonth)
+    }
+
+    @Test
+    fun a_failed_change_of_month_still_lowers_the_loader() = runTest {
+        val budgets = FakeBudgets()
+        val model = model(budgets)
+        budgets.failRead = ApiException.NotFound()
+
+        model.showMonth("2026-08")
+
+        assertFalse(model.uiState.value.switchingMonth)
+    }
+
+    @Test
+    fun a_refresh_of_the_same_month_does_not_raise_the_loader() = runTest {
+        val budgets = FakeBudgets()
+        val model = model(budgets)
+        budgets.gate = CompletableDeferred()
+
+        model.load(refresh = true)
+
+        assertFalse(model.uiState.value.switchingMonth, "figures stay up under a refresh")
+        budgets.gate?.complete(Unit)
     }
 
     @Test

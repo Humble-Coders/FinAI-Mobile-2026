@@ -29,6 +29,13 @@ data class BudgetUiState(
 
     val loading: Boolean = true,
     val refreshing: Boolean = false,
+    /**
+     * A different month is being read. Raises the coin loader, unlike a
+     * background refresh after an import: the figures on screen belong to the
+     * month just left, and showing them under the new month's name would
+     * mislabel them.
+     */
+    val switchingMonth: Boolean = false,
     val loadFailed: Boolean = false,
     val errorKey: String? = null,
 
@@ -90,13 +97,6 @@ data class BudgetUiState(
         get() = DashboardMonths.parse(month)?.let {
             text(Strings.dashboard_month_display, Dates.monthShort(it, locale), it.year.toString())
         } ?: month
-
-    /** The months the selector offers, newest first. */
-    val months: List<String> get() = BudgetEdit.months(month)
-
-    fun monthOption(key: String): String = DashboardMonths.parse(key)?.let {
-        text(Strings.dashboard_month_display, Dates.monthShort(it, locale), it.year.toString())
-    } ?: key
 
     /** "Spent $380 of $1,400" across the whole month. */
     val totalsLabel: String

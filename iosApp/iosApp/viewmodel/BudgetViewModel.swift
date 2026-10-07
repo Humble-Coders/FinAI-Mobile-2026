@@ -24,6 +24,10 @@ final class BudgetViewModel: ObservableObject {
 
     @Published private(set) var loading = true
     @Published private(set) var refreshing = false
+    /// A different month is being read. Raises the coin loader, unlike a
+    /// background refresh after an import: the figures on screen belong to the
+    /// month just left. Android's `switchingMonth`.
+    @Published private(set) var switchingMonth = false
     @Published private(set) var loadFailed = false
     @Published private(set) var errorKey: String?
 
@@ -90,6 +94,7 @@ final class BudgetViewModel: ObservableObject {
         categories = []
         loading = true
         refreshing = false
+        switchingMonth = false
         loadFailed = false
         errorKey = nil
         cancelEdit()
@@ -121,6 +126,7 @@ final class BudgetViewModel: ObservableObject {
         generation += 1
         month = next
         refreshing = true
+        switchingMonth = true
         errorKey = nil
         loadFailed = false
         Task { await load(refresh: true) }
@@ -174,6 +180,7 @@ final class BudgetViewModel: ObservableObject {
         if let found = payload?.locale, !found.isEmpty { locale = found }
         loading = false
         refreshing = false
+        switchingMonth = false
         loadFailed = false
         errorKey = nil
     }
@@ -184,6 +191,7 @@ final class BudgetViewModel: ObservableObject {
         if let found = payload?.locale, !found.isEmpty { locale = found }
         loading = false
         refreshing = false
+        switchingMonth = false
         // A refresh that fails keeps the figures it had rather than zeroing
         // them (CLAUDE.md → Data & caching).
         loadFailed = budget == nil
@@ -331,7 +339,6 @@ final class BudgetViewModel: ObservableObject {
         !loading && !loadFailed && budget != nil && lines.isEmpty && savings == nil && debt == nil
     }
 
-    var months: [String] { BudgetEdit.shared.months(current: month, count: 12) }
 
     /**
      The categories a line can still be added for: everything the household

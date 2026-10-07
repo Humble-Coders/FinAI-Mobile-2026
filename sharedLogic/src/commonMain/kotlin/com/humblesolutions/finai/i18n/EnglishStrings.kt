@@ -614,6 +614,11 @@ val EnglishStrings: Map<String, String> = mapOf(
     Strings.budget_error_month_in_future to "That month hasn't started yet.",
     Strings.budget_line_a11y to "{0}, spent {1} of {2}",
     Strings.budget_line_a11y_over to "{0}, spent {1} of {2}, over by {3}",
+    Strings.budget_month_change to "Month: {0}. Choose another month",
+    Strings.budget_month_pick_title to "Choose a month",
+    Strings.budget_month_previous_year to "Previous year",
+    Strings.budget_month_next_year to "Next year",
+    Strings.budget_edit_line to "Edit {0}",
 
     // ── Goals (PRD F5, #52) ────────────────────────────────────────────
     Strings.tab_goals to "Goals",

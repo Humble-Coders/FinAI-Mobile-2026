@@ -32,8 +32,9 @@ internal fun BudgetRoute(
             onRequestedMonthShown()
         }
     }
-    // Only a first load earns the coin; changing month refreshes underneath.
-    LoaderSignal(key = "budget", active = state.loading)
+    // A first load and a change of month earn the coin; a refresh after an
+    // import happens underneath, with the figures left up.
+    LoaderSignal(key = "budget", active = state.loading || state.switchingMonth)
     BackHandler { onClose() }
 
     BudgetScreen(
