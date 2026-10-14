@@ -289,6 +289,29 @@ protocol TransactionEditing: ObservableObject {
     func cancelNewCategory()
     func createCategory()
     func deleteEditing()
+
+    /// Off for a row not saved yet (#55): the server files rows into categories
+    /// when they are saved, so there is nothing to choose until then.
+    var showsCategory: Bool { get }
+    /// The delete button and its question. A row not saved yet is removed, not deleted.
+    var deleteKey: String { get }
+    var deleteConfirmTitleKey: String { get }
+    var deleteConfirmKey: String { get }
+    /// The question's body; the saved-row wording names the row by its summary.
+    var deleteConfirmMessage: String { get }
+}
+
+/// What every screen but the import's check step says: a saved row, deleted.
+extension TransactionEditing {
+    var showsCategory: Bool { true }
+    var deleteKey: String { Strings.shared.transaction_delete }
+    var deleteConfirmTitleKey: String { Strings.shared.transaction_delete_confirm_title }
+    var deleteConfirmKey: String { Strings.shared.transaction_delete_confirm }
+    var deleteConfirmMessage: String {
+        let parts = deleteSummary
+        guard parts.count == 3 else { return "" }
+        return L.t(Strings.shared.transaction_delete_confirm_body, parts[0], parts[1], parts[2])
+    }
 }
 
 extension ReviewViewModel: TransactionEditing {
@@ -352,11 +375,13 @@ struct CorrectionSheet<Model: TransactionEditing>: View {
                         onSubmit: { dismissKeyboard() },
                         text: Binding(get: { model.draft.description_ }, set: { model.setDescription($0) })
                     )
-                    PickerField(
-                        label: L.t(Strings.shared.review_category_label),
-                        value: model.editCategoryName,
-                        placeholder: L.t(Strings.shared.review_category_choose)
-                    ) { choosingCategory = true }
+                    if model.showsCategory {
+                        PickerField(
+                            label: L.t(Strings.shared.review_category_label),
+                            value: model.editCategoryName,
+                            placeholder: L.t(Strings.shared.review_category_choose)
+                        ) { choosingCategory = true }
+                    }
                 }
                 Section {
                     ErrorText(messageKey: model.editErrorKey)
@@ -380,7 +405,7 @@ struct CorrectionSheet<Model: TransactionEditing>: View {
                         confirmingDelete = true
                     } label: {
                         HStack {
-                            Text(L.t(Strings.shared.transaction_delete))
+                            Text(L.t(model.deleteKey))
                             if model.deleting {
                                 Spacer()
                                 ProgressView()
@@ -390,11 +415,11 @@ struct CorrectionSheet<Model: TransactionEditing>: View {
                     .disabled(busy)
                 }
             }
-            .alert(L.t(Strings.shared.transaction_delete_confirm_title), isPresented: $confirmingDelete) {
-                Button(L.t(Strings.shared.transaction_delete_confirm), role: .destructive) { model.deleteEditing() }
+            .alert(L.t(model.deleteConfirmTitleKey), isPresented: $confirmingDelete) {
+                Button(L.t(model.deleteConfirmKey), role: .destructive) { model.deleteEditing() }
                 Button(L.t(Strings.shared.action_cancel), role: .cancel) {}
             } message: {
-                Text(deleteMessage)
+                Text(model.deleteConfirmMessage)
             }
             .navigationTitle(L.t(model.editTitleKey))
             .navigationBarTitleDisplayMode(.inline)
@@ -424,12 +449,6 @@ struct CorrectionSheet<Model: TransactionEditing>: View {
             }
         }
         .interactiveDismissDisabled(busy)
-    }
-
-    private var deleteMessage: String {
-        let parts = model.deleteSummary
-        guard parts.count == 3 else { return "" }
-        return L.t(Strings.shared.transaction_delete_confirm_body, parts[0], parts[1], parts[2])
     }
 
     private var directionBinding: Binding<TransactionDirection?> {

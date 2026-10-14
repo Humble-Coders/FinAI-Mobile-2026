@@ -117,18 +117,6 @@ class StatementImportFlowTest {
     }
 
     @Test
-    fun theRowsAreSavedAsParsedAgainstTheChosenAccount() {
-        val parsed = ParsedStatement(importId = "i-1", rows = listOf(row(), row(amount = "134.02")))
-
-        val body = StatementImportFlow.rowsToSave("acct-1", parsed)
-
-        assertEquals("acct-1", body.accountId)
-        assertEquals(listOf("12.40", "134.02"), body.rows.map { it.amount })
-        assertEquals("2026-08-14", body.rows.first().occurredOn)
-        assertEquals(96, body.rows.first().confidence)
-    }
-
-    @Test
     fun theSummarySaysOnlyWhatIsNotZeroAndCountsCorrectly() {
         val parsed = ParsedStatement(rows = List(12) { row() }, unparsedLineCount = 1)
 

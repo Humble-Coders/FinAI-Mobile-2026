@@ -46,6 +46,11 @@ struct StatementImportView: View {
             .scrollDismissesKeyboard(.interactively)
         }
         .safeAreaInset(edge: .top, spacing: 0) { header }
+        // Save stays in reach however long the statement: a hundred rows must
+        // not put the one thing to press at the bottom of a scroll (#55).
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            if model.step == .check { checkBar }
+        }
         .onAppear { model.bind(userId: userId, restoring: stored) }
         // Not while the camera is up: a full-screen cover makes this view
         // disappear, and unbinding then closed the clients — a photo read
@@ -53,6 +58,13 @@ struct StatementImportView: View {
         .onDisappear { if !takingPhoto { model.unbind() } }
         .onChange(of: model.snapshot) { _, snapshot in stored = snapshot }
         .sheet(isPresented: newAccountShown) { NewAccountSheet(model: model) }
+        .sheet(isPresented: editingShown) { CorrectionSheet(model: model) }
+        .alert(L.t(Strings.shared.import_check_discard_title), isPresented: $model.confirmingDiscard) {
+            Button(L.t(Strings.shared.import_check_discard), role: .destructive) { close() }
+            Button(L.t(Strings.shared.action_cancel), role: .cancel) {}
+        } message: {
+            Text(L.t(Strings.shared.import_check_discard_body))
+        }
         .fileImporter(isPresented: $pickingFile, allowedContentTypes: [.pdf, .image]) { result in
             if case .success(let url) = result, let copy = try? ImportFiles.adopt(url) {
                 model.filePicked(copy)
@@ -85,6 +97,10 @@ struct StatementImportView: View {
         Binding(get: { model.newAccount != nil }, set: { if !$0 { model.cancelNewAccount() } })
     }
 
+    private var editingShown: Binding<Bool> {
+        Binding(get: { model.editing != nil }, set: { if !$0 { model.cancelEdit() } })
+    }
+
     private func close() {
         model.discard()
         stored = model.snapshot
@@ -93,7 +109,14 @@ struct StatementImportView: View {
 
     private var header: some View {
         MintHeader(title: L.t(Strings.shared.import_title), step: stepNumber, backDisabled: model.working, solid: scrolledUnder) {
-            if model.step == .chooseFile { model.backToAccount() } else if !model.working { close() }
+            if model.step == .chooseFile {
+                model.backToAccount()
+            } else if model.step == .check {
+                // Leaving loses what was read: asked first (#55).
+                model.askDiscard()
+            } else if !model.working {
+                close()
+            }
         }
         .padding(.bottom, 4)
     }
@@ -116,6 +139,7 @@ struct StatementImportView: View {
         // The later steps keep their content; the panel gives them the ground.
         case .consent: MintPanel { consentStep }
         case .password: MintPanel { passwordStep }
+        case .check: MintPanel { checkStep }
         case .done: MintPanel { doneStep }
         case .failed: MintPanel { failedStep }
         // The coin loader covers these; its caption says which.
@@ -417,7 +441,12 @@ struct StatementImportView: View {
                         .padding(.top, 6)
                     VStack(spacing: 0) {
                         ForEach(Array(day.rows.enumerated()), id: \.element.id) { index, row in
-                            importedRow(row)
+                            // Each opens the editor, where a category is fixed (#55).
+                            importedRow(row, description: model.rowDescription(row), hint: model.editHint(row)) {
+                                if let label = model.categoryLabel(row) {
+                                    note(label, warning: !model.isFiled(row))
+                                }
+                            }
                             if index != day.rows.count - 1 {
                                 Divider().overlay(Brand.border)
                             }
@@ -453,35 +482,126 @@ struct StatementImportView: View {
             .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 
-    private func importedRow(_ row: SharedLogic.Transaction) -> some View {
-        HStack(alignment: .center, spacing: 10) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(model.titleOf(row)).font(.body).lineLimit(1).truncationMode(.tail)
-                // Filed, with the names not to hand: no chip, rather than a wrong one.
-                if let label = model.categoryLabel(row) {
-                    Text(label)
-                        .font(.caption2)
-                        .foregroundColor(model.isFiled(row) ? Brand.textMuted : Brand.amber)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(model.isFiled(row) ? Brand.surfaceField : Brand.amber.opacity(0.12))
-                        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+    /// One row of a statement: its name, a note under it, and its amount.
+    /// Tapping it opens the editor — before saving, to fix what was read;
+    /// after, to fix where it was filed.
+    private func importedRow<Note: View>(
+        _ row: SharedLogic.Transaction,
+        description: String,
+        hint: String,
+        @ViewBuilder note: () -> Note
+    ) -> some View {
+        Button { model.edit(row.id) } label: {
+            HStack(alignment: .center, spacing: 10) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(model.titleOf(row)).font(.body).lineLimit(1).truncationMode(.tail)
+                    note()
+                }
+                Spacer()
+                Text(model.amountLabel(row))
+                    .font(.body.weight(.semibold))
+                    // Green for money in; money out stays plain. Colouring both
+                    // makes every row shout and the direction stops registering.
+                    .foregroundColor(row.direction == .credit ? Brand.green : .primary)
+                Image(systemName: "chevron.right")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundColor(Brand.textMuted)
+                    .accessibilityHidden(true)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .frame(minHeight: 56)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        // One announcement per row: the name, the note and the amount, rather
+        // than three separate stops.
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(description)
+        .accessibilityHint(hint)
+        .accessibilityAddTraits(.isButton)
+    }
+
+    /// A small label under a row's name: what it was filed as, or a doubt.
+    private func note(_ text: String, warning: Bool) -> some View {
+        Text(text)
+            .font(.caption2)
+            .foregroundColor(warning ? Brand.amber : Brand.textMuted)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(warning ? Brand.amber.opacity(0.12) : Brand.surfaceField)
+            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+    }
+
+    // MARK: - Checking before saving (#55)
+
+    /// Every row the statement produced, before any of it is saved. A row opens
+    /// the editor to fix what was read, or to remove it; Save and Discard sit
+    /// in the bar beneath (`checkBar`).
+    private var checkStep: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            title(Strings.shared.import_check_title)
+            if model.readAgain {
+                HStack(alignment: .center) {
+                    Text(L.t(Strings.shared.import_check_read_again))
+                        .font(.footnote)
+                        .foregroundColor(Brand.amber)
+                    Spacer()
+                    Button(L.t(Strings.shared.import_check_got_it)) { model.dismissReadAgain() }
+                        .font(.footnote.weight(.semibold))
+                }
+                .padding(12)
+                .background(Brand.amber.opacity(0.12), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .onAppear { AccessibilityNotification.Announcement(L.t(Strings.shared.import_check_read_again)).post() }
+            }
+            Text(L.t(Strings.shared.import_check_subtitle)).foregroundColor(Brand.textMuted)
+
+            if model.noneLeft {
+                Text(L.t(Strings.shared.import_check_none_left))
+            } else {
+                HStack(spacing: 6) {
+                    chip(model.checkCount, warning: false)
+                    if let out = model.checkTotalOut { chip(L.t(Strings.shared.import_extracted_out, out), warning: false) }
+                    if let money = model.checkTotalIn { chip(L.t(Strings.shared.import_extracted_in, money), warning: false) }
+                }
+                ForEach(model.checkDays, id: \.date) { day in
+                    Text(model.dateLabel(day.date))
+                        .font(.caption)
+                        .foregroundColor(Brand.textMuted)
+                        .padding(.top, 6)
+                    VStack(spacing: 0) {
+                        ForEach(Array(day.rows.enumerated()), id: \.element.id) { index, row in
+                            importedRow(row, description: model.checkRowDescription(row), hint: model.checkRowHint(row)) {
+                                if let key = model.checkNoteKey(row) {
+                                    note(L.t(key), warning: key == Strings.shared.import_check_doubt)
+                                }
+                            }
+                            if index != day.rows.count - 1 {
+                                Divider().overlay(Brand.border)
+                            }
+                        }
+                    }
+                    .background(Brand.surface)
+                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                 }
             }
-            Spacer()
-            Text(model.amountLabel(row))
-                .font(.body.weight(.semibold))
-                // Green for money in; money out stays plain. Colouring both
-                // makes every row shout and the direction stops registering.
-                .foregroundColor(row.direction == .credit ? Brand.green : .primary)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .frame(minHeight: 56)
-        // One announcement per row: the name, what it was filed as and the
-        // amount, rather than three separate stops.
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(model.rowDescription(row))
+    }
+
+    /// Save, or leave without saving — pinned under the list while checking.
+    private var checkBar: some View {
+        VStack(spacing: 4) {
+            ErrorText(messageKey: model.saveErrorKey)
+            GradientButton(title: model.saveCheckedLabel, enabled: model.canSaveChecked) { model.saveChecked() }
+            Button(L.t(Strings.shared.import_check_discard)) { model.askDiscard() }
+                .frame(maxWidth: .infinity)
+                .tappableRow(minHeight: 44)
+        }
+        .frame(maxWidth: 560)
+        .padding(.horizontal, 20)
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity)
+        .background(.bar)
     }
 }
 
