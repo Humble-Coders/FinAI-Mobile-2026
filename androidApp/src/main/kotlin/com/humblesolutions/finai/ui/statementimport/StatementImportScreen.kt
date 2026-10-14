@@ -6,6 +6,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -658,13 +660,18 @@ private fun CheckNote(state: StatementImportUiState, row: Transaction) {
     )
 }
 
-/** Small facts in a row: how many, money out, money in. */
+/**
+ * Small facts in a row: how many, money out, money in. They wrap onto a second
+ * line rather than clip when the text is large.
+ */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun Chips(chips: List<Pair<String, Boolean>>) {
+private fun Chips(chips: List<Pair<String, Boolean>>, modifier: Modifier = Modifier) {
     if (chips.isEmpty()) return
-    Row(
-        modifier = Modifier.fillMaxWidth(),
+    FlowRow(
+        modifier = modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         chips.forEach { (text, warning) ->
             Text(
@@ -754,40 +761,16 @@ private fun ImportedRowsSection(state: StatementImportUiState, actions: Statemen
 /** Money out, money in, and how many still want a person. */
 @Composable
 private fun ImportedTotals(state: StatementImportUiState) {
-    val chips = buildList<Pair<String, Boolean>> {
-        // Each omitted when there is none, rather than shown as zero: "0.00 in"
-        // reads as a fact about the statement rather than an absence of rows.
-        state.totalOut?.let { add(strings(Strings.import_extracted_out, it) to false) }
-        state.totalIn?.let { add(strings(Strings.import_extracted_in, it) to false) }
-        state.waitingLabel?.let { add(it to true) }
-    }
-    if (chips.isEmpty()) return
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        chips.forEach { (text, warning) ->
-            Text(
-                text = text,
-                style = MaterialTheme.typography.labelSmall,
-                color = if (warning) {
-                    MaterialTheme.colorScheme.tertiary
-                } else {
-                    MaterialTheme.colorScheme.onSurfaceVariant
-                },
-                modifier = Modifier
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(
-                        if (warning) {
-                            MaterialTheme.colorScheme.tertiary.copy(alpha = 0.12f)
-                        } else {
-                            MaterialTheme.colorScheme.surfaceVariant
-                        },
-                    )
-                    .padding(horizontal = 8.dp, vertical = 4.dp),
-            )
-        }
-    }
+    Chips(
+        buildList {
+            // Each omitted when there is none, rather than shown as zero: "0.00 in"
+            // reads as a fact about the statement rather than an absence of rows.
+            state.totalOut?.let { add(strings(Strings.import_extracted_out, it) to false) }
+            state.totalIn?.let { add(strings(Strings.import_extracted_in, it) to false) }
+            state.waitingLabel?.let { add(it to true) }
+        },
+        modifier = Modifier.padding(top = 6.dp),
+    )
 }
 
 /**

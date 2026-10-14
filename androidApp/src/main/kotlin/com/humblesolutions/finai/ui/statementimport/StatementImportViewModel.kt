@@ -18,6 +18,7 @@ import com.humblesolutions.finai.model.AccountKind
 import com.humblesolutions.finai.model.ApiException
 import com.humblesolutions.finai.model.ExtractedDocument
 import com.humblesolutions.finai.model.ParsedStatement
+import com.humblesolutions.finai.model.SaveOutcome
 import com.humblesolutions.finai.model.TransactionDirection
 import com.humblesolutions.finai.repository.AccountsRepository
 import com.humblesolutions.finai.repository.AiConsentRepository
@@ -84,6 +85,12 @@ class StatementImportViewModel(private val saved: SavedStateHandle) : ViewModel(
     /** Held only while a read needs it; never saved, never logged. */
     private var password: String? = null
 
+    /**
+     * What the summary was written from, so it can be written again when a
+     * saved row is fixed — "1 needs your review" must not outlive the fix.
+     */
+    private var summarised: Pair<ParsedStatement, SaveOutcome>? = null
+
     fun bind(userId: String, context: Context, logging: Boolean) = bind(userId) {
         Supabase.clientOrNull()?.let { client ->
             val tokens = SupabaseTokenSource(client)
@@ -107,6 +114,7 @@ class StatementImportViewModel(private val saved: SavedStateHandle) : ViewModel(
         document = null
         parsed = null
         password = null
+        summarised = null
         // Saved state belongs to whoever picked the file; anyone else starts clean.
         if (saved.get<String>(KEY_OWNER) != userId) {
             saved.keys().forEach { saved.remove<Any>(it) }
@@ -232,6 +240,7 @@ class StatementImportViewModel(private val saved: SavedStateHandle) : ViewModel(
         password = null
         document = null
         parsed = null
+        summarised = null
         _uiState.update {
             it.copy(
                 fileUri = uri,
@@ -404,6 +413,7 @@ class StatementImportViewModel(private val saved: SavedStateHandle) : ViewModel(
                 saved.remove<Boolean>(KEY_CHECKING)
                 document = null
                 parsed = null
+                summarised = result to outcome
                 _uiState.value.fileUri?.let { release(it) }
                 _uiState.update {
                     it.copy(
@@ -515,9 +525,10 @@ class StatementImportViewModel(private val saved: SavedStateHandle) : ViewModel(
         _uiState.update { it.copy(editSaving = true, editErrorKey = null) }
         viewModelScope.launch {
             try {
-                repos.transactions.correct(row.id, patch)
+                val fixed = repos.transactions.correct(row.id, patch).transaction
                 if (started != generation) return@launch
                 _uiState.update { it.copy(editSaving = false, editing = null, draft = CorrectionDraft()) }
+                if (row.needsReview && !fixed.needsReview) answered()
                 LedgerChanged.announce()
                 _uiState.value.importId?.let { loadImported(it) }
             } catch (e: CancellationException) {
@@ -560,6 +571,7 @@ class StatementImportViewModel(private val saved: SavedStateHandle) : ViewModel(
                         imported = it.imported.filterNot { r -> r.id == row.id },
                     )
                 }
+                if (row.needsReview) answered()
                 LedgerChanged.announce()
             } catch (e: CancellationException) {
                 throw e
@@ -611,6 +623,22 @@ class StatementImportViewModel(private val saved: SavedStateHandle) : ViewModel(
                 _uiState.update { it.copy(creatingCategory = false, newCategoryErrorKey = e.messageKey) }
             }
         }
+    }
+
+    /**
+     * One row that was waiting for a person no longer is — fixed here, or
+     * deleted. The prompt to open Review and the summary line both follow.
+     *
+     * Counted down from the save's own figure rather than recounted from the
+     * list: the list is the import's first page, and a long statement has more
+     * rows waiting than one page shows.
+     */
+    private fun answered() {
+        val (result, outcome) = summarised ?: return
+        val waiting = (_uiState.value.needsReview - 1).coerceAtLeast(0)
+        val counted = outcome.copy(needsReview = waiting)
+        summarised = result to counted
+        _uiState.update { it.copy(needsReview = waiting, summary = StatementImportFlow.summary(result, counted)) }
     }
 
     /** Try the list again after it failed; the import itself already succeeded. */
@@ -787,6 +815,7 @@ class StatementImportViewModel(private val saved: SavedStateHandle) : ViewModel(
         document = null
         parsed = null
         password = null
+        summarised = null
         saved.remove<String>(KEY_FILE)
         saved.remove<Boolean>(KEY_IN_PROGRESS)
         saved.remove<Boolean>(KEY_CHECKING)

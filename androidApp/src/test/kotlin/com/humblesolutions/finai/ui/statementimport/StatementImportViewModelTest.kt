@@ -19,6 +19,7 @@ import com.humblesolutions.finai.model.ParsedRow
 import com.humblesolutions.finai.model.ParsedStatement
 import com.humblesolutions.finai.model.PatchOutcome
 import com.humblesolutions.finai.model.ReviewPage
+import com.humblesolutions.finai.model.ReviewReason
 import com.humblesolutions.finai.model.RowsToSave
 import com.humblesolutions.finai.model.SaveOutcome
 import com.humblesolutions.finai.model.StatementImports
@@ -517,6 +518,12 @@ class StatementImportViewModelTest {
 
         override suspend fun correct(id: String, patch: TransactionPatch): PatchOutcome {
             corrected += id to patch
+            // As the server does: a row given a category leaves the queue.
+            page = page.copy(
+                rows = page.rows.map {
+                    if (it.id == id) it.copy(categoryId = patch.categoryId ?: it.categoryId, needsReview = false, reviewReason = null) else it
+                },
+            )
             return PatchOutcome(transaction = page.rows.first { it.id == id })
         }
 
@@ -803,6 +810,28 @@ class StatementImportViewModelTest {
         assertEquals("cat-dining", transactions.corrected.single().second.categoryId)
         assertNull(model.uiState.value.editing)
         assertEquals(2, transactions.askedFor.size, "the list is read again after the fix")
+    }
+
+    @Test
+    fun `fixing the only waiting row stops asking for Review`() {
+        val transactions = FakeImportedTransactions(
+            page = ReviewPage(
+                rows = listOf(
+                    Transaction(id = "r1", occurredOn = "2026-08-14", amount = "12.40", currency = "CAD", direction = TransactionDirection.DEBIT, description = "TIM HORTONS", needsReview = true, reviewReason = ReviewReason.UNKNOWN_CATEGORY),
+                    Transaction(id = "r2", occurredOn = "2026-08-15", amount = "134.02", currency = "CAD", direction = TransactionDirection.DEBIT, description = "LOBLAWS", categoryId = "cat-groceries"),
+                ),
+            ),
+        )
+        val model = importedThrough(transactions)
+        assertEquals(1, model.uiState.value.needsReview)
+
+        model.edit("r1")
+        model.onCategoryChosen("cat-dining")
+        model.saveEdit()
+
+        val state = model.uiState.value
+        assertEquals(0, state.needsReview, "the Review prompt goes with the last waiting row")
+        assertEquals(listOf("2 transactions found"), state.summary)
     }
 
     // ── What the import read ────────────────────────────────────────────

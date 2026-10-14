@@ -93,6 +93,9 @@ final class StatementImportViewModel: ObservableObject, NewAccountHost {
     private var document: ExtractedDocument?
     private var parsed: ParsedStatement?
     private var password: String?
+    /// What the summary was written from, so it can be written again when a
+    /// saved row is fixed — "1 needs your review" must not outlive the fix.
+    private var summarised: (parsed: ParsedStatement, outcome: SaveOutcome)?
 
     #if DEBUG
     private let logging = true
@@ -198,6 +201,7 @@ final class StatementImportViewModel: ObservableObject, NewAccountHost {
         importedErrorKey = nil
         importedCategories = []
         inProgress = false
+        summarised = nil
         checkRows = []
         checking = false
         readAgain = false
@@ -280,6 +284,24 @@ final class StatementImportViewModel: ObservableObject, NewAccountHost {
             Strings.shared.import_extracted_row,
             titleOf(row), categoryLabel(row) ?? "", amountLabel(row)
         )
+    }
+
+    /// One row that was waiting for a person no longer is — fixed here, or
+    /// deleted. The prompt to open Review and the summary line both follow.
+    /// Counted down from the save's own figure rather than recounted from the
+    /// list: the list is the import's first page, and a long statement has more
+    /// rows waiting than one page shows. Mirrors Android's `answered`.
+    private func answered() {
+        guard let summarised else { return }
+        let waiting = max(needsReview - 1, 0)
+        let outcome = summarised.outcome
+        let counted = SaveOutcome(
+            importId: outcome.importId, saved: outcome.saved, duplicates: outcome.duplicates,
+            flagged: outcome.flagged, needsReview: Int32(waiting)
+        )
+        self.summarised = (summarised.parsed, counted)
+        needsReview = waiting
+        summary = StatementImportFlow.shared.summary(parsed: summarised.parsed, saved: counted)
     }
 
     /// Try the list again after it failed; the import itself already succeeded.
@@ -608,6 +630,7 @@ final class StatementImportViewModel: ObservableObject, NewAccountHost {
                 self.canResend = false
                 self.checkRows = []
                 self.readAgain = false
+                self.summarised = (result, outcome)
                 self.summary = StatementImportFlow.shared.summary(parsed: result, saved: outcome)
                 self.needsReview = Int(outcome.needsReview)
                 self.importId = outcome.importId
@@ -759,11 +782,12 @@ final class StatementImportViewModel: ObservableObject, NewAccountHost {
         Task { [weak self] in
             guard let self else { return }
             do {
-                _ = try await transactionsRepository.correct(id: row.id, patch: patch)
+                let fixed = try await transactionsRepository.correct(id: row.id, patch: patch).transaction
                 guard started == self.generation else { return }
                 self.saving = false
                 self.editing = nil
                 self.draft = Self.emptyDraft
+                if row.needsReview && !fixed.needsReview { self.answered() }
                 LedgerChanged.announce()
                 if let importId = self.importId { self.loadImported(importId) }
             } catch {
@@ -798,6 +822,7 @@ final class StatementImportViewModel: ObservableObject, NewAccountHost {
                 self.editing = nil
                 self.draft = Self.emptyDraft
                 self.imported.removeAll { $0.id == row.id }
+                if row.needsReview { self.answered() }
                 LedgerChanged.announce()
             } catch {
                 guard started == self.generation else { return }

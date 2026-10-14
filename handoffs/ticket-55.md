@@ -63,7 +63,7 @@ All of this is built on Android and iOS, with the rules in `sharedLogic`.
 - `ui/edit/TransactionEditor.kt`: `showsCategory` and the delete wording keys, defaulted so Transactions and Review are unchanged.
 - `StatementImportViewModelTest.kt`:
   - existing tests updated, because reading now ends at CHECK;
-  - 9 new tests: edits and removal reach the request; refused edits; nothing left to save; only a flag in saved state; ended mid-check; superseded; failed save keeps edits; discard asks first; fixing a saved row.
+  - 10 new tests: edits and removal reach the request; refused edits; nothing left to save; only a flag in saved state; ended mid-check; superseded; failed save keeps edits; discard asks first; fixing a saved row; fixing the only waiting row stops asking for Review (added after review).
 
 **iOS**
 - `viewmodel/StatementImportViewModel.swift`: the same flow as Android. It conforms to `TransactionEditing`, and the scene-storage `Snapshot` gains an optional `checking` flag, so older snapshots still restore.
@@ -76,7 +76,7 @@ All of this is built on Android and iOS, with the rules in `sharedLogic`.
 ```
 ./gradlew ktlintCheck
 ./gradlew :sharedLogic:testAndroidHostTest      # 608 tests, 0 failures
-./gradlew :androidApp:testDebugUnitTest         # 292 tests, 0 failures
+./gradlew :androidApp:testDebugUnitTest         # 293 tests, 0 failures
 ./gradlew :androidApp:assembleDebug
 cd iosApp && LANG=en_US.UTF-8 xcodebuild -workspace iosApp.xcworkspace -scheme iosApp \
   -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' build CODE_SIGNING_ALLOWED=NO   # BUILD SUCCEEDED
@@ -132,10 +132,18 @@ cd iosApp && LANG=en_US.UTF-8 xcodebuild -workspace iosApp.xcworkspace -scheme i
 7. **Removed `StatementImportFlow.rowsToSave`,** which was unused after this change.
 8. **The summary still reports what was read.** "12 transactions found" counts parsed rows, not rows saved after removals.
 
+**Changed after review** (PR #56):
+
+9. **The Discard dialog is honest about the allowance.** The server still counts a read but unsaved import against the month (backend `_imports_this_month`); only a re-read within 24 hours is free (#73). The dialog now says: "Nothing from this statement will be saved. Importing again within a day won't use another of this month's imports."
+10. **"Some of them need a look" follows fixes after saving.** Fixing or deleting a saved row that was waiting counts `needsReview` down by one and rewrites the summary. It counts down from the save's own figure, because the loaded list is only the import's first page, so recounting from it would be wrong for long statements.
+11. **The "everything removed" text no longer offers "choose another statement".** The check step has no such button, and Discard closes the import.
+12. **The summary chips wrap** (Android `FlowRow`, iOS `ViewThatFits`), so they don't clip at the largest font size. This covers the check step and "What we read".
+
 ## Open questions / follow-ups
 
 - **Screens not verified by Claude.** No simulator or emulator was driven (team rule). The manual steps above, including light/dark, the largest font scale and the smallest/largest phones, are for the developer.
 - **iOS has no unit tests for this view model.** Its logic mirrors Android's and the shared rules are tested, but iOS is verified by build only.
+- **Backend follow-up (from review):** an explicit discard that gives the month's import back, capped like re-reads, so a person who discards the wrong statement and returns days later isn't refused. A product decision.
 - **Optional, left out at `/start-ticket`:** backend #74's `earlier_needs_review`, the count of older rows an import sent back to Review, isn't shown.
 - **Summary wording:** if people remove rows often, "found" may want a "you removed N" line.
 - **Pre-existing:** the import screen formats money with the `en` locale on both platforms (unchanged here).

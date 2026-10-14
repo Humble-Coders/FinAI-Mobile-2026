@@ -462,14 +462,27 @@ struct StatementImportView: View {
     /// Money out, money in, and how many still want a person.
     @ViewBuilder
     private var importedTotals: some View {
-        HStack(spacing: 6) {
-            // Each omitted when there is none, rather than shown as zero:
-            // "0.00 in" reads as a fact about the statement rather than an
-            // absence of rows.
-            if let out = model.totalOut { chip(L.t(Strings.shared.import_extracted_out, out), warning: false) }
-            if let money = model.totalIn { chip(L.t(Strings.shared.import_extracted_in, money), warning: false) }
-            if let waiting = model.waitingLabel { chip(waiting, warning: true) }
+        // One line when it fits; stacked when the text is large.
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 6) { importedChips }
+            VStack(alignment: .leading, spacing: 6) { importedChips }
         }
+    }
+
+    @ViewBuilder
+    private var importedChips: some View {
+        // Each omitted when there is none, rather than shown as zero: "0.00 in"
+        // reads as a fact about the statement rather than an absence of rows.
+        if let out = model.totalOut { chip(L.t(Strings.shared.import_extracted_out, out), warning: false) }
+        if let money = model.totalIn { chip(L.t(Strings.shared.import_extracted_in, money), warning: false) }
+        if let waiting = model.waitingLabel { chip(waiting, warning: true) }
+    }
+
+    @ViewBuilder
+    private var checkChips: some View {
+        chip(model.checkCount, warning: false)
+        if let out = model.checkTotalOut { chip(L.t(Strings.shared.import_extracted_out, out), warning: false) }
+        if let money = model.checkTotalIn { chip(L.t(Strings.shared.import_extracted_in, money), warning: false) }
     }
 
     private func chip(_ text: String, warning: Bool) -> some View {
@@ -559,10 +572,10 @@ struct StatementImportView: View {
             if model.noneLeft {
                 Text(L.t(Strings.shared.import_check_none_left))
             } else {
-                HStack(spacing: 6) {
-                    chip(model.checkCount, warning: false)
-                    if let out = model.checkTotalOut { chip(L.t(Strings.shared.import_extracted_out, out), warning: false) }
-                    if let money = model.checkTotalIn { chip(L.t(Strings.shared.import_extracted_in, money), warning: false) }
+                // One line when it fits; stacked when the text is large.
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 6) { checkChips }
+                    VStack(alignment: .leading, spacing: 6) { checkChips }
                 }
                 ForEach(model.checkDays, id: \.date) { day in
                     Text(model.dateLabel(day.date))
