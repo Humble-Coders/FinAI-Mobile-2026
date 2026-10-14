@@ -2,7 +2,7 @@ import Foundation
 import SharedLogic
 
 /// Drives the statement import (#31): account, file, consent, reading,
-/// sending, saving, and every way it can end.
+/// sending, checking (#55), saving, and every way it can end.
 ///
 /// **No extraction here.** `IOSStatementReader` reads; `ImportStatement`
 /// redacts and sends; `StatementImportFlow` decides what every outcome says and
@@ -54,6 +54,32 @@ final class StatementImportViewModel: ObservableObject, NewAccountHost {
     /// A read was under way — so a restore reads the file again.
     @Published private(set) var inProgress = false
 
+    /// The statement as read and not yet saved (#55): exactly what Save sends.
+    /// Memory only — a household's figures never go into scene storage.
+    @Published private(set) var checkRows: [CheckRow] = []
+    /// A flag for scene storage, never the rows: the import is being checked.
+    @Published private(set) var checking = false
+    /// The app was ended mid-check and the statement read again, so earlier changes are gone.
+    @Published private(set) var readAgain = false
+    @Published var confirmingDiscard = false
+    /// Why Save failed. The checked rows are kept, so it can be pressed again.
+    @Published private(set) var saveErrorKey: String?
+
+    /// One row open in the editor: not saved yet (`.check`) or saved (`.done`).
+    @Published private(set) var editing: SharedLogic.Transaction?
+    @Published private(set) var draft = StatementImportViewModel.emptyDraft
+    @Published private(set) var saving = false
+    @Published private(set) var deleting = false
+    @Published private(set) var editErrorKey: String?
+    @Published private(set) var today = ManualEntry.shared.today()
+    @Published private(set) var newCategoryName: String?
+    @Published private(set) var creatingCategory = false
+    @Published private(set) var newCategoryErrorKey: String?
+
+    private static let emptyDraft = CorrectionDraft(
+        occurredOn: nil, amount: "", direction: nil, description: "", categoryId: nil
+    )
+
     private var accountsRepository: AccountsRepository?
     private var importsRepository: StatementImportRepository?
     private var consentRepository: AiConsentRepository?
@@ -67,6 +93,9 @@ final class StatementImportViewModel: ObservableObject, NewAccountHost {
     private var document: ExtractedDocument?
     private var parsed: ParsedStatement?
     private var password: String?
+    /// What the summary was written from, so it can be written again when a
+    /// saved row is fixed — "1 needs your review" must not outlive the fix.
+    private var summarised: (parsed: ParsedStatement, outcome: SaveOutcome)?
 
     #if DEBUG
     private let logging = true
@@ -172,6 +201,14 @@ final class StatementImportViewModel: ObservableObject, NewAccountHost {
         importedErrorKey = nil
         importedCategories = []
         inProgress = false
+        summarised = nil
+        checkRows = []
+        checking = false
+        readAgain = false
+        confirmingDiscard = false
+        saveErrorKey = nil
+        editing = nil
+        draft = Self.emptyDraft
         policy = nil
         consentTicked = false
         consentErrorKey = nil
@@ -247,6 +284,24 @@ final class StatementImportViewModel: ObservableObject, NewAccountHost {
             Strings.shared.import_extracted_row,
             titleOf(row), categoryLabel(row) ?? "", amountLabel(row)
         )
+    }
+
+    /// One row that was waiting for a person no longer is — fixed here, or
+    /// deleted. The prompt to open Review and the summary line both follow.
+    /// Counted down from the save's own figure rather than recounted from the
+    /// list: the list is the import's first page, and a long statement has more
+    /// rows waiting than one page shows. Mirrors Android's `answered`.
+    private func answered() {
+        guard let summarised else { return }
+        let waiting = max(needsReview - 1, 0)
+        let outcome = summarised.outcome
+        let counted = SaveOutcome(
+            importId: outcome.importId, saved: outcome.saved, duplicates: outcome.duplicates,
+            flagged: outcome.flagged, needsReview: Int32(waiting)
+        )
+        self.summarised = (summarised.parsed, counted)
+        needsReview = waiting
+        summary = StatementImportFlow.shared.summary(parsed: summarised.parsed, saved: counted)
     }
 
     /// Try the list again after it failed; the import itself already succeeded.
@@ -430,7 +485,15 @@ final class StatementImportViewModel: ObservableObject, NewAccountHost {
     /// Try the same file again: resend if it was already read, else read it again.
     func retry() {
         guard !working, offersRetry else { return }
-        if let parsed { save(parsed) } else if let document { send(document, keepText: false) } else { read() }
+        if parsed != nil, !checkRows.isEmpty {
+            // Read and still being checked: back to the rows, edits and all.
+            problem = nil
+            step = .check
+        } else if let document {
+            send(document, keepText: false)
+        } else {
+            read()
+        }
     }
 
     private func read() {
@@ -511,7 +574,7 @@ final class StatementImportViewModel: ObservableObject, NewAccountHost {
                     self.show(empty)
                 } else {
                     self.parsed = result
-                    self.save(result)
+                    self.check(result)
                 }
             } catch {
                 guard started == self.generation, !Task.isCancelled else { return }
@@ -524,22 +587,50 @@ final class StatementImportViewModel: ObservableObject, NewAccountHost {
         }
     }
 
-    private func save(_ result: ParsedStatement) {
+    /// Read and not saved: every row is shown for checking (#55). Nothing
+    /// reaches the person's records until they press Save. Only a flag goes
+    /// into scene storage, never a row: if iOS ends the app here, the file is
+    /// read again (free since backend #73) and the screen says the earlier
+    /// changes were not kept.
+    private func check(_ result: ParsedStatement) {
+        guard let accountId else { return unbound() }
+        checkRows = ImportCheck.shared.rowsOf(parsed: result, accountId: accountId)
+        checking = true
+        saveErrorKey = nil
+        editing = nil
+        confirmingDiscard = false
+        step = .check
+    }
+
+    /// Save the rows as the person left them.
+    func saveChecked() {
+        guard canSaveChecked else { return }
+        guard let parsed else { return unbound() }
+        save(parsed, rows: checkRows)
+    }
+
+    private func save(_ result: ParsedStatement, rows: [CheckRow]) {
         guard let importsRepository, let accountId else { return unbound() }
         let started = generation
         step = .saving
         problem = nil
+        saveErrorKey = nil
         work = Task { [weak self] in
             guard let self else { return }
             do {
                 let outcome = try await importsRepository.save(
                     importId: result.importId,
-                    rows: StatementImportFlow.shared.rowsToSave(accountId: accountId, parsed: result)
+                    rows: ImportCheck.shared.rowsToSave(accountId: accountId, rows: rows)
                 )
                 guard started == self.generation else { return }
                 self.inProgress = false
+                self.checking = false
                 self.document = nil
+                self.parsed = nil
                 self.canResend = false
+                self.checkRows = []
+                self.readAgain = false
+                self.summarised = (result, outcome)
                 self.summary = StatementImportFlow.shared.summary(parsed: result, saved: outcome)
                 self.needsReview = Int(outcome.needsReview)
                 self.importId = outcome.importId
@@ -552,7 +643,235 @@ final class StatementImportViewModel: ObservableObject, NewAccountHost {
                 self.loadImported(outcome.importId)
             } catch {
                 guard started == self.generation, !Task.isCancelled else { return }
-                self.fail(error)
+                if Self.kotlin(error) is ApiException.ImportSuperseded {
+                    // Read again elsewhere since; this reading cannot be saved.
+                    // Read it once more and check the fresh rows — saying so,
+                    // because the changes made to these are gone.
+                    self.parsed = nil
+                    self.checkRows = []
+                    self.readAgain = true
+                    if let document = self.document { self.send(document, keepText: false) } else { self.read() }
+                } else {
+                    // Back to the rows, every edit kept, with why it did not
+                    // save: pressing Save again is the whole of the recovery.
+                    self.saveErrorKey = Self.messageKey(error)
+                    self.step = .check
+                }
+            }
+        }
+    }
+
+    // MARK: - Checking before saving (#55) — the same rules as Android's UI state
+
+    private var checked: [SharedLogic.Transaction] { ImportCheck.shared.transactions(rows: checkRows) }
+
+    private var checkCurrency: String {
+        checkRows.first?.row.currency ?? accounts.first { $0.id == accountId }?.currency ?? ""
+    }
+
+    private func checkMoney(_ amount: String) -> String {
+        Money.shared.format(amount: amount, currency: checkCurrency, locale: locale)
+    }
+
+    var checkDays: [ImportedRows.Day] { ImportedRows.shared.byDate(rows: checked) }
+    var checkCount: String { ImportCheck.shared.countLabel(rows: checkRows, locale: locale) }
+    var checkTotalOut: String? {
+        ImportedRows.shared.totalOut(rows: checked, fractionDigits: Money.shared.fractionDigits(currency: checkCurrency)).map(checkMoney)
+    }
+    var checkTotalIn: String? {
+        ImportedRows.shared.totalIn(rows: checked, fractionDigits: Money.shared.fractionDigits(currency: checkCurrency)).map(checkMoney)
+    }
+    var saveCheckedLabel: String { ImportCheck.shared.saveLabel(rows: checkRows, locale: locale) }
+    var canSaveChecked: Bool { step == .check && ImportCheck.shared.canSave(rows: checkRows) && editing == nil }
+    /// Everything was removed: only Discard is left.
+    var noneLeft: Bool { step == .check && checkRows.isEmpty }
+
+    /// "Check this one" for a row read with doubt; "Changed by you" once fixed.
+    func checkNoteKey(_ row: SharedLogic.Transaction) -> String? {
+        guard let checkRow = checkRows.first(where: { $0.row.id == row.id }) else { return nil }
+        if ImportCheck.shared.needsCheck(row: checkRow) { return Strings.shared.import_check_doubt }
+        return checkRow.edited ? Strings.shared.import_check_edited : nil
+    }
+
+    /// The whole row as one sentence, so VoiceOver announces it once.
+    func checkRowDescription(_ row: SharedLogic.Transaction) -> String {
+        [dateLabel(row.occurredOn), titleOf(row), amountLabel(row), checkNoteKey(row).map { L.t($0) }]
+            .compactMap { $0 }
+            .joined(separator: ", ")
+    }
+
+    func checkRowHint(_ row: SharedLogic.Transaction) -> String { L.t(Strings.shared.import_check_row_hint, titleOf(row)) }
+    func editHint(_ row: SharedLogic.Transaction) -> String { L.t(Strings.shared.import_extracted_edit_hint, titleOf(row)) }
+
+    /// Discard asks first: the rows were read, and leaving loses them.
+    func askDiscard() {
+        guard step == .check else { return }
+        confirmingDiscard = true
+    }
+
+    func dismissReadAgain() { readAgain = false }
+
+    // MARK: - Editing a row: before saving, or after
+
+    /// Open the editor on `id`: a row being checked (fixed here, in memory, and
+    /// sent when the import is saved) or one just saved (fixed on the server,
+    /// as from Transactions).
+    func edit(_ id: String) {
+        let row: SharedLogic.Transaction?
+        switch step {
+        case .check: row = checkRows.first { $0.row.id == id }?.row
+        case .done: row = imported.first { $0.id == id }
+        default: row = nil
+        }
+        guard let row else { return }
+        editing = row
+        draft = ReviewQueue.shared.draftOf(row: row)
+        editErrorKey = nil
+        saving = false
+        deleting = false
+        today = ManualEntry.shared.today()
+    }
+
+    func cancelEdit() {
+        guard !saving, !deleting else { return }
+        editing = nil
+        draft = Self.emptyDraft
+        editErrorKey = nil
+    }
+
+    func setDate(_ date: Kotlinx_datetimeLocalDate) { change(occurredOn: .some(date)) }
+    func setAmount(_ value: String) { change(amount: value) }
+    func setDirection(_ direction: TransactionDirection) { change(direction: .some(direction)) }
+    func setDescription(_ value: String) { change(description: value) }
+    func chooseCategory(_ id: String) { change(categoryId: .some(id)) }
+
+    private func change(
+        occurredOn: Kotlinx_datetimeLocalDate?? = nil,
+        amount: String? = nil,
+        direction: TransactionDirection?? = nil,
+        description: String? = nil,
+        categoryId: String?? = nil
+    ) {
+        guard editing != nil else { return }
+        draft = CorrectionDraft(
+            occurredOn: occurredOn ?? draft.occurredOn,
+            amount: amount ?? draft.amount,
+            direction: direction ?? draft.direction,
+            description: description ?? draft.description_,
+            categoryId: categoryId ?? draft.categoryId
+        )
+        editErrorKey = nil
+    }
+
+    func saveCorrection() {
+        guard let row = editing, !saving else { return }
+        if step == .check {
+            guard let rows = ImportCheck.shared.edit(rows: checkRows, id: row.id, draft: draft, today: today) else { return }
+            checkRows = rows
+            editing = nil
+            draft = Self.emptyDraft
+            saveErrorKey = nil
+            return
+        }
+        guard let transactionsRepository,
+              let patch = ReviewQueue.shared.correction(row: row, draft: draft, today: today)
+        else { return }
+        let started = generation
+        saving = true
+        editErrorKey = nil
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                let fixed = try await transactionsRepository.correct(id: row.id, patch: patch).transaction
+                guard started == self.generation else { return }
+                self.saving = false
+                self.editing = nil
+                self.draft = Self.emptyDraft
+                if row.needsReview && !fixed.needsReview { self.answered() }
+                LedgerChanged.announce()
+                if let importId = self.importId { self.loadImported(importId) }
+            } catch {
+                guard started == self.generation else { return }
+                // A duplicate is said in the sheet, with the row still open.
+                self.saving = false
+                self.editErrorKey = Self.messageKey(error)
+            }
+        }
+    }
+
+    /// The sheet asked first. Before saving, the row is simply left out of the
+    /// import; after, it is deleted from the person's records.
+    func deleteEditing() {
+        guard let row = editing, !saving, !deleting else { return }
+        if step == .check {
+            checkRows = ImportCheck.shared.remove(rows: checkRows, id: row.id)
+            editing = nil
+            draft = Self.emptyDraft
+            return
+        }
+        guard let transactionsRepository else { return }
+        let started = generation
+        deleting = true
+        editErrorKey = nil
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                _ = try await transactionsRepository.delete(id: row.id)
+                guard started == self.generation else { return }
+                self.deleting = false
+                self.editing = nil
+                self.draft = Self.emptyDraft
+                self.imported.removeAll { $0.id == row.id }
+                if row.needsReview { self.answered() }
+                LedgerChanged.announce()
+            } catch {
+                guard started == self.generation else { return }
+                self.deleting = false
+                self.editErrorKey = Self.messageKey(error)
+            }
+        }
+    }
+
+    func openNewCategory() {
+        newCategoryName = ""
+        newCategoryErrorKey = nil
+    }
+
+    func setNewCategoryName(_ name: String) {
+        newCategoryName = name
+        newCategoryErrorKey = nil
+    }
+
+    func cancelNewCategory() {
+        guard !creatingCategory else { return }
+        newCategoryName = nil
+        newCategoryErrorKey = nil
+    }
+
+    /// Adds the category and files the row being edited into it.
+    func createCategory() {
+        guard let categoriesRepository, canCreateCategory else { return }
+        let name = (newCategoryName ?? "").trimmingCharacters(in: .whitespaces)
+        creatingCategory = true
+        newCategoryErrorKey = nil
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                let made = try await categoriesRepository.create(name: name)
+                self.creatingCategory = false
+                self.newCategoryName = nil
+                self.importedCategories.append(made)
+                self.chooseCategory(made.id)
+            } catch {
+                if let exists = Self.kotlin(error) as? ApiException.CategoryExists {
+                    // Taken by one they can already use, so use it.
+                    self.creatingCategory = false
+                    self.newCategoryName = nil
+                    if let id = exists.categoryId { self.chooseCategory(id) }
+                } else {
+                    self.creatingCategory = false
+                    self.newCategoryErrorKey = Self.messageKey(error)
+                }
             }
         }
     }
@@ -572,6 +891,7 @@ final class StatementImportViewModel: ObservableObject, NewAccountHost {
 
     private func show(_ problem: ImportProblem) {
         inProgress = false
+        checking = false
         self.problem = problem
         canResend = document != nil
         step = .failed
@@ -647,7 +967,10 @@ final class StatementImportViewModel: ObservableObject, NewAccountHost {
     // MARK: - Scene storage
 
     var snapshot: String {
-        let value = Snapshot(owner: owner ?? "", accountId: accountId, filePath: fileURL?.path, inProgress: inProgress)
+        let value = Snapshot(
+            owner: owner ?? "", accountId: accountId, filePath: fileURL?.path,
+            inProgress: inProgress, checking: checking
+        )
         guard let data = try? JSONEncoder().encode(value) else { return "" }
         return String(decoding: data, as: UTF8.self)
     }
@@ -660,12 +983,15 @@ final class StatementImportViewModel: ObservableObject, NewAccountHost {
             fileURL = URL(fileURLWithPath: path)
         }
         inProgress = value.inProgress && fileURL != nil
+        checking = (value.checking ?? false) && inProgress
     }
 
     /// Back after iOS reclaimed the app mid-import: the choice survived, the
     /// work did not, so the same file is read again.
     private func resumeAfterRestore() {
         if inProgress, !working, accountId != nil, fileURL != nil {
+            // Ended mid-check: the rows and any changes to them were memory only.
+            if checking { readAgain = true }
             read()
         } else if step == .chooseAccount, accountId != nil, fileURL != nil {
             step = .chooseFile
@@ -677,6 +1003,8 @@ final class StatementImportViewModel: ObservableObject, NewAccountHost {
         let accountId: String?
         let filePath: String?
         let inProgress: Bool
+        /// Optional so a snapshot written before #55 still restores.
+        let checking: Bool?
     }
 
     private static func kotlin(_ error: Error) -> KotlinThrowable? {
@@ -722,5 +1050,56 @@ enum ImportFiles {
 
     static func clear() {
         try? FileManager.default.removeItem(at: folder)
+    }
+}
+
+/// The editor sheet's view of the row being edited — the same sheet and shared
+/// rules as Transactions and Review. Before saving there is no category to
+/// choose, and a row is removed rather than deleted. Mirrors Android's
+/// `StatementImportUiState.editor`.
+extension StatementImportViewModel: TransactionEditing {
+    private var before: Bool { step == .check }
+
+    private var editBlock: CorrectionBlock? {
+        editing.flatMap { ReviewQueue.shared.blockingReason(row: $0, draft: draft, today: today) }
+    }
+
+    var canSaveCorrection: Bool { editing != nil && !saving && editBlock == nil }
+    /// "Nothing has changed yet" is not worth saying before they touch anything.
+    var editNotice: CorrectionBlock? { editBlock == .nothingChanged ? nil : editBlock }
+    var editCategoryName: String? { ReviewQueue.shared.categoryName(categories: importedCategories, id: draft.categoryId) }
+    var editTitleKey: String { before ? Strings.shared.import_check_edit_title : Strings.shared.transactions_edit_title }
+    var currency: String { editing?.currency ?? "" }
+
+    /// The household's own first, then the shared taxonomy.
+    var pickableCategories: [(category: SharedLogic.Category, name: String)] {
+        importedCategories
+            .map { (category: $0, name: ReviewQueue.shared.categoryName(category: $0)) }
+            .sorted { a, b in
+                a.category.isSystem != b.category.isSystem
+                    ? !a.category.isSystem
+                    : a.name.lowercased() < b.name.lowercased()
+            }
+    }
+
+    var canCreateCategory: Bool {
+        !creatingCategory && !(newCategoryName ?? "").trimmingCharacters(in: .whitespaces).isEmpty
+    }
+
+    var deleteSummary: [String] {
+        editing.map { ImportedRows.shared.summary(row: $0, locale: "en") } ?? []
+    }
+
+    var showsCategory: Bool { !before }
+    var deleteKey: String { before ? Strings.shared.import_check_remove : Strings.shared.transaction_delete }
+    var deleteConfirmTitleKey: String {
+        before ? Strings.shared.import_check_remove_title : Strings.shared.transaction_delete_confirm_title
+    }
+    var deleteConfirmKey: String { before ? Strings.shared.import_check_remove : Strings.shared.transaction_delete_confirm }
+    var deleteConfirmMessage: String {
+        if before { return L.t(Strings.shared.import_check_remove_body) }
+        let parts = deleteSummary
+        guard parts.count == 3 else { return "" }
+        return L.t(Strings.shared.transaction_delete_confirm_body, parts[0], parts[1], parts[2])
     }
 }

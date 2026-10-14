@@ -95,6 +95,16 @@ data class TransactionEditorState(
     val deleting: Boolean = false,
     /** "Loblaws, − $86.40 on Aug 2, 2026" — what the delete question names. */
     val deleteSummary: List<String> = emptyList(),
+    /**
+     * Off for a row not saved yet (#55): the server files rows into categories
+     * when they are saved, so there is nothing to choose until then.
+     */
+    val showsCategory: Boolean = true,
+    /** The delete button and its question. A row not saved yet is removed, not deleted. */
+    val deleteKey: String = Strings.transaction_delete,
+    val deleteConfirmTitleKey: String = Strings.transaction_delete_confirm_title,
+    val deleteConfirmBodyKey: String = Strings.transaction_delete_confirm_body,
+    val deleteConfirmKey: String = Strings.transaction_delete_confirm,
 )
 
 /** What the editor sheet can ask of the screen that opened it. */
@@ -161,7 +171,7 @@ fun TransactionEditorSheet(state: TransactionEditorState, actions: TransactionEd
                     modifier = Modifier.align(Alignment.CenterHorizontally),
                 ) {
                     Text(
-                        strings(Strings.transaction_delete),
+                        strings(state.deleteKey),
                         color = if (busy) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
                     )
                 }
@@ -174,9 +184,9 @@ fun TransactionEditorSheet(state: TransactionEditorState, actions: TransactionEd
     if (confirmingDelete && onDelete != null) {
         AlertDialog(
             onDismissRequest = { confirmingDelete = false },
-            title = { Text(strings(Strings.transaction_delete_confirm_title)) },
+            title = { Text(strings(state.deleteConfirmTitleKey)) },
             text = {
-                Text(strings(Strings.transaction_delete_confirm_body, *state.deleteSummary.toTypedArray()))
+                Text(strings(state.deleteConfirmBodyKey, *state.deleteSummary.toTypedArray()))
             },
             confirmButton = {
                 TextButton(
@@ -184,7 +194,7 @@ fun TransactionEditorSheet(state: TransactionEditorState, actions: TransactionEd
                         confirmingDelete = false
                         onDelete()
                     },
-                ) { Text(strings(Strings.transaction_delete_confirm), color = MaterialTheme.colorScheme.error) }
+                ) { Text(strings(state.deleteConfirmKey), color = MaterialTheme.colorScheme.error) }
             },
             dismissButton = { TextButton(onClick = { confirmingDelete = false }) { Text(strings(Strings.action_cancel)) } },
         )
@@ -260,12 +270,14 @@ private fun CorrectionFields(state: TransactionEditorState, actions: Transaction
         isError = state.notice in DescriptionBlocks,
         onDone = { focus.clearFocus() },
     )
-    PickerField(
-        label = strings(Strings.review_category_label),
-        value = state.categoryName,
-        placeholder = strings(Strings.review_category_choose),
-        onClick = onPickCategory,
-    )
+    if (state.showsCategory) {
+        PickerField(
+            label = strings(Strings.review_category_label),
+            value = state.categoryName,
+            placeholder = strings(Strings.review_category_choose),
+            onClick = onPickCategory,
+        )
+    }
 
     if (choosingDate) {
         CorrectionDateDialog(

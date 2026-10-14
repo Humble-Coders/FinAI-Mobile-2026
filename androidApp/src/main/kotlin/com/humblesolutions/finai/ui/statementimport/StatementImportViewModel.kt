@@ -13,10 +13,13 @@ import com.humblesolutions.finai.data.KtorCategoriesRepository
 import com.humblesolutions.finai.data.KtorStatementImportRepository
 import com.humblesolutions.finai.data.KtorTransactionsRepository
 import com.humblesolutions.finai.data.SupabaseTokenSource
+import com.humblesolutions.finai.i18n.Strings
 import com.humblesolutions.finai.model.AccountKind
 import com.humblesolutions.finai.model.ApiException
 import com.humblesolutions.finai.model.ExtractedDocument
 import com.humblesolutions.finai.model.ParsedStatement
+import com.humblesolutions.finai.model.SaveOutcome
+import com.humblesolutions.finai.model.TransactionDirection
 import com.humblesolutions.finai.repository.AccountsRepository
 import com.humblesolutions.finai.repository.AiConsentRepository
 import com.humblesolutions.finai.repository.CategoriesRepository
@@ -24,12 +27,17 @@ import com.humblesolutions.finai.repository.StatementImportRepository
 import com.humblesolutions.finai.repository.StatementReadException
 import com.humblesolutions.finai.repository.StatementReader
 import com.humblesolutions.finai.repository.TransactionsRepository
+import com.humblesolutions.finai.usecase.CheckRow
+import com.humblesolutions.finai.usecase.CorrectionDraft
+import com.humblesolutions.finai.usecase.ImportCheck
 import com.humblesolutions.finai.usecase.ImportFailure
 import com.humblesolutions.finai.usecase.ImportProblem
 import com.humblesolutions.finai.usecase.ImportStatement
 import com.humblesolutions.finai.usecase.ImportStep
+import com.humblesolutions.finai.usecase.ManualEntry
 import com.humblesolutions.finai.usecase.NewAccountDraft
 import com.humblesolutions.finai.usecase.NewAccountForm
+import com.humblesolutions.finai.usecase.ReviewQueue
 import com.humblesolutions.finai.usecase.StatementImportFlow
 import com.humblesolutions.finai.util.LedgerChanged
 import kotlinx.coroutines.Job
@@ -38,11 +46,12 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.datetime.LocalDate
 import kotlin.coroutines.cancellation.CancellationException
 
 /**
  * Drives the statement import (#31): account, file, consent, reading, sending,
- * saving, and every way it can end.
+ * checking (#55), saving, and every way it can end.
  *
  * **No extraction here.** The platform reader reads; [ImportStatement] redacts
  * and sends; [StatementImportFlow] decides what every outcome says and offers.
@@ -70,11 +79,17 @@ class StatementImportViewModel(private val saved: SavedStateHandle) : ViewModel(
     /** The redacted-ready document, in memory only, for a retry or diagnostics. */
     private var document: ExtractedDocument? = null
 
-    /** What came back, for a retried save after the parse already succeeded. */
+    /** What came back, while it is checked and saved. Memory only. */
     private var parsed: ParsedStatement? = null
 
     /** Held only while a read needs it; never saved, never logged. */
     private var password: String? = null
+
+    /**
+     * What the summary was written from, so it can be written again when a
+     * saved row is fixed — "1 needs your review" must not outlive the fix.
+     */
+    private var summarised: Pair<ParsedStatement, SaveOutcome>? = null
 
     fun bind(userId: String, context: Context, logging: Boolean) = bind(userId) {
         Supabase.clientOrNull()?.let { client ->
@@ -99,6 +114,7 @@ class StatementImportViewModel(private val saved: SavedStateHandle) : ViewModel(
         document = null
         parsed = null
         password = null
+        summarised = null
         // Saved state belongs to whoever picked the file; anyone else starts clean.
         if (saved.get<String>(KEY_OWNER) != userId) {
             saved.keys().forEach { saved.remove<Any>(it) }
@@ -224,6 +240,7 @@ class StatementImportViewModel(private val saved: SavedStateHandle) : ViewModel(
         password = null
         document = null
         parsed = null
+        summarised = null
         _uiState.update {
             it.copy(
                 fileUri = uri,
@@ -233,6 +250,8 @@ class StatementImportViewModel(private val saved: SavedStateHandle) : ViewModel(
                 diagnosticsSent = false,
                 diagnosticsThanks = null,
                 canResend = false,
+                checkRows = emptyList(),
+                readAgain = false,
             )
         }
         read()
@@ -250,6 +269,7 @@ class StatementImportViewModel(private val saved: SavedStateHandle) : ViewModel(
         work?.cancel()
         saved.remove<String>(KEY_FILE)
         saved.remove<Boolean>(KEY_IN_PROGRESS)
+        saved.remove<Boolean>(KEY_CHECKING)
         document = null
         parsed = null
         password = null
@@ -258,6 +278,8 @@ class StatementImportViewModel(private val saved: SavedStateHandle) : ViewModel(
                 step = ImportStep.CHOOSE_FILE,
                 fileUri = null,
                 problem = null,
+                checkRows = emptyList(),
+                readAgain = false,
                 canResend = false,
                 diagnosticsTicked = false,
                 diagnosticsSent = false,
@@ -271,10 +293,12 @@ class StatementImportViewModel(private val saved: SavedStateHandle) : ViewModel(
         val state = _uiState.value
         if (state.working || state.problem?.failure?.canRetry != true) return
         val readDocument = document
-        val readParse = parsed
         when {
-            readParse != null -> save(readParse)
+            // Read and still being checked: back to the rows, edits and all.
+            parsed != null && state.checkRows.isNotEmpty() -> _uiState.update { it.copy(step = ImportStep.CHECK, problem = null) }
+
             readDocument != null -> send(readDocument, keepText = false)
+
             else -> read()
         }
     }
@@ -335,7 +359,7 @@ class StatementImportViewModel(private val saved: SavedStateHandle) : ViewModel(
                     showProblem(empty)
                 } else {
                     parsed = result
-                    save(result)
+                    check(result)
                 }
             } catch (e: CancellationException) {
                 throw e
@@ -346,17 +370,50 @@ class StatementImportViewModel(private val saved: SavedStateHandle) : ViewModel(
         }
     }
 
-    private fun save(result: ParsedStatement) {
+    /**
+     * Read and not saved: every row is shown for checking (#55). Nothing
+     * reaches the person's records until they press Save.
+     *
+     * Only a flag goes into saved state, never a row: if Android ends the app
+     * here, [resumeAfterRestore] reads the file again (free since backend #73)
+     * and the screen says the earlier changes were not kept.
+     */
+    private fun check(result: ParsedStatement) {
+        val accountId = _uiState.value.accountId ?: return unbound()
+        saved[KEY_CHECKING] = true
+        _uiState.update {
+            it.copy(
+                step = ImportStep.CHECK,
+                checkRows = ImportCheck.rowsOf(result, accountId),
+                saveErrorKey = null,
+                editing = null,
+                confirmingDiscard = false,
+            )
+        }
+    }
+
+    /** Save the rows as the person left them. */
+    fun saveChecked() {
+        val state = _uiState.value
+        if (!state.canSaveChecked) return
+        val result = parsed ?: return unbound()
+        save(result, state.checkRows)
+    }
+
+    private fun save(result: ParsedStatement, rows: List<CheckRow>) {
         val repos = repositories ?: return unbound()
         val accountId = _uiState.value.accountId ?: return unbound()
         val started = generation
-        _uiState.update { it.copy(step = ImportStep.SAVING, problem = null) }
+        _uiState.update { it.copy(step = ImportStep.SAVING, problem = null, saveErrorKey = null) }
         work = viewModelScope.launch {
             try {
-                val outcome = repos.imports.save(result.importId, StatementImportFlow.rowsToSave(accountId, result))
+                val outcome = repos.imports.save(result.importId, ImportCheck.rowsToSave(accountId, rows))
                 if (started != generation) return@launch
                 saved.remove<Boolean>(KEY_IN_PROGRESS)
+                saved.remove<Boolean>(KEY_CHECKING)
                 document = null
+                parsed = null
+                summarised = result to outcome
                 _uiState.value.fileUri?.let { release(it) }
                 _uiState.update {
                     it.copy(
@@ -365,6 +422,8 @@ class StatementImportViewModel(private val saved: SavedStateHandle) : ViewModel(
                         needsReview = outcome.needsReview,
                         importId = outcome.importId,
                         canResend = false,
+                        checkRows = emptyList(),
+                        readAgain = false,
                     )
                 }
                 // Home shows figures derived from these rows, and the server
@@ -374,11 +433,212 @@ class StatementImportViewModel(private val saved: SavedStateHandle) : ViewModel(
                 loadImported(outcome.importId)
             } catch (e: CancellationException) {
                 throw e
+            } catch (e: ApiException.ImportSuperseded) {
+                if (started != generation) return@launch
+                // Read again elsewhere since; this reading cannot be saved. Read
+                // it once more and check the fresh rows — saying so, because the
+                // changes made to these are gone.
+                parsed = null
+                _uiState.update { it.copy(readAgain = true, checkRows = emptyList()) }
+                document?.let { send(it, keepText = false) } ?: read()
             } catch (e: Exception) {
                 if (started != generation) return@launch
-                fail(e)
+                // Back to the rows, every edit kept, with why it did not save:
+                // pressing Save again is the whole of the recovery.
+                _uiState.update {
+                    it.copy(step = ImportStep.CHECK, saveErrorKey = (e as? ApiException)?.messageKey ?: Strings.error_unexpected)
+                }
             }
         }
+    }
+
+    // ── Discarding from the check (#55) ─────────────────────────────────
+
+    /** Discard asks first: the rows were read, and leaving loses them. */
+    fun askDiscard() {
+        if (_uiState.value.step != ImportStep.CHECK) return
+        _uiState.update { it.copy(confirmingDiscard = true) }
+    }
+
+    fun keepChecking() = _uiState.update { it.copy(confirmingDiscard = false) }
+
+    fun dismissReadAgain() = _uiState.update { it.copy(readAgain = false) }
+
+    // ── Editing a row: before saving, or after ──────────────────────────
+
+    /**
+     * Open the editor on [id]: a row being checked (fixed here, in memory, and
+     * sent when the import is saved) or one just saved (fixed on the server,
+     * as from Transactions).
+     */
+    fun edit(id: String) {
+        val state = _uiState.value
+        val row = when (state.step) {
+            ImportStep.CHECK -> state.checkRows.firstOrNull { it.row.id == id }?.row
+            ImportStep.DONE -> state.imported.firstOrNull { it.id == id }
+            else -> null
+        } ?: return
+        _uiState.update {
+            it.copy(
+                editing = row,
+                draft = ReviewQueue.draftOf(row),
+                editErrorKey = null,
+                editSaving = false,
+                deleting = false,
+                today = ManualEntry.today(),
+            )
+        }
+    }
+
+    fun cancelEdit() {
+        if (_uiState.value.editSaving || _uiState.value.deleting) return
+        _uiState.update { it.copy(editing = null, draft = CorrectionDraft(), editErrorKey = null) }
+    }
+
+    fun onDateChange(date: LocalDate) = editDraft { it.copy(occurredOn = date) }
+
+    fun onAmountChange(value: String) = editDraft { it.copy(amount = value) }
+
+    fun onDirectionChange(direction: TransactionDirection) = editDraft { it.copy(direction = direction) }
+
+    fun onDescriptionChange(value: String) = editDraft { it.copy(description = value) }
+
+    fun onCategoryChosen(id: String) = editDraft { it.copy(categoryId = id) }
+
+    private fun editDraft(change: (CorrectionDraft) -> CorrectionDraft) {
+        if (_uiState.value.editing == null) return
+        _uiState.update { it.copy(draft = change(it.draft), editErrorKey = null) }
+    }
+
+    fun saveEdit() {
+        val state = _uiState.value
+        val row = state.editing ?: return
+        if (state.editSaving) return
+        if (state.step == ImportStep.CHECK) {
+            val rows = ImportCheck.edit(state.checkRows, row.id, state.draft, state.today) ?: return
+            _uiState.update { it.copy(checkRows = rows, editing = null, draft = CorrectionDraft(), saveErrorKey = null) }
+            return
+        }
+        val repos = repositories ?: return
+        val patch = ReviewQueue.correction(row, state.draft, state.today) ?: return
+        val started = generation
+        _uiState.update { it.copy(editSaving = true, editErrorKey = null) }
+        viewModelScope.launch {
+            try {
+                val fixed = repos.transactions.correct(row.id, patch).transaction
+                if (started != generation) return@launch
+                _uiState.update { it.copy(editSaving = false, editing = null, draft = CorrectionDraft()) }
+                if (row.needsReview && !fixed.needsReview) answered()
+                LedgerChanged.announce()
+                _uiState.value.importId?.let { loadImported(it) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: ApiException) {
+                if (started != generation) return@launch
+                // A duplicate is said in the sheet, with the row still open:
+                // the person's draft is the thing they need to fix.
+                _uiState.update { it.copy(editSaving = false, editErrorKey = e.messageKey) }
+            }
+        }
+    }
+
+    /**
+     * The sheet asked first. Before saving, the row is simply left out of the
+     * import; after, it is deleted from the person's records.
+     */
+    fun deleteEditing() {
+        val state = _uiState.value
+        val row = state.editing ?: return
+        if (state.editSaving || state.deleting) return
+        if (state.step == ImportStep.CHECK) {
+            _uiState.update {
+                it.copy(checkRows = ImportCheck.remove(it.checkRows, row.id), editing = null, draft = CorrectionDraft())
+            }
+            return
+        }
+        val repos = repositories ?: return
+        val started = generation
+        _uiState.update { it.copy(deleting = true, editErrorKey = null) }
+        viewModelScope.launch {
+            try {
+                repos.transactions.delete(row.id)
+                if (started != generation) return@launch
+                _uiState.update {
+                    it.copy(
+                        deleting = false,
+                        editing = null,
+                        draft = CorrectionDraft(),
+                        imported = it.imported.filterNot { r -> r.id == row.id },
+                    )
+                }
+                if (row.needsReview) answered()
+                LedgerChanged.announce()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: ApiException) {
+                if (started != generation) return@launch
+                _uiState.update { it.copy(deleting = false, editErrorKey = e.messageKey) }
+            }
+        }
+    }
+
+    fun openNewCategory() = _uiState.update { it.copy(newCategoryName = "", newCategoryErrorKey = null) }
+
+    fun onNewCategoryName(name: String) = _uiState.update { it.copy(newCategoryName = name, newCategoryErrorKey = null) }
+
+    fun cancelNewCategory() {
+        if (_uiState.value.creatingCategory) return
+        _uiState.update { it.copy(newCategoryName = null, newCategoryErrorKey = null) }
+    }
+
+    /** Adds the category and files the row being edited into it. */
+    fun createCategory() {
+        val repos = repositories ?: return
+        val name = _uiState.value.newCategoryName?.trim().orEmpty()
+        if (name.isEmpty() || _uiState.value.creatingCategory) return
+        _uiState.update { it.copy(creatingCategory = true, newCategoryErrorKey = null) }
+        viewModelScope.launch {
+            try {
+                val made = repos.categories.create(name)
+                _uiState.update {
+                    it.copy(
+                        creatingCategory = false,
+                        newCategoryName = null,
+                        categories = it.categories + made,
+                        draft = it.draft.copy(categoryId = made.id),
+                    )
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: ApiException.CategoryExists) {
+                // Taken by one they can already use, so use it.
+                _uiState.update {
+                    it.copy(
+                        creatingCategory = false,
+                        newCategoryName = null,
+                        draft = it.draft.copy(categoryId = e.categoryId ?: it.draft.categoryId),
+                    )
+                }
+            } catch (e: ApiException) {
+                _uiState.update { it.copy(creatingCategory = false, newCategoryErrorKey = e.messageKey) }
+            }
+        }
+    }
+
+    /**
+     * One row that was waiting for a person no longer is — fixed here, or
+     * deleted. The prompt to open Review and the summary line both follow.
+     *
+     * Counted down from the save's own figure rather than recounted from the
+     * list: the list is the import's first page, and a long statement has more
+     * rows waiting than one page shows.
+     */
+    private fun answered() {
+        val (result, outcome) = summarised ?: return
+        val waiting = (_uiState.value.needsReview - 1).coerceAtLeast(0)
+        val counted = outcome.copy(needsReview = waiting)
+        summarised = result to counted
+        _uiState.update { it.copy(needsReview = waiting, summary = StatementImportFlow.summary(result, counted)) }
     }
 
     /** Try the list again after it failed; the import itself already succeeded. */
@@ -455,6 +715,7 @@ class StatementImportViewModel(private val saved: SavedStateHandle) : ViewModel(
 
     private fun showProblem(problem: ImportProblem) {
         saved.remove<Boolean>(KEY_IN_PROGRESS)
+        saved.remove<Boolean>(KEY_CHECKING)
         _uiState.update {
             it.copy(step = ImportStep.FAILED, problem = problem, canResend = document != null)
         }
@@ -554,8 +815,10 @@ class StatementImportViewModel(private val saved: SavedStateHandle) : ViewModel(
         document = null
         parsed = null
         password = null
+        summarised = null
         saved.remove<String>(KEY_FILE)
         saved.remove<Boolean>(KEY_IN_PROGRESS)
+        saved.remove<Boolean>(KEY_CHECKING)
         saved.remove<String>(KEY_ACCOUNT)
         _uiState.update { StatementImportUiState(accounts = it.accounts, accountsLoading = false) }
         // Bumping the generation drops replies meant for the old import, but a
@@ -580,6 +843,8 @@ class StatementImportViewModel(private val saved: SavedStateHandle) : ViewModel(
             return
         }
         if (state.working || state.accountId == null || state.fileUri == null) return
+        // Ended mid-check: the rows and any changes to them were memory only.
+        if (saved.get<Boolean>(KEY_CHECKING) == true) _uiState.update { it.copy(readAgain = true) }
         read()
     }
 
@@ -588,6 +853,9 @@ class StatementImportViewModel(private val saved: SavedStateHandle) : ViewModel(
         const val KEY_ACCOUNT = "import.account_id"
         const val KEY_FILE = "import.file_uri"
         const val KEY_IN_PROGRESS = "import.in_progress"
+
+        /** A flag, never the rows: the import was being checked (#55). */
+        const val KEY_CHECKING = "import.checking"
     }
 }
 

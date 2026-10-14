@@ -36,6 +36,7 @@ internal object ApiErrorMapper {
     private const val GOAL_LIMIT_REACHED = "goal_limit_reached"
     private const val DATE_IN_PAST = "date_in_past"
     private const val ORDER_MISMATCH = "order_mismatch"
+    private const val IMPORT_SUPERSEDED = "import_superseded"
 
     fun fromResponse(status: Int, body: String): ApiException = when (status) {
         401 -> ApiException.Unauthorized("token rejected")
@@ -121,6 +122,8 @@ internal object ApiErrorMapper {
                 WOULD_DUPLICATE -> return ApiException.WouldDuplicate(detail.string("duplicate_of"))
 
                 CONSENT_REQUIRED -> return ApiException.ConsentRequired(detail.string("policy_version"))
+
+                IMPORT_SUPERSEDED -> return ApiException.ImportSuperseded()
 
                 AI_POLICY_VERSION_MISMATCH ->
                     return ApiException.AiPolicyChanged(detail.string("current_version"))

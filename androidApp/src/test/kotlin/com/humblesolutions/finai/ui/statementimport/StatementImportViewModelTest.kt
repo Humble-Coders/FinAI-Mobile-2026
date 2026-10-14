@@ -19,11 +19,13 @@ import com.humblesolutions.finai.model.ParsedRow
 import com.humblesolutions.finai.model.ParsedStatement
 import com.humblesolutions.finai.model.PatchOutcome
 import com.humblesolutions.finai.model.ReviewPage
+import com.humblesolutions.finai.model.ReviewReason
 import com.humblesolutions.finai.model.RowsToSave
 import com.humblesolutions.finai.model.SaveOutcome
 import com.humblesolutions.finai.model.StatementImports
 import com.humblesolutions.finai.model.StatementUpload
 import com.humblesolutions.finai.model.Transaction
+import com.humblesolutions.finai.model.TransactionDirection
 import com.humblesolutions.finai.model.TransactionPatch
 import com.humblesolutions.finai.repository.AccountsRepository
 import com.humblesolutions.finai.repository.AiConsentRepository
@@ -32,6 +34,7 @@ import com.humblesolutions.finai.repository.StatementImportRepository
 import com.humblesolutions.finai.repository.StatementReadException
 import com.humblesolutions.finai.repository.StatementReader
 import com.humblesolutions.finai.repository.TransactionsRepository
+import com.humblesolutions.finai.usecase.ImportCheck
 import com.humblesolutions.finai.usecase.ImportFailure
 import com.humblesolutions.finai.usecase.ImportStep
 import kotlinx.coroutines.Dispatchers
@@ -130,13 +133,20 @@ class StatementImportViewModelTest {
     // ── A good import ───────────────────────────────────────────────────
 
     @Test
-    fun `a statement is read, sent, saved and summed up`() {
+    fun `a statement is read, sent, checked, then saved and summed up`() {
         val imports = FakeImports(parse = { twoRows })
         val model = model()
         model.bind("alice") { repositories(imports = imports) }
         model.upToFile()
 
         model.onFilePicked(file)
+
+        // Read and shown, and nothing saved until the person says so (#55).
+        assertEquals(ImportStep.CHECK, model.uiState.value.step)
+        assertEquals(2, model.uiState.value.checkRows.size)
+        assertTrue(imports.saved.isEmpty())
+
+        model.saveChecked()
 
         val state = model.uiState.value
         assertEquals(ImportStep.DONE, state.step)
@@ -186,7 +196,7 @@ class StatementImportViewModelTest {
         model.agree()
 
         assertEquals("ai-v1", consent.agreed)
-        assertEquals(ImportStep.DONE, model.uiState.value.step)
+        assertEquals(ImportStep.CHECK, model.uiState.value.step)
         // The statement already read is sent again, not read a second time.
         assertEquals(1, (model.readerFor()).reads)
     }
@@ -205,7 +215,7 @@ class StatementImportViewModelTest {
         model.chooseAnotherFile()
         model.onFilePicked("content://files/second.pdf")
 
-        assertEquals(ImportStep.DONE, model.uiState.value.step)
+        assertEquals(ImportStep.CHECK, model.uiState.value.step)
         assertEquals(1, consent.consents)
     }
 
@@ -249,7 +259,7 @@ class StatementImportViewModelTest {
 
         model.retry()
 
-        assertEquals(ImportStep.DONE, model.uiState.value.step)
+        assertEquals(ImportStep.CHECK, model.uiState.value.step)
         assertEquals(1, reader.reads)
         assertEquals(2, imports.uploads.size)
     }
@@ -271,7 +281,7 @@ class StatementImportViewModelTest {
         assertTrue(model.uiState.value.passwordWrong)
         model.submitPassword("hunter2")
 
-        assertEquals(ImportStep.DONE, model.uiState.value.step)
+        assertEquals(ImportStep.CHECK, model.uiState.value.step)
         assertEquals(listOf(null, "wrong", "hunter2"), reader.passwords)
         // Never written down, never sent.
         assertTrue(saved.keys().none { saved.get<Any?>(it) == "hunter2" })
@@ -367,7 +377,7 @@ class StatementImportViewModelTest {
         model.bind("alice") { repositories(imports = FakeImports(parse = { twoRows }), reader = reader) }
 
         assertEquals(listOf(file), reader.sources)
-        assertEquals(ImportStep.DONE, model.uiState.value.step)
+        assertEquals(ImportStep.CHECK, model.uiState.value.step)
     }
 
     @Test
@@ -389,7 +399,7 @@ class StatementImportViewModelTest {
         model.bind("alice") { repositories(imports = FakeImports(parse = { twoRows }), reader = reader) }
 
         assertEquals(listOf(photo), reader.sources)
-        assertEquals(ImportStep.DONE, model.uiState.value.step)
+        assertEquals(ImportStep.CHECK, model.uiState.value.step)
     }
 
     @Test
@@ -400,6 +410,8 @@ class StatementImportViewModelTest {
         model.upToFile()
 
         model.onFilePicked(file)
+        assertEquals(emptyList(), files.released, "still needed while the rows are checked")
+        model.saveChecked()
 
         // Kept only as long as a restore might need it, never for good.
         assertEquals(listOf(file), files.released)
@@ -502,7 +514,18 @@ class StatementImportViewModelTest {
 
         override suspend fun review(cursor: String?): ReviewPage = unreachable()
 
-        override suspend fun correct(id: String, patch: TransactionPatch): PatchOutcome = unreachable()
+        val corrected = mutableListOf<Pair<String, TransactionPatch>>()
+
+        override suspend fun correct(id: String, patch: TransactionPatch): PatchOutcome {
+            corrected += id to patch
+            // As the server does: a row given a category leaves the queue.
+            page = page.copy(
+                rows = page.rows.map {
+                    if (it.id == id) it.copy(categoryId = patch.categoryId ?: it.categoryId, needsReview = false, reviewReason = null) else it
+                },
+            )
+            return PatchOutcome(transaction = page.rows.first { it.id == id })
+        }
 
         override suspend fun confirm(id: String): PatchOutcome = unreachable()
 
@@ -574,12 +597,16 @@ class StatementImportViewModelTest {
         val uploads = mutableListOf<StatementUpload>()
         val saved = mutableListOf<Pair<String, RowsToSave>>()
 
+        /** Thrown by the next saves, one each, before any succeeds. */
+        val saveFailures = ArrayDeque<Exception>()
+
         override suspend fun parse(upload: StatementUpload): ParsedStatement {
             uploads += upload
             return parse.invoke(upload)
         }
 
         override suspend fun save(importId: String, rows: RowsToSave): SaveOutcome {
+            saveFailures.removeFirstOrNull()?.let { throw it }
             saved += importId to rows
             return SaveOutcome(importId = importId, saved = rows.rows.size, needsReview = 1)
         }
@@ -615,7 +642,196 @@ class StatementImportViewModelTest {
         }
         model.upToFile()
         model.onFilePicked(file)
+        model.saveChecked()
         return model
+    }
+
+    // ── Checking before saving (#55) ────────────────────────────────────
+
+    private fun checking(imports: FakeImports = FakeImports(parse = { twoRows }), saved: SavedStateHandle = SavedStateHandle()): StatementImportViewModel {
+        val model = model(saved)
+        model.bind("alice") { repositories(imports = imports) }
+        model.upToFile()
+        model.onFilePicked(file)
+        assertEquals(ImportStep.CHECK, model.uiState.value.step)
+        return model
+    }
+
+    private fun StatementImportViewModel.fix(id: String, amount: String) {
+        edit(id)
+        onAmountChange(amount)
+        saveEdit()
+    }
+
+    @Test
+    fun `an edit reaches the request as confirmed and a removed row is left out`() {
+        val imports = FakeImports(parse = { twoRows })
+        val model = checking(imports)
+
+        model.fix("check-0", "12.04")
+        model.edit("check-1")
+        model.deleteEditing()
+        model.saveChecked()
+
+        val sent = imports.saved.single().second.rows
+        assertEquals(listOf("TIM HORTONS"), sent.map { it.description })
+        assertEquals("12.04", sent.single().amount)
+        assertEquals(ImportCheck.CONFIRMED, sent.single().confidence, "the person has now read it")
+    }
+
+    @Test
+    fun `an edit the editor refuses changes nothing`() {
+        val model = checking()
+
+        model.edit("check-0")
+        model.onAmountChange("0")
+        model.saveEdit()
+
+        val state = model.uiState.value
+        assertNotNull(state.editing, "the sheet stays open on the refusal")
+        assertEquals("12.40", state.checkRows.first().row.amount)
+    }
+
+    @Test
+    fun `with every row removed there is nothing to save`() {
+        val imports = FakeImports(parse = { twoRows })
+        val model = checking(imports)
+
+        listOf("check-0", "check-1").forEach {
+            model.edit(it)
+            model.deleteEditing()
+        }
+        model.saveChecked()
+
+        assertTrue(model.uiState.value.noneLeft)
+        assertFalse(model.uiState.value.canSaveChecked)
+        assertTrue(imports.saved.isEmpty())
+    }
+
+    @Test
+    fun `only a flag is kept in saved state while checking, never a row`() {
+        val saved = SavedStateHandle()
+        val model = checking(saved = saved)
+        model.fix("check-0", "12.04")
+
+        assertEquals(true, saved.get<Boolean>(StatementImportViewModel.KEY_CHECKING))
+        val values = saved.keys().map { saved.get<Any?>(it).toString() }
+        assertTrue(values.none { it.contains("TIM HORTONS") || it.contains("12.04") || it.contains("134.02") }, "$values")
+    }
+
+    @Test
+    fun `the app killed mid-check reads the statement again and says so`() {
+        val saved = SavedStateHandle(
+            mapOf(
+                StatementImportViewModel.KEY_OWNER to "alice",
+                StatementImportViewModel.KEY_ACCOUNT to "acct-1",
+                StatementImportViewModel.KEY_FILE to file,
+                StatementImportViewModel.KEY_IN_PROGRESS to true,
+                StatementImportViewModel.KEY_CHECKING to true,
+            ),
+        )
+        val reader = FakeReader()
+        val model = model(saved)
+
+        model.bind("alice") { repositories(imports = FakeImports(parse = { twoRows }), reader = reader) }
+
+        val state = model.uiState.value
+        assertEquals(listOf(file), reader.sources)
+        assertEquals(ImportStep.CHECK, state.step)
+        assertTrue(state.readAgain)
+        assertEquals(listOf(false, false), state.checkRows.map { it.edited })
+    }
+
+    @Test
+    fun `a reading replaced by a later one is read again rather than failing`() {
+        val imports = FakeImports(parse = { twoRows }).apply { saveFailures += ApiException.ImportSuperseded() }
+        val model = checking(imports)
+        model.fix("check-0", "12.04")
+
+        model.saveChecked()
+
+        val state = model.uiState.value
+        assertEquals(ImportStep.CHECK, state.step)
+        assertTrue(state.readAgain)
+        assertEquals(2, imports.uploads.size, "sent again from the document in memory")
+        assertEquals(1, model.readerFor().reads, "not read from the file again")
+        assertEquals("12.40", state.checkRows.first().row.amount, "a fresh reading, so the earlier edit is gone")
+    }
+
+    @Test
+    fun `a save that fails keeps every edit for another try`() {
+        val imports = FakeImports(parse = { twoRows }).apply {
+            saveFailures += ApiException.Network(RuntimeException("offline"))
+        }
+        val model = checking(imports)
+        model.fix("check-0", "12.04")
+
+        model.saveChecked()
+
+        val failed = model.uiState.value
+        assertEquals(ImportStep.CHECK, failed.step)
+        assertNotNull(failed.saveErrorKey)
+        assertEquals("12.04", failed.checkRows.first().row.amount)
+
+        model.saveChecked()
+
+        assertEquals(ImportStep.DONE, model.uiState.value.step)
+        assertEquals("12.04", imports.saved.single().second.rows.first().amount)
+    }
+
+    @Test
+    fun `leaving mid-check asks first`() {
+        val model = checking()
+
+        model.askDiscard()
+        assertTrue(model.uiState.value.confirmingDiscard)
+
+        model.keepChecking()
+        assertFalse(model.uiState.value.confirmingDiscard)
+        assertEquals(ImportStep.CHECK, model.uiState.value.step)
+    }
+
+    @Test
+    fun `a saved row is fixed on the server and the list is read again`() {
+        val transactions = FakeImportedTransactions(
+            page = ReviewPage(
+                rows = listOf(
+                    Transaction(id = "r1", occurredOn = "2026-08-14", amount = "12.40", currency = "CAD", direction = TransactionDirection.DEBIT, description = "TIM HORTONS"),
+                ),
+            ),
+        )
+        val model = importedThrough(transactions)
+
+        model.edit("r1")
+        model.onCategoryChosen("cat-dining")
+        model.saveEdit()
+
+        assertEquals(listOf("r1"), transactions.corrected.map { it.first })
+        assertEquals("cat-dining", transactions.corrected.single().second.categoryId)
+        assertNull(model.uiState.value.editing)
+        assertEquals(2, transactions.askedFor.size, "the list is read again after the fix")
+    }
+
+    @Test
+    fun `fixing the only waiting row stops asking for Review`() {
+        val transactions = FakeImportedTransactions(
+            page = ReviewPage(
+                rows = listOf(
+                    Transaction(id = "r1", occurredOn = "2026-08-14", amount = "12.40", currency = "CAD", direction = TransactionDirection.DEBIT, description = "TIM HORTONS", needsReview = true, reviewReason = ReviewReason.UNKNOWN_CATEGORY),
+                    Transaction(id = "r2", occurredOn = "2026-08-15", amount = "134.02", currency = "CAD", direction = TransactionDirection.DEBIT, description = "LOBLAWS", categoryId = "cat-groceries"),
+                ),
+            ),
+        )
+        val model = importedThrough(transactions)
+        assertEquals(1, model.uiState.value.needsReview)
+
+        model.edit("r1")
+        model.onCategoryChosen("cat-dining")
+        model.saveEdit()
+
+        val state = model.uiState.value
+        assertEquals(0, state.needsReview, "the Review prompt goes with the last waiting row")
+        assertEquals(listOf("2 transactions found"), state.summary)
     }
 
     // ── What the import read ────────────────────────────────────────────

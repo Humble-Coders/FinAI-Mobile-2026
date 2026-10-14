@@ -71,6 +71,12 @@ enum class ManualEntrySaved(val messageKey: String) {
     /** Saved, but same day and amount as another row under a different name. */
     LOOKS_LIKE_A_DUPLICATE(Strings.manual_entry_saved_possible_duplicate),
 
+    /**
+     * Saved, and paired with the other half of a move between the household's
+     * own accounts — filed as a transfer for the person to confirm (backend #73).
+     */
+    LOOKS_LIKE_A_TRANSFER(Strings.manual_entry_saved_own_transfer),
+
     /** Waiting for review for a reason this build does not know. Never "all fine". */
     NEEDS_REVIEW(Strings.manual_entry_saved_needs_review),
 }
@@ -212,6 +218,7 @@ object ManualEntry {
         return when (saved.reviewReason) {
             ReviewReason.SUSPECTED_DUPLICATE -> ManualEntrySaved.LOOKS_LIKE_A_DUPLICATE
             ReviewReason.UNKNOWN_CATEGORY -> ManualEntrySaved.NEEDS_CATEGORY
+            ReviewReason.OWN_TRANSFER -> ManualEntrySaved.LOOKS_LIKE_A_TRANSFER
             ReviewReason.LOW_CONFIDENCE, ReviewReason.UNKNOWN, null -> ManualEntrySaved.NEEDS_REVIEW
         }
     }

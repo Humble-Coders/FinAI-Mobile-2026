@@ -198,6 +198,16 @@ sealed class ApiException(message: String, cause: Throwable? = null) : Exception
         override val messageKey: String = Strings.import_consent_changed
     }
 
+    /**
+     * The statement was read again since this reading, and the later one took
+     * its place in the month's allowance (backend #73). Saving this one too
+     * would be two statements for one import, so the server refuses it. The
+     * import screen answers by reading the statement again, not with an error.
+     */
+    class ImportSuperseded : ApiException("import superseded by a later reading") {
+        override val messageKey: String = Strings.import_check_read_again
+    }
+
     /** This month's imports are used up (429). [resetsAt] is an ISO instant, or null. */
     class ImportQuotaExceeded(val limit: Int?, val resetsAt: String?) : ApiException("import quota exceeded") {
         override val messageKey: String = Strings.import_quota_exceeded

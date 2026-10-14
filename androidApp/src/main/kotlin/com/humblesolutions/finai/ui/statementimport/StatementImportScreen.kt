@@ -1,10 +1,13 @@
 package com.humblesolutions.finai.ui.statementimport
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -29,6 +32,7 @@ import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.UploadFile
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
@@ -80,6 +84,8 @@ import com.humblesolutions.finai.ui.components.NewAccountSheet
 import com.humblesolutions.finai.ui.components.PasswordField
 import com.humblesolutions.finai.ui.components.PickerField
 import com.humblesolutions.finai.ui.components.ProviderButton
+import com.humblesolutions.finai.ui.edit.TransactionEditorActions
+import com.humblesolutions.finai.ui.edit.TransactionEditorSheet
 import com.humblesolutions.finai.ui.strings
 import com.humblesolutions.finai.ui.theme.FinAiPalette
 import com.humblesolutions.finai.usecase.ImportStep
@@ -112,6 +118,13 @@ class StatementImportActions(
     val onReloadImported: () -> Unit,
     val onDiagnosticsTicked: (Boolean) -> Unit,
     val onSendDiagnostics: () -> Unit,
+    /** A row to fix: one being checked, or one just saved (#55). */
+    val onEditRow: (String) -> Unit,
+    val onSaveChecked: () -> Unit,
+    val onAskDiscard: () -> Unit,
+    val onKeepChecking: () -> Unit,
+    val onDismissReadAgain: () -> Unit,
+    val editor: TransactionEditorActions,
 )
 
 /**
@@ -130,7 +143,9 @@ fun StatementImportScreen(state: StatementImportUiState, actions: StatementImpor
             modifier = Modifier.fillMaxSize().safeDrawingPadding(),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            MintHeader(title = strings(Strings.import_title), onBack = actions.onClose, step = stepOf(state.step))
+            // Leaving mid-check loses what was read, so it asks first (#55).
+            val onBack = if (state.step == ImportStep.CHECK) actions.onAskDiscard else actions.onClose
+            MintHeader(title = strings(Strings.import_title), onBack = onBack, step = stepOf(state.step))
             Column(
                 modifier = Modifier
                     .widthIn(max = ContentMaxWidth)
@@ -152,13 +167,34 @@ fun StatementImportScreen(state: StatementImportUiState, actions: StatementImpor
                     // The coin loader covers these; its caption says which.
                     ImportStep.READING, ImportStep.SENDING, ImportStep.SAVING -> Spacer(Modifier.height(1.dp))
 
+                    ImportStep.CHECK -> Panelled { CheckStep(state, actions) }
+
                     ImportStep.DONE -> Panelled { DoneStep(state, actions) }
 
                     ImportStep.FAILED -> Panelled { FailedStep(state, actions) }
                 }
                 Spacer(Modifier.height(16.dp))
             }
+            // Save stays in reach however long the statement: a hundred rows
+            // must not put the one thing to press at the bottom of a scroll.
+            if (state.step == ImportStep.CHECK) CheckBar(state, actions)
         }
+    }
+
+    state.editor?.let { TransactionEditorSheet(it, actions.editor) }
+
+    if (state.confirmingDiscard) {
+        AlertDialog(
+            onDismissRequest = actions.onKeepChecking,
+            title = { Text(strings(Strings.import_check_discard_title)) },
+            text = { Text(strings(Strings.import_check_discard_body)) },
+            confirmButton = {
+                TextButton(onClick = actions.onClose) {
+                    Text(strings(Strings.import_check_discard), color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = { TextButton(onClick = actions.onKeepChecking) { Text(strings(Strings.action_cancel)) } },
+        )
     }
 
     state.newAccount?.let { draft ->
@@ -438,7 +474,8 @@ private fun DoneStep(state: StatementImportUiState, actions: StatementImportActi
         state.summary.forEach { Body(it) }
     }
     // What it actually read. "Imported 24" is a claim the person cannot check,
-    // and the one question they have is whether the categories are right.
+    // and the one question they have is whether the categories are right —
+    // so each row opens the editor, where a category is fixed (#55).
     ImportedRowsSection(state, actions)
 
     // Straight into the review queue when the import left rows waiting (#32).
@@ -506,6 +543,152 @@ private fun DiagnosticsOffer(state: StatementImportUiState, actions: StatementIm
     }
 }
 
+// ── Checking before saving (#55) ─────────────────────────────────────────
+
+/**
+ * Every row the statement produced, before any of it is saved. A row opens the
+ * editor to fix what was read, or to remove it; Save and Discard sit in the
+ * bar beneath ([CheckBar]).
+ */
+@Composable
+private fun CheckStep(state: StatementImportUiState, actions: StatementImportActions) {
+    Title(strings(Strings.import_check_title))
+    if (state.readAgain) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .background(MaterialTheme.colorScheme.tertiary.copy(alpha = 0.12f))
+                .padding(start = 12.dp, top = 4.dp, bottom = 4.dp)
+                .semantics { liveRegion = LiveRegionMode.Polite },
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = strings(Strings.import_check_read_again),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.tertiary,
+                modifier = Modifier.weight(1f),
+            )
+            TextButton(onClick = actions.onDismissReadAgain) { Text(strings(Strings.import_check_got_it)) }
+        }
+    }
+    Body(strings(Strings.import_check_subtitle), muted = true)
+
+    if (state.noneLeft) {
+        Body(strings(Strings.import_check_none_left))
+        return
+    }
+
+    Chips(
+        buildList {
+            add(state.checkCount to false)
+            state.checkTotalOut?.let { add(strings(Strings.import_extracted_out, it) to false) }
+            state.checkTotalIn?.let { add(strings(Strings.import_extracted_in, it) to false) }
+        },
+    )
+
+    state.checkDays.forEach { day ->
+        Text(
+            text = state.dateLabel(day.date),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 6.dp),
+        )
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp),
+            color = MaterialTheme.colorScheme.surface,
+            tonalElevation = 1.dp,
+        ) {
+            Column {
+                day.rows.forEachIndexed { index, row ->
+                    ImportedRow(
+                        state = state,
+                        row = row,
+                        description = state.checkRowDescription(row),
+                        clickLabel = state.checkRowHint(row),
+                        onClick = { actions.onEditRow(row.id) },
+                    ) { CheckNote(state, row) }
+                    if (index != day.rows.lastIndex) {
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** Save, or leave without saving — pinned under the list while checking. */
+@Composable
+private fun CheckBar(state: StatementImportUiState, actions: StatementImportActions) {
+    Surface(color = MaterialTheme.colorScheme.surface, tonalElevation = 3.dp, modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier
+                .widthIn(max = ContentMaxWidth)
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            ErrorText(state.saveErrorKey)
+            GradientButton(
+                text = state.saveCheckedLabel,
+                onClick = actions.onSaveChecked,
+                enabled = state.canSaveChecked,
+            )
+            TextButton(onClick = actions.onAskDiscard, modifier = Modifier.fillMaxWidth()) {
+                Text(strings(Strings.import_check_discard))
+            }
+        }
+    }
+}
+
+/** "Check this one" for a row read with doubt; "Changed by you" once fixed. */
+@Composable
+private fun CheckNote(state: StatementImportUiState, row: Transaction) {
+    val key = state.checkNoteKey(row) ?: return
+    val doubt = key == Strings.import_check_doubt
+    Text(
+        text = strings(key),
+        style = MaterialTheme.typography.labelSmall,
+        color = if (doubt) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier
+            .clip(RoundedCornerShape(6.dp))
+            .background(
+                if (doubt) MaterialTheme.colorScheme.tertiary.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceVariant,
+            )
+            .padding(horizontal = 6.dp, vertical = 2.dp),
+    )
+}
+
+/**
+ * Small facts in a row: how many, money out, money in. They wrap onto a second
+ * line rather than clip when the text is large.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun Chips(chips: List<Pair<String, Boolean>>, modifier: Modifier = Modifier) {
+    if (chips.isEmpty()) return
+    FlowRow(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        chips.forEach { (text, warning) ->
+            Text(
+                text = text,
+                style = MaterialTheme.typography.labelSmall,
+                color = if (warning) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(
+                        if (warning) MaterialTheme.colorScheme.tertiary.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceVariant,
+                    )
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+            )
+        }
+    }
+}
+
 // ── What the import read ────────────────────────────────────────────────
 
 /**
@@ -559,7 +742,13 @@ private fun ImportedRowsSection(state: StatementImportUiState, actions: Statemen
         ) {
             Column {
                 day.rows.forEachIndexed { index, row ->
-                    ImportedRow(state, row)
+                    ImportedRow(
+                        state = state,
+                        row = row,
+                        description = state.rowDescription(row),
+                        clickLabel = state.editHint(row),
+                        onClick = { actions.onEditRow(row.id) },
+                    ) { CategoryChip(state, row) }
                     if (index != day.rows.lastIndex) {
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
                     }
@@ -572,54 +761,43 @@ private fun ImportedRowsSection(state: StatementImportUiState, actions: Statemen
 /** Money out, money in, and how many still want a person. */
 @Composable
 private fun ImportedTotals(state: StatementImportUiState) {
-    val chips = buildList<Pair<String, Boolean>> {
-        // Each omitted when there is none, rather than shown as zero: "0.00 in"
-        // reads as a fact about the statement rather than an absence of rows.
-        state.totalOut?.let { add(strings(Strings.import_extracted_out, it) to false) }
-        state.totalIn?.let { add(strings(Strings.import_extracted_in, it) to false) }
-        state.waitingLabel?.let { add(it to true) }
-    }
-    if (chips.isEmpty()) return
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        chips.forEach { (text, warning) ->
-            Text(
-                text = text,
-                style = MaterialTheme.typography.labelSmall,
-                color = if (warning) {
-                    MaterialTheme.colorScheme.tertiary
-                } else {
-                    MaterialTheme.colorScheme.onSurfaceVariant
-                },
-                modifier = Modifier
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(
-                        if (warning) {
-                            MaterialTheme.colorScheme.tertiary.copy(alpha = 0.12f)
-                        } else {
-                            MaterialTheme.colorScheme.surfaceVariant
-                        },
-                    )
-                    .padding(horizontal = 8.dp, vertical = 4.dp),
-            )
-        }
-    }
+    Chips(
+        buildList {
+            // Each omitted when there is none, rather than shown as zero: "0.00 in"
+            // reads as a fact about the statement rather than an absence of rows.
+            state.totalOut?.let { add(strings(Strings.import_extracted_out, it) to false) }
+            state.totalIn?.let { add(strings(Strings.import_extracted_in, it) to false) }
+            state.waitingLabel?.let { add(it to true) }
+        },
+        modifier = Modifier.padding(top = 6.dp),
+    )
 }
 
+/**
+ * One row of a statement: its name, a note under it, and its amount. Tapping it
+ * opens the editor — before saving, to fix what was read; after, to fix where
+ * it was filed.
+ */
 @Composable
-private fun ImportedRow(state: StatementImportUiState, row: Transaction) {
+private fun ImportedRow(
+    state: StatementImportUiState,
+    row: Transaction,
+    description: String,
+    clickLabel: String,
+    onClick: () -> Unit,
+    note: @Composable () -> Unit,
+) {
     val isDebit = row.direction == TransactionDirection.DEBIT
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(min = 56.dp)
+            .clickable(onClickLabel = clickLabel, role = Role.Button, onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 10.dp)
-            // One announcement per row: the name, what it was filed as, and
-            // the amount, rather than three separate stops.
+            // One announcement per row: the name, the note, and the amount,
+            // rather than three separate stops.
             .semantics(mergeDescendants = true) {
-                contentDescription = state.rowDescription(row)
+                contentDescription = description
             },
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -631,7 +809,7 @@ private fun ImportedRow(state: StatementImportUiState, row: Transaction) {
                 overflow = TextOverflow.Ellipsis,
             )
             Spacer(Modifier.height(2.dp))
-            CategoryChip(state, row)
+            note()
         }
         Spacer(Modifier.width(10.dp))
         Text(

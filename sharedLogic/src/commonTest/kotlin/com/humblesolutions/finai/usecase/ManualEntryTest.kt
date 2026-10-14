@@ -244,6 +244,13 @@ class ManualEntryTest {
     }
 
     @Test
+    fun aPaymentPairedAsATransferSaysSo() {
+        val paired = Transaction(needsReview = true, reviewReason = ReviewReason.OWN_TRANSFER)
+
+        assertEquals(ManualEntrySaved.LOOKS_LIKE_A_TRANSFER, ManualEntry.savedAs(paired))
+    }
+
+    @Test
     fun aRowWaitingForAnUnknownReasonNeverReadsAsAllFine() {
         for (reason in listOf(ReviewReason.UNKNOWN, ReviewReason.LOW_CONFIDENCE, null)) {
             val waiting = Transaction(needsReview = true, reviewReason = reason)

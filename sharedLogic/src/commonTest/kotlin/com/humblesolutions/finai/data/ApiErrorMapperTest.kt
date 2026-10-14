@@ -178,6 +178,15 @@ class ApiErrorMapperTest {
     }
 
     @Test
+    fun `a reading replaced by a later one is its own error`() {
+        val error = ApiErrorMapper.fromResponse(
+            409,
+            """{"detail":{"code":"import_superseded","message":"Read again since."}}""",
+        )
+        assertIs<ApiException.ImportSuperseded>(error)
+    }
+
+    @Test
     fun `a policy that moved on carries the version now in force`() {
         val error = ApiErrorMapper.fromResponse(
             409,
