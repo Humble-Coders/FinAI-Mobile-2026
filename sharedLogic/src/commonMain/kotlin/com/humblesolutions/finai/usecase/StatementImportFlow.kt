@@ -24,6 +24,13 @@ enum class ImportStep {
     PASSWORD,
     READING,
     SENDING,
+
+    /**
+     * Read, not saved: every row is shown so the person can fix or remove any
+     * before anything reaches their records (#55). Nothing is saved until they
+     * press Save.
+     */
+    CHECK,
     SAVING,
     DONE,
     FAILED,

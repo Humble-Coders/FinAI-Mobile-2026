@@ -6,15 +6,23 @@ import com.humblesolutions.finai.model.Account
 import com.humblesolutions.finai.model.AiPolicy
 import com.humblesolutions.finai.model.Category
 import com.humblesolutions.finai.model.Transaction
+import com.humblesolutions.finai.ui.edit.TransactionEditorState
+import com.humblesolutions.finai.usecase.CheckRow
+import com.humblesolutions.finai.usecase.CorrectionBlock
+import com.humblesolutions.finai.usecase.CorrectionDraft
+import com.humblesolutions.finai.usecase.ImportCheck
 import com.humblesolutions.finai.usecase.ImportProblem
 import com.humblesolutions.finai.usecase.ImportStep
 import com.humblesolutions.finai.usecase.ImportedRows
+import com.humblesolutions.finai.usecase.ManualEntry
 import com.humblesolutions.finai.usecase.NewAccountBlock
 import com.humblesolutions.finai.usecase.NewAccountDraft
 import com.humblesolutions.finai.usecase.NewAccountForm
+import com.humblesolutions.finai.usecase.ReviewQueue
 import com.humblesolutions.finai.usecase.StatementImportFlow
 import com.humblesolutions.finai.util.Dates
 import com.humblesolutions.finai.util.Money
+import kotlinx.datetime.LocalDate
 
 /**
  * Everything the import screen shows (#31).
@@ -73,6 +81,28 @@ data class StatementImportUiState(
     val importedErrorKey: String? = null,
     val categories: List<Category> = emptyList(),
     val locale: String = "en",
+
+    /**
+     * The statement as read and not yet saved (#55): exactly what Save sends.
+     * Memory only — a household's figures never go into saved state.
+     */
+    val checkRows: List<CheckRow> = emptyList(),
+    /** The app was ended mid-check and the statement read again, so earlier changes are gone. */
+    val readAgain: Boolean = false,
+    val confirmingDiscard: Boolean = false,
+    /** Why Save failed. The checked rows are kept, so it can be pressed again. */
+    val saveErrorKey: String? = null,
+
+    /** One row open in the editor: not saved yet ([ImportStep.CHECK]) or saved ([ImportStep.DONE]). */
+    val editing: Transaction? = null,
+    val draft: CorrectionDraft = CorrectionDraft(),
+    val editSaving: Boolean = false,
+    val deleting: Boolean = false,
+    val editErrorKey: String? = null,
+    val today: LocalDate = ManualEntry.today(),
+    val newCategoryName: String? = null,
+    val creatingCategory: Boolean = false,
+    val newCategoryErrorKey: String? = null,
 ) {
     private val fractionDigits: Int get() = Money.fractionDigits(currencyOf)
 
@@ -117,6 +147,93 @@ data class StatementImportUiState(
     private fun money(amount: String): String = Money.format(amount, currencyOf, locale)
 
     val account: Account? get() = accounts.firstOrNull { it.id == accountId }
+
+    // ── Checking before saving (#55) ────────────────────────────────────
+
+    private val checked: List<Transaction> get() = ImportCheck.transactions(checkRows)
+
+    private val checkDigits: Int get() = Money.fractionDigits(checkCurrency)
+
+    private val checkCurrency: String get() = checkRows.firstOrNull()?.row?.currency ?: account?.currency.orEmpty()
+
+    /** The rows grouped by their day on the statement, newest first, as after saving. */
+    val checkDays: List<ImportedRows.Day> get() = ImportedRows.byDate(checked)
+
+    fun checkRowOf(row: Transaction): CheckRow? = checkRows.firstOrNull { it.row.id == row.id }
+
+    val checkCount: String get() = ImportCheck.countLabel(checkRows, locale)
+
+    val checkTotalOut: String?
+        get() = ImportedRows.totalOut(checked, checkDigits)?.let { Money.format(it, checkCurrency, locale) }
+
+    val checkTotalIn: String?
+        get() = ImportedRows.totalIn(checked, checkDigits)?.let { Money.format(it, checkCurrency, locale) }
+
+    val saveCheckedLabel: String get() = ImportCheck.saveLabel(checkRows, locale)
+
+    val canSaveChecked: Boolean get() = step == ImportStep.CHECK && ImportCheck.canSave(checkRows) && editing == null
+
+    /** Everything was removed: only Discard is left. */
+    val noneLeft: Boolean get() = step == ImportStep.CHECK && checkRows.isEmpty()
+
+    /** What a row says beside its amount: a doubt to look at, or that the person changed it. */
+    fun checkNoteKey(row: Transaction): String? {
+        val checkRow = checkRowOf(row) ?: return null
+        return when {
+            ImportCheck.needsCheck(checkRow) -> Strings.import_check_doubt
+            checkRow.edited -> Strings.import_check_edited
+            else -> null
+        }
+    }
+
+    /** The whole row as one sentence, so a screen reader announces it once. */
+    fun checkRowDescription(row: Transaction): String = listOfNotNull(
+        dateLabel(row.occurredOn),
+        ImportedRows.titleOf(row),
+        amountLabel(row),
+        checkNoteKey(row)?.let { LocalizationRegistry.get(it, locale) },
+    ).joinToString(", ")
+
+    fun checkRowHint(row: Transaction): String = LocalizationRegistry.format(Strings.import_check_row_hint, listOf(ImportedRows.titleOf(row)), locale)
+
+    fun editHint(row: Transaction): String = LocalizationRegistry.format(Strings.import_extracted_edit_hint, listOf(ImportedRows.titleOf(row)), locale)
+
+    /**
+     * The editor sheet's view of the row being edited — the same sheet and the
+     * same shared rules as Transactions and Review. Before saving there is no
+     * category to choose, and a row is removed rather than deleted.
+     */
+    val editor: TransactionEditorState?
+        get() = editing?.let { row ->
+            val block = ReviewQueue.blockingReason(row, draft, today)
+            val before = step == ImportStep.CHECK
+            TransactionEditorState(
+                row = row,
+                draft = draft,
+                // "Nothing has changed" is not worth saying before a touch.
+                notice = block?.takeIf { it != CorrectionBlock.NOTHING_CHANGED },
+                errorKey = editErrorKey,
+                canSave = !editSaving && block == null,
+                saving = editSaving,
+                categoryName = ReviewQueue.categoryName(categories, draft.categoryId),
+                pickableCategories = categories
+                    .map { it to ReviewQueue.categoryName(it) }
+                    .sortedWith(compareBy({ it.first.isSystem }, { it.second.lowercase() })),
+                today = today,
+                newCategoryName = newCategoryName,
+                newCategoryErrorKey = newCategoryErrorKey,
+                canCreateCategory = !creatingCategory && !newCategoryName.isNullOrBlank(),
+                creatingCategory = creatingCategory,
+                titleKey = if (before) Strings.import_check_edit_title else Strings.transactions_edit_title,
+                deleting = deleting,
+                deleteSummary = ImportedRows.summary(row, locale),
+                showsCategory = !before,
+                deleteKey = if (before) Strings.import_check_remove else Strings.transaction_delete,
+                deleteConfirmTitleKey = if (before) Strings.import_check_remove_title else Strings.transaction_delete_confirm_title,
+                deleteConfirmBodyKey = if (before) Strings.import_check_remove_body else Strings.transaction_delete_confirm_body,
+                deleteConfirmKey = if (before) Strings.import_check_remove else Strings.transaction_delete_confirm,
+            )
+        }
 
     val canContinueFromAccount: Boolean get() = account != null
 

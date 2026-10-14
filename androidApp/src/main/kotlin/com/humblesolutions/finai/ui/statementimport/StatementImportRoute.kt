@@ -20,6 +20,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.humblesolutions.finai.BuildConfig
 import com.humblesolutions.finai.i18n.Strings
 import com.humblesolutions.finai.ui.components.LoaderSignal
+import com.humblesolutions.finai.ui.edit.TransactionEditorActions
 import com.humblesolutions.finai.ui.strings
 import com.humblesolutions.finai.usecase.ImportStep
 import com.humblesolutions.finai.usecase.StatementImportFlow
@@ -82,6 +83,9 @@ internal fun StatementImportRoute(
             // Nothing to go back to mid-read; the loader covers the screen.
             ImportStep.READING, ImportStep.SENDING, ImportStep.SAVING -> Unit
 
+            // Leaving loses what was read: asked first (#55).
+            ImportStep.CHECK -> model.askDiscard()
+
             else -> close()
         }
     }
@@ -127,6 +131,25 @@ internal fun StatementImportRoute(
             onReloadImported = model::reloadImported,
             onDiagnosticsTicked = model::onDiagnosticsTicked,
             onSendDiagnostics = model::sendDiagnostics,
+            onEditRow = model::edit,
+            onSaveChecked = model::saveChecked,
+            onAskDiscard = model::askDiscard,
+            onKeepChecking = model::keepChecking,
+            onDismissReadAgain = model::dismissReadAgain,
+            editor = TransactionEditorActions(
+                onCancel = model::cancelEdit,
+                onDateChange = model::onDateChange,
+                onAmountChange = model::onAmountChange,
+                onDirectionChange = model::onDirectionChange,
+                onDescriptionChange = model::onDescriptionChange,
+                onCategoryChosen = model::onCategoryChosen,
+                onSave = model::saveEdit,
+                onOpenNewCategory = model::openNewCategory,
+                onNewCategoryName = model::onNewCategoryName,
+                onCreateCategory = model::createCategory,
+                onCancelNewCategory = model::cancelNewCategory,
+                onDelete = model::deleteEditing,
+            ),
         ),
     )
 }
