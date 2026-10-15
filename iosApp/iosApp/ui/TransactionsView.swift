@@ -25,6 +25,16 @@ struct TransactionsView: View {
 
     @Environment(\.colorScheme) private var scheme
     @State private var picking = false
+    /// As a tab, how far the big title has shrunk into the pinned bar, as on
+    /// Home. Opened from Home with a back arrow, that row is the header.
+    @State private var collapse = HeaderCollapse()
+
+    private static let space = "transactions"
+
+    /// Where cards stop and stack, below the top of the scrolling area — and,
+    /// as a tab, below the pinned bar: its 52pt less the 12pt the scrolling
+    /// area starts below, and the same 22pt gap again.
+    private var pin: CGFloat { showsBack ? 22 : 52 - 12 + 22 }
 
     /// How much of each card the next one covers: its bottom padding, never its words.
     nonisolated private static let overlap: CGFloat = 14
@@ -70,7 +80,16 @@ struct TransactionsView: View {
                     .padding(.horizontal, 20)
                     .padding(.bottom, 24)
                 }
+                .coordinateSpace(name: Self.space)
                 .scrollBounceBehavior(.basedOnSize)
+            }
+        }
+        // Pinned once the page has scrolled, as a tab: the screen's name.
+        .overlay(alignment: .top) {
+            if !showsBack {
+                CollapsingBar(collapse: collapse, dark: dark) {
+                    CompactTitle(title: L.t(Strings.shared.tab_transactions))
+                }
             }
         }
         .onAppear { model.bind(userId: userId) }
@@ -93,6 +112,12 @@ struct TransactionsView: View {
                 .font(.largeTitle.weight(.bold))
                 .foregroundColor(Field.ink())
                 .accessibilityAddTraits(.isHeader)
+                .modifier(HeaderFade(collapse: collapse))
+                .onGeometryChange(for: CGFloat.self) { proxy in
+                    proxy.frame(in: .named(Self.space)).minY
+                } action: { (top: CGFloat) in
+                    collapse.track(top: top)
+                }
             modeToggle
             // By category there is nothing to choose between: it is everything.
             if !model.browsingByCategory { sliceRow }
@@ -280,15 +305,14 @@ struct TransactionsView: View {
     private func stackedCard(_ row: SharedLogic.Transaction, first: Bool, order: Int) -> some View {
         card(row)
             .padding(.top, first ? 0 : -Self.overlap)
-            .visualEffect { content, proxy in Self.stacked(content, proxy) }
+            .visualEffect { [pin] content, proxy in Self.stacked(content, proxy, pin: pin) }
             .zIndex(Double(1 + order))
     }
 
     /// Where a card sits once it has reached the top: stopped there, a little
     /// higher and smaller for each card that has arrived over it, and gone
     /// after three.
-    private nonisolated static func stacked(_ content: EmptyVisualEffect, _ proxy: GeometryProxy) -> some VisualEffect {
-        let pin: CGFloat = 22
+    private nonisolated static func stacked(_ content: EmptyVisualEffect, _ proxy: GeometryProxy, pin: CGFloat) -> some VisualEffect {
         let peek: CGFloat = 6
         let y = proxy.frame(in: .scrollView).minY
         let step = max(proxy.size.height - overlap, 1)

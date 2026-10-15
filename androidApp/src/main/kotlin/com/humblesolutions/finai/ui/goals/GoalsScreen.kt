@@ -49,11 +49,14 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.humblesolutions.finai.i18n.Strings
 import com.humblesolutions.finai.model.Goal
+import com.humblesolutions.finai.ui.components.CollapsingTitleBar
 import com.humblesolutions.finai.ui.components.Field
 import com.humblesolutions.finai.ui.components.FieldVectors
 import com.humblesolutions.finai.ui.components.LightStatusBarIcons
 import com.humblesolutions.finai.ui.components.Mint
 import com.humblesolutions.finai.ui.components.Waves
+import com.humblesolutions.finai.ui.components.fadesAsTitleCollapses
+import com.humblesolutions.finai.ui.components.rememberTitleCollapse
 import com.humblesolutions.finai.ui.components.tint
 import com.humblesolutions.finai.ui.components.vector
 import com.humblesolutions.finai.ui.strings
@@ -87,6 +90,9 @@ internal data class GoalsActions(
 internal fun GoalsScreen(state: GoalsUiState, actions: GoalsActions) {
     val dark = isSystemInDarkTheme()
     LightStatusBarIcons(dark)
+    val scroll = rememberScrollState()
+    // How far the big title has shrunk into the bar, as on Home.
+    val collapsed = rememberTitleCollapse(scroll)
 
     Box(Modifier.fillMaxSize().background(Field.brush(dark))) {
         Waves(Modifier.fillMaxSize())
@@ -97,11 +103,11 @@ internal fun GoalsScreen(state: GoalsUiState, actions: GoalsActions) {
                 Modifier
                     .widthIn(max = 560.dp)
                     .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
+                    .verticalScroll(scroll)
                     .padding(horizontal = 20.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
-                Header(state, actions)
+                Header(state, actions, collapsed)
                 when {
                     // The coin covers a first load; an empty sheet under it would
                     // read as having no goals.
@@ -114,13 +120,16 @@ internal fun GoalsScreen(state: GoalsUiState, actions: GoalsActions) {
                 Spacer(Modifier.height(24.dp))
             }
         }
+
+        // Pinned once the page has scrolled: the screen's name, centred.
+        CollapsingTitleBar(strings(Strings.tab_goals), dark, collapsed)
     }
 }
 
 // ── In the field ────────────────────────────────────────────────────────
 
 @Composable
-private fun Header(state: GoalsUiState, actions: GoalsActions) {
+private fun Header(state: GoalsUiState, actions: GoalsActions, collapsed: () -> Float) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
@@ -128,7 +137,10 @@ private fun Header(state: GoalsUiState, actions: GoalsActions) {
                 style = MaterialTheme.typography.headlineLarge,
                 fontWeight = FontWeight.Bold,
                 color = Field.ink(),
-                modifier = Modifier.weight(1f).semantics { heading() },
+                modifier = Modifier
+                    .weight(1f)
+                    .fadesAsTitleCollapses(collapsed)
+                    .semantics { heading() },
             )
             if (state.goals.size > 1) {
                 TextButton(onClick = actions.onToggleReorder) {

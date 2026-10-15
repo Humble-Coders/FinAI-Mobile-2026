@@ -3,7 +3,6 @@ package com.humblesolutions.finai.ui.budget
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -19,10 +18,14 @@ import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.WarningAmber
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
@@ -30,32 +33,39 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
-import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.humblesolutions.finai.i18n.Strings
 import com.humblesolutions.finai.model.BudgetLine
+import com.humblesolutions.finai.ui.components.CollapsingTitleBar
 import com.humblesolutions.finai.ui.components.Field
 import com.humblesolutions.finai.ui.components.FieldVectors
 import com.humblesolutions.finai.ui.components.LearningFieldCard
 import com.humblesolutions.finai.ui.components.LightStatusBarIcons
 import com.humblesolutions.finai.ui.components.Mint
+import com.humblesolutions.finai.ui.components.MonthYearPickerDialog
 import com.humblesolutions.finai.ui.components.Waves
+import com.humblesolutions.finai.ui.components.fadesAsTitleCollapses
+import com.humblesolutions.finai.ui.components.rememberTitleCollapse
 import com.humblesolutions.finai.ui.components.tint
 import com.humblesolutions.finai.ui.components.vector
 import com.humblesolutions.finai.ui.strings
+import com.humblesolutions.finai.usecase.DashboardMonths
 
 /**
  * The month's budget: every category with what has been spent against it,
@@ -81,6 +91,9 @@ internal fun BudgetScreen(
 ) {
     val dark = isSystemInDarkTheme()
     LightStatusBarIcons(dark)
+    val scroll = rememberScrollState()
+    // How far the big title has shrunk into the bar, as on Home.
+    val collapsed = rememberTitleCollapse(scroll)
 
     Box(Modifier.fillMaxSize().background(Field.brush(dark))) {
         Waves(Modifier.fillMaxSize())
@@ -94,11 +107,11 @@ internal fun BudgetScreen(
                 Modifier
                     .widthIn(max = 560.dp)
                     .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
+                    .verticalScroll(scroll)
                     .padding(horizontal = 20.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
-                Header(state, onMonth)
+                Header(state, onMonth, collapsed)
 
                 val progress = state.learning
                 when {
@@ -123,23 +136,28 @@ internal fun BudgetScreen(
                 Spacer(Modifier.height(24.dp))
             }
         }
+
+        // Pinned once the page has scrolled: the screen's name, centred.
+        CollapsingTitleBar(strings(Strings.tab_budget), dark, collapsed)
     }
 }
 
 // ── In the field ────────────────────────────────────────────────────────
 
 @Composable
-private fun Header(state: BudgetUiState, onMonth: (String) -> Unit) {
+private fun Header(state: BudgetUiState, onMonth: (String) -> Unit, collapsed: () -> Float) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(
             text = strings(Strings.budget_title),
             style = MaterialTheme.typography.headlineLarge,
             fontWeight = FontWeight.Bold,
             color = Field.ink(),
-            modifier = Modifier.semantics { heading() },
+            modifier = Modifier
+                .fadesAsTitleCollapses(collapsed)
+                .semantics { heading() },
         )
 
-        MonthStrip(state, onMonth)
+        MonthButton(state, onMonth)
 
         if (state.budget != null) {
             Text(
@@ -193,28 +211,51 @@ private fun Shortfall(label: String) {
     }
 }
 
+/**
+ * The month shown, on a glass pill that opens the month-and-year calendar.
+ * One control rather than a strip of a dozen pills: any month in range is a
+ * tap or two away, and the field stays uncluttered.
+ */
 @Composable
-private fun MonthStrip(state: BudgetUiState, onMonth: (String) -> Unit) {
+private fun MonthButton(state: BudgetUiState, onMonth: (String) -> Unit) {
+    var picking by rememberSaveable { mutableStateOf(false) }
+    val label = state.monthLabel
+    val description = strings(Strings.budget_month_change, label)
     Row(
-        Modifier.horizontalScroll(rememberScrollState()),
+        Modifier
+            .clip(RoundedCornerShape(20.dp))
+            .background(Field.Glass)
+            .border(1.dp, Field.GlassEdge, RoundedCornerShape(20.dp))
+            .clickable(role = Role.Button) { picking = true }
+            .heightIn(min = 48.dp)
+            .padding(horizontal = 14.dp)
+            .clearAndSetSemantics {
+                contentDescription = description
+                role = Role.Button
+                onClick {
+                    picking = true
+                    true
+                }
+            },
         horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        state.months.forEach { key ->
-            val selected = key == state.month
-            Text(
-                text = state.monthOption(key),
-                style = MaterialTheme.typography.labelLarge,
-                color = if (selected) Field.ink() else Field.ink(0.72f),
-                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(if (selected) Field.Glass else Color.Transparent)
-                    .border(1.dp, if (selected) Field.GlassEdge else Color.Transparent, RoundedCornerShape(20.dp))
-                    .clickable(role = Role.Tab) { onMonth(key) }
-                    .padding(horizontal = 14.dp, vertical = 8.dp)
-                    .semantics { this.selected = selected },
-            )
-        }
+        Icon(Icons.Filled.CalendarMonth, contentDescription = null, tint = Field.ink(), modifier = Modifier.size(18.dp))
+        Text(label, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = Field.ink())
+        Icon(Icons.Filled.ArrowDropDown, contentDescription = null, tint = Field.ink(0.85f), modifier = Modifier.size(20.dp))
+    }
+    if (picking) {
+        val current = DashboardMonths.current()
+        MonthYearPickerDialog(
+            selected = DashboardMonths.parse(state.month) ?: current,
+            current = current,
+            locale = state.locale,
+            onPick = {
+                picking = false
+                onMonth(it)
+            },
+            onDismiss = { picking = false },
+        )
     }
 }
 
@@ -284,6 +325,7 @@ private fun LineRow(
     val icon = state.iconOf(line)
     val over = state.isOver(line)
     val overLabel = state.overLabel(line)
+    val editLabel = strings(Strings.budget_edit_line, state.nameOf(line))
 
     Row(
         Modifier
@@ -296,12 +338,12 @@ private fun LineRow(
             .clearAndSetSemantics {
                 contentDescription = state.descriptionOf(line)
                 role = Role.Button
-                onClick {
+                onClick(label = editLabel) {
                     onClick()
                     true
                 }
             }
-            .clickable(role = Role.Button, onClick = onClick)
+            .clickable(role = Role.Button, onClickLabel = editLabel, onClick = onClick)
             .heightIn(min = 48.dp)
             .padding(vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -331,6 +373,14 @@ private fun LineRow(
                         tint = MaterialTheme.colorScheme.error,
                         modifier = Modifier.size(16.dp),
                     )
+                }
+                // The edit button beside the name. The whole row opens the
+                // same editor — this says so, where the eye looks first.
+                Box(
+                    Modifier.size(28.dp).clip(CircleShape).background(Mint.tile(Mint.greenText())),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(Icons.Filled.Edit, contentDescription = null, tint = Mint.greenText(), modifier = Modifier.size(15.dp))
                 }
             }
             Text(

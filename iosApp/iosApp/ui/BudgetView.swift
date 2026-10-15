@@ -23,6 +23,11 @@ struct BudgetView: View {
     /// coming back after iOS reclaimed it reopens the line being typed.
     @SceneStorage("budget.draft") private var stored = ""
     @Environment(\.colorScheme) private var scheme
+    /// How far the big title has shrunk into the bar, as on Home.
+    @State private var collapse = HeaderCollapse()
+    @State private var pickingMonth = false
+
+    private static let space = "budget"
 
     var body: some View {
         let dark = scheme == .dark
@@ -56,7 +61,14 @@ struct BudgetView: View {
                 .padding(.top, 12)
                 .padding(.bottom, 24)
             }
+            .coordinateSpace(name: Self.space)
             .scrollBounceBehavior(.basedOnSize)
+            // Pinned once the page has scrolled: the screen's name, centred.
+            .overlay(alignment: .top) {
+                CollapsingBar(collapse: collapse, dark: dark) {
+                    CompactTitle(title: L.t(Strings.shared.tab_budget))
+                }
+            }
         }
         .onAppear {
             if !stored.isEmpty { model.restore(from: stored) }
@@ -65,6 +77,16 @@ struct BudgetView: View {
         .onChange(of: model.snapshot) { _, snapshot in stored = snapshot }
         .sheet(isPresented: editingShown) { BudgetEditorSheet(model: model) }
         .sheet(isPresented: $model.picking) { BudgetCategorySheet(model: model) }
+        .sheet(isPresented: $pickingMonth) {
+            MonthYearPickerSheet(
+                selected: model.month,
+                onPick: { key in
+                    pickingMonth = false
+                    model.showMonth(key)
+                },
+                onCancel: { pickingMonth = false }
+            )
+        }
     }
 
     private var editingShown: Binding<Bool> {
@@ -79,8 +101,14 @@ struct BudgetView: View {
                 .font(.largeTitle.weight(.bold))
                 .foregroundColor(Field.ink())
                 .accessibilityAddTraits(.isHeader)
+                .modifier(HeaderFade(collapse: collapse))
+                .onGeometryChange(for: CGFloat.self) { proxy in
+                    proxy.frame(in: .named(Self.space)).minY
+                } action: { (top: CGFloat) in
+                    collapse.track(top: top)
+                }
 
-            monthStrip
+            monthButton
 
             if let budget = model.budget {
                 Text(totalsLabel(budget))
@@ -128,26 +156,31 @@ struct BudgetView: View {
         .overlay(RoundedRectangle(cornerRadius: 14).stroke(Field.glassEdge, lineWidth: 1))
     }
 
-    private var monthStrip: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
+    /**
+     The month shown, on a glass pill that opens the month-and-year calendar.
+     One control rather than a strip of a dozen pills: any month in range is a
+     tap or two away, and the field stays uncluttered.
+     */
+    private var monthButton: some View {
+        Button { pickingMonth = true } label: {
             HStack(spacing: 8) {
-                ForEach(model.months, id: \.self) { key in
-                    let selected = key == model.month
-                    Button { model.showMonth(key) } label: {
-                        Text(monthLabel(key))
-                            .font(.subheadline.weight(selected ? .semibold : .regular))
-                            .foregroundColor(selected ? Field.ink() : Field.ink(0.72))
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 8)
-                            .background(Capsule().fill(selected ? Field.glass : .clear))
-                            .overlay(Capsule().stroke(selected ? Field.glassEdge : .clear, lineWidth: 1))
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityAddTraits(selected ? [.isSelected, .isButton] : .isButton)
-                }
+                Image(systemName: "calendar")
+                    .font(.subheadline)
+                Text(monthLabel(model.month))
+                    .font(.subheadline.weight(.semibold))
+                Image(systemName: "chevron.down")
+                    .font(.caption.weight(.semibold))
             }
-            .padding(.vertical, 2)
+            .foregroundColor(Field.ink())
+            .padding(.horizontal, 14)
+            .frame(minHeight: 44)
+            .background(Capsule().fill(Field.glass))
+            .overlay(Capsule().stroke(Field.glassEdge, lineWidth: 1))
         }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(L.t(Strings.shared.budget_month_change, monthLabel(model.month)))
+        .accessibilityAddTraits(.isButton)
     }
 
     // MARK: - The sheet
@@ -282,6 +315,14 @@ private struct LineRow: View {
                                 .font(.caption2)
                                 .foregroundColor(.red)
                         }
+                        // The edit button beside the name. The whole row opens
+                        // the same editor — this says so, where the eye looks.
+                        Image(systemName: "pencil")
+                            .font(.caption.weight(.semibold))
+                            .foregroundColor(Mint.greenText(dark))
+                            .frame(width: 26, height: 26)
+                            .background(Circle().fill(Mint.greenText(dark).opacity(dark ? 0.2 : 0.12)))
+                            .accessibilityHidden(true)
                         Spacer(minLength: 0)
                     }
                     Text(L.t(Strings.shared.budget_line_amounts, money(line.spent), money(line.allocated)))
@@ -308,6 +349,7 @@ private struct LineRow: View {
         // words rather than inferred from a colour.
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(description)
+        .accessibilityHint(L.t(Strings.shared.budget_edit_line, line.name))
         .accessibilityAddTraits(.isButton)
     }
 

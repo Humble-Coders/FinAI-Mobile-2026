@@ -91,9 +91,13 @@ struct RootView: View {
             || (showingReview && reviewModel.loading)
             // Home's first read: figures, not a screen of zeroes, until they arrive.
             || (showingHome && dashboardModel.loading)
+            // The Budget tab's first read, and each change of month, as Android.
+            || (showingBudget && (budgetModel.loading || budgetModel.switchingMonth))
     }
 
     private var showingHome: Bool { atHome && homeRoute == HomeRoute.home.rawValue }
+
+    private var showingBudget: Bool { atHome && homeRoute == HomeRoute.budget.rawValue }
 
     private var atHome: Bool {
         model.configurationProblemKey == nil

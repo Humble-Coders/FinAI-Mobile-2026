@@ -19,6 +19,10 @@ struct GoalsView: View {
     /// coming back after iOS reclaimed it reopens what was being typed.
     @SceneStorage("goals.draft") private var stored = ""
     @Environment(\.colorScheme) private var scheme
+    /// How far the big title has shrunk into the bar, as on Home.
+    @State private var collapse = HeaderCollapse()
+
+    private static let space = "goals"
 
     var body: some View {
         let dark = scheme == .dark
@@ -49,7 +53,14 @@ struct GoalsView: View {
                 .padding(.top, 12)
                 .padding(.bottom, 24)
             }
+            .coordinateSpace(name: Self.space)
             .scrollBounceBehavior(.basedOnSize)
+            // Pinned once the page has scrolled: the screen's name, centred.
+            .overlay(alignment: .top) {
+                CollapsingBar(collapse: collapse, dark: dark) {
+                    CompactTitle(title: L.t(Strings.shared.tab_goals))
+                }
+            }
         }
         .onAppear {
             if !stored.isEmpty { model.restore(from: stored) }
@@ -77,6 +88,12 @@ struct GoalsView: View {
                     .font(.largeTitle.weight(.bold))
                     .foregroundColor(Field.ink())
                     .accessibilityAddTraits(.isHeader)
+                    .modifier(HeaderFade(collapse: collapse))
+                    .onGeometryChange(for: CGFloat.self) { proxy in
+                        proxy.frame(in: .named(Self.space)).minY
+                    } action: { (top: CGFloat) in
+                        collapse.track(top: top)
+                    }
                 Spacer()
                 if model.goals.count > 1 {
                     Button(L.t(model.reordering ? Strings.shared.action_done : Strings.shared.goals_reorder_hint)) {

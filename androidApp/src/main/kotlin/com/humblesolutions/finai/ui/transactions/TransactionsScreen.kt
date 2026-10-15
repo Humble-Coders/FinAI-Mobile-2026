@@ -65,6 +65,7 @@ import androidx.compose.ui.unit.dp
 import com.humblesolutions.finai.R
 import com.humblesolutions.finai.i18n.Strings
 import com.humblesolutions.finai.model.Transaction
+import com.humblesolutions.finai.ui.components.CollapsingTitleBar
 import com.humblesolutions.finai.ui.components.ErrorText
 import com.humblesolutions.finai.ui.components.Field
 import com.humblesolutions.finai.ui.components.FieldVectors
@@ -73,6 +74,8 @@ import com.humblesolutions.finai.ui.components.LightStatusBarIcons
 import com.humblesolutions.finai.ui.components.SheetRow
 import com.humblesolutions.finai.ui.components.SheetTitle
 import com.humblesolutions.finai.ui.components.Waves
+import com.humblesolutions.finai.ui.components.fadesAsTitleCollapses
+import com.humblesolutions.finai.ui.components.rememberTitleCollapse
 import com.humblesolutions.finai.ui.components.vector
 import com.humblesolutions.finai.ui.edit.TransactionEditorActions
 import com.humblesolutions.finai.ui.edit.TransactionEditorSheet
@@ -114,6 +117,9 @@ fun TransactionsScreen(
     val dark = isSystemInDarkTheme()
     LightStatusBarIcons(dark)
     var picking by rememberSaveable { mutableStateOf(false) }
+    // As a tab, the big title shrinks into a pinned bar, as on Home. Opened
+    // from Home with a back arrow, that row is already the header.
+    val collapsed = if (showsBack) null else rememberTitleCollapse(scroll)
 
     Box(Modifier.fillMaxSize().background(Field.brush(dark))) {
         Waves(Modifier.fillMaxSize())
@@ -138,9 +144,11 @@ fun TransactionsScreen(
                     .fillMaxSize()
                     .verticalScroll(scroll),
             ) {
-                Wallet(state, scroll, onMode, onStatement, onMonth, onLoadMore, onRetry, onEdit) { picking = true }
+                Wallet(state, scroll, collapsed, onMode, onStatement, onMonth, onLoadMore, onRetry, onEdit) { picking = true }
             }
         }
+
+        collapsed?.let { CollapsingTitleBar(strings(Strings.tab_transactions), dark, it) }
     }
 
     state.editor?.let { TransactionEditorSheet(it, editor) }
@@ -171,6 +179,12 @@ private val OVERLAP = 14.dp
 /** Where cards stop and stack, below the top of the scrolling area. */
 private val PIN = 22.dp
 
+/**
+ * The same, under the pinned title bar: its 56dp less the 12dp the scrolling
+ * area starts below the status bar, and [PIN]'s gap again below it.
+ */
+private val PIN_UNDER_BAR = 56.dp - 12.dp + PIN
+
 /** How far up each card further into the stack peeks out. */
 private val PEEK = 6.dp
 
@@ -181,6 +195,8 @@ private const val DEPTH = 3f
 private fun Wallet(
     state: TransactionsUiState,
     scroll: ScrollState,
+    /** The title's collapse into the pinned bar, or null where there is no bar. */
+    collapsed: (() -> Float)?,
     onMode: (TransactionBrowsing.Mode) -> Unit,
     onStatement: (String) -> Unit,
     onMonth: (kotlinx.datetime.LocalDate) -> Unit,
@@ -202,7 +218,7 @@ private fun Wallet(
     Layout(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
         content = {
-            Top(state, onMode, onStatement, onMonth, onPick)
+            Top(state, collapsed, onMode, onStatement, onMonth, onPick)
             sections.forEach { section ->
                 Heading(section)
                 section.rows.forEach { row -> Card(state, row) { onEdit(row.id) } }
@@ -233,7 +249,7 @@ private fun Wallet(
             y += placeable.height
         }
 
-        val pin = PIN.toPx()
+        val pin = (if (collapsed != null) PIN_UNDER_BAR else PIN).toPx()
         val peek = PEEK.toPx()
         val fadeFrom = 72.dp.toPx()
         val fadeOver = 32.dp.toPx()
@@ -284,6 +300,7 @@ private fun Wallet(
 @Composable
 private fun Top(
     state: TransactionsUiState,
+    collapsed: (() -> Float)?,
     onMode: (TransactionBrowsing.Mode) -> Unit,
     onStatement: (String) -> Unit,
     onMonth: (kotlinx.datetime.LocalDate) -> Unit,
@@ -295,7 +312,7 @@ private fun Top(
             style = MaterialTheme.typography.headlineLarge,
             fontWeight = FontWeight.Bold,
             color = Field.ink(),
-            modifier = Modifier.semantics { heading() },
+            modifier = (collapsed?.let { Modifier.fadesAsTitleCollapses(it) } ?: Modifier).semantics { heading() },
         )
         ModeToggle(state, onMode)
         // By category there is nothing to choose between: it is everything.
