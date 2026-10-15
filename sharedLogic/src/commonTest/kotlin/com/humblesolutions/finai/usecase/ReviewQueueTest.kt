@@ -101,14 +101,15 @@ class ReviewQueueTest {
             ReviewReason.LOW_CONFIDENCE,
             ReviewReason.UNKNOWN_CATEGORY,
             ReviewReason.SUSPECTED_DUPLICATE,
+            ReviewReason.OWN_TRANSFER,
             ReviewReason.UNKNOWN,
             null,
         ).map { ReviewQueue.reasonKey(row(reason = it)) }
 
         // The four known reasons differ; an unknown reason shares the catch-all
         // with none at all, and never reads as "nothing to check".
-        assertEquals(4, keys.toSet().size)
-        assertEquals(keys[3], keys[4])
+        assertEquals(5, keys.toSet().size)
+        assertEquals(keys[4], keys[5])
     }
 
     @Test

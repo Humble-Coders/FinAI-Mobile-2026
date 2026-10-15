@@ -21,6 +21,12 @@ enum class ReviewReason(val wire: String) {
     SUSPECTED_DUPLICATE("suspected_duplicate"),
 
     /**
+     * Filed as a transfer because it looks like money moving between two of the
+     * household's own accounts — a card bill paid from chequing (backend #73).
+     */
+    OWN_TRANSFER("own_transfer"),
+
+    /**
      * A reason this build does not know. The row still needs review — only the
      * wording is unknown — so it is never read as "nothing to check".
      */

@@ -4,8 +4,6 @@ import com.humblesolutions.finai.i18n.LocalizationRegistry
 import com.humblesolutions.finai.i18n.Strings
 import com.humblesolutions.finai.model.ApiException
 import com.humblesolutions.finai.model.ParsedStatement
-import com.humblesolutions.finai.model.RowToSave
-import com.humblesolutions.finai.model.RowsToSave
 import com.humblesolutions.finai.model.SaveOutcome
 import com.humblesolutions.finai.repository.StatementReadException
 import com.humblesolutions.finai.util.Dates
@@ -24,6 +22,13 @@ enum class ImportStep {
     PASSWORD,
     READING,
     SENDING,
+
+    /**
+     * Read, not saved: every row is shown so the person can fix or remove any
+     * before anything reaches their records (#55). Nothing is saved until they
+     * press Save.
+     */
+    CHECK,
     SAVING,
     DONE,
     FAILED,
@@ -127,20 +132,6 @@ object StatementImportFlow {
      * as one (so it does not use up the month), and so does the screen.
      */
     fun problemAfterParse(parsed: ParsedStatement): ImportProblem? = if (parsed.rows.isEmpty()) ImportProblem(ImportFailure.NO_TRANSACTIONS_FOUND) else null
-
-    /** The parsed rows, sent back unchanged to be saved against the chosen account. */
-    fun rowsToSave(accountId: String, parsed: ParsedStatement): RowsToSave = RowsToSave(
-        accountId = accountId,
-        rows = parsed.rows.map {
-            RowToSave(
-                occurredOn = it.occurredOn,
-                description = it.description,
-                amount = it.amount,
-                direction = it.direction,
-                confidence = it.confidence,
-            )
-        },
-    )
 
     /** The sentence the failure screen shows, written here so both apps say the same. */
     fun message(problem: ImportProblem): String {

@@ -96,6 +96,7 @@ object ReviewQueue {
         ReviewReason.LOW_CONFIDENCE -> Strings.review_reason_low_confidence
         ReviewReason.UNKNOWN_CATEGORY -> Strings.review_reason_unknown_category
         ReviewReason.SUSPECTED_DUPLICATE -> Strings.review_reason_suspected_duplicate
+        ReviewReason.OWN_TRANSFER -> Strings.review_reason_own_transfer
         ReviewReason.UNKNOWN, null -> Strings.review_reason_other
     }
 
