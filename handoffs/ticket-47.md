@@ -22,7 +22,7 @@ The only subtraction anywhere is `BudgetLine.overBy`, which is the difference of
 | `data/KtorBudgetRepository.kt` *(new)* | The three calls over Ktor, one implementation for both platforms. Request shapes pinned by `KtorBudgetRepositoryTest` (5 tests). |
 | `data/ApiErrorMapper.kt` *(+9)* | Maps `not_budgetable`, `invalid_month`, `month_in_future`; they previously fell through to a generic `Validation`. One `ApiErrorMapperTest` case each. |
 | `model/ApiException.kt` *(+28)* | The three types those codes map to, each with its own message key. |
-| `usecase/BudgetEdit.kt` *(new, 206)* | `blockingReason` / `blockingReasonForNew`, the `ordered` fold with `BudgetOrder`, `forHome`, `months`, `monthKeyOf`, `isBudgetable`. |
+| `usecase/BudgetEdit.kt` *(new)* | `blockingReason` / `blockingReasonForNew`, the one `ordered` fold, `forHome`, `months`, `monthKeyOf`, `isBudgetable`. |
 | `i18n/Strings.kt`, `EnglishStrings.kt` *(+93)* | 37 keys: the screen, the editor, the picker, five blocking reasons, three refusals, two screen-reader sentences, and the shared "Still learning" copy. |
 
 ### Android
@@ -127,7 +127,7 @@ Two are verifiable from the diff and are met: **every string goes through `share
 
 4. **Precision gets its own reason.** `Money.normalize` declines `"500.999"` and `"five hundred"` with the same `null`, so excess precision surfaced as "that isn't an amount". `BudgetEdit.isTooPrecise` tells them apart by re-reading the draft at a wider scale, only after the currency's own scale has refused it, so `"1,200"` is still twelve hundred. (An earlier note in this branch's history claimed `normalize` *truncates* excess decimals — it does not; it declines them.)
 
-5. **One ordering fold with a parameter.** #46 wants Home's lines by how close they are to their allocation, #47 by spend. Both put over-budget first; `BudgetOrder` is the only difference, so the shared half cannot drift. `BudgetEdit.forHome` is there for #46.
+5. **One order for both screens: over budget first, then closest to the allocation.** #46 specified that for Home; #47 specified "by spent" for the Budget tab. **The PO chose #46's rule for both** (#50), so the tab deviates from #47's wording. Closeness is the share of the allocation used, not dollars left. Within the over-budget group the line furthest over leads — the decision left that open, and with four places on Home the worst overspends must be the ones shown rather than the alphabetically first. `BudgetEdit.forHome` is the top four of the same list, for #46. (An earlier version took the secondary sort as a parameter, `BudgetOrder`, to hold both answers; with one answer it was removed.)
 
 6. **The tab is gated above the screen**, by a small `FeaturesViewModel` per platform. A tab has to be absent before anything behind it opens. This is the first use of `Capabilities.isEnabled`, unused in `sharedLogic` since M1. Unknown means hidden. The screen holds no gating state of its own: a 403 that still arrives shows the feature's reason through `errorKey`.
 
@@ -137,7 +137,7 @@ Two are verifiable from the diff and are met: **every string goes through `share
 
 ## Open questions / follow-ups
 
-- **#46 and #47 specify different secondary orderings** for the same lines — "nearest their allocation" vs "by spent". If deliberate (Home shows the most urgent four, the tab shows everything), it is fine as built. If not, Home and the Budget tab will order the same budget differently on screen. **For the PO at `/review-ticket`.**
+- ~~**#46 and #47 specify different secondary orderings.**~~ **Decided by the PO:** over first, then nearest their allocation, on both screens — see *Deviations* 5. #47's issue text still says "by spent" and is now out of date.
 - **AC 9 moves to #46**, along with the `BudgetChanged` round-trip test. The handoff for #46 should say which signal it subscribed to.
 - **The navigation decision needs PO confirmation** — a fourth tab rather than a link from Home was a manager decision of 2026-10-04.
 - **Nothing was run on a simulator.** The manual pass above has not been performed by me.
@@ -192,10 +192,10 @@ Both were checked to **fail** against the bug they guard — a misspelt `month_i
 ./gradlew ktlintCheck                            clean
 ./gradlew :androidApp:assembleDebug              BUILD SUCCESSFUL
 ./gradlew :androidApp:testDebugUnitTest          252 tests, 0 failures
-./gradlew :sharedLogic:iosSimulatorArm64Test     525 tests, 0 failures
-./gradlew :sharedLogic:testAndroidHostTest       532 tests, 0 failures (incl. the SKIE @Throws guard)
+./gradlew :sharedLogic:iosSimulatorArm64Test     527 tests, 0 failures
+./gradlew :sharedLogic:testAndroidHostTest       534 tests, 0 failures (incl. the SKIE @Throws guard)
 xcodebuild -workspace iosApp.xcworkspace -scheme iosApp -sdk iphonesimulator
                                                  ** BUILD SUCCEEDED **
 ```
 
-New with this ticket: 22 Android view-model tests, 5 navigation tests and 36 shared tests (17 in `BudgetEditTest`, 11 in `BudgetTest`, 5 in `KtorBudgetRepositoryTest`, 3 in `ApiErrorMapperTest` — the latter decoding the real `BudgetOut` shapes for ready, learning and shortfall, plus a payload missing everything optional and an unknown status).
+New with this ticket: 22 Android view-model tests, 5 navigation tests and 38 shared tests — 19 in `BudgetEditTest`; 11 in `BudgetTest`, which decodes the real `BudgetOut` shapes for ready, learning and shortfall plus a payload missing everything optional and an unknown status; 5 in `KtorBudgetRepositoryTest`; 3 in `ApiErrorMapperTest`.
