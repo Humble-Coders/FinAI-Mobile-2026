@@ -69,7 +69,7 @@ data class BudgetUiState(
      */
     val learning get() = budget?.learning
 
-    /** The spending lines, over budget first (see [BudgetEdit.ordered]). */
+    /** The spending lines: over budget first, then closest to their allocation — Home's order too (see [BudgetEdit.ordered]). */
     val lines: List<BudgetLine>
         get() = budget?.let { BudgetEdit.ordered(it.lines, it.currency) }.orEmpty()
 
