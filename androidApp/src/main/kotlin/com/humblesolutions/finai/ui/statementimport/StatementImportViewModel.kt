@@ -390,6 +390,17 @@ class StatementImportViewModel(private val saved: SavedStateHandle) : ViewModel(
                 confirmingDiscard = false,
             )
         }
+        // The names behind each row's category, for its chip, the picker and
+        // the breakdown. Kept from before if the list will not load: the rows
+        // and Save work without them.
+        if (_uiState.value.categories.isEmpty()) {
+            val repos = repositories ?: return
+            val started = generation
+            viewModelScope.launch {
+                val categories = categoriesOrNull(repos) ?: return@launch
+                if (started == generation) _uiState.update { it.copy(categories = categories) }
+            }
+        }
     }
 
     /** Save the rows as the person left them. */

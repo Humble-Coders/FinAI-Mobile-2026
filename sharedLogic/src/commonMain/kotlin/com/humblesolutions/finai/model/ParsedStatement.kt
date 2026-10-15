@@ -45,6 +45,13 @@ data class ParsedRow(
     val amount: String = "",
     val direction: String = "",
     val confidence: Int = 0,
+    /**
+     * The category the household's rules or the model suggest, so it can be
+     * checked before saving. Null where neither knows ("No category yet"), and
+     * from a server that predates suggesting one.
+     */
+    @SerialName("category_id")
+    val categoryId: String? = null,
 )
 
 /**
@@ -88,6 +95,15 @@ data class RowToSave(
     val amount: String = "",
     val direction: String = "",
     val confidence: Int = 0,
+    /** The category to save it under, as the person left it while checking. */
+    @SerialName("category_id")
+    val categoryId: String? = null,
+    /**
+     * What the parse suggested. A [categoryId] different from it is the
+     * person's correction, and teaches a rule for the merchant on the server.
+     */
+    @SerialName("suggested_category_id")
+    val suggestedCategoryId: String? = null,
 )
 
 /** `POST /statements/{import_id}/transactions`. Both fields are required, so both are always sent. */
@@ -99,6 +115,12 @@ data class RowsToSave(
     val accountId: String = "",
     @EncodeDefault(EncodeDefault.Mode.ALWAYS)
     val rows: List<RowToSave> = emptyList(),
+    /**
+     * The rows were categorised when read and checked by the person: one left
+     * without a category goes to review rather than back to the model.
+     */
+    @EncodeDefault(EncodeDefault.Mode.ALWAYS)
+    val categorised: Boolean = true,
 )
 
 /** What saving an import came to. */

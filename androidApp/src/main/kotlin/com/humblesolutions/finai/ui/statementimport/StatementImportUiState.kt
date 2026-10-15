@@ -7,6 +7,7 @@ import com.humblesolutions.finai.model.AiPolicy
 import com.humblesolutions.finai.model.Category
 import com.humblesolutions.finai.model.Transaction
 import com.humblesolutions.finai.ui.edit.TransactionEditorState
+import com.humblesolutions.finai.usecase.Breakdown
 import com.humblesolutions.finai.usecase.CheckRow
 import com.humblesolutions.finai.usecase.CorrectionBlock
 import com.humblesolutions.finai.usecase.CorrectionDraft
@@ -163,11 +164,30 @@ data class StatementImportUiState(
 
     val checkCount: String get() = ImportCheck.countLabel(checkRows, locale)
 
-    val checkTotalOut: String?
-        get() = ImportedRows.totalOut(checked, checkDigits)?.let { Money.format(it, checkCurrency, locale) }
+    /**
+     * Where the statement's money goes, by category, as Home will count it.
+     * Null until the category names have loaded: without them nothing is known
+     * to be a transfer, and the figures would count a card payment as spending.
+     */
+    val checkBreakdown: Breakdown?
+        get() = if (categories.isEmpty() && checkRows.any { it.row.categoryId != null }) {
+            null
+        } else {
+            ImportCheck.breakdown(checkRows, categories, checkDigits)
+        }
 
+    fun checkMoney(amount: String): String = Money.format(amount, checkCurrency, locale)
+
+    /** Money out, without transfers and savings once the breakdown is known. */
+    val checkTotalOut: String?
+        get() = (checkBreakdown?.let { it.totalOut } ?: ImportedRows.totalOut(checked, checkDigits))?.let(::checkMoney)
+
+    /** Money in, without transfers and savings once the breakdown is known. */
     val checkTotalIn: String?
-        get() = ImportedRows.totalIn(checked, checkDigits)?.let { Money.format(it, checkCurrency, locale) }
+        get() = (checkBreakdown?.let { it.totalIn } ?: ImportedRows.totalIn(checked, checkDigits))?.let(::checkMoney)
+
+    /** A row's category, "No category yet", or null while the names load. */
+    fun checkCategoryLabel(row: Transaction): String? = ImportedRows.categoryLabel(row, categories, LocalizationRegistry.get(Strings.import_extracted_uncategorised, locale))
 
     val saveCheckedLabel: String get() = ImportCheck.saveLabel(checkRows, locale)
 
@@ -190,6 +210,7 @@ data class StatementImportUiState(
     fun checkRowDescription(row: Transaction): String = listOfNotNull(
         dateLabel(row.occurredOn),
         ImportedRows.titleOf(row),
+        checkCategoryLabel(row),
         amountLabel(row),
         checkNoteKey(row)?.let { LocalizationRegistry.get(it, locale) },
     ).joinToString(", ")
@@ -227,7 +248,8 @@ data class StatementImportUiState(
                 titleKey = if (before) Strings.import_check_edit_title else Strings.transactions_edit_title,
                 deleting = deleting,
                 deleteSummary = ImportedRows.summary(row, locale),
-                showsCategory = !before,
+                // Before saving too: the category is checked with the rest.
+                showsCategory = true,
                 deleteKey = if (before) Strings.import_check_remove else Strings.transaction_delete,
                 deleteConfirmTitleKey = if (before) Strings.import_check_remove_title else Strings.transaction_delete_confirm_title,
                 deleteConfirmBodyKey = if (before) Strings.import_check_remove_body else Strings.transaction_delete_confirm_body,

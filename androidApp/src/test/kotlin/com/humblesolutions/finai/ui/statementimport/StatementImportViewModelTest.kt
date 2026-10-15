@@ -664,6 +664,38 @@ class StatementImportViewModelTest {
     }
 
     @Test
+    fun `categories are shown, changed and sent before saving`() {
+        val dining = Category(id = "c-dining", slug = "dining", name = "Dining out")
+        val groceries = Category(id = "c-groceries", slug = "groceries", name = "Groceries")
+        val suggested = twoRows.copy(
+            rows = listOf(twoRows.rows[0].copy(categoryId = "c-dining"), twoRows.rows[1]),
+        )
+        val imports = FakeImports(parse = { suggested })
+        val model = model()
+        model.bind("alice") {
+            repositories(imports = imports, categories = FakeImportCategories(listOf(dining, groceries)))
+        }
+        model.upToFile()
+        model.onFilePicked(file)
+
+        val checking = model.uiState.value
+        assertEquals("Dining out", checking.checkCategoryLabel(checking.checkRows[0].row))
+        assertEquals("No category yet", checking.checkCategoryLabel(checking.checkRows[1].row))
+        assertNotNull(checking.checkBreakdown, "shown once the names have loaded")
+
+        model.edit("check-1")
+        assertEquals(true, model.uiState.value.editor?.showsCategory, "the picker is there before saving")
+        model.onCategoryChosen("c-groceries")
+        model.saveEdit()
+        model.saveChecked()
+
+        val sent = imports.saved.single().second
+        assertTrue(sent.categorised)
+        assertEquals(listOf("c-dining", "c-groceries"), sent.rows.map { it.categoryId })
+        assertEquals(listOf("c-dining", null), sent.rows.map { it.suggestedCategoryId })
+    }
+
+    @Test
     fun `an edit reaches the request as confirmed and a removed row is left out`() {
         val imports = FakeImports(parse = { twoRows })
         val model = checking(imports)
