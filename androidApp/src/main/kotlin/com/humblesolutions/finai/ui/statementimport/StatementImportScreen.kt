@@ -88,8 +88,10 @@ import com.humblesolutions.finai.ui.edit.TransactionEditorActions
 import com.humblesolutions.finai.ui.edit.TransactionEditorSheet
 import com.humblesolutions.finai.ui.strings
 import com.humblesolutions.finai.ui.theme.FinAiPalette
+import com.humblesolutions.finai.usecase.Breakdown
 import com.humblesolutions.finai.usecase.ImportStep
 import com.humblesolutions.finai.usecase.ImportedRows
+import com.humblesolutions.finai.usecase.Slice
 
 /** What the screen can ask for; the pickers are the platform's, so the route supplies them. */
 class StatementImportActions(
@@ -586,6 +588,7 @@ private fun CheckStep(state: StatementImportUiState, actions: StatementImportAct
             state.checkTotalIn?.let { add(strings(Strings.import_extracted_in, it) to false) }
         },
     )
+    state.checkBreakdown?.let { BreakdownCard(state, it) }
 
     state.checkDays.forEach { day ->
         Text(
@@ -608,7 +611,14 @@ private fun CheckStep(state: StatementImportUiState, actions: StatementImportAct
                         description = state.checkRowDescription(row),
                         clickLabel = state.checkRowHint(row),
                         onClick = { actions.onEditRow(row.id) },
-                    ) { CheckNote(state, row) }
+                    ) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            state.checkCategoryLabel(row)?.let { label ->
+                                Tag(label, warning = row.categoryId == null)
+                            }
+                            CheckNote(state, row)
+                        }
+                    }
                     if (index != day.rows.lastIndex) {
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
                     }
@@ -640,6 +650,93 @@ private fun CheckBar(state: StatementImportUiState, actions: StatementImportActi
             }
         }
     }
+}
+
+/**
+ * Where the statement's money goes before it is saved: money out and money in
+ * by category, and what only moved between the person's own accounts — the
+ * way Home will count it. Follows every category changed on the rows below.
+ */
+@Composable
+private fun BreakdownCard(state: StatementImportUiState, breakdown: Breakdown) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surface,
+        tonalElevation = 1.dp,
+    ) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text(
+                text = strings(Strings.import_check_breakdown_title),
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.semantics { heading() },
+            )
+            BreakdownSide(state, strings(Strings.import_check_money_out), breakdown.totalOut, breakdown.moneyOut, isIn = false)
+            BreakdownSide(state, strings(Strings.import_check_money_in), breakdown.totalIn, breakdown.moneyIn, isIn = true)
+            breakdown.betweenAccounts?.let { amount ->
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                Row(
+                    modifier = Modifier.fillMaxWidth().semantics(mergeDescendants = true) {},
+                    verticalAlignment = Alignment.Top,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(strings(Strings.import_check_between), style = MaterialTheme.typography.bodyMedium)
+                        Text(
+                            strings(Strings.import_check_between_hint),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Spacer(Modifier.width(10.dp))
+                    Text(state.checkMoney(amount), style = MaterialTheme.typography.bodyMedium)
+                }
+            }
+        }
+    }
+}
+
+/** One side of the breakdown: its total, then each category's share. Nothing when empty. */
+@Composable
+private fun BreakdownSide(state: StatementImportUiState, title: String, total: String?, slices: List<Slice>, isIn: Boolean) {
+    total ?: return
+    val tint = if (isIn) FinAiPalette.Green else MaterialTheme.colorScheme.onBackground
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(Modifier.fillMaxWidth().semantics(mergeDescendants = true) {}) {
+            Text(title, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+            Text(state.checkMoney(total), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = tint)
+        }
+        slices.forEach { slice ->
+            Row(Modifier.fillMaxWidth().semantics(mergeDescendants = true) {}) {
+                Text(
+                    text = slice.name ?: strings(Strings.import_extracted_uncategorised),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (slice.categoryId == null) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                Spacer(Modifier.width(10.dp))
+                Text(state.checkMoney(slice.amount), style = MaterialTheme.typography.bodySmall)
+            }
+        }
+    }
+}
+
+/** A small label under a row's name. Amber when it asks for something. */
+@Composable
+private fun Tag(text: String, warning: Boolean) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.labelSmall,
+        color = if (warning) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurfaceVariant,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        modifier = Modifier
+            .clip(RoundedCornerShape(6.dp))
+            .background(if (warning) MaterialTheme.colorScheme.tertiary.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceVariant)
+            .padding(horizontal = 6.dp, vertical = 2.dp),
+    )
 }
 
 /** "Check this one" for a row read with doubt; "Changed by you" once fixed. */

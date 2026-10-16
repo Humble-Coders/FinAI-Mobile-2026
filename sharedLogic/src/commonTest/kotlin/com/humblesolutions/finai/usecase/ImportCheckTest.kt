@@ -1,5 +1,6 @@
 package com.humblesolutions.finai.usecase
 
+import com.humblesolutions.finai.model.Category
 import com.humblesolutions.finai.model.ParsedRow
 import com.humblesolutions.finai.model.ParsedStatement
 import com.humblesolutions.finai.model.TransactionDirection
@@ -115,5 +116,87 @@ class ImportCheckTest {
         assertEquals("Save 3 transactions", ImportCheck.saveLabel(rows))
         assertEquals("1 transaction", ImportCheck.countLabel(rows.take(1)))
         assertEquals("Save 1 transaction", ImportCheck.saveLabel(rows.take(1)))
+    }
+
+    // ── Categories before saving ────────────────────────────────────────
+
+    private val dining = Category(id = "c-dining", slug = "dining", name = "Dining out")
+    private val groceries = Category(id = "c-groceries", slug = "groceries", name = "Groceries")
+    private val income = Category(id = "c-income", slug = "income", name = "Income")
+    private val transfers = Category(id = "c-transfers", slug = "transfers", name = "Transfers")
+    private val categories = listOf(dining, groceries, income, transfers)
+
+    private val suggested = ImportCheck.rowsOf(
+        ParsedStatement(
+            importId = "imp-2",
+            currency = "CAD",
+            rows = listOf(
+                ParsedRow("2026-09-02", "LOBLAWS 1042", "86.40", "debit", 95, categoryId = "c-groceries"),
+                ParsedRow("2026-09-03", "SAFEWAY", "13.60", "debit", 95, categoryId = "c-groceries"),
+                ParsedRow("2026-09-04", "TIM HORTONS", "5.25", "debit", 95, categoryId = "c-dining"),
+                ParsedRow("2026-09-05", "PAYROLL ACME", "2500.00", "credit", 98, categoryId = "c-income"),
+                ParsedRow("2026-09-06", "VISA PAYMENT", "400.00", "debit", 95, categoryId = "c-transfers"),
+                ParsedRow("2026-09-07", "E-TRANSFER", "50.00", "debit", 90),
+            ),
+        ),
+        accountId = "acc-1",
+    )
+
+    @Test
+    fun a_suggested_category_is_on_the_row_and_remembered_as_suggested() {
+        assertEquals("c-groceries", suggested[0].row.categoryId)
+        assertEquals("c-groceries", suggested[0].suggestedCategoryId)
+        assertNull(suggested[5].row.categoryId, "no suggestion: no category yet")
+    }
+
+    @Test
+    fun changing_only_the_category_is_an_edit_and_is_sent_with_the_suggestion() {
+        val edited = assertNotNull(
+            ImportCheck.edit(suggested, "check-2", ReviewQueue.draftOf(suggested[2].row).copy(categoryId = "c-groceries"), today),
+        )
+        val request = ImportCheck.rowsToSave("acc-1", edited)
+
+        assertTrue(request.categorised)
+        assertEquals("c-groceries", request.rows[2].categoryId)
+        assertEquals("c-dining", request.rows[2].suggestedCategoryId, "so the server learns the correction")
+        assertEquals(request.rows[0].categoryId, request.rows[0].suggestedCategoryId, "accepted as suggested")
+    }
+
+    @Test
+    fun the_breakdown_counts_money_in_and_out_by_category_largest_first() {
+        val breakdown = ImportCheck.breakdown(suggested, categories)
+
+        assertEquals(
+            listOf(Slice("c-groceries", "Groceries", "100.00"), Slice(null, null, "50.00"), Slice("c-dining", "Dining out", "5.25")),
+            breakdown.moneyOut,
+        )
+        assertEquals(listOf(Slice("c-income", "Income", "2500.00")), breakdown.moneyIn)
+        assertEquals("155.25", breakdown.totalOut, "the card payment is not spending")
+        assertEquals("2500.00", breakdown.totalIn)
+        assertEquals("400.00", breakdown.betweenAccounts)
+    }
+
+    @Test
+    fun the_breakdown_follows_a_changed_category() {
+        val moved = assertNotNull(
+            ImportCheck.edit(suggested, "check-4", ReviewQueue.draftOf(suggested[4].row).copy(categoryId = "c-groceries"), today),
+        )
+
+        val breakdown = ImportCheck.breakdown(moved, categories)
+
+        assertNull(breakdown.betweenAccounts)
+        assertEquals("555.25", breakdown.totalOut)
+    }
+
+    @Test
+    fun a_category_whose_name_has_not_loaded_still_has_its_own_slice() {
+        val breakdown = ImportCheck.breakdown(suggested, categories = emptyList())
+
+        // Without the names nothing is known to be a transfer, so the card
+        // payment counts as money out — which is why the screens show the
+        // breakdown only once the categories have loaded.
+        assertEquals(listOf("c-transfers", "c-groceries", null, "c-dining"), breakdown.moneyOut.map { it.categoryId })
+        assertEquals(listOf<String?>(null, null, null, null), breakdown.moneyOut.map { it.name })
+        assertNull(breakdown.betweenAccounts)
     }
 }

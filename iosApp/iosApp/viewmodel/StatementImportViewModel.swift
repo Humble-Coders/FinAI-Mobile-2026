@@ -600,6 +600,17 @@ final class StatementImportViewModel: ObservableObject, NewAccountHost {
         editing = nil
         confirmingDiscard = false
         step = .check
+        // The names behind each row's category, for its chip, the picker and
+        // the breakdown. Kept from before if the list will not load: the rows
+        // and Save work without them.
+        if importedCategories.isEmpty, let categoriesRepository {
+            let started = generation
+            Task { [weak self] in
+                guard let categories = try? await categoriesRepository.list() else { return }
+                guard let self, started == self.generation else { return }
+                self.importedCategories = categories
+            }
+        }
     }
 
     /// Save the rows as the person left them.
@@ -675,12 +686,31 @@ final class StatementImportViewModel: ObservableObject, NewAccountHost {
 
     var checkDays: [ImportedRows.Day] { ImportedRows.shared.byDate(rows: checked) }
     var checkCount: String { ImportCheck.shared.countLabel(rows: checkRows, locale: locale) }
+    /// Where the statement's money goes, by category, as Home will count it.
+    /// Nil until the category names have loaded: without them nothing is known
+    /// to be a transfer. Mirrors Android's `checkBreakdown`.
+    var checkBreakdown: Breakdown? {
+        if importedCategories.isEmpty, checkRows.contains(where: { $0.row.categoryId != nil }) { return nil }
+        return ImportCheck.shared.breakdown(
+            rows: checkRows, categories: importedCategories,
+            fractionDigits: Money.shared.fractionDigits(currency: checkCurrency)
+        )
+    }
+    func checkMoneyLabel(_ amount: String) -> String { checkMoney(amount) }
+    /// Money out, without transfers and savings once the breakdown is known.
     var checkTotalOut: String? {
-        ImportedRows.shared.totalOut(rows: checked, fractionDigits: Money.shared.fractionDigits(currency: checkCurrency)).map(checkMoney)
+        (checkBreakdown?.totalOut
+            ?? ImportedRows.shared.totalOut(rows: checked, fractionDigits: Money.shared.fractionDigits(currency: checkCurrency)))
+            .map(checkMoney)
     }
+    /// Money in, without transfers and savings once the breakdown is known.
     var checkTotalIn: String? {
-        ImportedRows.shared.totalIn(rows: checked, fractionDigits: Money.shared.fractionDigits(currency: checkCurrency)).map(checkMoney)
+        (checkBreakdown?.totalIn
+            ?? ImportedRows.shared.totalIn(rows: checked, fractionDigits: Money.shared.fractionDigits(currency: checkCurrency)))
+            .map(checkMoney)
     }
+    /// A row's category, "No category yet", or nil while the names load.
+    func checkCategoryLabel(_ row: SharedLogic.Transaction) -> String? { categoryLabel(row) }
     var saveCheckedLabel: String { ImportCheck.shared.saveLabel(rows: checkRows, locale: locale) }
     var canSaveChecked: Bool { step == .check && ImportCheck.shared.canSave(rows: checkRows) && editing == nil }
     /// Everything was removed: only Discard is left.
@@ -695,7 +725,7 @@ final class StatementImportViewModel: ObservableObject, NewAccountHost {
 
     /// The whole row as one sentence, so VoiceOver announces it once.
     func checkRowDescription(_ row: SharedLogic.Transaction) -> String {
-        [dateLabel(row.occurredOn), titleOf(row), amountLabel(row), checkNoteKey(row).map { L.t($0) }]
+        [dateLabel(row.occurredOn), titleOf(row), checkCategoryLabel(row), amountLabel(row), checkNoteKey(row).map { L.t($0) }]
             .compactMap { $0 }
             .joined(separator: ", ")
     }
@@ -1090,7 +1120,8 @@ extension StatementImportViewModel: TransactionEditing {
         editing.map { ImportedRows.shared.summary(row: $0, locale: "en") } ?? []
     }
 
-    var showsCategory: Bool { !before }
+    /// Before saving too: the category is checked with the rest.
+    var showsCategory: Bool { true }
     var deleteKey: String { before ? Strings.shared.import_check_remove : Strings.shared.transaction_delete }
     var deleteConfirmTitleKey: String {
         before ? Strings.shared.import_check_remove_title : Strings.shared.transaction_delete_confirm_title

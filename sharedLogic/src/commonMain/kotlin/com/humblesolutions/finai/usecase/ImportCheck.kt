@@ -2,6 +2,7 @@ package com.humblesolutions.finai.usecase
 
 import com.humblesolutions.finai.i18n.LocalizationRegistry
 import com.humblesolutions.finai.i18n.Strings
+import com.humblesolutions.finai.model.Category
 import com.humblesolutions.finai.model.ParsedStatement
 import com.humblesolutions.finai.model.RowToSave
 import com.humblesolutions.finai.model.RowsToSave
@@ -22,6 +23,38 @@ import kotlinx.datetime.LocalDate
 data class CheckRow(
     val row: Transaction,
     val edited: Boolean = false,
+    /**
+     * The category the server suggested when it read the statement. Sent back
+     * on save beside the one chosen, so the server can tell a correction —
+     * which teaches a rule for the merchant — from a suggestion accepted.
+     */
+    val suggestedCategoryId: String? = null,
+)
+
+/** One category's share of the money in or out of a statement being checked. */
+data class Slice(
+    /** Null for the rows with no category yet. */
+    val categoryId: String?,
+    /** The category's name, or null when it has none yet or the names did not load. */
+    val name: String?,
+    /** A decimal string. */
+    val amount: String,
+)
+
+/**
+ * Where a statement's money goes, as Home will count it once saved (backend
+ * #73): money in and money out by category, largest first, and apart from both
+ * the money that only moved between the household's own accounts.
+ */
+data class Breakdown(
+    val moneyIn: List<Slice>,
+    val moneyOut: List<Slice>,
+    /** Total of [moneyIn], or null when nothing came in. */
+    val totalIn: String?,
+    /** Total of [moneyOut], or null when nothing went out. */
+    val totalOut: String?,
+    /** Transfers and savings, either way; null when there are none. */
+    val betweenAccounts: String?,
 )
 
 /**
@@ -50,6 +83,12 @@ object ImportCheck {
     private const val ID_PREFIX = "check-"
 
     /**
+     * Money between the household's own accounts, in neither money in nor
+     * money out — the same slugs as the backend's `dashboard.NOT_A_FLOW`.
+     */
+    val BETWEEN_ACCOUNTS: Set<String> = setOf("transfers", "savings")
+
+    /**
      * The parsed rows, ready to check, in the order the server read them.
      * Each has a made-up id, unique within the import, so the screen can name
      * one — they have no real id until they are saved.
@@ -65,7 +104,9 @@ object ImportCheck {
                 direction = TransactionDirection.fromWire(row.direction),
                 description = row.description,
                 extractionConfidence = row.confidence,
+                categoryId = row.categoryId,
             ),
+            suggestedCategoryId = row.categoryId,
         )
     }
 
@@ -93,8 +134,9 @@ object ImportCheck {
             amount = Money.normalize(draft.amount, digits) ?: return null,
             direction = draft.direction ?: target.row.direction,
             description = draft.description.trim(),
+            categoryId = draft.categoryId,
         )
-        return rows.map { if (it.row.id == id) CheckRow(changed, edited = true) else it }
+        return rows.map { if (it.row.id == id) it.copy(row = changed, edited = true) else it }
     }
 
     /** [rows] without [id]. Removing is not editing: the row is simply not saved. */
@@ -109,16 +151,62 @@ object ImportCheck {
      */
     fun rowsToSave(accountId: String, rows: List<CheckRow>): RowsToSave = RowsToSave(
         accountId = accountId,
-        rows = rows.map { (row, edited) ->
+        rows = rows.map { (row, edited, suggested) ->
             RowToSave(
                 occurredOn = row.occurredOn,
                 description = row.description.orEmpty(),
                 amount = row.amount,
                 direction = row.direction.wire,
                 confidence = if (edited) CONFIRMED else row.extractionConfidence ?: CONFIRMED,
+                categoryId = row.categoryId,
+                suggestedCategoryId = suggested,
             )
         },
     )
+
+    /**
+     * Money in and money out by category, and what only moved between the
+     * household's own accounts — so the person sees where the statement's
+     * money goes before saving, counted the way Home will count it.
+     *
+     * A row's side is its direction; transfers and savings are on neither. A
+     * category whose name has not loaded still has its own slice, unnamed.
+     */
+    fun breakdown(rows: List<CheckRow>, categories: List<Category>, fractionDigits: Int = 2): Breakdown {
+        val byId = categories.associateBy { it.id }
+        val between = mutableListOf<String>()
+        val sides = mapOf(
+            TransactionDirection.CREDIT to linkedMapOf<String?, String>(),
+            TransactionDirection.DEBIT to linkedMapOf<String?, String>(),
+        )
+        for ((row) in rows) {
+            val category = row.categoryId?.let(byId::get)
+            if (category?.slug in BETWEEN_ACCOUNTS) {
+                between += row.amount
+                continue
+            }
+            val side = sides[row.direction] ?: continue
+            side[row.categoryId] = Money.add(side[row.categoryId] ?: "0", row.amount, fractionDigits) ?: continue
+        }
+
+        fun slices(side: Map<String?, String>): List<Slice> = side
+            .map { (id, amount) -> Slice(id, id?.let(byId::get)?.let(ReviewQueue::categoryName), amount) }
+            .sortedWith { a, b -> Money.compare(b.amount, a.amount, fractionDigits) }
+
+        fun total(amounts: Collection<String>): String? = if (amounts.isEmpty()) {
+            null
+        } else {
+            amounts.fold("0") { running, amount -> Money.add(running, amount, fractionDigits) ?: return null }
+        }
+
+        return Breakdown(
+            moneyIn = slices(sides.getValue(TransactionDirection.CREDIT)),
+            moneyOut = slices(sides.getValue(TransactionDirection.DEBIT)),
+            totalIn = total(sides.getValue(TransactionDirection.CREDIT).values),
+            totalOut = total(sides.getValue(TransactionDirection.DEBIT).values),
+            betweenAccounts = total(between),
+        )
+    }
 
     /** "12 transactions". */
     fun countLabel(rows: List<CheckRow>, locale: String = "en"): String = counted(rows.size, Strings.import_check_count, Strings.import_check_count_one, locale)

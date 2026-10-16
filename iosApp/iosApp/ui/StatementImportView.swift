@@ -577,6 +577,7 @@ struct StatementImportView: View {
                     HStack(spacing: 6) { checkChips }
                     VStack(alignment: .leading, spacing: 6) { checkChips }
                 }
+                if let breakdown = model.checkBreakdown { breakdownCard(breakdown) }
                 ForEach(model.checkDays, id: \.date) { day in
                     Text(model.dateLabel(day.date))
                         .font(.caption)
@@ -585,8 +586,13 @@ struct StatementImportView: View {
                     VStack(spacing: 0) {
                         ForEach(Array(day.rows.enumerated()), id: \.element.id) { index, row in
                             importedRow(row, description: model.checkRowDescription(row), hint: model.checkRowHint(row)) {
-                                if let key = model.checkNoteKey(row) {
-                                    note(L.t(key), warning: key == Strings.shared.import_check_doubt)
+                                HStack(spacing: 6) {
+                                    if let category = model.checkCategoryLabel(row) {
+                                        note(category, warning: row.categoryId == nil)
+                                    }
+                                    if let key = model.checkNoteKey(row) {
+                                        note(L.t(key), warning: key == Strings.shared.import_check_doubt)
+                                    }
                                 }
                             }
                             if index != day.rows.count - 1 {
@@ -596,6 +602,65 @@ struct StatementImportView: View {
                     }
                     .background(Brand.surface)
                     .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                }
+            }
+        }
+    }
+
+    /// Where the statement's money goes before it is saved: money out and in by
+    /// category, and what only moved between the person's own accounts — the
+    /// way Home will count it. Follows every category changed on the rows.
+    private func breakdownCard(_ breakdown: Breakdown) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(L.t(Strings.shared.import_check_breakdown_title))
+                .font(.subheadline.weight(.semibold))
+                .accessibilityAddTraits(.isHeader)
+            breakdownSide(L.t(Strings.shared.import_check_money_out), total: breakdown.totalOut, slices: breakdown.moneyOut, isIn: false)
+            breakdownSide(L.t(Strings.shared.import_check_money_in), total: breakdown.totalIn, slices: breakdown.moneyIn, isIn: true)
+            if let between = breakdown.betweenAccounts {
+                Divider().overlay(Brand.border)
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(L.t(Strings.shared.import_check_between)).font(.subheadline)
+                        Text(L.t(Strings.shared.import_check_between_hint))
+                            .font(.caption)
+                            .foregroundColor(Brand.textMuted)
+                    }
+                    Spacer()
+                    Text(model.checkMoneyLabel(between)).font(.subheadline)
+                }
+                .accessibilityElement(children: .combine)
+            }
+        }
+        .padding(14)
+        .background(Brand.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    /// One side of the breakdown: its total, then each category's share. Nothing when empty.
+    @ViewBuilder
+    private func breakdownSide(_ title: String, total: String?, slices: [Slice], isIn: Bool) -> some View {
+        if let total {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text(title).font(.footnote.weight(.semibold))
+                    Spacer()
+                    Text(model.checkMoneyLabel(total))
+                        .font(.footnote.weight(.semibold))
+                        .foregroundColor(isIn ? Brand.green : .primary)
+                }
+                .accessibilityElement(children: .combine)
+                ForEach(Array(slices.enumerated()), id: \.offset) { _, slice in
+                    HStack {
+                        Text(slice.name ?? L.t(Strings.shared.import_extracted_uncategorised))
+                            .font(.caption)
+                            .foregroundColor(slice.categoryId == nil ? Brand.amber : Brand.textMuted)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                        Spacer()
+                        Text(model.checkMoneyLabel(slice.amount)).font(.caption)
+                    }
+                    .accessibilityElement(children: .combine)
                 }
             }
         }
