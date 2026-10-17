@@ -18,6 +18,8 @@ struct BudgetView: View {
     let userId: String
     var onReview: () -> Void
     var onImport: () -> Void
+    /// Your plan (#76), from the Savings line; nil when the plan is off, which hides the link.
+    var onOpenPlan: (() -> Void)?
 
     /// The edit in progress as the system keeps it for this scene, so the app
     /// coming back after iOS reclaimed it reopens the line being typed.
@@ -132,6 +134,13 @@ struct BudgetView: View {
                     Text(L.t(Strings.shared.budget_set_aside, money(savings.allocated)))
                         .font(.subheadline)
                         .foregroundColor(Field.ink(0.85))
+                    // What the plan does with it (#76) — the same figure, split.
+                    if let onOpenPlan {
+                        Button(L.t(Strings.shared.budget_savings_plan_link), action: onOpenPlan)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundColor(Field.ink())
+                            .frame(minHeight: 44)
+                    }
                 }
 
                 if let shortfall = budget.shortfall {

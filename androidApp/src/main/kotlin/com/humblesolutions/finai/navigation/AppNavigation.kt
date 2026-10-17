@@ -76,6 +76,7 @@ import com.humblesolutions.finai.ui.onboarding.ResetRequestScreen
 import com.humblesolutions.finai.ui.onboarding.SplashScreen
 import com.humblesolutions.finai.ui.onboarding.UpdateRequiredScreen
 import com.humblesolutions.finai.ui.onboarding.WelcomeScreen
+import com.humblesolutions.finai.ui.plan.PlanRoute
 import com.humblesolutions.finai.ui.review.ReviewRoute
 import com.humblesolutions.finai.ui.setup.SetupScreen
 import com.humblesolutions.finai.ui.setup.SetupViewModel
@@ -84,6 +85,7 @@ import com.humblesolutions.finai.ui.strings
 import com.humblesolutions.finai.ui.transactions.TransactionsRoute
 import com.humblesolutions.finai.usecase.Destination
 import com.humblesolutions.finai.usecase.MoneyKind
+import com.humblesolutions.finai.usecase.YourPlan
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
@@ -288,7 +290,7 @@ private fun SetupRoute(userId: String, onFinished: () -> Unit) {
 }
 
 /** Where the signed-in, set-up person is: home, or one of the two ways money gets in. */
-internal enum class HomeRoute { HOME, ADD, IMPORT, ADD_AFTER_IMPORT, REVIEW, TRANSACTIONS, BUDGET, GOALS, INCOME, EXPENSES, INVESTMENTS, DEBTS }
+internal enum class HomeRoute { HOME, ADD, IMPORT, ADD_AFTER_IMPORT, REVIEW, TRANSACTIONS, BUDGET, GOALS, INCOME, EXPENSES, INVESTMENTS, DEBTS, PLAN, PLAN_DEBTS }
 
 /**
  * The places the bar always offers; everything else is a flow over them.
@@ -346,6 +348,15 @@ internal fun reviewReturnsTo(from: HomeRoute): HomeRoute = if (from in ALL_TABS)
 /** Income, Expenses, Investments and Debts, opened from Home's cards. */
 private val MONEY = listOf(HomeRoute.INCOME, HomeRoute.EXPENSES, HomeRoute.INVESTMENTS, HomeRoute.DEBTS)
 
+/** Your plan and Your debts (#76), opened over the bar from Home, Budget and Debts. */
+private val PLAN = listOf(HomeRoute.PLAN, HomeRoute.PLAN_DEBTS)
+
+/**
+ * Whether [current] is the plan while the payload says the plan is off —
+ * turned off between reads. Never on a payload not yet read.
+ */
+internal fun leavesPlan(capabilities: Capabilities?, current: HomeRoute): Boolean = capabilities != null && current in PLAN && !capabilities.isEnabled(YourPlan.FEATURE)
+
 /**
  * Home and what opens from it: the statement import (#31), manual entry — from
  * home (#30) or from an import that could not be read — and the review queue
@@ -373,7 +384,15 @@ private fun HomeOrEntry(userId: String, onSignOut: () -> Unit) {
     // on the payload rather than the tabs, and only once it has been read:
     // the first version keyed on the tabs and sent everyone restored onto
     // Budget home before capabilities arrived.
-    LaunchedEffect(capabilities) { if (leavesGatedTab(capabilities, route)) route = HomeRoute.HOME }
+    LaunchedEffect(capabilities) { if (leavesGatedTab(capabilities, route) || leavesPlan(capabilities, route)) route = HomeRoute.HOME }
+    // The plan's links show only where it is on (#76); where it goes back to
+    // is saveable with the route, as Review's is.
+    val planOn = capabilities?.isEnabled(YourPlan.FEATURE) == true
+    var planFrom by rememberSaveable { mutableStateOf(HomeRoute.HOME) }
+    val openPlan = { to: HomeRoute ->
+        planFrom = route
+        route = to
+    }
     // Where Review goes back to. Saveable with the route, so a restored Review
     // still knows its way out.
     var reviewFrom by rememberSaveable { mutableStateOf(HomeRoute.HOME) }
@@ -426,6 +445,11 @@ private fun HomeOrEntry(userId: String, onSignOut: () -> Unit) {
                         } else {
                             null
                         },
+                        onOpenPlan = if (planOn) {
+                            { openPlan(HomeRoute.PLAN) }
+                        } else {
+                            null
+                        },
                     )
 
                     HomeRoute.ADD -> ManualEntryRoute(userId = userId, fromUnreadable = false, onClose = { route = HomeRoute.HOME })
@@ -454,6 +478,11 @@ private fun HomeOrEntry(userId: String, onSignOut: () -> Unit) {
                         onImport = { route = HomeRoute.IMPORT },
                         requestedMonth = budgetMonth,
                         onRequestedMonthShown = { budgetMonth = null },
+                        onOpenPlan = if (planOn) {
+                            { openPlan(HomeRoute.PLAN) }
+                        } else {
+                            null
+                        },
                     )
 
                     HomeRoute.GOALS -> GoalsRoute(userId = userId, onClose = { route = HomeRoute.HOME })
@@ -466,7 +495,22 @@ private fun HomeOrEntry(userId: String, onSignOut: () -> Unit) {
 
                     HomeRoute.INVESTMENTS -> MoneyDetailRoute(userId, MoneyKind.INVESTMENTS, onBack = { route = HomeRoute.HOME })
 
-                    HomeRoute.DEBTS -> MoneyDetailRoute(userId, MoneyKind.DEBTS, onBack = { route = HomeRoute.HOME })
+                    HomeRoute.DEBTS -> MoneyDetailRoute(
+                        userId,
+                        MoneyKind.DEBTS,
+                        onBack = { route = HomeRoute.HOME },
+                        onOpenPlan = if (planOn) {
+                            { openPlan(HomeRoute.PLAN_DEBTS) }
+                        } else {
+                            null
+                        },
+                    )
+
+                    // Over the bar, like the money screens; back returns to
+                    // wherever the plan was opened from.
+                    HomeRoute.PLAN -> PlanRoute(userId = userId, startOnDebts = false, onClose = { route = planFrom })
+
+                    HomeRoute.PLAN_DEBTS -> PlanRoute(userId = userId, startOnDebts = true, onClose = { route = planFrom })
                 }
             }
         }
@@ -530,6 +574,13 @@ private fun homeTransition(from: HomeRoute, to: HomeRoute): ContentTransform = w
         (fadeIn(tween(260)) + slideInVertically(tween(300)) { it / 14 }) togetherWith fadeOut(tween(180))
 
     from in MONEY && to == HomeRoute.HOME ->
+        fadeIn(tween(220)) togetherWith (fadeOut(tween(200)) + slideOutVertically(tween(240)) { it / 14 })
+
+    // The plan rises in from wherever it was opened, and settles back down.
+    to in PLAN && from !in PLAN ->
+        (fadeIn(tween(260)) + slideInVertically(tween(300)) { it / 14 }) togetherWith fadeOut(tween(180))
+
+    from in PLAN && to !in PLAN ->
         fadeIn(tween(220)) togetherWith (fadeOut(tween(200)) + slideOutVertically(tween(240)) { it / 14 })
 
     else -> EnterTransition.None togetherWith ExitTransition.None

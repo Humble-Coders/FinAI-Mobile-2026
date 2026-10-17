@@ -266,6 +266,54 @@ struct BudgetSection: View {
     }
 }
 
+/// "Where your extra money goes" (#76): the money left over this month and the
+/// first parts of its split, or why there is none to split. Android's `PlanSection`.
+struct PlanSection: View {
+    let card: HomePlan
+    let onOpenPlan: (() -> Void)?
+    @Environment(\.colorScheme) private var scheme
+
+    var body: some View {
+        let dark = scheme == .dark
+        VStack(alignment: .leading, spacing: 10) {
+            SectionHeader(symbol: "banknote.fill", title: L.t(Strings.shared.home_plan_title)) {
+                if let onOpenPlan {
+                    Button(action: onOpenPlan) {
+                        HStack(spacing: 2) {
+                            Text(L.t(Strings.shared.home_plan_open)).font(.subheadline.weight(.semibold))
+                            FinAiIcon(symbol: "chevron.right", tint: Accent.income.label(dark), size: 11)
+                        }
+                        .foregroundColor(Accent.income.label(dark))
+                        .padding(.leading, 12)
+                        .padding(.trailing, 9)
+                        .padding(.vertical, 6)
+                        .background(Capsule().fill(Accent.income.icon.opacity(dark ? 0.18 : 0.1)))
+                        .frame(minHeight: 44)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            SheetCard {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(card.headline).font(.headline.weight(.semibold))
+                    ForEach(Array(card.rows.enumerated()), id: \.offset) { _, row in
+                        HStack(spacing: 12) {
+                            CategoryTile(icon: row.icon)
+                            Text(row.label).font(.body).lineLimit(1).truncationMode(.tail)
+                            Spacer(minLength: 8)
+                            Text(row.amount).font(.headline.weight(.bold)).lineLimit(1)
+                        }
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel(row.accessibility)
+                    }
+                }
+            }
+            .onTapGesture { onOpenPlan?() }
+            .accessibilityAddTraits(onOpenPlan == nil ? [] : .isButton)
+        }
+    }
+}
+
 /// Home's goals (#52): up to three in priority order with their progress, or an
 /// invitation to set one. Android's `GoalsSection`.
 struct GoalsSection: View {

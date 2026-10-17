@@ -205,7 +205,8 @@ private fun Sheet(state: GoalsUiState, actions: GoalsActions) {
 private fun GoalRow(state: GoalsUiState, goal: Goal, index: Int, actions: GoalsActions) {
     val dark = isSystemInDarkTheme()
     val icon = GoalEdit.iconOf(goal.kind)
-    val description = state.descriptionOf(goal)
+    // The plan's suggestion is part of the one sentence a screen reader hears.
+    val description = listOfNotNull(state.descriptionOf(goal), state.suggestedOf(goal)).joinToString(", ")
     val moveUp = strings(Strings.goals_move_up)
     val moveDown = strings(Strings.goals_move_down)
     val addMoney = strings(Strings.goals_add_money)
@@ -274,6 +275,9 @@ private fun GoalRow(state: GoalsUiState, goal: Goal, index: Int, actions: GoalsA
             )
             state.statusOf(goal).takeIf { it.isNotEmpty() }?.let {
                 Text(it, style = MaterialTheme.typography.labelMedium)
+            }
+            state.suggestedOf(goal)?.let {
+                Text(it, style = MaterialTheme.typography.labelMedium, color = Mint.greenText())
             }
             state.growthLineOf(goal)?.let {
                 Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

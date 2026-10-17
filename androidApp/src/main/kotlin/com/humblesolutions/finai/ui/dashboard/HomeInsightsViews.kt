@@ -23,6 +23,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.PieChart
+import androidx.compose.material.icons.filled.Savings
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material.icons.filled.Warning
@@ -63,6 +64,7 @@ import com.humblesolutions.finai.usecase.BudgetRow
 import com.humblesolutions.finai.usecase.FreshnessLine
 import com.humblesolutions.finai.usecase.HomeGoalRow
 import com.humblesolutions.finai.usecase.HomeGoals
+import com.humblesolutions.finai.usecase.HomePlan
 import com.humblesolutions.finai.usecase.ScoreBreakdown
 import com.humblesolutions.finai.usecase.ScoreCard
 import com.humblesolutions.finai.usecase.SpendRow
@@ -334,6 +336,44 @@ internal fun GoalsSection(card: HomeGoals, onOpenGoals: (() -> Unit)?) {
     }
 }
 
+/**
+ * "Where your extra money goes" (#76): the money left over this month and the
+ * first parts of its split, or why there is none to split. The whole card
+ * opens the plan.
+ */
+@Composable
+internal fun PlanSection(card: HomePlan, onOpenPlan: (() -> Unit)?) {
+    SectionHeader(
+        icon = Icons.Filled.Savings,
+        title = strings(Strings.home_plan_title),
+        action = onOpenPlan?.let { open -> { SectionLink(strings(Strings.home_plan_open), open) } },
+    )
+    Spacer(Modifier.height(10.dp))
+    SheetCard(Modifier.then(if (onOpenPlan != null) Modifier.clickable(role = Role.Button, onClick = onOpenPlan) else Modifier)) {
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text(card.headline, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            card.rows.forEach { row ->
+                Row(
+                    Modifier.fillMaxWidth().clearAndSetSemantics { contentDescription = row.accessibility },
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    CategoryTile(row.icon)
+                    Spacer(Modifier.width(12.dp))
+                    Text(
+                        row.label,
+                        style = MaterialTheme.typography.bodyLarge,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(row.amount, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, maxLines = 1)
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun GoalCard(row: HomeGoalRow, onOpenGoals: (() -> Unit)?) {
     SheetCard(
@@ -585,4 +625,6 @@ class InsightActions(
     val onOpenBudget: ((String) -> Unit)? = null,
     /** Open the Goals tab (#52). Null when there is none, which hides the card's link. */
     val onOpenGoals: (() -> Unit)? = null,
+    /** Open Your plan (#76). Null when the plan is off, which leaves the card without its link. */
+    val onOpenPlan: (() -> Unit)? = null,
 )

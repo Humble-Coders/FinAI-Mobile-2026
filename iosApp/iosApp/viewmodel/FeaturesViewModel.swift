@@ -40,6 +40,8 @@ final class FeaturesViewModel: ObservableObject {
     /// The capabilities that earn the gated tabs a place on the bar.
     static let budgetFeature = "auto_budget"
     static let goalsFeature = "goals"
+    /// Your plan (#76) — not a tab, but its links and screens follow the same gate.
+    static let planFeature = YourPlan.shared.FEATURE
 
     func gate(_ feature: String) -> Gate {
         guard let capabilities else { return .unknown }
@@ -50,9 +52,10 @@ final class FeaturesViewModel: ObservableObject {
     struct Gates: Equatable {
         let budget: Gate
         let goals: Gate
+        let plan: Gate
     }
 
-    var gates: Gates { Gates(budget: gate(Self.budgetFeature), goals: gate(Self.goalsFeature)) }
+    var gates: Gates { Gates(budget: gate(Self.budgetFeature), goals: gate(Self.goalsFeature), plan: gate(Self.planFeature)) }
 
     /**
      Whether the bar draws a gated tab. Android's `tabsFor`, one rule for every
