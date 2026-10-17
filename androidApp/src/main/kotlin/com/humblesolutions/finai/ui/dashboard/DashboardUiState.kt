@@ -9,6 +9,7 @@ import com.humblesolutions.finai.model.Dashboard
 import com.humblesolutions.finai.model.DayPoint
 import com.humblesolutions.finai.model.GoalsPage
 import com.humblesolutions.finai.model.HealthScore
+import com.humblesolutions.finai.model.Plan
 import com.humblesolutions.finai.model.Transaction
 import com.humblesolutions.finai.model.TransactionDirection
 import com.humblesolutions.finai.usecase.CategoryIcon
@@ -21,9 +22,11 @@ import com.humblesolutions.finai.usecase.DashboardTrend
 import com.humblesolutions.finai.usecase.GoalEdit
 import com.humblesolutions.finai.usecase.HomeGoals
 import com.humblesolutions.finai.usecase.HomeInsights
+import com.humblesolutions.finai.usecase.HomePlan
 import com.humblesolutions.finai.usecase.HomeSections
 import com.humblesolutions.finai.usecase.ImportedRows
 import com.humblesolutions.finai.usecase.ScoreBreakdown
+import com.humblesolutions.finai.usecase.YourPlan
 import com.humblesolutions.finai.util.Dates
 import com.humblesolutions.finai.util.Money
 import kotlinx.datetime.LocalDate
@@ -82,6 +85,8 @@ data class DashboardUiState(
     val capabilities: Capabilities? = null,
     /** The household's goals, for Home's card (#52); null until read, or when goals are off. */
     val goals: GoalsPage? = null,
+    /** This month's plan, for Home's card (#76); null until read, or when the plan is off. */
+    val plan: Plan? = null,
     /** "Where it went" shows every category rather than the top five. */
     val spendingExpanded: Boolean = false,
     /** The score's breakdown sheet is up. */
@@ -331,6 +336,17 @@ data class DashboardUiState(
             if (capabilities?.isEnabled(GOALS_FEATURE) != true) return null
             val page = goals ?: return null
             return GoalEdit.homeCard(page, GoalEdit.Words(currency = data.currency, locale = locale, amountsHidden = amountsHidden))
+        }
+
+    /**
+     * Home's "Where your extra money goes" card (#76), or null when it is not
+     * drawn: the plan off for the household, or not read yet.
+     */
+    val planCard: HomePlan?
+        get() {
+            if (capabilities?.isEnabled(YourPlan.FEATURE) != true) return null
+            val plan = plan ?: return null
+            return YourPlan.homeCard(plan, YourPlan.Words(currency = plan.currency.ifBlank { data.currency }, locale = locale, amountsHidden = amountsHidden))
         }
 
     /** The breakdown sheet's rows, or null until `/health-score` answers with a score. */

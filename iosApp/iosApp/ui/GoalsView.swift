@@ -197,6 +197,9 @@ private struct GoalRow: View {
                         ProgressView(value: Double(goal.fraction)).tint(Mint.greenText(dark))
                         let status = model.status(of: goal)
                         if !status.isEmpty { Text(status).font(.caption.weight(.medium)).foregroundColor(.primary) }
+                        if let suggested = model.suggested(of: goal) {
+                            Text(suggested).font(.caption.weight(.medium)).foregroundColor(Mint.greenText(dark))
+                        }
                         if let growth = model.growthLine(of: goal) { Text(growth).font(.caption2).foregroundColor(.secondary) }
                         if let disclaimer = model.disclaimer(of: goal) { Text(disclaimer).font(.caption2).foregroundColor(.secondary) }
                     }
@@ -227,7 +230,8 @@ private struct GoalRow: View {
         // One sentence, so the goal is heard once and its standing in words.
         // "Add money" and the moves are actions on it, not more stops.
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(model.description(of: goal))
+        // The plan's suggestion is part of the one sentence VoiceOver reads.
+        .accessibilityLabel([model.description(of: goal), model.suggested(of: goal)].compactMap { $0 }.joined(separator: ", "))
         .accessibilityAddTraits(.isButton)
         .accessibilityAction { model.edit(goalId: goal.id) }
         .accessibilityAction(named: L.t(Strings.shared.goals_add_money)) {

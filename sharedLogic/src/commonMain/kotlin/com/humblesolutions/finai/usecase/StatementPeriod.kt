@@ -73,7 +73,8 @@ object StatementPeriod {
      */
     private fun ordered(first: String, second: String): Range = if (first <= second) Range(first, second) else Range(second, first)
 
-    private fun datesIn(text: String): List<String> {
+    /** Every real date on [text], as ISO strings, in the order found. Also read by [StatementBalance]. */
+    internal fun datesIn(text: String): List<String> {
         val found = mutableListOf<String>()
         ISO.findAll(text).forEach { match ->
             val (year, month, day) = match.destructured

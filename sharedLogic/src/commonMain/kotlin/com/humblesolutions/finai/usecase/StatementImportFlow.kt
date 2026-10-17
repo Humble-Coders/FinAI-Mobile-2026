@@ -171,6 +171,8 @@ object StatementImportFlow {
         if (parsed.unparsedLineCount > 0) {
             add(counted(parsed.unparsedLineCount, Strings.import_result_unread_one, Strings.import_result_unread_other))
         }
+        // The balance the person confirmed on the check screen (#76).
+        if (saved.debtsUpdated > 0) add(LocalizationRegistry.get(Strings.import_result_balance_updated))
     }
 
     /** The thank-you after the diagnostic offer, saying until when the text is kept. */

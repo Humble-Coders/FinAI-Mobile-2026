@@ -7,6 +7,7 @@ import com.humblesolutions.finai.config.ApiConfig
 import com.humblesolutions.finai.config.Supabase
 import com.humblesolutions.finai.data.KtorCapabilitiesRepository
 import com.humblesolutions.finai.data.KtorGoalsRepository
+import com.humblesolutions.finai.data.KtorPlanRepository
 import com.humblesolutions.finai.data.SupabaseTokenSource
 import com.humblesolutions.finai.model.ApiException
 import com.humblesolutions.finai.model.GoalHorizon
@@ -14,10 +15,13 @@ import com.humblesolutions.finai.model.GoalKind
 import com.humblesolutions.finai.model.GoalsPage
 import com.humblesolutions.finai.repository.CapabilitiesRepository
 import com.humblesolutions.finai.repository.GoalsRepository
+import com.humblesolutions.finai.repository.PlanRepository
 import com.humblesolutions.finai.usecase.GoalDraft
 import com.humblesolutions.finai.usecase.GoalEdit
 import com.humblesolutions.finai.usecase.ManualEntry
+import com.humblesolutions.finai.usecase.YourPlan
 import com.humblesolutions.finai.util.GoalsChanged
+import com.humblesolutions.finai.util.PlanChanged
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -62,8 +66,18 @@ class GoalsViewModel(
             GoalsRepositories(
                 goals = KtorGoalsRepository(ApiConfig.BASE_URL, tokens, logging),
                 capabilities = KtorCapabilitiesRepository(ApiConfig.BASE_URL, tokens, logging),
+                plan = KtorPlanRepository(ApiConfig.BASE_URL, tokens, logging),
             )
         }
+    }
+
+    /** One collector for the model's life: choices saved on Your plan move the suggested amounts. */
+    private var listening = false
+
+    private fun listenForPlan() {
+        if (listening) return
+        listening = true
+        viewModelScope.launch { PlanChanged.events.collect { loadPlan() } }
     }
 
     internal fun bind(userId: String, build: () -> GoalsRepositories?) {
@@ -80,6 +94,7 @@ class GoalsViewModel(
         }
         if (repositories != null) return
         repositories = build() ?: return
+        listenForPlan()
         load()
     }
 
@@ -118,6 +133,7 @@ class GoalsViewModel(
                     )
                 }
                 loadDisclaimer(page)
+                if (capabilities?.isEnabled(YourPlan.FEATURE) == true) loadPlan() else update { it.copy(plan = null) }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: ApiException) {
@@ -154,6 +170,26 @@ class GoalsViewModel(
                 return@launch
             }
             update { it.copy(disclaimer = terms) }
+        }
+    }
+
+    /**
+     * This month's plan, for the amount it suggests beside each goal (#76).
+     * Quiet on failure: the goals stand without the line. Only while the
+     * plan is on — [load] reads the capabilities that say so.
+     */
+    private fun loadPlan() {
+        val plan = repositories?.plan ?: return
+        val started = generation
+        viewModelScope.launch {
+            val answer = try {
+                plan.plan(null)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: ApiException) {
+                return@launch
+            }
+            if (started == generation) update { it.copy(plan = answer) }
         }
     }
 
@@ -374,9 +410,12 @@ class GoalsViewModel(
 internal class GoalsRepositories(
     val goals: GoalsRepository,
     val capabilities: CapabilitiesRepository,
+    // Optional so a test about goals need not build a plan too.
+    val plan: PlanRepository? = null,
 ) {
     fun close() {
         goals.close()
         capabilities.close()
+        plan?.close()
     }
 }
