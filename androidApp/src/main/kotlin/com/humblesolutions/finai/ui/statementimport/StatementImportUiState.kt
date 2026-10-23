@@ -20,6 +20,7 @@ import com.humblesolutions.finai.usecase.NewAccountBlock
 import com.humblesolutions.finai.usecase.NewAccountDraft
 import com.humblesolutions.finai.usecase.NewAccountForm
 import com.humblesolutions.finai.usecase.ReviewQueue
+import com.humblesolutions.finai.usecase.StatementBalance
 import com.humblesolutions.finai.usecase.StatementImportFlow
 import com.humblesolutions.finai.util.Dates
 import com.humblesolutions.finai.util.Money
@@ -90,6 +91,13 @@ data class StatementImportUiState(
     val checkRows: List<CheckRow> = emptyList(),
     /** The app was ended mid-check and the statement read again, so earlier changes are gone. */
     val readAgain: Boolean = false,
+    /**
+     * The closing balance read on the phone, for the debt linked to this
+     * account (#76) — offered, never applied unasked. Null when there is none.
+     */
+    val balanceOffer: StatementBalance.Offer? = null,
+    /** The person's yes to updating that debt's balance. Starts unticked. */
+    val updateBalance: Boolean = false,
     val confirmingDiscard: Boolean = false,
     /** Why Save failed. The checked rows are kept, so it can be pressed again. */
     val saveErrorKey: String? = null,
@@ -190,6 +198,9 @@ data class StatementImportUiState(
     fun checkCategoryLabel(row: Transaction): String? = ImportedRows.categoryLabel(row, categories, LocalizationRegistry.get(Strings.import_extracted_uncategorised, locale))
 
     val saveCheckedLabel: String get() = ImportCheck.saveLabel(checkRows, locale)
+
+    /** "This statement says you owed $X on …. Update Visa to this balance?", or null with nothing to offer. */
+    val balanceQuestion: String? get() = balanceOffer?.let { StatementBalance.question(it, checkCurrency, locale) }
 
     val canSaveChecked: Boolean get() = step == ImportStep.CHECK && ImportCheck.canSave(checkRows) && editing == null
 

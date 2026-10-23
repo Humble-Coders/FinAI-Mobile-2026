@@ -121,6 +121,16 @@ data class RowsToSave(
      */
     @EncodeDefault(EncodeDefault.Mode.ALWAYS)
     val categorised: Boolean = true,
+    /**
+     * The statement's closing balance, as the person confirmed it on the
+     * check screen (#76) — read on the phone, never by the server's reader.
+     * With [closingDate], or neither; left off the wire when null.
+     */
+    @SerialName("closing_balance")
+    val closingBalance: String? = null,
+    /** `YYYY-MM-DD`: the day [closingBalance] was true. */
+    @SerialName("closing_date")
+    val closingDate: String? = null,
 )
 
 /** What saving an import came to. */
@@ -136,4 +146,7 @@ data class SaveOutcome(
     /** Rows from this import waiting for a person, for any reason. */
     @SerialName("needs_review")
     val needsReview: Int = 0,
+    /** Debts whose balance the confirmed closing balance updated (#76): 0 or 1. */
+    @SerialName("debts_updated")
+    val debtsUpdated: Int = 0,
 )

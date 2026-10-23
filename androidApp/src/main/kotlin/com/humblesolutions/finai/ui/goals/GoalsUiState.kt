@@ -2,12 +2,14 @@ package com.humblesolutions.finai.ui.goals
 
 import com.humblesolutions.finai.model.Goal
 import com.humblesolutions.finai.model.GoalsPage
+import com.humblesolutions.finai.model.Plan
 import com.humblesolutions.finai.model.Terms
 import com.humblesolutions.finai.usecase.AddMoneyBlock
 import com.humblesolutions.finai.usecase.GoalBlock
 import com.humblesolutions.finai.usecase.GoalDraft
 import com.humblesolutions.finai.usecase.GoalEdit
 import com.humblesolutions.finai.usecase.ManualEntry
+import com.humblesolutions.finai.usecase.YourPlan
 import com.humblesolutions.finai.util.Money
 import kotlinx.datetime.LocalDate
 
@@ -26,6 +28,9 @@ data class GoalsUiState(
 
     /** The region's disclaimer, shown beside long-term projections; null when it has none. */
     val disclaimer: Terms? = null,
+
+    /** This month's plan, for each goal's suggested amount (#76); null when the plan is off or unread. */
+    val plan: Plan? = null,
 
     val loading: Boolean = true,
     val refreshing: Boolean = false,
@@ -77,6 +82,9 @@ data class GoalsUiState(
 
     /** "Doesn't include investment growth", for a long-term goal while projections assume none. */
     fun growthLineOf(goal: Goal): String? = page?.takeIf { GoalEdit.saysNoGrowth(goal, it) }?.let { GoalEdit.growthLine(words) }
+
+    /** "Your plan suggests $80 this month" — the plan's share for [goal] beside its own figures; null when none. */
+    fun suggestedOf(goal: Goal): String? = if (goal.isAchieved) null else YourPlan.suggestedFor(goal.id, plan, YourPlan.Words(currency = currency, locale = locale))
 
     /** The disclaimer, under a long-term goal still being saved for. */
     fun disclaimerOf(goal: Goal): String? = disclaimer?.body?.takeIf { goal.isLongTerm && !goal.isAchieved && it.isNotBlank() }

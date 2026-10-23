@@ -66,6 +66,33 @@ class ImportStatementTest {
     }
 
     @Test
+    fun readsTheClosingBalanceBeforeRedactionAndNeverSendsIt() = runTest {
+        val imports = FakeImports()
+        var balance: StatementBalance.Found? = null
+
+        ImportStatement(imports).execute(
+            statement("JANE DOE", header, "New balance $4,012.37", transaction),
+            accountCurrency = "CAD",
+            onClosingBalance = { balance = it },
+        )
+
+        assertEquals(StatementBalance.Found("4012.37", "2026-08-31"), balance)
+        assertFalse(assertNotNull(imports.sent).text.contains("4,012.37"), "the summary block stays on the phone")
+    }
+
+    @Test
+    fun aScreenshotHasNoClosingBalance() = runTest {
+        var balance: StatementBalance.Found? = StatementBalance.Found("1.00", "2026-01-01")
+
+        ImportStatement(FakeImports()) { kotlinx.datetime.LocalDate(2026, 9, 1) }.execute(
+            ScreenshotFixture.document(),
+            onClosingBalance = { balance = it },
+        )
+
+        assertNull(balance)
+    }
+
+    @Test
     fun sendsThePeriodEvenThoughItsLineIsRedactedAway() = runTest {
         val imports = FakeImports()
 

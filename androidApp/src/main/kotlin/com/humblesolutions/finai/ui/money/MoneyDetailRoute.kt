@@ -24,7 +24,7 @@ import com.humblesolutions.finai.usecase.MoneyKind
  * draft typed here and one typed on that screen never meet.
  */
 @Composable
-internal fun MoneyDetailRoute(userId: String, kind: MoneyKind, onBack: () -> Unit) {
+internal fun MoneyDetailRoute(userId: String, kind: MoneyKind, onBack: () -> Unit, onOpenPlan: (() -> Unit)? = null) {
     val model: MoneyDetailViewModel = viewModel(key = "money-$kind")
     val state by model.uiState.collectAsStateWithLifecycle()
     LaunchedEffect(userId, kind) { model.bind(userId, kind, logging = BuildConfig.DEBUG) }
@@ -59,6 +59,7 @@ internal fun MoneyDetailRoute(userId: String, kind: MoneyKind, onBack: () -> Uni
             onSaveObligation = model::saveObligation,
             onCancelObligation = model::cancelObligation,
             onDismissNotice = model::dismissNotice,
+            onOpenPlan = onOpenPlan,
         ),
     )
 

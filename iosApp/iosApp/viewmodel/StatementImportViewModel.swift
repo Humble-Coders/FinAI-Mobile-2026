@@ -61,6 +61,11 @@ final class StatementImportViewModel: ObservableObject, NewAccountHost {
     @Published private(set) var checking = false
     /// The app was ended mid-check and the statement read again, so earlier changes are gone.
     @Published private(set) var readAgain = false
+    /// The closing balance read on the phone, for the debt linked to this
+    /// account (#76) — offered, never applied unasked. Nil when there is none.
+    @Published private(set) var balanceOffer: StatementBalance.Offer?
+    /// The person's yes to updating that debt's balance. Starts unticked.
+    @Published var updateBalance = false
     @Published var confirmingDiscard = false
     /// Why Save failed. The checked rows are kept, so it can be pressed again.
     @Published private(set) var saveErrorKey: String?
@@ -86,6 +91,10 @@ final class StatementImportViewModel: ObservableObject, NewAccountHost {
     /// Read only after a finished import, for the rows it produced.
     private var transactionsRepository: TransactionsRepository?
     private var categoriesRepository: CategoriesRepository?
+    private var debtsRepository: DebtsRepository?
+    /// The closing balance the phone read before redacting (#76). Memory only,
+    /// like the rows; sent only with the person's yes.
+    private var closingBalance: StatementBalance.Found?
     private let reader = IOSStatementReader()
     private var owner: String?
     private var generation = 0
@@ -151,6 +160,7 @@ final class StatementImportViewModel: ObservableObject, NewAccountHost {
         consentRepository = KtorAiConsentRepository(baseUrl: base, tokens: tokens, logging: logging)
         transactionsRepository = KtorTransactionsRepository(baseUrl: base, tokens: tokens, logging: logging)
         categoriesRepository = KtorCategoriesRepository(baseUrl: base, tokens: tokens, logging: logging)
+        debtsRepository = KtorDebtsRepository(baseUrl: base, tokens: tokens, logging: logging)
         loadAccounts()
     }
 
@@ -159,6 +169,8 @@ final class StatementImportViewModel: ObservableObject, NewAccountHost {
         transactionsRepository = nil
         categoriesRepository?.close()
         categoriesRepository = nil
+        debtsRepository?.close()
+        debtsRepository = nil
         accountsRepository?.close()
         accountsRepository = nil
         importsRepository?.close()
@@ -297,7 +309,7 @@ final class StatementImportViewModel: ObservableObject, NewAccountHost {
         let outcome = summarised.outcome
         let counted = SaveOutcome(
             importId: outcome.importId, saved: outcome.saved, duplicates: outcome.duplicates,
-            flagged: outcome.flagged, needsReview: Int32(waiting)
+            flagged: outcome.flagged, needsReview: Int32(waiting), debtsUpdated: outcome.debtsUpdated
         )
         self.summarised = (summarised.parsed, counted)
         needsReview = waiting
@@ -556,6 +568,7 @@ final class StatementImportViewModel: ObservableObject, NewAccountHost {
         work = Task { [weak self] in
             guard let self else { return }
             do {
+                self.closingBalance = nil
                 let result = try await ImportStatement(imports: importsRepository).execute(
                     document: read,
                     accountId: accountId,
@@ -563,7 +576,8 @@ final class StatementImportViewModel: ObservableObject, NewAccountHost {
                     // Every account is in the household's currency, so any of
                     // them answers when none is chosen yet.
                     accountCurrency: (accounts.first { $0.id == accountId } ?? accounts.first)?.currency,
-                    onRedacted: { _ in }
+                    onRedacted: { _ in },
+                    onClosingBalance: { [weak self] found in self?.closingBalance = found }
                 )
                 guard started == self.generation else { return }
                 if keepText {
@@ -599,7 +613,10 @@ final class StatementImportViewModel: ObservableObject, NewAccountHost {
         saveErrorKey = nil
         editing = nil
         confirmingDiscard = false
+        balanceOffer = nil
+        updateBalance = false
         step = .check
+        offerBalance(accountId)
         // The names behind each row's category, for its chip, the picker and
         // the breakdown. Kept from before if the list will not load: the rows
         // and Save work without them.
@@ -611,6 +628,23 @@ final class StatementImportViewModel: ObservableObject, NewAccountHost {
                 self.importedCategories = categories
             }
         }
+    }
+
+    /// Whether a debt is linked to `accountId` and would take the balance just
+    /// read — asked of `/debts` only when there is a balance. Quiet on failure.
+    private func offerBalance(_ accountId: String) {
+        guard let found = closingBalance, let debtsRepository else { return }
+        let started = generation
+        Task { [weak self] in
+            guard let page = try? await debtsRepository.list() else { return }
+            guard let self, started == self.generation, self.step == .check else { return }
+            self.balanceOffer = StatementBalance.shared.offer(found: found, debts: page.debts, accountId: accountId)
+        }
+    }
+
+    /// "This statement says you owed $X on …. Update Visa to this balance?", or nil.
+    var balanceQuestion: String? {
+        balanceOffer.map { StatementBalance.shared.question(offer: $0, currency: checkCurrency, locale: locale) }
     }
 
     /// Save the rows as the person left them.
@@ -629,9 +663,10 @@ final class StatementImportViewModel: ObservableObject, NewAccountHost {
         work = Task { [weak self] in
             guard let self else { return }
             do {
+                let confirmed = self.updateBalance ? self.balanceOffer?.found : nil
                 let outcome = try await importsRepository.save(
                     importId: result.importId,
-                    rows: ImportCheck.shared.rowsToSave(accountId: accountId, rows: rows)
+                    rows: ImportCheck.shared.rowsToSave(accountId: accountId, rows: rows, closingBalance: confirmed)
                 )
                 guard started == self.generation else { return }
                 self.inProgress = false
@@ -651,6 +686,8 @@ final class StatementImportViewModel: ObservableObject, NewAccountHost {
                 // has confirmed them. Announced here rather than optimistically
                 // on send, so a refresh never shows the figures it already had.
                 LedgerChanged.announce()
+                // A debt's balance moved with it (#76): the plan's figures follow.
+                if outcome.debtsUpdated > 0 { PlanChanged.announce() }
                 self.loadImported(outcome.importId)
             } catch {
                 guard started == self.generation, !Task.isCancelled else { return }

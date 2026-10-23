@@ -118,6 +118,8 @@ class MoneyDetailActions(
     val onSaveObligation: () -> Unit,
     val onCancelObligation: () -> Unit,
     val onDismissNotice: () -> Unit,
+    /** Your debts in the plan (#76), from Debts; null when the plan is off. */
+    val onOpenPlan: (() -> Unit)? = null,
 )
 
 /**
@@ -701,6 +703,10 @@ private fun DebtsBody(state: MoneyDetailUiState, actions: MoneyDetailActions, ac
                 trailing = { Text(balance, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, maxLines = 1) },
                 description = listOfNotNull(debt.name, balance, detail).joinToString(", "),
             )
+        }
+        // Their payoff order, months and interest, and editing them (#76).
+        actions.onOpenPlan?.let { open ->
+            TextButton(onClick = open) { Text(strings(Strings.money_debts_plan_link)) }
         }
     }
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {

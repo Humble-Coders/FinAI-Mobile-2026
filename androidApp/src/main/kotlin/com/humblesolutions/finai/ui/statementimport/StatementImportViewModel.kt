@@ -10,6 +10,7 @@ import com.humblesolutions.finai.data.AndroidStatementReader
 import com.humblesolutions.finai.data.KtorAccountsRepository
 import com.humblesolutions.finai.data.KtorAiConsentRepository
 import com.humblesolutions.finai.data.KtorCategoriesRepository
+import com.humblesolutions.finai.data.KtorDebtsRepository
 import com.humblesolutions.finai.data.KtorStatementImportRepository
 import com.humblesolutions.finai.data.KtorTransactionsRepository
 import com.humblesolutions.finai.data.SupabaseTokenSource
@@ -23,6 +24,7 @@ import com.humblesolutions.finai.model.TransactionDirection
 import com.humblesolutions.finai.repository.AccountsRepository
 import com.humblesolutions.finai.repository.AiConsentRepository
 import com.humblesolutions.finai.repository.CategoriesRepository
+import com.humblesolutions.finai.repository.DebtsRepository
 import com.humblesolutions.finai.repository.StatementImportRepository
 import com.humblesolutions.finai.repository.StatementReadException
 import com.humblesolutions.finai.repository.StatementReader
@@ -38,8 +40,10 @@ import com.humblesolutions.finai.usecase.ManualEntry
 import com.humblesolutions.finai.usecase.NewAccountDraft
 import com.humblesolutions.finai.usecase.NewAccountForm
 import com.humblesolutions.finai.usecase.ReviewQueue
+import com.humblesolutions.finai.usecase.StatementBalance
 import com.humblesolutions.finai.usecase.StatementImportFlow
 import com.humblesolutions.finai.util.LedgerChanged
+import com.humblesolutions.finai.util.PlanChanged
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -91,6 +95,13 @@ class StatementImportViewModel(private val saved: SavedStateHandle) : ViewModel(
      */
     private var summarised: Pair<ParsedStatement, SaveOutcome>? = null
 
+    /**
+     * The closing balance the phone read before redacting (#76). Memory only,
+     * like the rows; offered on the check screen when a debt is linked to the
+     * account, and sent only with the person's yes.
+     */
+    private var closingBalance: StatementBalance.Found? = null
+
     fun bind(userId: String, context: Context, logging: Boolean) = bind(userId) {
         Supabase.clientOrNull()?.let { client ->
             val tokens = SupabaseTokenSource(client)
@@ -102,6 +113,7 @@ class StatementImportViewModel(private val saved: SavedStateHandle) : ViewModel(
                 files = AndroidPickedFiles(context.applicationContext),
                 transactions = KtorTransactionsRepository(ApiConfig.BASE_URL, tokens, logging),
                 categories = KtorCategoriesRepository(ApiConfig.BASE_URL, tokens, logging),
+                debts = KtorDebtsRepository(ApiConfig.BASE_URL, tokens, logging),
             )
         }
     }
@@ -347,7 +359,14 @@ class StatementImportViewModel(private val saved: SavedStateHandle) : ViewModel(
                 // answers when none is chosen yet.
                 val accounts = _uiState.value.accounts
                 val currency = (accounts.firstOrNull { it.id == accountId } ?: accounts.firstOrNull())?.currency
-                val result = ImportStatement(repos.imports).execute(read, accountId, keepText, accountCurrency = currency)
+                closingBalance = null
+                val result = ImportStatement(repos.imports).execute(
+                    read,
+                    accountId,
+                    keepText,
+                    accountCurrency = currency,
+                    onClosingBalance = { closingBalance = it },
+                )
                 if (started != generation) return@launch
                 if (keepText) {
                     _uiState.update {
@@ -388,8 +407,11 @@ class StatementImportViewModel(private val saved: SavedStateHandle) : ViewModel(
                 saveErrorKey = null,
                 editing = null,
                 confirmingDiscard = false,
+                balanceOffer = null,
+                updateBalance = false,
             )
         }
+        offerBalance(accountId)
         // The names behind each row's category, for its chip, the picker and
         // the breakdown. Kept from before if the list will not load: the rows
         // and Save work without them.
@@ -402,6 +424,30 @@ class StatementImportViewModel(private val saved: SavedStateHandle) : ViewModel(
             }
         }
     }
+
+    /**
+     * Whether a debt is linked to [accountId] and would take the balance just
+     * read — asked of `/debts` only when there is a balance. Quiet on failure:
+     * the import does not depend on it.
+     */
+    private fun offerBalance(accountId: String) {
+        val found = closingBalance ?: return
+        val debts = repositories?.debts ?: return
+        val started = generation
+        viewModelScope.launch {
+            val page = try {
+                debts.list()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: ApiException) {
+                return@launch
+            }
+            val offer = StatementBalance.offer(found, page.debts, accountId) ?: return@launch
+            if (started == generation && _uiState.value.step == ImportStep.CHECK) _uiState.update { it.copy(balanceOffer = offer) }
+        }
+    }
+
+    fun onUpdateBalance(update: Boolean) = _uiState.update { it.copy(updateBalance = update && it.balanceOffer != null) }
 
     /** Save the rows as the person left them. */
     fun saveChecked() {
@@ -418,7 +464,9 @@ class StatementImportViewModel(private val saved: SavedStateHandle) : ViewModel(
         _uiState.update { it.copy(step = ImportStep.SAVING, problem = null, saveErrorKey = null) }
         work = viewModelScope.launch {
             try {
-                val outcome = repos.imports.save(result.importId, ImportCheck.rowsToSave(accountId, rows))
+                val state = _uiState.value
+                val confirmed = state.balanceOffer?.takeIf { state.updateBalance }?.found
+                val outcome = repos.imports.save(result.importId, ImportCheck.rowsToSave(accountId, rows, confirmed))
                 if (started != generation) return@launch
                 saved.remove<Boolean>(KEY_IN_PROGRESS)
                 saved.remove<Boolean>(KEY_CHECKING)
@@ -441,6 +489,8 @@ class StatementImportViewModel(private val saved: SavedStateHandle) : ViewModel(
                 // has confirmed them. Announced here rather than optimistically
                 // on send, so a refresh never shows the figures it already had.
                 LedgerChanged.announce()
+                // A debt's balance moved with it (#76): the plan's figures follow.
+                if (outcome.debtsUpdated > 0) PlanChanged.announce()
                 loadImported(outcome.importId)
             } catch (e: CancellationException) {
                 throw e
@@ -901,6 +951,8 @@ internal class ImportRepositories(
     val files: PickedFiles,
     val transactions: TransactionsRepository,
     val categories: CategoriesRepository,
+    // Optional so a test about the import need not build debts too.
+    val debts: DebtsRepository? = null,
 ) {
     fun close() {
         accounts.close()
@@ -909,5 +961,6 @@ internal class ImportRepositories(
         reader.close()
         transactions.close()
         categories.close()
+        debts?.close()
     }
 }

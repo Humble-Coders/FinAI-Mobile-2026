@@ -8,6 +8,9 @@ import com.humblesolutions.finai.model.AiPolicy
 import com.humblesolutions.finai.model.ApiException
 import com.humblesolutions.finai.model.Category
 import com.humblesolutions.finai.model.ConfirmOutcome
+import com.humblesolutions.finai.model.DebtChanges
+import com.humblesolutions.finai.model.DebtRecord
+import com.humblesolutions.finai.model.DebtsPage
 import com.humblesolutions.finai.model.DeleteOutcome
 import com.humblesolutions.finai.model.ExtractedDocument
 import com.humblesolutions.finai.model.ExtractedLine
@@ -30,6 +33,7 @@ import com.humblesolutions.finai.model.TransactionPatch
 import com.humblesolutions.finai.repository.AccountsRepository
 import com.humblesolutions.finai.repository.AiConsentRepository
 import com.humblesolutions.finai.repository.CategoriesRepository
+import com.humblesolutions.finai.repository.DebtsRepository
 import com.humblesolutions.finai.repository.StatementImportRepository
 import com.humblesolutions.finai.repository.StatementReadException
 import com.humblesolutions.finai.repository.StatementReader
@@ -567,6 +571,7 @@ class StatementImportViewModelTest {
     private inner class FakeReader(
         private val locked: String? = null,
         private val fail: Exception? = null,
+        private val document: ExtractedDocument = statement,
     ) : StatementReader {
         var reads = 0
         val sources = mutableListOf<String>()
@@ -585,8 +590,17 @@ class StatementImportViewModelTest {
             }
             reads++
             onPage(1, 1)
-            return statement
+            return document
         }
+
+        override fun close() = Unit
+    }
+
+    /** The debts `/debts` answers with, for the balance offer (#76). */
+    private class FakeImportDebts(private val debts: List<DebtRecord>) : DebtsRepository {
+        override suspend fun list(): DebtsPage = DebtsPage("CAD", debts)
+
+        override suspend fun update(id: String, changes: DebtChanges): DebtRecord = error("the import screen does not call this")
 
         override fun close() = Unit
     }
@@ -693,6 +707,72 @@ class StatementImportViewModelTest {
         assertTrue(sent.categorised)
         assertEquals(listOf("c-dining", "c-groceries"), sent.rows.map { it.categoryId })
         assertEquals(listOf("c-dining", null), sent.rows.map { it.suggestedCategoryId })
+    }
+
+    // ── The statement balance (#76) ─────────────────────────────────────
+
+    private val cardStatement = ExtractedDocument(
+        pages = listOf(
+            ExtractedPage(
+                lines = listOf(
+                    ExtractedLine("Statement period: 1 Aug 2026 to 31 Aug 2026"),
+                    ExtractedLine("New balance $4,012.37"),
+                    ExtractedLine("2026-08-14  TIM HORTONS #4821  12.40"),
+                ),
+            ),
+        ),
+    )
+
+    private fun checkingCard(imports: FakeImports, debts: List<DebtRecord>): StatementImportViewModel {
+        val model = model()
+        model.bind("alice") {
+            repositories(imports = imports, reader = FakeReader(document = cardStatement)).let {
+                ImportRepositories(it.accounts, it.imports, it.consent, it.reader, it.files, it.transactions, it.categories, FakeImportDebts(debts))
+            }
+        }
+        model.upToFile()
+        model.onFilePicked(file)
+        assertEquals(ImportStep.CHECK, model.uiState.value.step)
+        return model
+    }
+
+    @Test
+    fun `a closing balance is offered for the linked debt and sent only with a yes`() {
+        val visa = DebtRecord(id = "d-visa", name = "Visa", accountId = chequing.id, balanceAsOf = "2026-07-31")
+        val imports = FakeImports(parse = { twoRows })
+        val model = checkingCard(imports, listOf(visa))
+
+        val offered = model.uiState.value
+        assertEquals("d-visa", offered.balanceOffer?.debtId)
+        assertFalse(offered.updateBalance, "never ticked for the person")
+        assertTrue(offered.balanceQuestion.orEmpty().contains("Visa"))
+        assertFalse(imports.uploads.single().text.contains("4,012.37"), "the summary stays on the phone")
+
+        model.onUpdateBalance(true)
+        model.saveChecked()
+
+        val sent = imports.saved.single().second
+        assertEquals("4012.37" to "2026-08-31", sent.closingBalance to sent.closingDate)
+    }
+
+    @Test
+    fun `a balance left unticked is not sent`() {
+        val visa = DebtRecord(id = "d-visa", name = "Visa", accountId = chequing.id)
+        val imports = FakeImports(parse = { twoRows })
+        val model = checkingCard(imports, listOf(visa))
+
+        model.saveChecked()
+
+        assertNull(imports.saved.single().second.closingBalance)
+    }
+
+    @Test
+    fun `with no debt linked to the account nothing is offered`() {
+        val model = checkingCard(FakeImports(parse = { twoRows }), listOf(DebtRecord(id = "d-x", name = "Loan", accountId = "elsewhere")))
+
+        assertNull(model.uiState.value.balanceOffer)
+        model.onUpdateBalance(true)
+        assertFalse(model.uiState.value.updateBalance)
     }
 
     @Test

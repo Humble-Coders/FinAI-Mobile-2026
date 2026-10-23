@@ -13,6 +13,8 @@ struct MoneyDetailView: View {
     let userId: String
     let kind: MoneyKind
     let onBack: () -> Void
+    /// Your debts in the plan (#76), from Debts; nil when the plan is off.
+    var onOpenPlan: (() -> Void)?
 
     @Environment(\.colorScheme) private var scheme
     @State private var adding = false
@@ -446,6 +448,12 @@ struct MoneyDetailView: View {
                     ) {
                         Text(balance).font(.subheadline.weight(.bold)).lineLimit(1)
                     }
+                }
+                // Their payoff order, months and interest, and editing them (#76).
+                if let onOpenPlan {
+                    Button(L.t(Strings.shared.money_debts_plan_link), action: onOpenPlan)
+                        .font(.subheadline.weight(.semibold))
+                        .frame(minHeight: 44)
                 }
             }
             VStack(alignment: .leading, spacing: 10) {

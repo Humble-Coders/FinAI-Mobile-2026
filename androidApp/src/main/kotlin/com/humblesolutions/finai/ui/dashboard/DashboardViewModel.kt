@@ -10,6 +10,7 @@ import com.humblesolutions.finai.data.KtorDashboardRepository
 import com.humblesolutions.finai.data.KtorFinancialSetupRepository
 import com.humblesolutions.finai.data.KtorGoalsRepository
 import com.humblesolutions.finai.data.KtorHealthScoreRepository
+import com.humblesolutions.finai.data.KtorPlanRepository
 import com.humblesolutions.finai.data.KtorTransactionsRepository
 import com.humblesolutions.finai.data.SupabaseTokenSource
 import com.humblesolutions.finai.i18n.Strings
@@ -21,13 +22,16 @@ import com.humblesolutions.finai.repository.DashboardRepository
 import com.humblesolutions.finai.repository.FinancialSetupRepository
 import com.humblesolutions.finai.repository.GoalsRepository
 import com.humblesolutions.finai.repository.HealthScoreRepository
+import com.humblesolutions.finai.repository.PlanRepository
 import com.humblesolutions.finai.repository.TransactionsRepository
 import com.humblesolutions.finai.usecase.CommitmentDraft
 import com.humblesolutions.finai.usecase.CommitmentEdit
 import com.humblesolutions.finai.usecase.DashboardMonths
+import com.humblesolutions.finai.usecase.YourPlan
 import com.humblesolutions.finai.util.BudgetChanged
 import com.humblesolutions.finai.util.GoalsChanged
 import com.humblesolutions.finai.util.LedgerChanged
+import com.humblesolutions.finai.util.PlanChanged
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -71,6 +75,9 @@ class DashboardViewModel : ViewModel() {
     /** The goals card's own counter; see [loadGoals]. */
     private var goalsGeneration = 0
 
+    /** The plan card's own counter; see [loadPlan]. */
+    private var planGeneration = 0
+
     fun bind(userId: String, logging: Boolean) = bind(userId) {
         Supabase.clientOrNull()?.let { client ->
             val tokens = SupabaseTokenSource(client)
@@ -82,6 +89,7 @@ class DashboardViewModel : ViewModel() {
                 setup = KtorFinancialSetupRepository(ApiConfig.BASE_URL, tokens, logging),
                 healthScore = KtorHealthScoreRepository(ApiConfig.BASE_URL, tokens, logging),
                 goals = KtorGoalsRepository(ApiConfig.BASE_URL, tokens, logging),
+                plan = KtorPlanRepository(ApiConfig.BASE_URL, tokens, logging),
             )
         }
     }
@@ -93,6 +101,7 @@ class DashboardViewModel : ViewModel() {
         // So a goals answer still on its way for the previous account is
         // dropped when it lands, rather than shown to this one (#53).
         goalsGeneration++
+        planGeneration++
         boundTo = userId
         _uiState.value = DashboardUiState()
         repositories = build() ?: return
@@ -130,7 +139,15 @@ class DashboardViewModel : ViewModel() {
         // A goal created, topped up or reordered on the Goals tab moves only
         // the goals card; the month itself is untouched.
         viewModelScope.launch {
-            GoalsChanged.events.collect { loadGoals() }
+            GoalsChanged.events.collect {
+                loadGoals()
+                // A goal's target or date moves what the plan gives it.
+                loadPlan()
+            }
+        }
+        // Choices saved or a debt edited on the plan's screens (#76).
+        viewModelScope.launch {
+            PlanChanged.events.collect { loadPlan() }
         }
     }
 
@@ -171,6 +188,7 @@ class DashboardViewModel : ViewModel() {
                     )
                 }
                 loadGoals()
+                loadPlan()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: ApiException) {
@@ -226,6 +244,23 @@ class DashboardViewModel : ViewModel() {
             val page = orNull { goals.list() } ?: return@launch
             if (started != goalsGeneration) return@launch
             _uiState.update { it.copy(goals = page) }
+        }
+    }
+
+    /**
+     * This month's plan for Home's card (#76), read only when capabilities
+     * enable it. This month whatever month Home shows: the plan is about the
+     * money still to come. Quiet on failure, like the goals card.
+     */
+    private fun loadPlan() {
+        val repos = repositories ?: return
+        val plan = repos.plan ?: return
+        if (_uiState.value.capabilities?.isEnabled(YourPlan.FEATURE) != true) return
+        val started = ++planGeneration
+        viewModelScope.launch {
+            val answer = orNull { plan.plan(null) } ?: return@launch
+            if (started != planGeneration) return@launch
+            _uiState.update { it.copy(plan = answer) }
         }
     }
 
@@ -420,6 +455,7 @@ internal class DashboardRepositories(
     val setup: FinancialSetupRepository? = null,
     val healthScore: HealthScoreRepository? = null,
     val goals: GoalsRepository? = null,
+    val plan: PlanRepository? = null,
 ) {
     fun close() {
         dashboard.close()
@@ -429,6 +465,7 @@ internal class DashboardRepositories(
         setup?.close()
         healthScore?.close()
         goals?.close()
+        plan?.close()
     }
 }
 
