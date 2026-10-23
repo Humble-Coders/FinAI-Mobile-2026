@@ -758,6 +758,9 @@ val EnglishStrings: Map<String, String> = mapOf(
     Strings.setup_list_limit to "You can list up to 20 here. Remove one to add another.",
     Strings.money_add_debt to "Add a debt",
     Strings.money_debt_added to "Debt added.",
+    Strings.money_edit_debt to "Edit debt",
+    Strings.money_debt_updated to "Debt updated.",
+    Strings.setup_debt_changed to "This debt was changed somewhere else. Close this and open it again.",
     // Your plan (#76) — YourPlan.
     Strings.plan_title to "Your plan",
     Strings.plan_leftover_from to "From this month's Savings line in your budget.",

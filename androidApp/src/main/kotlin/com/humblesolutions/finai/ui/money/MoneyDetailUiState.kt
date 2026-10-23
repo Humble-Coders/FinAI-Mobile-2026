@@ -5,6 +5,7 @@ import com.humblesolutions.finai.i18n.Strings
 import com.humblesolutions.finai.model.Category
 import com.humblesolutions.finai.model.Commitment
 import com.humblesolutions.finai.model.Dashboard
+import com.humblesolutions.finai.model.Debt
 import com.humblesolutions.finai.model.FinancialSetup
 import com.humblesolutions.finai.model.Transaction
 import com.humblesolutions.finai.model.TransactionDirection
@@ -59,6 +60,8 @@ data class MoneyDetailUiState(
     val debtTouched: Boolean = false,
     val savingDebt: Boolean = false,
     val debtErrorKey: String? = null,
+    /** The setup debt being edited, as it was read; null while adding a new one. */
+    val editingDebt: Debt? = null,
     /** A one-off line after a save — "Added to your monthly obligations". */
     val noticeKey: String? = null,
 ) {
@@ -192,10 +195,19 @@ data class MoneyDetailUiState(
 
     /** Why the new debt cannot be saved, or null: step 3's rules, and the 20-debt limit. */
     val debtBlock: SetupBlock?
-        get() = debtDraft?.let { SetupWizard.blockingReasonForNewDebt(it, debts.size, Money.fractionDigits(currency)) }
+        get() {
+            val draft = debtDraft ?: return null
+            val digits = Money.fractionDigits(currency)
+            val original = editingDebt ?: return SetupWizard.blockingReasonForNewDebt(draft, debts.size, digits)
+            return SetupWizard.blockingReasonForDebtEdit(original, draft, digits)
+        }
 
-    /** Said once something has been typed, as step 3's row says it. */
-    val debtNotice: SetupBlock? get() = debtBlock.takeIf { debtTouched || it == SetupBlock.TOO_MANY }
+    /**
+     * Said once something has been typed, as step 3's row says it. "Nothing
+     * has changed" is never said: an untouched edit simply can't be saved.
+     */
+    val debtNotice: SetupBlock?
+        get() = debtBlock.takeIf { it != SetupBlock.UNCHANGED && (debtTouched || it == SetupBlock.TOO_MANY) }
 
     val canSaveDebt: Boolean get() = debtDraft != null && !savingDebt && debtBlock == null
 

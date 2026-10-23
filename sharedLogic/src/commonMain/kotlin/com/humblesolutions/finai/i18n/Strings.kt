@@ -791,6 +791,9 @@ object Strings {
     const val setup_list_limit = "setup_list_limit" // "You can list up to 20 here. Remove one to add another."
     const val money_add_debt = "money_add_debt" // "Add a debt"
     const val money_debt_added = "money_debt_added" // "Debt added."
+    const val money_edit_debt = "money_edit_debt" // "Edit debt"
+    const val money_debt_updated = "money_debt_updated" // "Debt updated."
+    const val setup_debt_changed = "setup_debt_changed" // "This debt was changed somewhere else. Close this and open it again."
 
     // Your plan (#76) — YourPlan.
     const val plan_title = "plan_title" // "Your plan"

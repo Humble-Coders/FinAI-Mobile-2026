@@ -441,19 +441,24 @@ struct MoneyDetailView: View {
                 if model.debts.isEmpty {
                     Text(L.t(Strings.shared.money_no_debts)).font(.subheadline).foregroundColor(Brand.textMuted)
                 }
-                ForEach(Array(model.debts.enumerated()), id: \.offset) { _, debt in
+                ForEach(Array(model.debts.enumerated()), id: \.offset) { index, debt in
                     let icon = MoneyDetail.shared.iconFor(name: debt.name)
                     let balance = model.amount(debt.balance)
                     let detail = model.debtDetail(debt)
-                    MoneyRow(
-                        symbol: icon.systemName,
-                        tint: icon.tint(dark),
-                        title: debt.name,
-                        detail: detail,
-                        description: [debt.name, balance, detail].compactMap { $0 }.joined(separator: ", ")
-                    ) {
-                        Text(balance).font(.subheadline.weight(.bold)).lineLimit(1)
+                    // A tap edits it, with the same sheet that adds one.
+                    Button { model.editDebt(at: index) } label: {
+                        MoneyRow(
+                            symbol: icon.systemName,
+                            tint: icon.tint(dark),
+                            title: debt.name,
+                            detail: detail,
+                            description: [debt.name, balance, detail].compactMap { $0 }.joined(separator: ", ")
+                        ) {
+                            Text(balance).font(.subheadline.weight(.bold)).lineLimit(1)
+                        }
                     }
+                    .buttonStyle(.plain)
+                    .accessibilityAddTraits(.isButton)
                 }
                 // Their payoff order, months and interest, and editing them (#76).
                 if let onOpenPlan {
@@ -720,7 +725,7 @@ private struct DebtSheet: View {
                 }
                 .padding(24)
             }
-            .navigationTitle(L.t(Strings.shared.money_add_debt))
+            .navigationTitle(L.t(model.editingDebt == nil ? Strings.shared.money_add_debt : Strings.shared.money_edit_debt))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {

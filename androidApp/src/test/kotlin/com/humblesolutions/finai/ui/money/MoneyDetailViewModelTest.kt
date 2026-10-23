@@ -249,6 +249,27 @@ class MoneyDetailViewModelTest {
     }
 
     @Test
+    fun a_debt_is_edited_in_its_place_from_the_list() = runTest {
+        val visa = Debt(name = "Visa", balance = "5293.18", minimumPayment = "120.00", interestRatePercent = "20.99", dueDay = 12)
+        val loan = Debt(name = "Car loan", balance = "12000.00", minimumPayment = "350.00", interestRatePercent = "6.90", dueDay = 5)
+        val setup = FakeSetup(FinancialSetup(currency = "CAD", income = "5000.00", debts = listOf(visa, loan)))
+        val wired = wired(MoneyKind.DEBTS, setup = setup)
+
+        wired.model.editDebt(1)
+        val opened = wired.model.uiState.value
+        assertEquals("Car loan", opened.debtDraft?.name)
+        assertFalse(opened.canSaveDebt, "nothing changed yet")
+        assertNull(opened.debtNotice, "and that is not said")
+
+        wired.model.onDebtChange(opened.debtDraft!!.copy(amount = "11650"))
+        wired.model.saveDebt()
+
+        assertEquals(listOf(visa, loan.copy(balance = "11650.00")), setup.saved.single().debts)
+        assertNull(wired.model.uiState.value.editingDebt)
+        assertEquals(Strings.money_debt_updated, wired.model.uiState.value.noticeKey)
+    }
+
+    @Test
     fun a_debt_the_wizard_would_refuse_is_not_sent() = runTest {
         val setup = FakeSetup()
         val wired = wired(MoneyKind.DEBTS, setup = setup)

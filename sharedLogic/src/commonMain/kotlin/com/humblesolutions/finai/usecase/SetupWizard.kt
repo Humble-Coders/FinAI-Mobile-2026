@@ -76,6 +76,9 @@ enum class SetupBlock(val messageKey: String) {
 
     /** The server keeps at most [SetupWizard.LIST_LIMIT] rows in a list. */
     TOO_MANY(Strings.setup_list_limit),
+
+    /** An edit that changes nothing — not worth a save. */
+    UNCHANGED(Strings.debts_block_unchanged),
     ;
 
     /**
@@ -92,7 +95,7 @@ enum class SetupBlock(val messageKey: String) {
         get() = when (this) {
             INCOME_MISSING, INCOME_NOT_MONEY -> SetupStep.INCOME
             EXPENSE_MISSING, EXPENSE_NOT_MONEY -> SetupStep.EXPENSES
-            ITEM_NAME_MISSING, ITEM_AMOUNT_INVALID, RATE_INVALID, DUE_DAY_INVALID, TOO_MANY -> null
+            ITEM_NAME_MISSING, ITEM_AMOUNT_INVALID, RATE_INVALID, DUE_DAY_INVALID, TOO_MANY, UNCHANGED -> null
         }
 }
 
@@ -257,15 +260,53 @@ object SetupWizard {
      */
     fun debtAdded(setup: FinancialSetup, item: ItemDraft, fractionDigits: Int = 2): FinancialSetup? {
         if (blockingReasonForNewDebt(item, setup.debts.size, fractionDigits) != null) return null
-        val debt = Debt(
-            name = item.name.trim(),
-            balance = Money.normalize(item.amount, fractionDigits).orEmpty(),
-            minimumPayment = Money.normalize(item.minimumPayment, fractionDigits),
-            interestRatePercent = Money.normalize(item.interestRatePercent, fractionDigits = 2),
-            dueDay = dueDayOf(item),
-        )
-        return setup.copy(debts = setup.debts + debt)
+        return setup.copy(debts = setup.debts + debtOf(item, fractionDigits))
     }
+
+    // ── A debt edited outside the wizard ────────────────────────────────
+
+    /** [debt] as a row to edit, as step 3 would show it. */
+    fun debtDraftOf(debt: Debt): ItemDraft = ItemDraft(
+        name = debt.name,
+        amount = debt.balance,
+        minimumPayment = debt.minimumPayment.orEmpty(),
+        interestRatePercent = debt.interestRatePercent.orEmpty(),
+        dueDay = debt.dueDay?.toString().orEmpty(),
+    )
+
+    /** Why [item] cannot replace [original]: step 3's rules, or nothing changed. */
+    fun blockingReasonForDebtEdit(original: Debt, item: ItemDraft, fractionDigits: Int = 2): SetupBlock? {
+        itemBlock(item, fractionDigits, debt = true)?.let { return it }
+        if (debtOf(item, fractionDigits) == debtOf(debtDraftOf(original), fractionDigits)) return SetupBlock.UNCHANGED
+        return null
+    }
+
+    /**
+     * [setup] with [original] replaced by [item], or null when it cannot be:
+     * [item] is not a debt, or [original] is no longer in [setup].
+     *
+     * Null for a missing original is not papered over. It means setup
+     * changed since the screen read it — on another phone, say — and writing
+     * the list back would overwrite that change. Found by name and balance,
+     * all a setup row has; two identical rows are interchangeable. The row
+     * keeps its place, so the debt's type, promotion and account link (kept
+     * by position on the server) stay with it.
+     */
+    fun debtEdited(setup: FinancialSetup, original: Debt, item: ItemDraft, fractionDigits: Int = 2): FinancialSetup? {
+        if (itemBlock(item, fractionDigits, debt = true) != null) return null
+        val wanted = Money.normalize(original.balance, fractionDigits)
+        val index = setup.debts.indexOfFirst { it.name == original.name && Money.normalize(it.balance, fractionDigits) == wanted }
+        if (index < 0) return null
+        return setup.copy(debts = setup.debts.mapIndexed { i, debt -> if (i == index) debtOf(item, fractionDigits) else debt })
+    }
+
+    private fun debtOf(item: ItemDraft, fractionDigits: Int): Debt = Debt(
+        name = item.name.trim(),
+        balance = Money.normalize(item.amount, fractionDigits).orEmpty(),
+        minimumPayment = Money.normalize(item.minimumPayment, fractionDigits),
+        interestRatePercent = Money.normalize(item.interestRatePercent, fractionDigits = 2),
+        dueDay = dueDayOf(item),
+    )
 
     // ── Commitments ─────────────────────────────────────────────────────
 

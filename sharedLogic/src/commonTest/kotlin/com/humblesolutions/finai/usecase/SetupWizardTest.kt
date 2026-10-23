@@ -372,4 +372,34 @@ class SetupWizardTest {
         assertEquals(SetupBlock.TOO_MANY, SetupWizard.blockingReasonForNewDebt(ItemDraft(), existing = 20))
         assertNull(SetupWizard.debtAdded(FinancialSetup(currency = "CAD", debts = full), ItemDraft(name = "One more", amount = "5")))
     }
+
+    @Test
+    fun `an edited debt keeps its place and the rest of setup`() {
+        val visa = Debt(name = "Visa", balance = "5293.18", minimumPayment = "120.00", interestRatePercent = "20.99", dueDay = 12)
+        val loan = Debt(name = "Car loan", balance = "12000.00", minimumPayment = "350.00", interestRatePercent = "6.90", dueDay = 5)
+        val setup = FinancialSetup(currency = "CAD", income = "5000.00", debts = listOf(visa, loan))
+
+        val edited = SetupWizard.debtDraftOf(loan).copy(amount = "11650", dueDay = "6")
+        val next = SetupWizard.debtEdited(setup, loan, edited)
+
+        assertEquals(listOf(visa, loan.copy(balance = "11650.00", dueDay = 6)), next?.debts)
+        assertEquals("5000.00", next?.income)
+    }
+
+    @Test
+    fun `an untouched edit has nothing to save`() {
+        val loan = Debt(name = "Car loan", balance = "12000.00", minimumPayment = "350.00", interestRatePercent = "6.90", dueDay = 5)
+
+        assertEquals(SetupBlock.UNCHANGED, SetupWizard.blockingReasonForDebtEdit(loan, SetupWizard.debtDraftOf(loan)))
+        assertEquals(SetupBlock.UNCHANGED, SetupWizard.blockingReasonForDebtEdit(loan, SetupWizard.debtDraftOf(loan).copy(amount = "12000")))
+        assertNull(SetupWizard.blockingReasonForDebtEdit(loan, SetupWizard.debtDraftOf(loan).copy(minimumPayment = "400")))
+    }
+
+    @Test
+    fun `a debt changed elsewhere is not overwritten`() {
+        val loan = Debt(name = "Car loan", balance = "12000.00")
+        val changed = FinancialSetup(currency = "CAD", debts = listOf(Debt(name = "Car loan", balance = "11000.00")))
+
+        assertNull(SetupWizard.debtEdited(changed, loan, ItemDraft(name = "Car loan", amount = "9000")))
+    }
 }

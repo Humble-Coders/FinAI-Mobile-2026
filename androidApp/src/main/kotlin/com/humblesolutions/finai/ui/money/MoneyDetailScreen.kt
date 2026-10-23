@@ -124,6 +124,7 @@ class MoneyDetailActions(
     val onDebtChange: (ItemDraft) -> Unit = {},
     val onSaveDebt: () -> Unit = {},
     val onCancelDebt: () -> Unit = {},
+    val onEditDebt: (Int) -> Unit = {},
     /** Your debts in the plan (#76), from Debts; null when the plan is off. */
     val onOpenPlan: (() -> Unit)? = null,
 )
@@ -702,7 +703,7 @@ private fun DebtsBody(state: MoneyDetailUiState, actions: MoneyDetailActions, ac
         if (state.debts.isEmpty()) {
             Text(strings(Strings.money_no_debts), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        state.debts.forEach { debt ->
+        state.debts.forEachIndexed { index, debt ->
             val icon = MoneyDetail.iconFor(debt.name)
             val balance = state.amount(debt.balance)
             val detail = state.debtDetail(debt.minimumPayment, debt.interestRatePercent)
@@ -713,6 +714,8 @@ private fun DebtsBody(state: MoneyDetailUiState, actions: MoneyDetailActions, ac
                 detail = detail,
                 trailing = { Text(balance, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, maxLines = 1) },
                 description = listOfNotNull(debt.name, balance, detail).joinToString(", "),
+                // A tap edits it, with the same sheet that adds one.
+                onClick = { actions.onEditDebt(index) },
             )
         }
         // Their payoff order, months and interest, and editing them (#76).
@@ -827,7 +830,12 @@ private fun DebtSheet(state: MoneyDetailUiState, draft: ItemDraft, actions: Mone
             Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).imePadding().padding(horizontal = 24.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Text(strings(Strings.money_add_debt), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, modifier = Modifier.semantics { heading() })
+            Text(
+                strings(if (state.editingDebt != null) Strings.money_edit_debt else Strings.money_add_debt),
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.semantics { heading() },
+            )
             val notice = state.debtNotice
             WizardField(
                 value = draft.name,

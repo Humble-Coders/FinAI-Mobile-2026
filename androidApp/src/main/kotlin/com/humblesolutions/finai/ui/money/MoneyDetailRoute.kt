@@ -67,6 +67,7 @@ internal fun MoneyDetailRoute(userId: String, kind: MoneyKind, onBack: () -> Uni
             onDebtChange = model::onDebtChange,
             onSaveDebt = model::saveDebt,
             onCancelDebt = model::cancelDebt,
+            onEditDebt = model::editDebt,
             onOpenPlan = onOpenPlan,
         ),
     )
