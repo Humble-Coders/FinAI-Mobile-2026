@@ -46,7 +46,8 @@ struct MoneyDetailView: View {
                 }
             }
             if !model.loading && !model.loadFailed && kind != .investments {
-                Button(action: openEntry) {
+                // On Debts, "+" adds a debt — setup step 3's row — not a transaction.
+                Button(action: { kind == .debts ? model.openDebt() : openEntry() }) {
                     Image(systemName: "plus")
                         .font(.title2.weight(.semibold))
                         .foregroundColor(.white)
@@ -54,7 +55,7 @@ struct MoneyDetailView: View {
                         .background(Circle().fill(Brand.green))
                         .shadow(color: .black.opacity(0.18), radius: 8, y: 4)
                 }
-                .accessibilityLabel(L.t(Strings.shared.money_add_transaction))
+                .accessibilityLabel(L.t(kind == .debts ? Strings.shared.money_add_debt : Strings.shared.money_add_transaction))
                 .padding(20)
             }
         }
@@ -87,12 +88,17 @@ struct MoneyDetailView: View {
             if !loading && adding { preset() }
         }
         .sheet(isPresented: obligationShown) { ObligationSheet(model: model) }
+        .sheet(isPresented: debtShown) { DebtSheet(model: model) }
         .alert(
             model.noticeKey.map { L.t($0) } ?? "",
             isPresented: Binding(get: { model.noticeKey != nil }, set: { if !$0 { model.noticeKey = nil } })
         ) {
             Button(L.t(Strings.shared.action_done)) { model.noticeKey = nil }
         }
+    }
+
+    private var debtShown: Binding<Bool> {
+        Binding(get: { model.debtDraft != nil }, set: { if !$0 { model.cancelDebt() } })
     }
 
     private var obligationShown: Binding<Bool> {
@@ -662,6 +668,74 @@ private struct MiniFigure: View {
 }
 
 /// Adding an obligation: name, monthly amount, and the day it falls due.
+/// One debt, with setup step 3's fields and rules. Android's `DebtSheet`.
+private struct DebtSheet: View {
+    @ObservedObject var model: MoneyDetailViewModel
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    let notice = model.debtNotice
+                    WizardField(
+                        label: L.t(Strings.shared.setup_item_name),
+                        autocapitalization: .words,
+                        isError: notice == .itemNameMissing,
+                        text: Binding(get: { model.debtDraft?.name ?? "" }, set: { model.setDebt(name: $0) })
+                    )
+                    AmountField(
+                        label: L.t(Strings.shared.setup_debt_balance),
+                        symbol: model.currencySymbol,
+                        placeholder: model.amountPlaceholder,
+                        isError: notice == .itemAmountInvalid,
+                        large: false,
+                        text: Binding(get: { model.debtDraft?.amount ?? "" }, set: { model.setDebt(amount: $0) })
+                    )
+                    AmountField(
+                        label: L.t(Strings.shared.setup_debt_minimum),
+                        symbol: model.currencySymbol,
+                        placeholder: model.amountPlaceholder,
+                        suffix: L.t(Strings.shared.setup_per_month),
+                        large: false,
+                        text: Binding(get: { model.debtDraft?.minimumPayment ?? "" }, set: { model.setDebt(minimumPayment: $0) })
+                    )
+                    WizardField(
+                        label: L.t(Strings.shared.setup_debt_rate),
+                        keyboard: .decimalPad,
+                        isError: notice == .rateInvalid,
+                        text: Binding(get: { model.debtDraft?.interestRatePercent ?? "" }, set: { model.setDebt(interestRatePercent: $0) })
+                    )
+                    WizardField(
+                        label: L.t(Strings.shared.setup_due_day),
+                        keyboard: .numberPad,
+                        isError: notice == .dueDayInvalid,
+                        text: Binding(get: { model.debtDraft?.dueDay ?? "" }, set: { model.setDebt(dueDay: $0) })
+                    )
+                    ErrorText(messageKey: model.debtErrorKey ?? notice?.messageKey)
+                    GradientButton(
+                        title: L.t(Strings.shared.action_save),
+                        enabled: model.canSaveDebt,
+                        busy: model.savingDebt
+                    ) { model.saveDebt() }
+                }
+                .padding(24)
+            }
+            .navigationTitle(L.t(Strings.shared.money_add_debt))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(L.t(Strings.shared.action_cancel)) { model.cancelDebt() }.disabled(model.savingDebt)
+                }
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button(L.t(Strings.shared.action_done)) { dismissKeyboard() }
+                }
+            }
+        }
+        .interactiveDismissDisabled(model.savingDebt)
+    }
+}
+
 private struct ObligationSheet: View {
     @ObservedObject var model: MoneyDetailViewModel
 

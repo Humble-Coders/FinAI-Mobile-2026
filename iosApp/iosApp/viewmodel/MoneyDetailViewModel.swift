@@ -32,6 +32,11 @@ final class MoneyDetailViewModel: ObservableObject {
     @Published private(set) var obligationTouched = false
     @Published private(set) var savingObligation = false
     @Published private(set) var obligationErrorKey: String?
+    /// Debts' "+": one debt, setup step 3's row on its own.
+    @Published private(set) var debtDraft: ItemDraft?
+    @Published private(set) var debtTouched = false
+    @Published private(set) var savingDebt = false
+    @Published private(set) var debtErrorKey: String?
     /// A one-off line after a save — "Added to your monthly obligations".
     @Published var noticeKey: String?
 
@@ -210,6 +215,69 @@ final class MoneyDetailViewModel: ObservableObject {
     func closeSearch() {
         searching = false
         query = ""
+    }
+
+    // MARK: - Adding a debt
+
+    func openDebt() {
+        debtDraft = ItemDraft(name: "", amount: "", minimumPayment: "", interestRatePercent: "", dueDay: "")
+        debtTouched = false
+        debtErrorKey = nil
+    }
+
+    /// SKIE gives Swift no `copy()`: the one place the draft is rebuilt.
+    func setDebt(name: String? = nil, amount: String? = nil, minimumPayment: String? = nil, interestRatePercent: String? = nil, dueDay: String? = nil) {
+        guard let draft = debtDraft else { return }
+        debtDraft = ItemDraft(
+            name: name ?? draft.name,
+            amount: amount ?? draft.amount,
+            minimumPayment: minimumPayment ?? draft.minimumPayment,
+            interestRatePercent: interestRatePercent ?? draft.interestRatePercent,
+            dueDay: dueDay.map { String($0.filter(\.isNumber).prefix(2)) } ?? draft.dueDay
+        )
+        debtTouched = true
+        debtErrorKey = nil
+    }
+
+    func cancelDebt() {
+        guard !savingDebt else { return }
+        debtDraft = nil
+        debtErrorKey = nil
+    }
+
+    /// Added as setup's last debt, as step 3 would save it — read fresh and
+    /// written back whole, because a save replaces every list the wizard owns.
+    func saveDebt() {
+        guard let draft = debtDraft, let setupRepository else { return }
+        guard canSaveDebt else {
+            debtTouched = true
+            return
+        }
+        savingDebt = true
+        debtErrorKey = nil
+        Task { [weak self] in
+            var failed: String?
+            do {
+                let current = try await setupRepository.get()
+                let digits = Money.shared.fractionDigits(currency: current.currency)
+                if let next = SetupWizard.shared.debtAdded(setup: current, item: draft, fractionDigits: digits) {
+                    _ = try await setupRepository.save(setup: next)
+                } else {
+                    failed = Strings.shared.setup_list_limit
+                }
+            } catch {
+                failed = Self.messageKey(error)
+            }
+            guard let self else { return }
+            self.savingDebt = false
+            if let failed {
+                self.debtErrorKey = failed
+            } else {
+                self.debtDraft = nil
+                self.noticeKey = Strings.shared.money_debt_added
+                self.load(refresh: true)
+            }
+        }
     }
 
     // MARK: - Adding an obligation
@@ -464,6 +532,21 @@ final class MoneyDetailViewModel: ObservableObject {
     // Debts
 
     var debts: [Debt] { setup?.debts ?? [] }
+
+    /// Why the new debt cannot be saved: step 3's rules, and the 20-debt limit.
+    var debtBlock: SetupBlock? {
+        guard let debtDraft else { return nil }
+        return SetupWizard.shared.blockingReasonForNewDebt(
+            item: debtDraft, existing: Int32(debts.count), fractionDigits: Money.shared.fractionDigits(currency: currency)
+        )
+    }
+
+    var debtNotice: SetupBlock? {
+        guard let block = debtBlock else { return nil }
+        return debtTouched || block == .tooMany ? block : nil
+    }
+
+    var canSaveDebt: Bool { debtDraft != nil && !savingDebt && debtBlock == nil }
 
     func debtDetail(_ debt: Debt) -> String? {
         let parts = [

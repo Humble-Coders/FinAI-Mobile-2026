@@ -116,6 +116,10 @@ final class SetupViewModel: ObservableObject {
 
     func rowBlock(at index: Int) -> SetupBlock? {
         guard index < rows.count else { return nil }
+        // A commitment with no amount is skipped, not wrong.
+        if editing == .obligations {
+            return SetupWizard.shared.commitmentBlock(item: rows[index], fractionDigits: fractionDigits)
+        }
         return SetupWizard.shared.itemBlock(
             item: rows[index],
             fractionDigits: fractionDigits,
@@ -299,12 +303,19 @@ final class SetupViewModel: ObservableObject {
     func openList(_ list: ItemList) {
         editing = list
         let existing = items(of: list)
-        rows = existing.isEmpty ? [ItemDraft(name: "", amount: "", minimumPayment: "", interestRatePercent: "")] : existing
+        if list == .obligations {
+            // The common commitments by name, filled from what was saved.
+            rows = SetupWizard.shared.commitmentRows(saved: existing, locale: locale.isEmpty ? "en" : locale)
+        } else {
+            rows = existing.isEmpty ? [Self.emptyRow] : existing
+        }
         errorKey = nil
     }
 
+    private static let emptyRow = ItemDraft(name: "", amount: "", minimumPayment: "", interestRatePercent: "", dueDay: "")
+
     func addRow() {
-        rows.append(ItemDraft(name: "", amount: "", minimumPayment: "", interestRatePercent: ""))
+        rows.append(Self.emptyRow)
     }
 
     func removeRow(at index: Int) {
@@ -315,7 +326,10 @@ final class SetupViewModel: ObservableObject {
     /// Keeps the rows and saves them behind the step, so a list survives the app closing.
     func keepRows() {
         guard let list = editing, canKeepRows else { return }
-        let kept = rows.filter { !($0.name.isEmpty && $0.amount.isEmpty) }
+        // A commitment left without an amount is one the person doesn't pay.
+        let kept = list == .obligations
+            ? SetupWizard.shared.keptCommitments(rows: rows)
+            : rows.filter { !($0.name.isEmpty && $0.amount.isEmpty) }
         switch list {
         case .obligations:
             draft = draft.doCopy(

@@ -21,10 +21,19 @@ struct SetupView: View {
                 Color.clear
             } else if model.cancelled {
                 SetupRequiredView { model.resume() }
-            } else if let list = model.editing {
-                ItemListView(model: model, list: list)
             } else {
+                // The steps stay in place under an open list. Removed and
+                // rebuilt, the paging scroll view came back on its first page
+                // and reported it as the step — saving a list on step 3 sent
+                // the person back to step 1.
                 steps
+                    .opacity(model.editing == nil ? 1 : 0)
+                    .allowsHitTesting(model.editing == nil)
+                    .accessibilityHidden(model.editing != nil)
+                if let list = model.editing {
+                    ItemListView(model: model, list: list)
+                        .background(Color(.systemBackground).ignoresSafeArea())
+                }
             }
         }
         .toolbar {
@@ -431,6 +440,11 @@ private struct ItemListView: View {
                     .accessibilityLabel(L.t(Strings.shared.action_back))
                     Text(title).font(.title2.weight(.bold))
                 }
+                if list == .obligations {
+                    Text(L.t(Strings.shared.setup_commitments_hint))
+                        .font(.subheadline)
+                        .foregroundColor(Brand.textMuted)
+                }
 
                 ForEach(model.rows.indices, id: \.self) { index in
                     WizardCard {
@@ -439,9 +453,7 @@ private struct ItemListView: View {
                                 label: L.t(Strings.shared.setup_item_name),
                                 autocapitalization: .words,
                                 text: binding(index, \.name) { row, value in
-                                    ItemDraft(name: value, amount: row.amount,
-                                              minimumPayment: row.minimumPayment,
-                                              interestRatePercent: row.interestRatePercent)
+                                    rebuilt(row, name: value)
                                 }
                             )
                             AmountField(
@@ -452,9 +464,7 @@ private struct ItemListView: View {
                                 suffix: list == .obligations ? L.t(Strings.shared.setup_per_month) : nil,
                                 large: false,
                                 text: binding(index, \.amount) { row, value in
-                                    ItemDraft(name: row.name, amount: value,
-                                              minimumPayment: row.minimumPayment,
-                                              interestRatePercent: row.interestRatePercent)
+                                    rebuilt(row, amount: value)
                                 }
                             )
                             if debts {
@@ -465,18 +475,23 @@ private struct ItemListView: View {
                                     suffix: L.t(Strings.shared.setup_per_month),
                                     large: false,
                                     text: binding(index, \.minimumPayment) { row, value in
-                                        ItemDraft(name: row.name, amount: row.amount,
-                                                  minimumPayment: value,
-                                                  interestRatePercent: row.interestRatePercent)
+                                        rebuilt(row, minimumPayment: value)
                                     }
                                 )
                                 WizardField(
                                     label: L.t(Strings.shared.setup_debt_rate),
                                     keyboard: .decimalPad,
                                     text: binding(index, \.interestRatePercent) { row, value in
-                                        ItemDraft(name: row.name, amount: row.amount,
-                                                  minimumPayment: row.minimumPayment,
-                                                  interestRatePercent: value)
+                                        rebuilt(row, interestRatePercent: value)
+                                    }
+                                )
+                            }
+                            if debts || list == .obligations {
+                                WizardField(
+                                    label: L.t(Strings.shared.setup_due_day),
+                                    keyboard: .numberPad,
+                                    text: binding(index, \.dueDay) { row, value in
+                                        rebuilt(row, dueDay: String(value.filter(\.isNumber).prefix(2)))
                                     }
                                 )
                             }
@@ -509,6 +524,24 @@ private struct ItemListView: View {
         }
         .scrollBounceBehavior(.basedOnSize)
         .scrollDismissesKeyboard(.interactively)
+    }
+
+    /// SKIE gives Swift no `copy()`: the one place a row is rebuilt with a field changed.
+    private func rebuilt(
+        _ row: ItemDraft,
+        name: String? = nil,
+        amount: String? = nil,
+        minimumPayment: String? = nil,
+        interestRatePercent: String? = nil,
+        dueDay: String? = nil
+    ) -> ItemDraft {
+        ItemDraft(
+            name: name ?? row.name,
+            amount: amount ?? row.amount,
+            minimumPayment: minimumPayment ?? row.minimumPayment,
+            interestRatePercent: interestRatePercent ?? row.interestRatePercent,
+            dueDay: dueDay ?? row.dueDay
+        )
     }
 
     /// SKIE gives Swift no `copy()`, so every edit rebuilds the row.

@@ -49,16 +49,24 @@ internal fun MoneyDetailRoute(userId: String, kind: MoneyKind, onBack: () -> Uni
             onQuery = model::onQuery,
             onLoadMore = model::loadMore,
             onAdd = {
-                entry.discard()
-                markObligation = false
-                entry.bind(userId, logging = BuildConfig.DEBUG)
-                adding = true
+                if (kind == MoneyKind.DEBTS) {
+                    // On Debts, "+" adds a debt — setup step 3's row — not a transaction.
+                    model.openDebt()
+                } else {
+                    entry.discard()
+                    markObligation = false
+                    entry.bind(userId, logging = BuildConfig.DEBUG)
+                    adding = true
+                }
             },
             onOpenObligation = model::openObligation,
             onObligationChange = model::onObligationChange,
             onSaveObligation = model::saveObligation,
             onCancelObligation = model::cancelObligation,
             onDismissNotice = model::dismissNotice,
+            onDebtChange = model::onDebtChange,
+            onSaveDebt = model::saveDebt,
+            onCancelDebt = model::cancelDebt,
             onOpenPlan = onOpenPlan,
         ),
     )
