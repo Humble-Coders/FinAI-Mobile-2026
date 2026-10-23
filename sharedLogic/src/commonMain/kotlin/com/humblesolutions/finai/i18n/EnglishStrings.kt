@@ -762,6 +762,10 @@ val EnglishStrings: Map<String, String> = mapOf(
     Strings.money_edit_debt to "Edit debt",
     Strings.money_debt_updated to "Debt updated.",
     Strings.setup_debt_changed to "This debt was changed somewhere else. Close this and open it again.",
+    Strings.budget_month_net to "This month: income {0} − spending {1} = {2}",
+    Strings.budget_unbudgeted_title to "Not in your budget",
+    Strings.budget_unbudgeted_body to "{0} spent this month in categories with no line. It counts toward what you've spent.",
+    Strings.budget_unbudgeted_add to "Add to budget",
     // Your plan (#76) — YourPlan.
     Strings.plan_title to "Your plan",
     Strings.plan_leftover_from to "From this month's Savings line in your budget.",

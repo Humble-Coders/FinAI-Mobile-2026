@@ -795,6 +795,10 @@ object Strings {
     const val money_edit_debt = "money_edit_debt" // "Edit debt"
     const val money_debt_updated = "money_debt_updated" // "Debt updated."
     const val setup_debt_changed = "setup_debt_changed" // "This debt was changed somewhere else. Close this and open it again."
+    const val budget_month_net = "budget_month_net" // "This month: income {0} − spending {1} = {2}"
+    const val budget_unbudgeted_title = "budget_unbudgeted_title" // "Not in your budget"
+    const val budget_unbudgeted_body = "budget_unbudgeted_body" // "{0} spent this month in categories with no line. It counts toward what you've spent."
+    const val budget_unbudgeted_add = "budget_unbudgeted_add" // "Add to budget"
 
     // Your plan (#76) — YourPlan.
     const val plan_title = "plan_title" // "Your plan"

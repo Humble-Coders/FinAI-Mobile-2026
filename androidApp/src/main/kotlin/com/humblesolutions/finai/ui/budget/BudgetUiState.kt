@@ -5,6 +5,7 @@ import com.humblesolutions.finai.i18n.Strings
 import com.humblesolutions.finai.model.Budget
 import com.humblesolutions.finai.model.BudgetLine
 import com.humblesolutions.finai.model.Category
+import com.humblesolutions.finai.model.UnbudgetedSpend
 import com.humblesolutions.finai.usecase.BudgetBlock
 import com.humblesolutions.finai.usecase.BudgetDraft
 import com.humblesolutions.finai.usecase.BudgetEdit
@@ -98,22 +99,38 @@ data class BudgetUiState(
             text(Strings.dashboard_month_display, Dates.monthShort(it, locale), it.year.toString())
         } ?: month
 
-    /** "Spent $380 of $1,400" across the whole month. */
+    /**
+     * "Spent $380 of $1,400" across the whole month — everything spent,
+     * including categories with no line, against what the lines allocate.
+     */
     val totalsLabel: String
-        get() = budget?.let { text(Strings.budget_spent_of, money(it.totalSpent), money(it.totalAllocated)) }.orEmpty()
+        get() = budget?.let { text(Strings.budget_spent_of, money(it.spentTotal), money(it.totalAllocated)) }.orEmpty()
 
     /** How far through the whole budget the month's spending is — a bar, not a figure. */
     val totalFraction: Float
         get() {
             val b = budget ?: return 0f
             if (!Money.isPositive(b.totalAllocated, digits)) return 0f
-            val spent = Money.normalize(b.totalSpent, digits)?.toDoubleOrNull() ?: return 0f
+            val spent = Money.normalize(b.spentTotal, digits)?.toDoubleOrNull() ?: return 0f
             val allocated = Money.normalize(b.totalAllocated, digits)?.toDoubleOrNull() ?: return 0f
             if (allocated <= 0.0) return 0f
             return (spent / allocated).coerceIn(0.0, 1.0).toFloat()
         }
 
     val expectedIncomeLabel: String get() = budget?.let { money(it.expectedIncome) }.orEmpty()
+
+    /** "This month: income … − spending … = …", or null from an older server. */
+    val monthNetLabel: String? get() = budget?.let { BudgetEdit.monthLine(it, locale) }
+
+    /** Spending in categories with no line, largest first. */
+    val unbudgeted: List<UnbudgetedSpend> get() = budget?.unbudgeted.orEmpty()
+
+    /** "$2,357.37 spent this month in categories with no line…", or null. */
+    val unbudgetedLabel: String? get() = budget?.let { BudgetEdit.unbudgetedLine(it, locale) }
+
+    fun spentOf(spend: UnbudgetedSpend): String = money(spend.spent)
+
+    fun iconOf(spend: UnbudgetedSpend): CategoryIcon = CategoryIcons.forSlug(spend.slug)
 
     /** "Set aside $900", or null when there is no savings line. */
     val savingsLabel: String? get() = savings?.let { text(Strings.budget_set_aside, money(it.allocated)) }

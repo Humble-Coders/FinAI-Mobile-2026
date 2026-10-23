@@ -253,6 +253,26 @@ class BudgetViewModel(
         }
     }
 
+    /**
+     * "Add to budget" on a category spent in with no line: an editor on a new
+     * line, started at what was spent this month — the person's to change
+     * before saving.
+     */
+    fun addFromUnbudgeted(categoryId: String) {
+        val state = _uiState.value
+        val spend = state.unbudgeted.firstOrNull { it.categoryId == categoryId } ?: return
+        if (!BudgetEdit.isBudgetable(spend.slug)) return
+        update {
+            it.copy(
+                picking = false,
+                editing = BudgetEdit.lineFor(spend),
+                editingIsNew = true,
+                draft = BudgetEdit.draftFor(spend, state.currency),
+                editErrorKey = null,
+            )
+        }
+    }
+
     fun onAmountChange(amount: String) = update { it.copy(draft = BudgetDraft(amount), editErrorKey = null) }
 
     fun cancelEdit() = update {

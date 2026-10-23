@@ -11,6 +11,7 @@ import com.humblesolutions.finai.model.Feature
 import com.humblesolutions.finai.model.FeatureReason
 import com.humblesolutions.finai.model.LearningNeeds
 import com.humblesolutions.finai.model.LearningProgress
+import com.humblesolutions.finai.model.UnbudgetedSpend
 import com.humblesolutions.finai.repository.BudgetRepository
 import com.humblesolutions.finai.repository.CapabilitiesRepository
 import com.humblesolutions.finai.repository.CategoriesRepository
@@ -480,6 +481,39 @@ class BudgetViewModelTest {
         model.save()
 
         assertEquals(0, announced)
+    }
+
+    // ── Spending with no line ───────────────────────────────────────────
+
+    @Test
+    fun add_to_budget_opens_a_new_line_started_at_what_was_spent() = runTest {
+        val budgets = FakeBudgets(
+            answer = ready().copy(
+                unbudgeted = listOf(UnbudgetedSpend("cat-rent", "rent", "Rent", "1800.00")),
+                unbudgetedSpent = "1800.00",
+                spentOverall = "2270.00",
+            ),
+        )
+        val model = model(budgets)
+
+        assertEquals("Spent $2,270.00 of $1,400.00", model.uiState.value.totalsLabel)
+        model.addFromUnbudgeted("cat-rent")
+
+        val state = model.uiState.value
+        assertEquals("cat-rent", state.editing?.categoryId)
+        assertTrue(state.editingIsNew)
+        assertEquals("1800.00", state.draft.amount)
+        assertNull(state.editBlock)
+
+        model.save()
+        assertEquals(Triple(model.uiState.value.month, "cat-rent", "1800.00"), budgets.writes.last())
+    }
+
+    @Test
+    fun add_to_budget_ignores_a_category_that_is_not_listed() = runTest {
+        val model = model()
+        model.addFromUnbudgeted("cat-nowhere")
+        assertNull(model.uiState.value.editing)
     }
 
     // ── Fixtures ────────────────────────────────────────────────────────

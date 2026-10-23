@@ -130,6 +130,13 @@ struct BudgetView: View {
                         .foregroundColor(Field.ink())
                 }
 
+                // What actually came in and went out, the whole month — Home's figures.
+                if let monthNet = BudgetEdit.shared.monthLine(budget: budget, locale: model.locale) {
+                    Text(monthNet)
+                        .font(.subheadline.weight(.medium))
+                        .foregroundColor(Field.ink(0.92))
+                }
+
                 if let savings = budget.savings {
                     Text(L.t(Strings.shared.budget_set_aside, money(savings.allocated)))
                         .font(.subheadline)
@@ -212,6 +219,11 @@ struct BudgetView: View {
                 LineRow(model: model, line: debt, dark: dark, caption: L.t(Strings.shared.budget_debt_caption))
             }
 
+            if let budget = model.budget,
+               let unbudgeted = BudgetEdit.shared.unbudgetedLine(budget: budget, locale: model.locale) {
+                unbudgetedCard(budget, label: unbudgeted, dark: dark)
+            }
+
             Button { model.addCategory() } label: {
                 HStack(spacing: 12) {
                     IconTile(symbol: "plus", accent: Mint.greenText(dark), size: 40, iconSize: 18)
@@ -241,6 +253,52 @@ struct BudgetView: View {
         .background(RoundedRectangle(cornerRadius: 24).fill(Mint.panel(dark)))
     }
 
+    /**
+     "Not in your budget": the categories spent in this month that have no
+     line, each with what was spent and a way to give it one.
+     */
+    private func unbudgetedCard(_ budget: Budget, label: String, dark: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(L.t(Strings.shared.budget_unbudgeted_title))
+                .font(.subheadline.weight(.semibold))
+                .accessibilityAddTraits(.isHeader)
+            Text(label)
+                .font(.caption)
+                .foregroundColor(.secondary)
+            ForEach(budget.unbudgeted, id: \.categoryId) { spend in
+                HStack(spacing: 12) {
+                    IconTile(
+                        symbol: CategoryIcons.shared.forSlug(slug: spend.slug).systemName,
+                        accent: CategoryIcons.shared.forSlug(slug: spend.slug).tint(dark),
+                        size: 36,
+                        iconSize: 16
+                    )
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(spend.name)
+                            .font(.body)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                        Text(money(spend.spent))
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    Spacer(minLength: 8)
+                    Button(L.t(Strings.shared.budget_unbudgeted_add)) {
+                        model.addFromUnbudgeted(categoryId: spend.categoryId)
+                    }
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(1)
+                    .frame(minHeight: 44)
+                    .accessibilityLabel("\(L.t(Strings.shared.budget_unbudgeted_add)), \(spend.name)")
+                }
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 16).fill(Mint.card(dark)))
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(Mint.edge(dark), lineWidth: 1))
+    }
+
     private func loadFailed(_ dark: Bool) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             // The server's own words for this refusal when it gave any —
@@ -263,14 +321,15 @@ struct BudgetView: View {
     }
 
     private func totalsLabel(_ budget: Budget) -> String {
-        L.t(Strings.shared.budget_spent_of, money(budget.totalSpent), money(budget.totalAllocated))
+        // Everything spent, including categories with no line, against what the lines allocate.
+        L.t(Strings.shared.budget_spent_of, money(budget.spentTotal), money(budget.totalAllocated))
     }
 
     /// A bar's length, never a figure — see `BudgetLine.fraction`.
     private func totalFraction(_ budget: Budget) -> Double {
         let digits = Money.shared.fractionDigits(currency: budget.currency)
         guard Money.shared.isPositive(raw: budget.totalAllocated, fractionDigits: digits),
-              let spent = Double(Money.shared.normalize(raw: budget.totalSpent, fractionDigits: digits) ?? ""),
+              let spent = Double(Money.shared.normalize(raw: budget.spentTotal, fractionDigits: digits) ?? ""),
               let allocated = Double(Money.shared.normalize(raw: budget.totalAllocated, fractionDigits: digits) ?? ""),
               allocated > 0 else { return 0 }
         return min(max(spent / allocated, 0), 1)

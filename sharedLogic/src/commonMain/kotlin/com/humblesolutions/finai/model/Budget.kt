@@ -78,7 +78,33 @@ data class Budget(
 
     @SerialName("uncategorised_count")
     val uncategorisedCount: Int = 0,
+    /**
+     * Spending in categories this month has no line for, largest first — a
+     * first month has nothing to learn lines from, and a one-off has a median
+     * of 0. Empty from a server that predates it.
+     */
+    val unbudgeted: List<UnbudgetedSpend> = emptyList(),
+    @SerialName("unbudgeted_spent")
+    val unbudgetedSpent: String = "0",
+    /**
+     * Everything spent against the budget this month: the lines, [unbudgeted]
+     * and the uncategorised spending. Null from a server that predates it.
+     */
+    @SerialName("spent_overall")
+    val spentOverall: String? = null,
+    /** The month's actual income, spending and income minus spending, as Home counts them. */
+    @SerialName("month_income")
+    val monthIncome: String? = null,
+    @SerialName("month_spending")
+    val monthSpending: String? = null,
+    @SerialName("month_net")
+    val monthNet: String? = null,
 ) {
+    /** What "Spent … of …" says: all of it, or the lines alone from an older server. */
+    val spentTotal: String get() = spentOverall ?: totalSpent
+
+    val hasUnbudgeted: Boolean get() = unbudgeted.isNotEmpty()
+
     val symbol: String get() = Money.symbol(currency)
 
     val fractionDigits: Int get() = Money.fractionDigits(currency)
@@ -101,6 +127,16 @@ data class Budget(
      */
     val allLines: List<BudgetLine> get() = lines + listOfNotNull(savings, debt)
 }
+
+/** Spending in a category the month's budget has no line for. */
+@Serializable
+data class UnbudgetedSpend(
+    @SerialName("category_id")
+    val categoryId: String = "",
+    val slug: String = "",
+    val name: String = "",
+    val spent: String = "0",
+)
 
 /** Whether a budget could be generated yet (PRD F8). */
 @Serializable(with = BudgetStatusSerializer::class)

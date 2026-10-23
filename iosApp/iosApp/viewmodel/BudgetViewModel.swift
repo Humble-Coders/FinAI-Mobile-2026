@@ -236,6 +236,21 @@ final class BudgetViewModel: ObservableObject {
         editErrorKey = nil
     }
 
+    /**
+     "Add to budget" on a category spent in with no line: an editor on a new
+     line, started at what was spent this month — the person's to change
+     before saving.
+     */
+    func addFromUnbudgeted(categoryId: String) {
+        guard let spend = budget?.unbudgeted.first(where: { $0.categoryId == categoryId }),
+              BudgetEdit.shared.isBudgetable(slug: spend.slug) else { return }
+        picking = false
+        editing = BudgetEdit.shared.lineFor(spend: spend)
+        editingIsNew = true
+        draftAmount = BudgetEdit.shared.draftFor(spend: spend, currency: currency).amount
+        editErrorKey = nil
+    }
+
     func cancelEdit() {
         editing = nil
         editingIsNew = false

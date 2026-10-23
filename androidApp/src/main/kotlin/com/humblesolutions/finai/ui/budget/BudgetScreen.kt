@@ -89,6 +89,8 @@ internal fun BudgetScreen(
     onReviewUnfiled: () -> Unit,
     onRetry: () -> Unit,
     onImport: () -> Unit,
+    /** "Add to budget" on a category spent in with no line. */
+    onAddUnbudgeted: (String) -> Unit = {},
     /** Your plan (#76), from the Savings line; null when the plan is off, which hides the link. */
     onOpenPlan: (() -> Unit)? = null,
 ) {
@@ -131,10 +133,10 @@ internal fun BudgetScreen(
                         // available before the first full month (PRD F9),
                         // and hiding someone's own figures would be a lie
                         // about what they had set.
-                        Sheet(state, onEdit, onAddCategory, onReviewUnfiled)
+                        Sheet(state, onEdit, onAddCategory, onReviewUnfiled, onAddUnbudgeted)
                     }
 
-                    else -> Sheet(state, onEdit, onAddCategory, onReviewUnfiled)
+                    else -> Sheet(state, onEdit, onAddCategory, onReviewUnfiled, onAddUnbudgeted)
                 }
                 Spacer(Modifier.height(24.dp))
             }
@@ -175,6 +177,10 @@ private fun Header(state: BudgetUiState, onMonth: (String) -> Unit, collapsed: (
                 trackColor = Field.Glass,
             )
             FieldFact(strings(Strings.budget_expected_income), state.expectedIncomeLabel)
+            // What actually came in and went out, the whole month — Home's figures.
+            state.monthNetLabel?.let {
+                Text(it, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, color = Field.ink(0.92f))
+            }
             state.savingsLabel?.let {
                 Text(it, style = MaterialTheme.typography.bodyMedium, color = Field.ink(0.85f))
                 // What the plan does with it (#76) — the same figure, split.
@@ -276,6 +282,7 @@ private fun Sheet(
     onEdit: (String) -> Unit,
     onAddCategory: () -> Unit,
     onReviewUnfiled: () -> Unit,
+    onAddUnbudgeted: (String) -> Unit,
 ) {
     Column(
         Modifier
@@ -300,6 +307,8 @@ private fun Sheet(
         state.debt?.let { line ->
             LineRow(state, line, caption = strings(Strings.budget_debt_caption)) { onEdit(line.categoryId) }
         }
+
+        state.unbudgetedLabel?.let { Unbudgeted(state, it, onAddUnbudgeted) }
 
         AddCategoryRow(onAddCategory)
 
@@ -410,6 +419,58 @@ private fun LineRow(
             }
             caption?.let {
                 Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+}
+
+/**
+ * "Not in your budget": the categories spent in this month that have no line,
+ * each with what was spent and a way to give it one.
+ */
+@Composable
+private fun Unbudgeted(state: BudgetUiState, label: String, onAdd: (String) -> Unit) {
+    val dark = isSystemInDarkTheme()
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(Mint.card())
+            .border(1.dp, Mint.edge(), RoundedCornerShape(16.dp))
+            .padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(
+            strings(Strings.budget_unbudgeted_title),
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.semantics { heading() },
+        )
+        Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        state.unbudgeted.forEach { spend ->
+            val icon = state.iconOf(spend)
+            Row(
+                Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(
+                    Modifier.size(36.dp).clip(RoundedCornerShape(10.dp)).background(Mint.tile(icon.tint(dark))),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(icon.vector(), contentDescription = null, tint = icon.tint(dark), modifier = Modifier.size(18.dp))
+                }
+                Column(Modifier.weight(1f)) {
+                    Text(spend.name, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(
+                        state.spentOf(spend),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                TextButton(onClick = { onAdd(spend.categoryId) }) {
+                    Text(strings(Strings.budget_unbudgeted_add), maxLines = 1)
+                }
             }
         }
     }

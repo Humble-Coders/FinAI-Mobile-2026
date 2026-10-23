@@ -44,6 +44,7 @@ internal fun BudgetRoute(
         onMonth = model::showMonth,
         onEdit = model::edit,
         onAddCategory = model::addCategory,
+        onAddUnbudgeted = model::addFromUnbudgeted,
         onReviewUnfiled = onReview,
         onRetry = { model.load() },
         onImport = onImport,

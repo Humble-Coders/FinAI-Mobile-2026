@@ -227,6 +227,43 @@ class BudgetTest {
 
     /** A status this build does not know must not read as a ready budget. */
     @Test
+    fun spending_with_no_line_and_the_month_s_figures_decode() {
+        val json = """
+            {
+              "status": "ready",
+              "currency": "CAD",
+              "total_spent": "450.01",
+              "unbudgeted": [
+                {"category_id": "cat-dining", "slug": "dining", "name": "Dining", "spent": "45.00"}
+              ],
+              "unbudgeted_spent": "45.00",
+              "spent_overall": "507.35",
+              "month_income": "5000.00",
+              "month_spending": "2857.37",
+              "month_net": "2142.63"
+            }
+        """.trimIndent()
+        val budget = FinAiJson.decodeFromString(Budget.serializer(), json)
+
+        assertEquals(listOf(UnbudgetedSpend("cat-dining", "dining", "Dining", "45.00")), budget.unbudgeted)
+        assertTrue(budget.hasUnbudgeted)
+        assertEquals("45.00", budget.unbudgetedSpent)
+        assertEquals("507.35", budget.spentTotal)
+        assertEquals("5000.00", budget.monthIncome)
+        assertEquals("2857.37", budget.monthSpending)
+        assertEquals("2142.63", budget.monthNet)
+    }
+
+    @Test
+    fun an_older_server_s_budget_spends_only_its_lines() {
+        val budget = FinAiJson.decodeFromString(Budget.serializer(), """{"status": "ready", "total_spent": "450.01"}""")
+
+        assertFalse(budget.hasUnbudgeted)
+        assertEquals("450.01", budget.spentTotal)
+        assertNull(budget.monthNet)
+    }
+
+    @Test
     fun an_unknown_status_is_not_treated_as_ready() {
         val budget = FinAiJson.decodeFromString(Budget.serializer(), """{"status": "rebuilding"}""")
 
