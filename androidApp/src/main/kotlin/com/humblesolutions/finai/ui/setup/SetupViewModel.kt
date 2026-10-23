@@ -244,8 +244,13 @@ class SetupViewModel : ViewModel() {
 
     // ── The itemised lists ──────────────────────────────────────────────
 
+    /** Commitments open on the common ones by name, filled from what was saved; the other lists on their rows. */
     fun openList(list: ItemList) = _uiState.update {
-        it.copy(editing = list, rows = it.itemsOf(list).ifEmpty { listOf(ItemDraft()) }, errorKey = null)
+        val rows = when (list) {
+            ItemList.OBLIGATIONS -> SetupWizard.commitmentRows(it.draft.obligations, it.locale.ifBlank { "en" })
+            else -> it.itemsOf(list).ifEmpty { listOf(ItemDraft()) }
+        }
+        it.copy(editing = list, rows = rows, errorKey = null)
     }
 
     fun onRowChange(index: Int, row: ItemDraft) = _uiState.update {
@@ -264,7 +269,12 @@ class SetupViewModel : ViewModel() {
         val state = _uiState.value
         val list = state.editing ?: return
         if (!state.canKeepRows) return
-        val kept = state.rows.filterNot { it.name.isBlank() && it.amount.isBlank() }
+        val kept = if (list == ItemList.OBLIGATIONS) {
+            // A commitment left without an amount is one the person doesn't pay.
+            SetupWizard.keptCommitments(state.rows)
+        } else {
+            state.rows.filterNot { it.name.isBlank() && it.amount.isBlank() }
+        }
         val draft = when (list) {
             ItemList.OBLIGATIONS -> state.draft.copy(obligations = kept)
             ItemList.DEBTS -> state.draft.copy(debts = kept)

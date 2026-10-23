@@ -589,6 +589,14 @@ private fun ItemListScreen(
             )
         }
 
+        if (list == ItemList.OBLIGATIONS) {
+            Text(
+                strings(Strings.setup_commitments_hint),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+
         state.rows.forEachIndexed { index, row ->
             Card {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -624,6 +632,15 @@ private fun ItemListScreen(
                             onValueChange = { onRowChange(index, row.copy(interestRatePercent = it)) },
                             label = strings(Strings.setup_debt_rate),
                             keyboardType = KeyboardType.Decimal,
+                            capitalization = KeyboardCapitalization.None,
+                        )
+                    }
+                    if (debts || list == ItemList.OBLIGATIONS) {
+                        WizardField(
+                            value = row.dueDay,
+                            onValueChange = { onRowChange(index, row.copy(dueDay = it.filter(Char::isDigit).take(2))) },
+                            label = strings(Strings.setup_due_day),
+                            keyboardType = KeyboardType.Number,
                             capitalization = KeyboardCapitalization.None,
                         )
                     }

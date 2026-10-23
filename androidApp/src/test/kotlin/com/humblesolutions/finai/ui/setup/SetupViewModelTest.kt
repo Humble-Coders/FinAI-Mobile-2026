@@ -6,6 +6,7 @@ import com.humblesolutions.finai.model.Capabilities
 import com.humblesolutions.finai.model.FinancialSetup
 import com.humblesolutions.finai.repository.CapabilitiesRepository
 import com.humblesolutions.finai.repository.FinancialSetupRepository
+import com.humblesolutions.finai.usecase.ItemDraft
 import com.humblesolutions.finai.usecase.SetupStep
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
@@ -217,6 +218,42 @@ class SetupViewModelTest {
         assertEquals("4000.00", state.draft.income)
     }
 
+    // ── Commitments and due days ────────────────────────────────────────
+
+    @Test
+    fun `commitments open on the common ones and only those with an amount are kept`() {
+        val setup = FakeSetup(alice)
+        val model = SetupViewModel()
+        model.bind("alice") { repositories(setup) }
+        model.goTo(SetupStep.EXPENSES)
+
+        model.openList(ItemList.OBLIGATIONS)
+        val rows = model.uiState.value.rows
+        assertEquals("Rent", rows.first().name)
+        model.onRowChange(0, rows.first().copy(amount = "1800", dueDay = "1"))
+        assertTrue(model.uiState.value.canKeepRows, "the empty ones don't hold Save")
+        model.keepRows()
+
+        assertEquals(listOf("Rent"), model.uiState.value.draft.obligations.map { it.name })
+        assertEquals(1, setup.last?.obligations?.single()?.dueDay)
+        assertEquals(SetupStep.EXPENSES, model.uiState.value.step, "keeping a list stays on its step")
+    }
+
+    @Test
+    fun `a debt's due day is saved`() {
+        val setup = FakeSetup(alice)
+        val model = SetupViewModel()
+        model.bind("alice") { repositories(setup) }
+        model.goTo(SetupStep.PORTFOLIO)
+
+        model.openList(ItemList.DEBTS)
+        model.onRowChange(0, ItemDraft(name = "Car loan", amount = "12000", minimumPayment = "350", interestRatePercent = "6.90", dueDay = "5"))
+        model.keepRows()
+
+        assertEquals(5, setup.last?.debts?.single()?.dueDay)
+        assertEquals(SetupStep.PORTFOLIO, model.uiState.value.step)
+    }
+
     private fun repositories(setup: FakeSetup) = SetupRepositories(setup, FakeCapabilities())
 
     private class FakeSetup(
@@ -228,6 +265,7 @@ class SetupViewModelTest {
         var gets = 0
         var saves = 0
         var closed = false
+        var last: FinancialSetup? = null
 
         override suspend fun get(): FinancialSetup {
             gets++
@@ -239,6 +277,7 @@ class SetupViewModelTest {
             saves++
             saveGate?.await()
             if (failSave) throw ApiException.Network(RuntimeException("offline"))
+            last = setup
             return setup.copy(currency = stored.currency)
         }
 

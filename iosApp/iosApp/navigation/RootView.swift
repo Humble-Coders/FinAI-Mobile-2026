@@ -50,6 +50,8 @@ struct RootView: View {
     /// for at least two seconds.
     @StateObject private var loader = AppLoader()
     @State private var changingRegion = false
+    /// Whether this process has shown the app yet; see `onAppear`.
+    @MainActor private static var launched = false
 
     var body: some View {
         LoaderHost(active: loaderActive, caption: showingImport ? importModel.loaderCaption : nil, loader: loader) {
@@ -69,7 +71,16 @@ struct RootView: View {
             }
         }
         }
-        .onAppear { model.bind() }
+        .onAppear {
+            // Opening the app is a fresh start: Home, not the screen that was
+            // open last time — except an import under way, whose file would
+            // otherwise be lost. Coming back from the background keeps the screen.
+            if !RootView.launched {
+                RootView.launched = true
+                if homeRoute != HomeRoute.importStatement.rawValue { homeRoute = HomeRoute.home.rawValue }
+            }
+            model.bind()
+        }
         .onDisappear { model.unbind() }
         .sheet(isPresented: $changingRegion) {
             // Not an onboarding step: the server is not asking for it, the user

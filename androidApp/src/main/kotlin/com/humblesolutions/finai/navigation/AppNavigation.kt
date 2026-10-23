@@ -33,10 +33,12 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -343,6 +345,28 @@ internal fun leavesGatedTab(capabilities: Capabilities?, current: HomeRoute): Bo
  */
 internal fun reviewReturnsTo(from: HomeRoute): HomeRoute = if (from in ALL_TABS) from else HomeRoute.HOME
 
+/**
+ * Whether this process has drawn the signed-in screens yet. Android restores a
+ * saved route both when the screen is rotated (same process) and when the app
+ * comes back after the system ended it (a new process). Only the first should
+ * keep the screen: opening the app is a fresh start, and it opens on Home.
+ */
+private object Launch {
+    var drawn = false
+}
+
+/**
+ * The route, saved by name. Restored in a new process it becomes Home — except
+ * an import under way, whose file or photo would otherwise be lost.
+ */
+private val RouteSaver = Saver<HomeRoute, String>(
+    save = { it.name },
+    restore = { name ->
+        val saved = runCatching { HomeRoute.valueOf(name) }.getOrDefault(HomeRoute.HOME)
+        if (!Launch.drawn && saved != HomeRoute.IMPORT) HomeRoute.HOME else saved
+    },
+)
+
 /** Income, Expenses, Investments and Debts, opened from Home's cards. */
 private val MONEY = listOf(HomeRoute.INCOME, HomeRoute.EXPENSES, HomeRoute.INVESTMENTS, HomeRoute.DEBTS)
 
@@ -360,7 +384,8 @@ private val MONEY = listOf(HomeRoute.INCOME, HomeRoute.EXPENSES, HomeRoute.INVES
  */
 @Composable
 private fun HomeOrEntry(userId: String, onSignOut: () -> Unit) {
-    var route by rememberSaveable { mutableStateOf(HomeRoute.HOME) }
+    var route by rememberSaveable(stateSaver = RouteSaver) { mutableStateOf(HomeRoute.HOME) }
+    SideEffect { Launch.drawn = true }
     // The month Home's "See budget" asked the Budget tab to open on; cleared
     // once shown, so tapping the tab later opens wherever the person left it.
     var budgetMonth by rememberSaveable { mutableStateOf<String?>(null) }

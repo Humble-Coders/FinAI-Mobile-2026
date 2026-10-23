@@ -773,6 +773,22 @@ object Strings {
     const val home_part_goals_counted = "home_part_goals_counted" // "How close each goal with a target date is to where it should be by now, on a steady path from when you set it. A goal you reach counts as full marks for a year."
     const val home_part_goals_not_counted = "home_part_goals_not_counted" // "Counted once a goal with a target date has been running for a full month."
 
+    // The setup wizard's due days and common commitments.
+    const val setup_due_day = "setup_due_day" // "Due day (1–31)"
+    const val setup_due_day_invalid = "setup_due_day_invalid" // "A due day is a day of the month, from 1 to 31."
+    const val setup_commitments_hint = "setup_commitments_hint" // "Fill in what you pay each month and leave the rest empty — they're skipped. Use the name on your statement (like Rogers) so Home can tick each one off when it's paid."
+    const val setup_commitment_rent = "setup_commitment_rent" // "Rent"
+    const val setup_commitment_mortgage = "setup_commitment_mortgage" // "Mortgage"
+    const val setup_commitment_phone = "setup_commitment_phone" // "Phone"
+    const val setup_commitment_internet = "setup_commitment_internet" // "Internet"
+    const val setup_commitment_hydro = "setup_commitment_hydro" // "Hydro"
+    const val setup_commitment_car_insurance = "setup_commitment_car_insurance" // "Car insurance"
+    const val setup_commitment_home_insurance = "setup_commitment_home_insurance" // "Home insurance"
+    const val setup_commitment_childcare = "setup_commitment_childcare" // "Childcare"
+    const val setup_commitment_gym = "setup_commitment_gym" // "Gym"
+    const val setup_commitment_streaming = "setup_commitment_streaming" // "Streaming"
+    const val setup_commitment_transit = "setup_commitment_transit" // "Transit pass"
+
     // Throwaway demo screen (ticket #6), replaced in M2.
     const val demo_title = "demo_title" // "API check"
     const val demo_phone_label = "demo_phone_label" // "Test phone number"

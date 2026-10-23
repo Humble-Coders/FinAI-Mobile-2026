@@ -291,4 +291,64 @@ class SetupWizardTest {
             )
         }
     }
+
+    // ── Due days and common commitments ─────────────────────────────────
+
+    @Test
+    fun `a due day is a day of the month`() {
+        assertTrue(SetupWizard.isDueDay("1"))
+        assertTrue(SetupWizard.isDueDay("31"))
+        assertFalse(SetupWizard.isDueDay("0"))
+        assertFalse(SetupWizard.isDueDay("32"))
+        assertFalse(SetupWizard.isDueDay("1st"))
+        assertEquals(
+            SetupBlock.DUE_DAY_INVALID,
+            SetupWizard.itemBlock(ItemDraft(name = "Visa", amount = "500", dueDay = "40"), debt = true),
+        )
+    }
+
+    @Test
+    fun `due days survive a save and come back`() {
+        val draft = complete.copy(
+            debts = listOf(ItemDraft(name = "Visa", amount = "5293.18", minimumPayment = "120", interestRatePercent = "20.99", dueDay = "12")),
+            obligations = listOf(ItemDraft(name = "Rent", amount = "1800", dueDay = "1"), ItemDraft(name = "Gym", amount = "54.99")),
+        )
+
+        val sent = SetupWizard.payload(draft, "CAD")
+
+        assertEquals(12, sent.debts.single().dueDay)
+        assertEquals(listOf(1, null), sent.obligations.map { it.dueDay })
+        val reopened = SetupWizard.draftFrom(sent)
+        assertEquals("12", reopened.debts.single().dueDay)
+        assertEquals(listOf("1", ""), reopened.obligations.map { it.dueDay })
+    }
+
+    @Test
+    fun `commitments open on the common ones filled from what was saved`() {
+        val saved = listOf(ItemDraft(name = "Rent", amount = "1800.00", dueDay = "1"), ItemDraft(name = "Rogers", amount = "65.00"))
+
+        val rows = SetupWizard.commitmentRows(saved)
+
+        assertEquals(SetupWizard.COMMITMENT_PRESETS.size + 1, rows.size)
+        assertEquals(ItemDraft(name = "Rent", amount = "1800.00", dueDay = "1"), rows.first())
+        assertEquals("Mortgage", rows[1].name)
+        assertEquals("", rows[1].amount)
+        assertEquals("Rogers", rows.last().name)
+    }
+
+    @Test
+    fun `a commitment left empty is skipped rather than refused`() {
+        val rows = listOf(ItemDraft(name = "Rent", amount = "1800"), ItemDraft(name = "Mortgage"), ItemDraft(name = "", amount = ""))
+
+        assertNull(SetupWizard.commitmentBlock(rows[1]))
+        assertNull(SetupWizard.commitmentBlock(rows[2]))
+        assertEquals(listOf("Rent"), SetupWizard.keptCommitments(rows).map { it.name })
+    }
+
+    @Test
+    fun `a commitment with an amount still needs a name and a real due day`() {
+        assertEquals(SetupBlock.ITEM_NAME_MISSING, SetupWizard.commitmentBlock(ItemDraft(name = " ", amount = "20")))
+        assertEquals(SetupBlock.ITEM_AMOUNT_INVALID, SetupWizard.commitmentBlock(ItemDraft(name = "Gym", amount = "lots")))
+        assertEquals(SetupBlock.DUE_DAY_INVALID, SetupWizard.commitmentBlock(ItemDraft(name = "Gym", amount = "20", dueDay = "45")))
+    }
 }

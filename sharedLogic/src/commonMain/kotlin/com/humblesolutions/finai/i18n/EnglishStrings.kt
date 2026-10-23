@@ -739,4 +739,20 @@ val EnglishStrings: Map<String, String> = mapOf(
     Strings.home_part_goals to "Keeping pace with your goals",
     Strings.home_part_goals_counted to "How close each goal with a target date is to where it should be by now, on a steady path from when you set it. A goal you reach counts as full marks for a year.",
     Strings.home_part_goals_not_counted to "Counted once a goal with a target date has been running for a full month.",
+
+    // The setup wizard's due days and common commitments.
+    Strings.setup_due_day to "Due day (1–31)",
+    Strings.setup_due_day_invalid to "A due day is a day of the month, from 1 to 31.",
+    Strings.setup_commitments_hint to "Fill in what you pay each month and leave the rest empty — they're skipped. Use the name on your statement (like Rogers) so Home can tick each one off when it's paid.",
+    Strings.setup_commitment_rent to "Rent",
+    Strings.setup_commitment_mortgage to "Mortgage",
+    Strings.setup_commitment_phone to "Phone",
+    Strings.setup_commitment_internet to "Internet",
+    Strings.setup_commitment_hydro to "Hydro",
+    Strings.setup_commitment_car_insurance to "Car insurance",
+    Strings.setup_commitment_home_insurance to "Home insurance",
+    Strings.setup_commitment_childcare to "Childcare",
+    Strings.setup_commitment_gym to "Gym",
+    Strings.setup_commitment_streaming to "Streaming",
+    Strings.setup_commitment_transit to "Transit pass",
 )

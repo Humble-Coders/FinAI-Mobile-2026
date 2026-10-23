@@ -102,9 +102,14 @@ data class SetupUiState(
         ?.let { Money.format(it, currency, locale) }
         ?.ifBlank { null }
 
-    /** A row still being filled in blocks keeping the list. */
+    /**
+     * A row still being filled in blocks keeping the list — except a
+     * commitment with no amount, which is one the person doesn't pay and is
+     * skipped.
+     */
     fun rowBlock(index: Int): SetupBlock? {
         val row = rows.getOrNull(index) ?: return null
+        if (editing == ItemList.OBLIGATIONS) return SetupWizard.commitmentBlock(row, fractionDigits)
         return SetupWizard.itemBlock(row, fractionDigits, debt = editing == ItemList.DEBTS)
     }
 

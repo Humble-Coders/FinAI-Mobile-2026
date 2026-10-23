@@ -1,5 +1,6 @@
 package com.humblesolutions.finai.usecase
 
+import com.humblesolutions.finai.i18n.LocalizationRegistry
 import com.humblesolutions.finai.i18n.Strings
 import com.humblesolutions.finai.model.Debt
 import com.humblesolutions.finai.model.FinancialSetup
@@ -71,6 +72,7 @@ enum class SetupBlock(val messageKey: String) {
     ITEM_NAME_MISSING(Strings.setup_item_name_missing),
     ITEM_AMOUNT_INVALID(Strings.setup_amount_invalid),
     RATE_INVALID(Strings.setup_rate_invalid),
+    DUE_DAY_INVALID(Strings.setup_due_day_invalid),
     ;
 
     /**
@@ -87,7 +89,7 @@ enum class SetupBlock(val messageKey: String) {
         get() = when (this) {
             INCOME_MISSING, INCOME_NOT_MONEY -> SetupStep.INCOME
             EXPENSE_MISSING, EXPENSE_NOT_MONEY -> SetupStep.EXPENSES
-            ITEM_NAME_MISSING, ITEM_AMOUNT_INVALID, RATE_INVALID -> null
+            ITEM_NAME_MISSING, ITEM_AMOUNT_INVALID, RATE_INVALID, DUE_DAY_INVALID -> null
         }
 }
 
@@ -99,6 +101,11 @@ data class ItemDraft(
     val minimumPayment: String = "",
     /** Debts only, a percentage as typed. Blank when not given. */
     val interestRatePercent: String = "",
+    /**
+     * Debts and commitments: the day of the month it falls due, 1 to 31, as
+     * typed. Blank when not given, which is allowed.
+     */
+    val dueDay: String = "",
 )
 
 /** Everything the wizard is holding, as typed. */
@@ -219,9 +226,65 @@ object SetupWizard {
             if (item.interestRatePercent.isNotBlank() && !isRate(item.interestRatePercent)) {
                 return SetupBlock.RATE_INVALID
             }
+            if (item.dueDay.isNotBlank() && !isDueDay(item.dueDay)) return SetupBlock.DUE_DAY_INVALID
         }
         return null
     }
+
+    // ── Commitments ─────────────────────────────────────────────────────
+
+    /**
+     * The commitments most households have, offered by name so the person only
+     * types amounts. Names are editable: Home ticks a commitment off when every
+     * word of its name is in a payment's description, so the name on the
+     * statement ("Rogers") works better than the kind of bill ("Phone").
+     */
+    val COMMITMENT_PRESETS: List<String> = listOf(
+        Strings.setup_commitment_rent,
+        Strings.setup_commitment_mortgage,
+        Strings.setup_commitment_phone,
+        Strings.setup_commitment_internet,
+        Strings.setup_commitment_hydro,
+        Strings.setup_commitment_car_insurance,
+        Strings.setup_commitment_home_insurance,
+        Strings.setup_commitment_childcare,
+        Strings.setup_commitment_gym,
+        Strings.setup_commitment_streaming,
+        Strings.setup_commitment_transit,
+    )
+
+    /**
+     * The commitments editor's rows: every preset, filled from what was saved
+     * under the same name, then the saved ones that match no preset. A preset
+     * left without an amount is simply not a commitment ([keptCommitments]).
+     */
+    fun commitmentRows(saved: List<ItemDraft>, locale: String = "en"): List<ItemDraft> {
+        val presets = COMMITMENT_PRESETS.map { LocalizationRegistry.get(it, locale) }
+        val byName = saved.associateBy { it.name.trim().lowercase() }
+        val fromPresets = presets.map { name -> byName[name.lowercase()] ?: ItemDraft(name = name) }
+        val presetNames = presets.map { it.lowercase() }.toSet()
+        return fromPresets + saved.filter { it.name.trim().lowercase() !in presetNames }
+    }
+
+    /**
+     * Why a commitment row cannot be kept, or null. Unlike a debt, an empty
+     * amount is not a problem here: it means "I don't pay this", and the row
+     * is skipped. A row with an amount needs a name, a real amount and, if
+     * given, a real due day.
+     */
+    fun commitmentBlock(item: ItemDraft, fractionDigits: Int = 2): SetupBlock? {
+        if (item.amount.isBlank()) return null
+        if (item.name.isBlank()) return SetupBlock.ITEM_NAME_MISSING
+        if (!Money.isMoney(item.amount, fractionDigits)) return SetupBlock.ITEM_AMOUNT_INVALID
+        if (item.dueDay.isNotBlank() && !isDueDay(item.dueDay)) return SetupBlock.DUE_DAY_INVALID
+        return null
+    }
+
+    /** The commitments kept from the editor: the rows with an amount. */
+    fun keptCommitments(rows: List<ItemDraft>): List<ItemDraft> = rows.filter { it.amount.isNotBlank() }
+
+    /** A day of the month, 1 to 31. */
+    fun isDueDay(raw: String): Boolean = raw.trim().toIntOrNull()?.let { it in 1..31 } ?: false
 
     /**
      * What a list adds up to, or null when it holds nothing worth totalling.
@@ -266,13 +329,14 @@ object SetupWizard {
     fun draftFrom(setup: FinancialSetup): SetupDraft = SetupDraft(
         income = setup.income.orEmpty(),
         monthlyExpense = setup.monthlyExpense.orEmpty(),
-        obligations = setup.obligations.map { ItemDraft(name = it.name, amount = it.monthlyAmount) },
+        obligations = setup.obligations.map { ItemDraft(name = it.name, amount = it.monthlyAmount, dueDay = it.dueDay?.toString().orEmpty()) },
         debts = setup.debts.map {
             ItemDraft(
                 name = it.name,
                 amount = it.balance,
                 minimumPayment = it.minimumPayment.orEmpty(),
                 interestRatePercent = it.interestRatePercent.orEmpty(),
+                dueDay = it.dueDay?.toString().orEmpty(),
             )
         },
         investments = setup.investments.map { ItemDraft(name = it.name, amount = it.amount) },
@@ -282,7 +346,8 @@ object SetupWizard {
      * The whole wizard, as the API wants it.
      *
      * Every save carries everything, because a save replaces what the wizard
-     * owns: sending one step's answer alone would erase the others. Amounts are
+     * owns: sending one step's answer alone would erase the others — the due
+     * days included, which is why they travel too. Amounts are
      * normalised here, so the server sees one shape whatever was typed, and
      * rows that were left half-finished are dropped rather than refused.
      */
@@ -292,7 +357,11 @@ object SetupWizard {
         monthlyExpense = Money.normalize(draft.monthlyExpense, fractionDigits),
         obligations = draft.obligations.mapNotNull { item ->
             if (itemBlock(item, fractionDigits) != null) return@mapNotNull null
-            Obligation(name = item.name.trim(), monthlyAmount = Money.normalize(item.amount, fractionDigits).orEmpty())
+            Obligation(
+                name = item.name.trim(),
+                monthlyAmount = Money.normalize(item.amount, fractionDigits).orEmpty(),
+                dueDay = dueDayOf(item),
+            )
         },
         debts = draft.debts.mapNotNull { item ->
             if (itemBlock(item, fractionDigits, debt = true) != null) return@mapNotNull null
@@ -301,6 +370,7 @@ object SetupWizard {
                 balance = Money.normalize(item.amount, fractionDigits).orEmpty(),
                 minimumPayment = Money.normalize(item.minimumPayment, fractionDigits),
                 interestRatePercent = Money.normalize(item.interestRatePercent, fractionDigits = 2),
+                dueDay = dueDayOf(item),
             )
         },
         investments = draft.investments.mapNotNull { item ->
@@ -308,6 +378,8 @@ object SetupWizard {
             Investment(name = item.name.trim(), amount = Money.normalize(item.amount, fractionDigits).orEmpty())
         },
     )
+
+    private fun dueDayOf(item: ItemDraft): Int? = item.dueDay.trim().toIntOrNull()?.takeIf { it in 1..31 }
 
     private fun amountBlock(raw: String, fractionDigits: Int, missing: SetupBlock, invalid: SetupBlock): SetupBlock? = when {
         raw.isBlank() -> missing
