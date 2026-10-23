@@ -351,4 +351,25 @@ class SetupWizardTest {
         assertEquals(SetupBlock.ITEM_AMOUNT_INVALID, SetupWizard.commitmentBlock(ItemDraft(name = "Gym", amount = "lots")))
         assertEquals(SetupBlock.DUE_DAY_INVALID, SetupWizard.commitmentBlock(ItemDraft(name = "Gym", amount = "20", dueDay = "45")))
     }
+
+    @Test
+    fun `a debt added outside the wizard is saved as step three would save it`() {
+        val setup = FinancialSetup(currency = "CAD", income = "5000.00", monthlyExpense = "3200.00", debts = listOf(Debt(name = "Visa", balance = "100.00")))
+
+        val next = SetupWizard.debtAdded(setup, ItemDraft(name = " Car loan ", amount = "12,000", minimumPayment = "350", interestRatePercent = "6.9", dueDay = "5"))
+
+        assertEquals(
+            listOf(Debt(name = "Visa", balance = "100.00"), Debt(name = "Car loan", balance = "12000.00", minimumPayment = "350.00", interestRatePercent = "6.90", dueDay = 5)),
+            next?.debts,
+        )
+        assertEquals("5000.00", next?.income)
+    }
+
+    @Test
+    fun `a twenty-first debt is refused before anything is typed`() {
+        val full = List(20) { Debt(name = "D$it", balance = "1.00") }
+
+        assertEquals(SetupBlock.TOO_MANY, SetupWizard.blockingReasonForNewDebt(ItemDraft(), existing = 20))
+        assertNull(SetupWizard.debtAdded(FinancialSetup(currency = "CAD", debts = full), ItemDraft(name = "One more", amount = "5")))
+    }
 }

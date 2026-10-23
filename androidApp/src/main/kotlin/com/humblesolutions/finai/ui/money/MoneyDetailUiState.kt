@@ -15,8 +15,11 @@ import com.humblesolutions.finai.usecase.CommitmentDraft
 import com.humblesolutions.finai.usecase.CommitmentEdit
 import com.humblesolutions.finai.usecase.DashboardMonths
 import com.humblesolutions.finai.usecase.ImportedRows
+import com.humblesolutions.finai.usecase.ItemDraft
 import com.humblesolutions.finai.usecase.MoneyDetail
 import com.humblesolutions.finai.usecase.MoneyKind
+import com.humblesolutions.finai.usecase.SetupBlock
+import com.humblesolutions.finai.usecase.SetupWizard
 import com.humblesolutions.finai.util.Dates
 import com.humblesolutions.finai.util.Money
 import kotlinx.datetime.LocalDate
@@ -51,6 +54,11 @@ data class MoneyDetailUiState(
     val obligationTouched: Boolean = false,
     val savingObligation: Boolean = false,
     val obligationErrorKey: String? = null,
+    // ── Adding a debt (Debts) — setup step 3's row, on its own ────────
+    val debtDraft: ItemDraft? = null,
+    val debtTouched: Boolean = false,
+    val savingDebt: Boolean = false,
+    val debtErrorKey: String? = null,
     /** A one-off line after a save — "Added to your monthly obligations". */
     val noticeKey: String? = null,
 ) {
@@ -181,6 +189,15 @@ data class MoneyDetailUiState(
         get() = obligationDraft?.let { CommitmentEdit.blockingReasonForNew(it, currency, commitments.size) }
 
     val obligationNotice: CommitmentBlock? get() = obligationBlock.takeIf { obligationTouched }
+
+    /** Why the new debt cannot be saved, or null: step 3's rules, and the 20-debt limit. */
+    val debtBlock: SetupBlock?
+        get() = debtDraft?.let { SetupWizard.blockingReasonForNewDebt(it, debts.size, Money.fractionDigits(currency)) }
+
+    /** Said once something has been typed, as step 3's row says it. */
+    val debtNotice: SetupBlock? get() = debtBlock.takeIf { debtTouched || it == SetupBlock.TOO_MANY }
+
+    val canSaveDebt: Boolean get() = debtDraft != null && !savingDebt && debtBlock == null
 
     val canSaveObligation: Boolean get() = obligationDraft != null && !savingObligation && obligationBlock == null
 

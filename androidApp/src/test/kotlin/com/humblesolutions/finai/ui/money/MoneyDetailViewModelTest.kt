@@ -6,6 +6,7 @@ import com.humblesolutions.finai.model.Capabilities
 import com.humblesolutions.finai.model.Category
 import com.humblesolutions.finai.model.ConfirmOutcome
 import com.humblesolutions.finai.model.Dashboard
+import com.humblesolutions.finai.model.Debt
 import com.humblesolutions.finai.model.DeleteOutcome
 import com.humblesolutions.finai.model.FinancialSetup
 import com.humblesolutions.finai.model.Flow
@@ -24,7 +25,9 @@ import com.humblesolutions.finai.repository.TransactionsRepository
 import com.humblesolutions.finai.usecase.CommitmentBlock
 import com.humblesolutions.finai.usecase.CommitmentDraft
 import com.humblesolutions.finai.usecase.DashboardMonths
+import com.humblesolutions.finai.usecase.ItemDraft
 import com.humblesolutions.finai.usecase.MoneyKind
+import com.humblesolutions.finai.usecase.SetupBlock
 import com.humblesolutions.finai.util.LedgerChanged
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -219,6 +222,43 @@ class MoneyDetailViewModelTest {
         assertEquals(listOf("Phone", "Rent"), written.map { it.name }, "the existing one is kept")
         assertEquals(5, written.last().dueDay)
         assertNull(wired.model.uiState.value.obligationDraft, "the sheet closes")
+    }
+
+    @Test
+    fun a_debt_is_added_as_setup_step_three_would_save_it() = runTest {
+        val existing = FinancialSetup(
+            currency = "CAD",
+            income = "5000.00",
+            monthlyExpense = "3200.00",
+            debts = listOf(Debt(name = "Visa", balance = "5293.18", minimumPayment = "120.00", interestRatePercent = "20.99", dueDay = 12)),
+            obligations = listOf(Obligation("Rent", "1800.00", 1)),
+        )
+        val setup = FakeSetup(existing)
+        val wired = wired(MoneyKind.DEBTS, setup = setup)
+
+        wired.model.openDebt()
+        wired.model.onDebtChange(ItemDraft(name = "Car loan", amount = "12000", minimumPayment = "350", interestRatePercent = "6.9", dueDay = "5"))
+        wired.model.saveDebt()
+
+        val written = setup.saved.single()
+        assertEquals(listOf("Visa", "Car loan"), written.debts.map { it.name }, "the existing debt is kept")
+        assertEquals(Debt(name = "Car loan", balance = "12000.00", minimumPayment = "350.00", interestRatePercent = "6.90", dueDay = 5), written.debts.last())
+        assertEquals(existing.income to existing.obligations, written.income to written.obligations, "nothing else in setup changes")
+        assertNull(wired.model.uiState.value.debtDraft, "the sheet closes")
+        assertEquals(Strings.money_debt_added, wired.model.uiState.value.noticeKey)
+    }
+
+    @Test
+    fun a_debt_the_wizard_would_refuse_is_not_sent() = runTest {
+        val setup = FakeSetup()
+        val wired = wired(MoneyKind.DEBTS, setup = setup)
+
+        wired.model.openDebt()
+        wired.model.onDebtChange(ItemDraft(name = "Car loan", amount = "12000", interestRatePercent = "150"))
+        wired.model.saveDebt()
+
+        assertTrue(setup.saved.isEmpty())
+        assertEquals(SetupBlock.RATE_INVALID, wired.model.uiState.value.debtNotice)
     }
 
     @Test

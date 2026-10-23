@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
@@ -98,8 +99,10 @@ import com.humblesolutions.finai.ui.strings
 import com.humblesolutions.finai.ui.theme.FinAiPalette
 import com.humblesolutions.finai.usecase.CommitmentBlock
 import com.humblesolutions.finai.usecase.CommitmentDraft
+import com.humblesolutions.finai.usecase.ItemDraft
 import com.humblesolutions.finai.usecase.MoneyDetail
 import com.humblesolutions.finai.usecase.MoneyKind
+import com.humblesolutions.finai.usecase.SetupBlock
 import kotlinx.datetime.LocalDate
 
 /** What the screen can ask its model, and the app, to do. */
@@ -118,6 +121,9 @@ class MoneyDetailActions(
     val onSaveObligation: () -> Unit,
     val onCancelObligation: () -> Unit,
     val onDismissNotice: () -> Unit,
+    val onDebtChange: (ItemDraft) -> Unit = {},
+    val onSaveDebt: () -> Unit = {},
+    val onCancelDebt: () -> Unit = {},
 )
 
 /**
@@ -180,12 +186,17 @@ fun MoneyDetailScreen(state: MoneyDetailUiState, actions: MoneyDetailActions) {
                     .padding(20.dp)
                     .size(64.dp),
             ) {
-                Icon(Icons.Filled.Add, contentDescription = strings(Strings.money_add_transaction), modifier = Modifier.size(30.dp))
+                Icon(
+                    Icons.Filled.Add,
+                    contentDescription = strings(if (state.kind == MoneyKind.DEBTS) Strings.money_add_debt else Strings.money_add_transaction),
+                    modifier = Modifier.size(30.dp),
+                )
             }
         }
     }
 
     state.obligationDraft?.let { ObligationSheet(state, it, actions) }
+    state.debtDraft?.let { DebtSheet(state, it, actions) }
 
     state.noticeKey?.let { key ->
         androidx.compose.material3.AlertDialog(
@@ -793,6 +804,87 @@ private fun MiniFigure(modifier: Modifier, icon: ImageVector, tint: Color, label
                     autoSize = TextAutoSize.StepBased(minFontSize = 12.sp, maxFontSize = 18.sp, stepSize = 1.sp),
                 )
             }
+        }
+    }
+}
+
+// ── Adding a debt ───────────────────────────────────────────────────────
+
+/** One debt, with setup step 3's fields and rules. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun DebtSheet(state: MoneyDetailUiState, draft: ItemDraft, actions: MoneyDetailActions) {
+    val focus = LocalFocusManager.current
+    val busy = state.savingDebt
+    ModalBottomSheet(onDismissRequest = actions.onCancelDebt, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+        Column(
+            Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).imePadding().padding(horizontal = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Text(strings(Strings.money_add_debt), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, modifier = Modifier.semantics { heading() })
+            val notice = state.debtNotice
+            WizardField(
+                value = draft.name,
+                onValueChange = { actions.onDebtChange(draft.copy(name = it)) },
+                label = strings(Strings.setup_item_name),
+                isError = notice == SetupBlock.ITEM_NAME_MISSING,
+                capitalization = KeyboardCapitalization.Words,
+                enabled = !busy,
+            )
+            AmountField(
+                value = draft.amount,
+                onValueChange = { actions.onDebtChange(draft.copy(amount = it)) },
+                label = strings(Strings.setup_debt_balance),
+                symbol = state.currencySymbol,
+                placeholder = state.amountPlaceholder,
+                isError = notice == SetupBlock.ITEM_AMOUNT_INVALID,
+                large = false,
+                enabled = !busy,
+            )
+            AmountField(
+                value = draft.minimumPayment,
+                onValueChange = { actions.onDebtChange(draft.copy(minimumPayment = it)) },
+                label = strings(Strings.setup_debt_minimum),
+                symbol = state.currencySymbol,
+                placeholder = state.amountPlaceholder,
+                suffix = strings(Strings.setup_per_month),
+                large = false,
+                enabled = !busy,
+            )
+            WizardField(
+                value = draft.interestRatePercent,
+                onValueChange = { actions.onDebtChange(draft.copy(interestRatePercent = it)) },
+                label = strings(Strings.setup_debt_rate),
+                keyboardType = KeyboardType.Decimal,
+                capitalization = KeyboardCapitalization.None,
+                isError = notice == SetupBlock.RATE_INVALID,
+                enabled = !busy,
+            )
+            WizardField(
+                value = draft.dueDay,
+                onValueChange = { actions.onDebtChange(draft.copy(dueDay = it.filter(Char::isDigit).take(2))) },
+                label = strings(Strings.setup_due_day),
+                keyboardType = KeyboardType.Number,
+                capitalization = KeyboardCapitalization.None,
+                imeAction = ImeAction.Done,
+                onDone = { focus.clearFocus() },
+                isError = notice == SetupBlock.DUE_DAY_INVALID,
+                enabled = !busy,
+            )
+            ErrorText(state.debtErrorKey ?: notice?.messageKey)
+            GradientButton(
+                text = strings(Strings.action_save),
+                onClick = {
+                    focus.clearFocus()
+                    actions.onSaveDebt()
+                },
+                enabled = state.canSaveDebt,
+                busy = busy,
+            )
+            TextButton(onClick = actions.onCancelDebt, enabled = !busy, modifier = Modifier.align(Alignment.CenterHorizontally)) {
+                Text(strings(Strings.action_cancel))
+            }
+            Spacer(Modifier.height(16.dp))
         }
     }
 }

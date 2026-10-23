@@ -24,9 +24,12 @@ import com.humblesolutions.finai.repository.TransactionsRepository
 import com.humblesolutions.finai.usecase.CommitmentDraft
 import com.humblesolutions.finai.usecase.CommitmentEdit
 import com.humblesolutions.finai.usecase.DashboardMonths
+import com.humblesolutions.finai.usecase.ItemDraft
 import com.humblesolutions.finai.usecase.MoneyDetail
 import com.humblesolutions.finai.usecase.MoneyKind
+import com.humblesolutions.finai.usecase.SetupWizard
 import com.humblesolutions.finai.util.LedgerChanged
+import com.humblesolutions.finai.util.Money
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -175,6 +178,57 @@ class MoneyDetailViewModel : ViewModel() {
     fun onQuery(query: String) = _uiState.update { it.copy(query = query) }
 
     fun dismissNotice() = _uiState.update { it.copy(noticeKey = null) }
+
+    // ── Adding a debt ───────────────────────────────────────────────────
+
+    /** "+" on Debts: one debt, with step 3's fields and rules. */
+    fun openDebt() = _uiState.update { it.copy(debtDraft = ItemDraft(), debtTouched = false, debtErrorKey = null) }
+
+    fun onDebtChange(draft: ItemDraft) = _uiState.update { it.copy(debtDraft = draft, debtTouched = true, debtErrorKey = null) }
+
+    fun cancelDebt() {
+        if (_uiState.value.savingDebt) return
+        _uiState.update { it.copy(debtDraft = null, debtErrorKey = null) }
+    }
+
+    /**
+     * Added as setup's last debt, as step 3 would save it — read fresh and
+     * written back whole, because a save replaces every list the wizard owns.
+     */
+    fun saveDebt() {
+        val state = _uiState.value
+        val draft = state.debtDraft ?: return
+        if (!state.canSaveDebt) {
+            _uiState.update { it.copy(debtTouched = true) }
+            return
+        }
+        val repos = repositories ?: return
+        _uiState.update { it.copy(savingDebt = true, debtErrorKey = null) }
+        viewModelScope.launch {
+            val failed = try {
+                val setup = repos.setup.get()
+                val next = SetupWizard.debtAdded(setup, draft, Money.fractionDigits(setup.currency))
+                if (next == null) {
+                    Strings.setup_list_limit
+                } else {
+                    repos.setup.save(next)
+                    null
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: ApiException) {
+                e.messageKey
+            }
+            _uiState.update {
+                if (failed == null) {
+                    it.copy(savingDebt = false, debtDraft = null, noticeKey = Strings.money_debt_added)
+                } else {
+                    it.copy(savingDebt = false, debtErrorKey = failed)
+                }
+            }
+            if (failed == null) load(refresh = true)
+        }
+    }
 
     // ── Adding an obligation ────────────────────────────────────────────
 

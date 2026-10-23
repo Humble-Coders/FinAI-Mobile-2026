@@ -755,4 +755,7 @@ val EnglishStrings: Map<String, String> = mapOf(
     Strings.setup_commitment_gym to "Gym",
     Strings.setup_commitment_streaming to "Streaming",
     Strings.setup_commitment_transit to "Transit pass",
+    Strings.setup_list_limit to "You can list up to 20 here. Remove one to add another.",
+    Strings.money_add_debt to "Add a debt",
+    Strings.money_debt_added to "Debt added.",
 )

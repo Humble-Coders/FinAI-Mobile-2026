@@ -788,6 +788,9 @@ object Strings {
     const val setup_commitment_gym = "setup_commitment_gym" // "Gym"
     const val setup_commitment_streaming = "setup_commitment_streaming" // "Streaming"
     const val setup_commitment_transit = "setup_commitment_transit" // "Transit pass"
+    const val setup_list_limit = "setup_list_limit" // "You can list up to 20 here. Remove one to add another."
+    const val money_add_debt = "money_add_debt" // "Add a debt"
+    const val money_debt_added = "money_debt_added" // "Debt added."
 
     // Throwaway demo screen (ticket #6), replaced in M2.
     const val demo_title = "demo_title" // "API check"

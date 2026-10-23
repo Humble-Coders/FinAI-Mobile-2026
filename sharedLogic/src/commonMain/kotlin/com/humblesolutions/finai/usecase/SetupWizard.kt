@@ -73,6 +73,9 @@ enum class SetupBlock(val messageKey: String) {
     ITEM_AMOUNT_INVALID(Strings.setup_amount_invalid),
     RATE_INVALID(Strings.setup_rate_invalid),
     DUE_DAY_INVALID(Strings.setup_due_day_invalid),
+
+    /** The server keeps at most [SetupWizard.LIST_LIMIT] rows in a list. */
+    TOO_MANY(Strings.setup_list_limit),
     ;
 
     /**
@@ -89,7 +92,7 @@ enum class SetupBlock(val messageKey: String) {
         get() = when (this) {
             INCOME_MISSING, INCOME_NOT_MONEY -> SetupStep.INCOME
             EXPENSE_MISSING, EXPENSE_NOT_MONEY -> SetupStep.EXPENSES
-            ITEM_NAME_MISSING, ITEM_AMOUNT_INVALID, RATE_INVALID, DUE_DAY_INVALID -> null
+            ITEM_NAME_MISSING, ITEM_AMOUNT_INVALID, RATE_INVALID, DUE_DAY_INVALID, TOO_MANY -> null
         }
 }
 
@@ -129,6 +132,9 @@ object SetupWizard {
 
     /** The highest percentage the server will store for a debt. */
     const val MAX_RATE_PERCENT = 100
+
+    /** The most rows the server keeps in one list (`financial_setup` schema). */
+    const val LIST_LIMIT = 20
 
     /**
      * Why Continue on [step] cannot go ahead, or null when it can.
@@ -229,6 +235,36 @@ object SetupWizard {
             if (item.dueDay.isNotBlank() && !isDueDay(item.dueDay)) return SetupBlock.DUE_DAY_INVALID
         }
         return null
+    }
+
+    // ── A debt added outside the wizard ─────────────────────────────────
+
+    /**
+     * Why [item] cannot be added as one more debt, given [existing] debts —
+     * step 3's rules for a row, plus the server's limit, said before anything
+     * is typed rather than after.
+     */
+    fun blockingReasonForNewDebt(item: ItemDraft, existing: Int, fractionDigits: Int = 2): SetupBlock? {
+        if (existing >= LIST_LIMIT) return SetupBlock.TOO_MANY
+        return itemBlock(item, fractionDigits, debt = true)
+    }
+
+    /**
+     * [setup] with [item] added as its last debt — exactly as step 3 would
+     * save it — or null when it cannot be: at the limit (the list may have
+     * grown on another phone), or not a debt. Everything else in [setup] is
+     * sent back as read, because a save replaces every list the wizard owns.
+     */
+    fun debtAdded(setup: FinancialSetup, item: ItemDraft, fractionDigits: Int = 2): FinancialSetup? {
+        if (blockingReasonForNewDebt(item, setup.debts.size, fractionDigits) != null) return null
+        val debt = Debt(
+            name = item.name.trim(),
+            balance = Money.normalize(item.amount, fractionDigits).orEmpty(),
+            minimumPayment = Money.normalize(item.minimumPayment, fractionDigits),
+            interestRatePercent = Money.normalize(item.interestRatePercent, fractionDigits = 2),
+            dueDay = dueDayOf(item),
+        )
+        return setup.copy(debts = setup.debts + debt)
     }
 
     // ── Commitments ─────────────────────────────────────────────────────
