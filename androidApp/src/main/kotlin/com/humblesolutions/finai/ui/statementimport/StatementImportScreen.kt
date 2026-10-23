@@ -127,6 +127,8 @@ class StatementImportActions(
     val onKeepChecking: () -> Unit,
     val onDismissReadAgain: () -> Unit,
     val editor: TransactionEditorActions,
+    /** The yes or no to updating the linked debt's balance from this statement (#76). */
+    val onUpdateBalance: (Boolean) -> Unit = {},
 )
 
 /**
@@ -589,6 +591,7 @@ private fun CheckStep(state: StatementImportUiState, actions: StatementImportAct
         },
     )
     state.checkBreakdown?.let { BreakdownCard(state, it) }
+    state.balanceQuestion?.let { BalanceCard(it, state.updateBalance, actions.onUpdateBalance) }
 
     state.checkDays.forEach { day ->
         Text(
@@ -648,6 +651,35 @@ private fun CheckBar(state: StatementImportUiState, actions: StatementImportActi
             TextButton(onClick = actions.onAskDiscard, modifier = Modifier.fillMaxWidth()) {
                 Text(strings(Strings.import_check_discard))
             }
+        }
+    }
+}
+
+/**
+ * The statement's closing balance, read on the phone, and whether it should
+ * become the linked debt's balance (#76). Unticked until the person says yes.
+ */
+@Composable
+private fun BalanceCard(question: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+            .padding(horizontal = 14.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Text(strings(Strings.import_balance_title), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .heightIn(min = 48.dp)
+                .toggleable(value = checked, role = Role.Checkbox, onValueChange = onChange),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Checkbox(checked = checked, onCheckedChange = null)
+            Text(question, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
         }
     }
 }

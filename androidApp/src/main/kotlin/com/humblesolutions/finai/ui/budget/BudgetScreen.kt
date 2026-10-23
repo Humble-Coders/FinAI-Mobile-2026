@@ -7,6 +7,7 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -88,6 +89,8 @@ internal fun BudgetScreen(
     onReviewUnfiled: () -> Unit,
     onRetry: () -> Unit,
     onImport: () -> Unit,
+    /** Your plan (#76), from the Savings line; null when the plan is off, which hides the link. */
+    onOpenPlan: (() -> Unit)? = null,
 ) {
     val dark = isSystemInDarkTheme()
     LightStatusBarIcons(dark)
@@ -111,7 +114,7 @@ internal fun BudgetScreen(
                     .padding(horizontal = 20.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
-                Header(state, onMonth, collapsed)
+                Header(state, onMonth, collapsed, onOpenPlan)
 
                 val progress = state.learning
                 when {
@@ -145,7 +148,7 @@ internal fun BudgetScreen(
 // ── In the field ────────────────────────────────────────────────────────
 
 @Composable
-private fun Header(state: BudgetUiState, onMonth: (String) -> Unit, collapsed: () -> Float) {
+private fun Header(state: BudgetUiState, onMonth: (String) -> Unit, collapsed: () -> Float, onOpenPlan: (() -> Unit)?) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(
             text = strings(Strings.budget_title),
@@ -174,6 +177,12 @@ private fun Header(state: BudgetUiState, onMonth: (String) -> Unit, collapsed: (
             FieldFact(strings(Strings.budget_expected_income), state.expectedIncomeLabel)
             state.savingsLabel?.let {
                 Text(it, style = MaterialTheme.typography.bodyMedium, color = Field.ink(0.85f))
+                // What the plan does with it (#76) — the same figure, split.
+                onOpenPlan?.let { open ->
+                    TextButton(onClick = open, contentPadding = PaddingValues(0.dp)) {
+                        Text(strings(Strings.budget_savings_plan_link), color = Field.ink(), fontWeight = FontWeight.SemiBold)
+                    }
+                }
             }
             state.shortfallLabel?.let { Shortfall(it) }
         }

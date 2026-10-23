@@ -21,6 +21,8 @@ final class GoalsViewModel: ObservableObject {
     @Published private(set) var locale = "en"
     @Published private(set) var today = ManualEntry.shared.today()
     @Published private(set) var disclaimer: Terms?
+    /// This month's plan, for each goal's suggested amount (#76); nil when the plan is off or unread.
+    @Published private(set) var plan: Plan?
 
     @Published private(set) var loading = true
     @Published private(set) var refreshing = false
@@ -58,6 +60,9 @@ final class GoalsViewModel: ObservableObject {
 
     private var goalsRepository: GoalsRepository?
     private var capabilitiesRepository: CapabilitiesRepository?
+    private var planRepository: PlanRepository?
+    /// Choices saved on Your plan move the suggested amounts.
+    private var planListener: Task<Void, Never>?
     private var owner: String?
     private var generation = 0
 
@@ -80,14 +85,25 @@ final class GoalsViewModel: ObservableObject {
         let base = ApiConfig.shared.BASE_URL
         goalsRepository = KtorGoalsRepository(baseUrl: base, tokens: tokens, logging: logging)
         capabilitiesRepository = KtorCapabilitiesRepository(baseUrl: base, tokens: tokens, logging: logging)
+        planRepository = KtorPlanRepository(baseUrl: base, tokens: tokens, logging: logging)
+        planListener = Task { [weak self] in
+            for await _ in PlanChanged.events {
+                guard let self, !Task.isCancelled else { return }
+                await self.loadPlan()
+            }
+        }
         Task { await load() }
     }
 
     func unbind() {
+        planListener?.cancel()
+        planListener = nil
         goalsRepository?.close()
         capabilitiesRepository?.close()
+        planRepository?.close()
         goalsRepository = nil
         capabilitiesRepository = nil
+        planRepository = nil
     }
 
     private func reset() {
@@ -95,6 +111,7 @@ final class GoalsViewModel: ObservableObject {
         generation += 1
         page = nil
         disclaimer = nil
+        plan = nil
         loading = true
         loadFailed = false
         errorKey = nil
@@ -125,6 +142,7 @@ final class GoalsViewModel: ObservableObject {
             loadFailed = false
             errorKey = nil
             await loadDisclaimer(answer)
+            if capabilities?.isEnabled(featureKey: YourPlan.shared.FEATURE) == true { await loadPlan() } else { plan = nil }
         } catch {
             guard started == generation else { return }
             loading = false
@@ -141,6 +159,15 @@ final class GoalsViewModel: ObservableObject {
     private func loadDisclaimer(_ answer: GoalsPage) async {
         guard let wanted = answer.disclaimerVersion, disclaimer?.version != wanted, let goals = goalsRepository else { return }
         if let terms = try? await goals.disclaimer() { disclaimer = terms }
+    }
+
+    /// This month's plan, for the amount it suggests beside each goal (#76).
+    /// Quiet on failure: the goals stand without the line.
+    private func loadPlan() async {
+        guard let planRepository else { return }
+        let started = generation
+        guard let answer = try? await planRepository.plan(month: nil), started == generation else { return }
+        plan = answer
     }
 
     /// A write the server confirmed: tell Home, and read the list again for the
@@ -178,6 +205,12 @@ final class GoalsViewModel: ObservableObject {
     func disclaimer(of goal: Goal) -> String? {
         guard goal.isLongTerm, !goal.isAchieved, let body = disclaimer?.body, !body.isEmpty else { return nil }
         return body
+    }
+
+    /// "Your plan suggests $80 this month" — the plan's share for `goal`; nil when none.
+    func suggested(of goal: Goal) -> String? {
+        guard !goal.isAchieved else { return nil }
+        return YourPlan.shared.suggestedFor(goalId: goal.id, plan: plan, words: YourPlan.Words(currency: currency, locale: locale, amountsHidden: false))
     }
 
     func canMoveUp(_ index: Int) -> Bool { !reorderBusy && index > 0 }

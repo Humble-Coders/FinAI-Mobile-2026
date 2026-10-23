@@ -33,6 +33,8 @@ struct DashboardView: View {
     var onOpenBudget: ((String) -> Void)?
     /// The Goals tab (#52); nil when there is none, which leaves the card without its link.
     var onOpenGoals: (() -> Void)?
+    /// Your plan (#76); nil when it is off.
+    var onOpenPlan: (() -> Void)?
 
     @Environment(\.colorScheme) private var scheme
     private var dark: Bool { scheme == .dark }
@@ -441,7 +443,10 @@ struct DashboardView: View {
                 )
                 .padding(.bottom, 28)
             }
-            // Below the budget: goals are where the money set aside goes.
+            // Below the budget: where the money left over goes (#76), then goals.
+            if let plan = model.planCard {
+                PlanSection(card: plan, onOpenPlan: onOpenPlan).padding(.bottom, 28)
+            }
             if let goals = model.goalsCard {
                 GoalsSection(card: goals, onOpenGoals: onOpenGoals).padding(.bottom, 28)
             }

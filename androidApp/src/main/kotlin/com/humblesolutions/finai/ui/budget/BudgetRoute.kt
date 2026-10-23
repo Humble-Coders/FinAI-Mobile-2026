@@ -20,6 +20,8 @@ internal fun BudgetRoute(
     requestedMonth: String? = null,
     /** Called once [requestedMonth] is shown, so a later visit opens where the person left it. */
     onRequestedMonthShown: () -> Unit = {},
+    /** Your plan (#76); null when it is off. */
+    onOpenPlan: (() -> Unit)? = null,
 ) {
     val model: BudgetViewModel = viewModel()
     val state by model.uiState.collectAsStateWithLifecycle()
@@ -45,6 +47,7 @@ internal fun BudgetRoute(
         onReviewUnfiled = onReview,
         onRetry = { model.load() },
         onImport = onImport,
+        onOpenPlan = onOpenPlan,
     )
 
     if (state.editing != null) {

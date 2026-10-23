@@ -136,6 +136,7 @@ internal fun StatementImportRoute(
             onAskDiscard = model::askDiscard,
             onKeepChecking = model::keepChecking,
             onDismissReadAgain = model::dismissReadAgain,
+            onUpdateBalance = model::onUpdateBalance,
             editor = TransactionEditorActions(
                 onCancel = model::cancelEdit,
                 onDateChange = model::onDateChange,

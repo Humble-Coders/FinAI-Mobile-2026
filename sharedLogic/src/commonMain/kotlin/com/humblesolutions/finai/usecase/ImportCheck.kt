@@ -149,8 +149,10 @@ object ImportCheck {
      * What Save sends. A row the person changed is sent as confirmed, so the
      * server does not put it back in front of them as one it was unsure of.
      */
-    fun rowsToSave(accountId: String, rows: List<CheckRow>): RowsToSave = RowsToSave(
+    fun rowsToSave(accountId: String, rows: List<CheckRow>, closingBalance: StatementBalance.Found? = null): RowsToSave = RowsToSave(
         accountId = accountId,
+        closingBalance = closingBalance?.balance,
+        closingDate = closingBalance?.closingDate,
         rows = rows.map { (row, edited, suggested) ->
             RowToSave(
                 occurredOn = row.occurredOn,

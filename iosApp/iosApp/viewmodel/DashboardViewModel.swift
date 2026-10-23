@@ -62,6 +62,8 @@ final class DashboardViewModel: ObservableObject {
     @Published private(set) var capabilities: Capabilities?
     /// The household's goals, for Home's card (#52); nil until read, or when goals are off.
     @Published private(set) var goals: GoalsPage?
+    /// This month's plan, for Home's card (#76); nil until read, or when the plan is off.
+    @Published private(set) var plan: Plan?
     /// "Where it went" shows every category rather than the top five.
     @Published private(set) var spendingExpanded = false
     /// The score's breakdown sheet is up; bound to `.sheet`.
@@ -79,6 +81,8 @@ final class DashboardViewModel: ObservableObject {
     private var healthScoreRepository: HealthScoreRepository?
     private var goalsRepository: GoalsRepository?
     private var goalsGeneration = 0
+    private var planRepository: PlanRepository?
+    private var planGeneration = 0
     private var owner: String?
     /// The recent list's own counter: it does not follow the month, so a step
     /// back to August must not cancel a read of what happened most recently.
@@ -92,6 +96,7 @@ final class DashboardViewModel: ObservableObject {
     /// The budget-change observer, beside `listener`; see `listenForChanges`.
     private var budgetListener: Task<Void, Never>?
     private var goalsListener: Task<Void, Never>?
+    private var planListener: Task<Void, Never>?
 
     #if DEBUG
     private let logging = true
@@ -115,6 +120,7 @@ final class DashboardViewModel: ObservableObject {
         setupRepository = KtorFinancialSetupRepository(baseUrl: base, tokens: tokens, logging: logging)
         healthScoreRepository = KtorHealthScoreRepository(baseUrl: base, tokens: tokens, logging: logging)
         goalsRepository = KtorGoalsRepository(baseUrl: base, tokens: tokens, logging: logging)
+        planRepository = KtorPlanRepository(baseUrl: base, tokens: tokens, logging: logging)
         listenForChanges()
         // Back on a tab already read: refresh behind what is on screen. A
         // first load blanked the figures and, on Review, raised the coin
@@ -130,8 +136,12 @@ final class DashboardViewModel: ObservableObject {
         budgetListener = nil
         goalsListener?.cancel()
         goalsListener = nil
+        planListener?.cancel()
+        planListener = nil
         goalsRepository?.close()
         goalsRepository = nil
+        planRepository?.close()
+        planRepository = nil
         dashboardRepository?.close()
         dashboardRepository = nil
         capabilitiesRepository?.close()
@@ -167,6 +177,8 @@ final class DashboardViewModel: ObservableObject {
         // for the previous account is dropped when it lands.
         goals = nil
         goalsGeneration += 1
+        plan = nil
+        planGeneration += 1
         spendingExpanded = false
         breakdownOpen = false
         breakdown = nil
@@ -201,6 +213,7 @@ final class DashboardViewModel: ObservableObject {
                 // the score and the budget on a blip.
                 if let capabilities { self.capabilities = capabilities }
                 self.loadGoals()
+                self.loadPlan()
                 self.loadedOnce = true
                 self.loading = false
                 self.refreshing = false
@@ -458,6 +471,15 @@ final class DashboardViewModel: ObservableObject {
             for await _ in GoalsChanged.events {
                 guard let self, !Task.isCancelled else { return }
                 self.loadGoals()
+                // A goal's target or date moves what the plan gives it.
+                self.loadPlan()
+            }
+        }
+        // Choices saved or a debt edited on the plan's screens (#76).
+        planListener = Task { [weak self] in
+            for await _ in PlanChanged.events {
+                guard let self, !Task.isCancelled else { return }
+                self.loadPlan()
             }
         }
     }
@@ -503,6 +525,27 @@ final class DashboardViewModel: ObservableObject {
             guard let page = try? await goalsRepository.list(), let self, started == self.goalsGeneration else { return }
             self.goals = page
         }
+    }
+
+    /**
+     This month's plan for Home's card (#76), read only when capabilities enable
+     it — this month whatever month Home shows, as on Android. Quiet on failure.
+     */
+    private func loadPlan() {
+        guard capabilities?.isEnabled(featureKey: YourPlan.shared.FEATURE) == true, let planRepository else { return }
+        planGeneration += 1
+        let started = planGeneration
+        Task { [weak self] in
+            guard let answer = try? await planRepository.plan(month: nil), let self, started == self.planGeneration else { return }
+            self.plan = answer
+        }
+    }
+
+    /// "Where your extra money goes", or nil when it is not drawn. Figures follow the eye toggle.
+    var planCard: HomePlan? {
+        guard capabilities?.isEnabled(featureKey: YourPlan.shared.FEATURE) == true, let plan else { return nil }
+        let words = YourPlan.Words(currency: plan.currency.isEmpty ? data.currency : plan.currency, locale: locale, amountsHidden: amountsHidden)
+        return YourPlan.shared.homeCard(plan: plan, words: words)
     }
 
     /// Home's goals card, or nil when it is not drawn. Figures follow the eye toggle.

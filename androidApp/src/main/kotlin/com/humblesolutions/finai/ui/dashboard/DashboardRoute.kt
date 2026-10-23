@@ -28,6 +28,8 @@ internal fun DashboardRoute(
     onOpenBudget: ((String) -> Unit)? = null,
     /** The Goals tab; null when there is none, which leaves the card without its link. */
     onOpenGoals: (() -> Unit)? = null,
+    /** Your plan (#76); null when it is off. */
+    onOpenPlan: (() -> Unit)? = null,
 ) {
     val model: DashboardViewModel = viewModel()
     val state by model.uiState.collectAsStateWithLifecycle()
@@ -66,6 +68,7 @@ internal fun DashboardRoute(
             onToggleSpending = model::toggleSpending,
             onOpenBudget = onOpenBudget,
             onOpenGoals = onOpenGoals,
+            onOpenPlan = onOpenPlan,
         ),
     )
 }

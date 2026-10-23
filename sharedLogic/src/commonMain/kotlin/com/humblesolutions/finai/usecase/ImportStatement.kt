@@ -59,6 +59,9 @@ class ImportStatement(
      *        request goes out. A dropped line is the one outcome that is
      *        otherwise invisible — the import simply comes up short — and a
      *        count is safe to surface where the text is not.
+     * @param onClosingBalance the statement's closing balance and date, read
+     *        before redaction (#76), or null when there is none to read. Only
+     *        offered to the person on the check screen; never sent from here.
      *
      * @throws StatementTooLong the redacted text is over what the API accepts;
      *         thrown **before** any request, so the user is not made to wait
@@ -78,9 +81,15 @@ class ImportStatement(
         keepTextForDiagnostics: Boolean = false,
         accountCurrency: String? = null,
         onRedacted: (StatementRedactor.Redaction) -> Unit = {},
+        onClosingBalance: (StatementBalance.Found?) -> Unit = {},
     ): ParsedStatement {
         val rows = OcrRows.of(document)
-        val period = StatementPeriod.find(rows) ?: recentYear(rows)
+        val found = StatementPeriod.find(rows)
+        val period = found ?: recentYear(rows)
+        // Before redaction, for the period's reason: the summary is in the
+        // block the redactor drops. A screenshot has no summary, so its
+        // made-up year is never a closing date.
+        onClosingBalance(if (rows.fromImage) null else StatementBalance.find(rows, found?.end, accountCurrency))
         val redaction = StatementRedactor.of(rows)
         // A screenshot's dates carry no year; the year is decided here, not
         // left to the model. See YearlessDates.

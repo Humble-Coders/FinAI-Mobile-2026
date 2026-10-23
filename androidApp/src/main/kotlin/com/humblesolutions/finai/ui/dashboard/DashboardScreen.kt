@@ -983,6 +983,10 @@ private fun Sheet(
                 BudgetSection(it, insights.onOpenBudget?.let { open -> { open(DashboardMonths.wire(state.month)) } })
                 Spacer(Modifier.height(28.dp))
             }
+            state.planCard?.let {
+                PlanSection(it, insights.onOpenPlan)
+                Spacer(Modifier.height(28.dp))
+            }
             state.goalsCard?.let {
                 GoalsSection(it, insights.onOpenGoals)
                 Spacer(Modifier.height(28.dp))

@@ -578,6 +578,7 @@ struct StatementImportView: View {
                     VStack(alignment: .leading, spacing: 6) { checkChips }
                 }
                 if let breakdown = model.checkBreakdown { breakdownCard(breakdown) }
+                if let question = model.balanceQuestion { balanceCard(question) }
                 ForEach(model.checkDays, id: \.date) { day in
                     Text(model.dateLabel(day.date))
                         .font(.caption)
@@ -605,6 +606,23 @@ struct StatementImportView: View {
                 }
             }
         }
+    }
+
+    /// The statement's closing balance, read on the phone, and whether it should
+    /// become the linked debt's balance (#76). Unticked until the person says yes.
+    private func balanceCard(_ question: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(L.t(Strings.shared.import_balance_title))
+                .font(.subheadline.weight(.semibold))
+                .accessibilityAddTraits(.isHeader)
+            Toggle(isOn: $model.updateBalance) {
+                Text(question).font(.subheadline)
+            }
+            .toggleStyle(.switch)
+        }
+        .padding(14)
+        .background(Brand.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
     /// Where the statement's money goes before it is saved: money out and in by

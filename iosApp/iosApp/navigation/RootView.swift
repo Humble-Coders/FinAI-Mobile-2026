@@ -32,6 +32,9 @@ struct RootView: View {
     /// The household's goals (#52), on the tab gated by `goals`.
     @StateObject private var goalsModel = GoalsViewModel()
 
+    /// Your plan and Your debts (#76), gated by `debt_plan`.
+    @StateObject private var planModel = PlanViewModel()
+
     /// What the tab bar may offer. Read once per signed-in user.
     @StateObject private var features = FeaturesViewModel()
     /// Income, Expenses, Investments and Debts, opened from Home's cards.
@@ -46,6 +49,8 @@ struct RootView: View {
     /// Where Review's back arrow goes: the tab it was opened from. Kept with the
     /// route, so a restored Review still knows its way out.
     @SceneStorage("home.reviewFrom") private var reviewFrom = HomeRoute.home.rawValue
+    /// Where the plan's back arrow goes: the screen it was opened from (#76).
+    @SceneStorage("home.planFrom") private var planFrom = HomeRoute.home.rawValue
     /// One coin loader for the whole app: centred, everything behind it blurred,
     /// for at least two seconds.
     @StateObject private var loader = AppLoader()
@@ -104,6 +109,12 @@ struct RootView: View {
             || (showingHome && dashboardModel.loading)
             // The Budget tab's first read, and each change of month, as Android.
             || (showingBudget && (budgetModel.loading || budgetModel.switchingMonth))
+            // The plan's first read (#76); a return refreshes under what is shown.
+            || (showingPlan && planModel.loading && planModel.plan == nil)
+    }
+
+    private var showingPlan: Bool {
+        atHome && (homeRoute == HomeRoute.plan.rawValue || homeRoute == HomeRoute.planDebts.rawValue)
     }
 
     private var showingHome: Bool { atHome && homeRoute == HomeRoute.home.rawValue }
@@ -211,9 +222,27 @@ struct RootView: View {
                     entry: moneyEntryModel,
                     userId: model.me?.user.id ?? "",
                     kind: moneyKind(homeRoute),
-                    onBack: { withAnimation(.easeOut(duration: 0.25)) { homeRoute = HomeRoute.home.rawValue } }
+                    onBack: { withAnimation(.easeOut(duration: 0.25)) { homeRoute = HomeRoute.home.rawValue } },
+                    onOpenPlan: homeRoute == HomeRoute.debts.rawValue && features.gate(FeaturesViewModel.planFeature) == .on
+                        ? { openPlan(.planDebts) }
+                        : nil
                 )
                 .transition(.opacity.combined(with: .offset(y: 30)))
+            case .plan, .planDebts:
+                PlanView(
+                    model: planModel,
+                    userId: model.me?.user.id ?? "",
+                    startOnDebts: homeRoute == HomeRoute.planDebts.rawValue,
+                    onClose: {
+                        planModel.unbind()
+                        withAnimation(.easeOut(duration: 0.25)) { homeRoute = planFrom }
+                    }
+                )
+                .transition(.opacity.combined(with: .offset(y: 30)))
+                // Turned off between reads: nowhere to be, so home.
+                .onChange(of: features.gates) { _, gates in
+                    if gates.plan == .off { homeRoute = HomeRoute.home.rawValue }
+                }
             case .add, .addAfterImport:
                 ManualEntryView(
                     model: entryModel,
@@ -276,6 +305,9 @@ struct RootView: View {
                     : nil,
                 onOpenGoals: features.shows(FeaturesViewModel.goalsFeature, onTab: false)
                     ? { homeRoute = HomeRoute.goals.rawValue }
+                    : nil,
+                onOpenPlan: features.gate(FeaturesViewModel.planFeature) == .on
+                    ? { openPlan(.plan) }
                     : nil
             )
             .tabItem { Label(L.t(Strings.shared.tab_home), systemImage: "house.fill") }
@@ -290,7 +322,10 @@ struct RootView: View {
                     model: budgetModel,
                     userId: userId,
                     onReview: { openReview() },
-                    onImport: { homeRoute = HomeRoute.importStatement.rawValue }
+                    onImport: { homeRoute = HomeRoute.importStatement.rawValue },
+                    onOpenPlan: features.gate(FeaturesViewModel.planFeature) == .on
+                        ? { openPlan(.plan) }
+                        : nil
                 )
                 .tabItem { Label(L.t(Strings.shared.tab_budget), systemImage: "chart.pie.fill") }
                 .tag(HomeRoute.budget.rawValue)
@@ -328,6 +363,12 @@ struct RootView: View {
             budgetModel.unbind()
             goalsModel.unbind()
         }
+    }
+
+    /// Open the plan (#76), remembering where to go back to.
+    private func openPlan(_ to: HomeRoute) {
+        planFrom = homeRoute
+        withAnimation(.easeOut(duration: 0.3)) { homeRoute = to.rawValue }
     }
 
     /// Open Review, remembering the tab to go back to — Home when it is opened
@@ -381,6 +422,9 @@ private enum HomeRoute: String {
     case expenses
     case investments
     case debts
+    /// Your plan and Your debts (#76), from Home, Budget and Debts.
+    case plan
+    case planDebts = "plan_debts"
 
     static func route(for kind: MoneyKind) -> HomeRoute {
         switch kind {
