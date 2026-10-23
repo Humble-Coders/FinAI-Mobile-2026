@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -712,9 +713,16 @@ private fun DebtsBody(state: MoneyDetailUiState, actions: MoneyDetailActions, ac
                 tint = icon.tint(dark),
                 title = debt.name,
                 detail = detail,
-                trailing = { Text(balance, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, maxLines = 1) },
+                trailing = {
+                    Column(horizontalAlignment = Alignment.End) {
+                        Text(balance, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, maxLines = 1)
+                        TextButton(onClick = { actions.onEditDebt(index) }, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)) {
+                            Text(strings(Strings.action_edit), style = MaterialTheme.typography.labelLarge)
+                        }
+                    }
+                },
                 description = listOfNotNull(debt.name, balance, detail).joinToString(", "),
-                // A tap edits it, with the same sheet that adds one.
+                // The row edits it too, with the same sheet that adds one.
                 onClick = { actions.onEditDebt(index) },
             )
         }

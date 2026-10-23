@@ -445,20 +445,28 @@ struct MoneyDetailView: View {
                     let icon = MoneyDetail.shared.iconFor(name: debt.name)
                     let balance = model.amount(debt.balance)
                     let detail = model.debtDetail(debt)
-                    // A tap edits it, with the same sheet that adds one.
-                    Button { model.editDebt(at: index) } label: {
-                        MoneyRow(
-                            symbol: icon.systemName,
-                            tint: icon.tint(dark),
-                            title: debt.name,
-                            detail: detail,
-                            description: [debt.name, balance, detail].compactMap { $0 }.joined(separator: ", ")
-                        ) {
+                    MoneyRow(
+                        symbol: icon.systemName,
+                        tint: icon.tint(dark),
+                        title: debt.name,
+                        detail: detail,
+                        description: [debt.name, balance, detail].compactMap { $0 }.joined(separator: ", ")
+                    ) {
+                        VStack(alignment: .trailing, spacing: 2) {
                             Text(balance).font(.subheadline.weight(.bold)).lineLimit(1)
+                            Button(L.t(Strings.shared.action_edit)) { model.editDebt(at: index) }
+                                .font(.caption.weight(.semibold))
+                                .foregroundColor(Brand.green)
+                                .frame(minHeight: 28)
                         }
                     }
-                    .buttonStyle(.plain)
+                    // The row edits it too, with the same sheet that adds one.
+                    // One element for VoiceOver, whose activation is Edit.
+                    .contentShape(Rectangle())
+                    .onTapGesture { model.editDebt(at: index) }
                     .accessibilityAddTraits(.isButton)
+                    .accessibilityHint(L.t(Strings.shared.action_edit))
+                    .accessibilityAction { model.editDebt(at: index) }
                 }
                 // Their payoff order, months and interest, and editing them (#76).
                 if let onOpenPlan {
