@@ -497,7 +497,8 @@ class DashboardViewModelTest {
         model.saveCommitment()
 
         assertEquals(
-            listOf(Obligation("Phone", "65.00"), Obligation("Rent", "1850.00")),
+            // Rent had no category saved; the preset's is written back with it.
+            listOf(Obligation("Phone", "65.00"), Obligation("Rent", "1850.00", category = "rent")),
             setup.saved.single().obligations,
         )
         assertNull(model.uiState.value.editingCommitment)
@@ -561,7 +562,7 @@ class DashboardViewModelTest {
         model.onCommitmentAmount("40")
         model.saveCommitment()
 
-        assertEquals(listOf(Obligation("Rent", "1800.00"), Obligation("Gym", "40.00")), setup.saved.single().obligations)
+        assertEquals(listOf(Obligation("Rent", "1800.00"), Obligation("Gym", "40.00", category = "subscriptions")), setup.saved.single().obligations)
         assertFalse(model.uiState.value.showsCommitmentEditor)
         assertEquals(reads + 1, dashboard.asked.size)
     }

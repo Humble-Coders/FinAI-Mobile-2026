@@ -58,4 +58,9 @@ data class Obligation(
     /** The day of the month it falls due, when the person said. */
     @SerialName("due_day")
     val dueDay: Int? = null,
+    /**
+     * The spending category it belongs to (`rent`, `utilities`): its budget
+     * line never allocates less than it. Null when not said.
+     */
+    val category: String? = null,
 )

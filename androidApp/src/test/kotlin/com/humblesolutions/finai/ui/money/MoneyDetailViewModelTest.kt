@@ -215,12 +215,13 @@ class MoneyDetailViewModelTest {
         val wired = wired(MoneyKind.EXPENSES, setup = setup)
 
         wired.model.openObligation()
-        wired.model.onObligationChange(CommitmentDraft(name = "Rent", amount = "1800", dueDay = "5"))
+        wired.model.onObligationChange(CommitmentDraft(name = "Rent", amount = "1800", dueDay = "5", category = "rent"))
         wired.model.saveObligation()
 
         val written = setup.saved.single().obligations
         assertEquals(listOf("Phone", "Rent"), written.map { it.name }, "the existing one is kept")
         assertEquals(5, written.last().dueDay)
+        assertEquals("rent", written.last().category)
         assertNull(wired.model.uiState.value.obligationDraft, "the sheet closes")
     }
 

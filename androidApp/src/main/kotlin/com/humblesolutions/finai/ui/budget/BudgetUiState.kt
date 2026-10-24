@@ -9,9 +9,13 @@ import com.humblesolutions.finai.model.UnbudgetedSpend
 import com.humblesolutions.finai.usecase.BudgetBlock
 import com.humblesolutions.finai.usecase.BudgetDraft
 import com.humblesolutions.finai.usecase.BudgetEdit
+import com.humblesolutions.finai.usecase.BudgetOverview
 import com.humblesolutions.finai.usecase.CategoryIcon
 import com.humblesolutions.finai.usecase.CategoryIcons
 import com.humblesolutions.finai.usecase.DashboardMonths
+import com.humblesolutions.finai.usecase.OverviewCommitment
+import com.humblesolutions.finai.usecase.OverviewRow
+import com.humblesolutions.finai.usecase.OverviewSpend
 import com.humblesolutions.finai.util.Dates
 import com.humblesolutions.finai.util.Money
 
@@ -119,8 +123,30 @@ data class BudgetUiState(
 
     val expectedIncomeLabel: String get() = budget?.let { money(it.expectedIncome) }.orEmpty()
 
-    /** "This month: income … − spending … = …", or null from an older server. */
-    val monthNetLabel: String? get() = budget?.let { BudgetEdit.monthLine(it, locale) }
+    // ── The month above the lines (BudgetOverview) ──────────────────────
+
+    /** A month still running shows its plan; one that has ended shows what happened. */
+    val showsPlan: Boolean get() = budget?.let(BudgetOverview::showsPlan) ?: true
+
+    val soFarTitle: String get() = budget?.let { BudgetOverview.soFarTitle(it, locale) }.orEmpty()
+
+    /** Income, spent and what is left; null from a server that predates them. */
+    val soFar: List<OverviewRow>? get() = budget?.let { BudgetOverview.soFar(it, locale) }
+
+    val commitments: List<OverviewCommitment> get() = budget?.let { BudgetOverview.commitments(it, locale) }.orEmpty()
+
+    /** What is still to come this month; null once it has ended. */
+    val stillExpected: List<OverviewRow>? get() = budget?.let { BudgetOverview.stillExpected(it, locale) }
+
+    /** "Put it toward your goals or into savings", or what went short. */
+    val suggestion: String? get() = budget?.let { BudgetOverview.suggestion(it, locale) }
+
+    val suggestsUsing: Boolean get() = budget?.let(BudgetOverview::suggestsUsing) ?: false
+
+    /** A month that has ended, category by category. */
+    val spentRows: List<OverviewSpend> get() = budget?.let { BudgetOverview.spent(it, locale) }.orEmpty()
+
+    fun iconOf(spend: OverviewSpend): CategoryIcon = CategoryIcons.forSlug(spend.slug)
 
     /** Spending in categories with no line, largest first. */
     val unbudgeted: List<UnbudgetedSpend> get() = budget?.unbudgeted.orEmpty()

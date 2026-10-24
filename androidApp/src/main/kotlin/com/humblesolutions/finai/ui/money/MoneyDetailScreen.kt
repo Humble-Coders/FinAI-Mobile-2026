@@ -88,6 +88,7 @@ import com.humblesolutions.finai.R
 import com.humblesolutions.finai.i18n.Strings
 import com.humblesolutions.finai.model.Transaction
 import com.humblesolutions.finai.ui.components.AmountField
+import com.humblesolutions.finai.ui.components.CommitmentCategoryField
 import com.humblesolutions.finai.ui.components.ErrorText
 import com.humblesolutions.finai.ui.components.FinAiIcon
 import com.humblesolutions.finai.ui.components.GradientButton
@@ -100,6 +101,7 @@ import com.humblesolutions.finai.ui.strings
 import com.humblesolutions.finai.ui.theme.FinAiPalette
 import com.humblesolutions.finai.usecase.CommitmentBlock
 import com.humblesolutions.finai.usecase.CommitmentDraft
+import com.humblesolutions.finai.usecase.CommitmentEdit
 import com.humblesolutions.finai.usecase.ItemDraft
 import com.humblesolutions.finai.usecase.MoneyDetail
 import com.humblesolutions.finai.usecase.MoneyKind
@@ -926,7 +928,7 @@ private fun ObligationSheet(state: MoneyDetailUiState, draft: CommitmentDraft, a
             val notice = state.obligationNotice
             WizardField(
                 value = draft.name,
-                onValueChange = { actions.onObligationChange(draft.copy(name = it)) },
+                onValueChange = { actions.onObligationChange(CommitmentEdit.withName(draft, it)) },
                 label = strings(Strings.money_name_label),
                 placeholder = strings(Strings.money_merchant_hint),
                 isError = notice == CommitmentBlock.NO_NAME || notice == CommitmentBlock.NAME_TOO_LONG,
@@ -950,6 +952,11 @@ private fun ObligationSheet(state: MoneyDetailUiState, draft: CommitmentDraft, a
                 imeAction = ImeAction.Done,
                 onDone = { focus.clearFocus() },
                 isError = notice == CommitmentBlock.DUE_DAY_INVALID,
+            )
+            CommitmentCategoryField(
+                selected = draft.category,
+                onPick = { actions.onObligationChange(draft.copy(category = it)) },
+                isError = notice == CommitmentBlock.NO_CATEGORY,
             )
             ErrorText(state.obligationErrorKey ?: notice?.messageKey)
             GradientButton(

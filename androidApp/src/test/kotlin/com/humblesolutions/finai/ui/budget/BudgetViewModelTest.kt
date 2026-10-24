@@ -7,6 +7,7 @@ import com.humblesolutions.finai.model.BudgetLine
 import com.humblesolutions.finai.model.BudgetStatus
 import com.humblesolutions.finai.model.Capabilities
 import com.humblesolutions.finai.model.Category
+import com.humblesolutions.finai.model.CategorySpend
 import com.humblesolutions.finai.model.Feature
 import com.humblesolutions.finai.model.FeatureReason
 import com.humblesolutions.finai.model.LearningNeeds
@@ -514,6 +515,43 @@ class BudgetViewModelTest {
         val model = model()
         model.addFromUnbudgeted("cat-nowhere")
         assertNull(model.uiState.value.editing)
+    }
+
+    // ── Above the lines ─────────────────────────────────────────────────
+
+    @Test
+    fun a_month_that_has_ended_shows_what_was_spent_instead_of_its_plan() = runTest {
+        val ended = ready().copy(
+            monthEnded = true,
+            monthIncome = "5000.00",
+            monthSpending = "4716.79",
+            monthNet = "283.21",
+            spendingByCategory = listOf(CategorySpend("cat-shopping", "shopping", "Shopping", "1249.99")),
+        )
+        val state = model(FakeBudgets(answer = ended)).uiState.value
+
+        assertFalse(state.showsPlan)
+        assertEquals(listOf("Shopping"), state.spentRows.map { it.name })
+        assertNull(state.stillExpected)
+        assertEquals("You had $283.21 left this month. Put it toward your goals or into savings.", state.suggestion)
+    }
+
+    @Test
+    fun a_running_month_shows_its_plan_and_what_is_still_to_come() = runTest {
+        val running = ready().copy(
+            monthIncome = "5000.00",
+            monthSpending = "2857.37",
+            monthNet = "2142.63",
+            incomeExpected = "0.00",
+            commitmentsDue = "222.00",
+            budgetRest = "640.00",
+            projectedLeft = "1280.63",
+        )
+        val state = model(FakeBudgets(answer = running)).uiState.value
+
+        assertTrue(state.showsPlan)
+        assertEquals("$1,280.63", state.stillExpected?.last()?.amount)
+        assertTrue(state.suggestsUsing)
     }
 
     // ── Fixtures ────────────────────────────────────────────────────────

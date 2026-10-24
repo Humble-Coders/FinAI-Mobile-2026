@@ -104,6 +104,7 @@ import androidx.compose.ui.unit.sp
 import com.humblesolutions.finai.i18n.Strings
 import com.humblesolutions.finai.ui.components.AmountField
 import com.humblesolutions.finai.ui.components.CollapsingTitleBar
+import com.humblesolutions.finai.ui.components.CommitmentCategoryField
 import com.humblesolutions.finai.ui.components.ErrorText
 import com.humblesolutions.finai.ui.components.Field
 import com.humblesolutions.finai.ui.components.FinAiIcon
@@ -1250,6 +1251,7 @@ class CommitmentActions(
     val onAdd: () -> Unit = {},
     val onName: (String) -> Unit = {},
     val onAmount: (String) -> Unit = {},
+    val onCategory: (String) -> Unit = {},
     val onSave: () -> Unit = {},
     val onCancel: () -> Unit = {},
     val onAskDelete: () -> Unit = {},
@@ -1293,6 +1295,12 @@ private fun CommitmentEditor(state: DashboardUiState, actions: CommitmentActions
                 placeholder = state.commitmentAmountPlaceholder,
                 large = false,
                 imeAction = ImeAction.Done,
+            )
+            // Its budget line: the line never allocates less than it.
+            CommitmentCategoryField(
+                selected = state.commitmentDraft.category,
+                onPick = actions.onCategory,
+                enabled = !state.commitmentSaving,
             )
             ErrorText(state.commitmentNotice)
             GradientButton(

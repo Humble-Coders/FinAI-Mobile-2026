@@ -74,6 +74,9 @@ enum class SetupBlock(val messageKey: String) {
     RATE_INVALID(Strings.setup_rate_invalid),
     DUE_DAY_INVALID(Strings.setup_due_day_invalid),
 
+    /** A commitment with an amount but no budget category. */
+    CATEGORY_MISSING(Strings.setup_commitment_category_missing),
+
     /** The server keeps at most [SetupWizard.LIST_LIMIT] rows in a list. */
     TOO_MANY(Strings.setup_list_limit),
 
@@ -95,7 +98,7 @@ enum class SetupBlock(val messageKey: String) {
         get() = when (this) {
             INCOME_MISSING, INCOME_NOT_MONEY -> SetupStep.INCOME
             EXPENSE_MISSING, EXPENSE_NOT_MONEY -> SetupStep.EXPENSES
-            ITEM_NAME_MISSING, ITEM_AMOUNT_INVALID, RATE_INVALID, DUE_DAY_INVALID, TOO_MANY, UNCHANGED -> null
+            ITEM_NAME_MISSING, ITEM_AMOUNT_INVALID, RATE_INVALID, DUE_DAY_INVALID, CATEGORY_MISSING, TOO_MANY, UNCHANGED -> null
         }
 }
 
@@ -112,6 +115,12 @@ data class ItemDraft(
      * typed. Blank when not given, which is allowed.
      */
     val dueDay: String = "",
+    /**
+     * Commitments only: the spending category it belongs to, by slug
+     * ([CommitmentCategories.SLUGS]). Blank until chosen; a preset starts
+     * with its own.
+     */
+    val category: String = "",
 )
 
 /** Everything the wizard is holding, as typed. */
@@ -338,7 +347,10 @@ object SetupWizard {
     fun commitmentRows(saved: List<ItemDraft>, locale: String = "en"): List<ItemDraft> {
         val presets = COMMITMENT_PRESETS.map { LocalizationRegistry.get(it, locale) }
         val byName = saved.associateBy { it.name.trim().lowercase() }
-        val fromPresets = presets.map { name -> byName[name.lowercase()] ?: ItemDraft(name = name) }
+        val fromPresets = presets.map { name ->
+            val row = byName[name.lowercase()] ?: ItemDraft(name = name)
+            row.copy(category = row.category.ifBlank { CommitmentCategories.presetSlug(name, locale).orEmpty() })
+        }
         val presetNames = presets.map { it.lowercase() }.toSet()
         return fromPresets + saved.filter { it.name.trim().lowercase() !in presetNames }
     }
@@ -354,6 +366,7 @@ object SetupWizard {
         if (item.name.isBlank()) return SetupBlock.ITEM_NAME_MISSING
         if (!Money.isMoney(item.amount, fractionDigits)) return SetupBlock.ITEM_AMOUNT_INVALID
         if (item.dueDay.isNotBlank() && !isDueDay(item.dueDay)) return SetupBlock.DUE_DAY_INVALID
+        if (!CommitmentCategories.isCategory(item.category)) return SetupBlock.CATEGORY_MISSING
         return null
     }
 
@@ -406,7 +419,9 @@ object SetupWizard {
     fun draftFrom(setup: FinancialSetup): SetupDraft = SetupDraft(
         income = setup.income.orEmpty(),
         monthlyExpense = setup.monthlyExpense.orEmpty(),
-        obligations = setup.obligations.map { ItemDraft(name = it.name, amount = it.monthlyAmount, dueDay = it.dueDay?.toString().orEmpty()) },
+        obligations = setup.obligations.map {
+            ItemDraft(name = it.name, amount = it.monthlyAmount, dueDay = it.dueDay?.toString().orEmpty(), category = it.category.orEmpty())
+        },
         debts = setup.debts.map {
             ItemDraft(
                 name = it.name,
@@ -438,6 +453,7 @@ object SetupWizard {
                 name = item.name.trim(),
                 monthlyAmount = Money.normalize(item.amount, fractionDigits).orEmpty(),
                 dueDay = dueDayOf(item),
+                category = item.category.takeIf(CommitmentCategories::isCategory),
             )
         },
         debts = draft.debts.mapNotNull { item ->

@@ -282,7 +282,11 @@ class DashboardViewModel : ViewModel() {
     }
 
     fun onCommitmentName(name: String) = _uiState.update {
-        it.copy(commitmentDraft = it.commitmentDraft.copy(name = name), commitmentErrorKey = null)
+        it.copy(commitmentDraft = CommitmentEdit.withName(it.commitmentDraft, name, it.locale), commitmentErrorKey = null)
+    }
+
+    fun onCommitmentCategory(slug: String) = _uiState.update {
+        it.copy(commitmentDraft = it.commitmentDraft.copy(category = slug), commitmentErrorKey = null)
     }
 
     fun onCommitmentAmount(amount: String) = _uiState.update {

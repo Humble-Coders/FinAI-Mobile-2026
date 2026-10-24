@@ -286,7 +286,10 @@ class MoneyDetailViewModel : ViewModel() {
      */
     fun markAsObligation(name: String, amount: String, dueDay: Int?) {
         viewModelScope.launch {
-            val failed = addObligation(CommitmentDraft(name = name, amount = amount, dueDay = dueDay?.toString().orEmpty()))
+            // Its category from the preset its name matches, if any; the
+            // commitment can be given one from Home later.
+            val draft = CommitmentEdit.withName(CommitmentDraft(amount = amount, dueDay = dueDay?.toString().orEmpty()), name)
+            val failed = addObligation(draft)
             _uiState.update { it.copy(noticeKey = if (failed == null) Strings.money_obligation_added else Strings.money_obligation_failed) }
             if (failed == null) load(refresh = true)
         }

@@ -330,10 +330,27 @@ class SetupWizardTest {
         val rows = SetupWizard.commitmentRows(saved)
 
         assertEquals(SetupWizard.COMMITMENT_PRESETS.size + 1, rows.size)
-        assertEquals(ItemDraft(name = "Rent", amount = "1800.00", dueDay = "1"), rows.first())
+        assertEquals(ItemDraft(name = "Rent", amount = "1800.00", dueDay = "1", category = "rent"), rows.first())
         assertEquals("Mortgage", rows[1].name)
         assertEquals("", rows[1].amount)
         assertEquals("Rogers", rows.last().name)
+        assertEquals("", rows.last().category, "a name no preset has waits for a choice")
+    }
+
+    @Test
+    fun `a commitment with an amount needs a budget category`() {
+        assertEquals(SetupBlock.CATEGORY_MISSING, SetupWizard.commitmentBlock(ItemDraft(name = "Rogers", amount = "65")))
+        assertNull(SetupWizard.commitmentBlock(ItemDraft(name = "Rogers", amount = "65", category = "utilities")))
+    }
+
+    @Test
+    fun `a commitment category goes to the server and comes back`() {
+        val draft = SetupDraft(income = "5000", monthlyExpense = "3000", obligations = listOf(ItemDraft(name = "Rogers", amount = "65", category = "utilities")))
+
+        val sent = SetupWizard.payload(draft, "CAD")
+
+        assertEquals("utilities", sent.obligations.single().category)
+        assertEquals("utilities", SetupWizard.draftFrom(sent).obligations.single().category)
     }
 
     @Test

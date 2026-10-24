@@ -26,8 +26,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.WarningAmber
+import androidx.compose.material.icons.outlined.RadioButtonUnchecked
+import androidx.compose.material.icons.outlined.Savings
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -67,6 +71,8 @@ import com.humblesolutions.finai.ui.components.tint
 import com.humblesolutions.finai.ui.components.vector
 import com.humblesolutions.finai.ui.strings
 import com.humblesolutions.finai.usecase.DashboardMonths
+import com.humblesolutions.finai.usecase.OverviewCommitment
+import com.humblesolutions.finai.usecase.OverviewRow
 
 /**
  * The month's budget: every category with what has been spent against it,
@@ -116,9 +122,8 @@ internal fun BudgetScreen(
                     .padding(horizontal = 20.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
-                Header(state, onMonth, collapsed, onOpenPlan)
+                Header(state, onMonth, collapsed)
 
-                val progress = state.learning
                 when {
                     // The coin loader covers a first load. Drawing the sheet
                     // under it would flash an empty budget with "Add a
@@ -127,16 +132,23 @@ internal fun BudgetScreen(
 
                     state.loadFailed -> LoadFailed(state, onRetry)
 
-                    progress != null -> {
-                        LearningFieldCard(progress, onImport = onImport)
-                        // Hand-set lines still show: manual budgeting is
-                        // available before the first full month (PRD F9),
-                        // and hiding someone's own figures would be a lie
-                        // about what they had set.
-                        Sheet(state, onEdit, onAddCategory, onReviewUnfiled, onAddUnbudgeted)
+                    else -> {
+                        state.learning?.let { LearningFieldCard(it, onImport = onImport) }
+                        // The month as the statements tell it, first.
+                        Overview(state)
+                        if (state.showsPlan) {
+                            // Hand-set lines still show while learning:
+                            // manual budgeting is available before the first
+                            // full month (PRD F9), and hiding someone's own
+                            // figures would be a lie about what they had set.
+                            PlanSummary(state, onOpenPlan)
+                            Sheet(state, onEdit, onAddCategory, onReviewUnfiled, onAddUnbudgeted)
+                        } else {
+                            // A month that has ended is a record, not a plan:
+                            // a one-off is a row in its month, not a line.
+                            Spent(state)
+                        }
                     }
-
-                    else -> Sheet(state, onEdit, onAddCategory, onReviewUnfiled, onAddUnbudgeted)
                 }
                 Spacer(Modifier.height(24.dp))
             }
@@ -150,7 +162,7 @@ internal fun BudgetScreen(
 // ── In the field ────────────────────────────────────────────────────────
 
 @Composable
-private fun Header(state: BudgetUiState, onMonth: (String) -> Unit, collapsed: () -> Float, onOpenPlan: (() -> Unit)?) {
+private fun Header(state: BudgetUiState, onMonth: (String) -> Unit, collapsed: () -> Float) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(
             text = strings(Strings.budget_title),
@@ -163,7 +175,20 @@ private fun Header(state: BudgetUiState, onMonth: (String) -> Unit, collapsed: (
         )
 
         MonthButton(state, onMonth)
+    }
+}
 
+/** "Your budget": spent of allocated, expected income, what is set aside. */
+@Composable
+private fun PlanSummary(state: BudgetUiState, onOpenPlan: (() -> Unit)?) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text(
+            strings(Strings.budget_your_budget),
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold,
+            color = Field.ink(),
+            modifier = Modifier.semantics { heading() },
+        )
         if (state.budget != null) {
             Text(
                 text = state.totalsLabel,
@@ -177,10 +202,6 @@ private fun Header(state: BudgetUiState, onMonth: (String) -> Unit, collapsed: (
                 trackColor = Field.Glass,
             )
             FieldFact(strings(Strings.budget_expected_income), state.expectedIncomeLabel)
-            // What actually came in and went out, the whole month — Home's figures.
-            state.monthNetLabel?.let {
-                Text(it, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, color = Field.ink(0.92f))
-            }
             state.savingsLabel?.let {
                 Text(it, style = MaterialTheme.typography.bodyMedium, color = Field.ink(0.85f))
                 // What the plan does with it (#76) — the same figure, split.
@@ -191,6 +212,141 @@ private fun Header(state: BudgetUiState, onMonth: (String) -> Unit, collapsed: (
                 }
             }
             state.shortfallLabel?.let { Shortfall(it) }
+        }
+    }
+}
+
+// ── Above the lines ─────────────────────────────────────────────────────
+
+/** The month so far, its commitments, what is still to come, and what to do with the rest. */
+@Composable
+private fun Overview(state: BudgetUiState) {
+    state.soFar?.let { rows ->
+        Card(state.soFarTitle, subtitle = strings(Strings.budget_from_statements)) { rows.forEach { FigureRow(it) } }
+    }
+    if (state.commitments.isNotEmpty()) {
+        Card(strings(Strings.budget_commitments_title)) { state.commitments.forEach { CommitmentLine(it) } }
+    }
+    state.stillExpected?.let { rows ->
+        Card(strings(Strings.budget_still_expected_title)) { rows.forEach { FigureRow(it) } }
+    }
+    state.suggestion?.let { Suggestion(it, state.suggestsUsing) }
+}
+
+@Composable
+private fun Card(title: String, subtitle: String? = null, content: @Composable () -> Unit) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(20.dp))
+            .background(Mint.panel())
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, modifier = Modifier.semantics { heading() })
+        subtitle?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        content()
+    }
+}
+
+/** A label and its amount; the card's bottom line is ruled off and set in bold. */
+@Composable
+private fun FigureRow(row: OverviewRow) {
+    if (row.isTotal) HorizontalDivider(color = Mint.edge())
+    Row(
+        Modifier.fillMaxWidth().heightIn(min = 32.dp).semantics(mergeDescendants = true) {},
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        val weight = if (row.isTotal) FontWeight.SemiBold else FontWeight.Normal
+        Text(row.label, style = MaterialTheme.typography.bodyMedium, fontWeight = weight, modifier = Modifier.weight(1f))
+        Text(row.amount, style = MaterialTheme.typography.bodyMedium, fontWeight = weight)
+    }
+}
+
+/** A commitment: a tick when its payment was seen, a dashed circle when not — and the words, always. */
+@Composable
+private fun CommitmentLine(item: OverviewCommitment) {
+    Row(
+        Modifier.fillMaxWidth().heightIn(min = 44.dp).clearAndSetSemantics { contentDescription = item.description },
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            if (item.seen) Icons.Filled.CheckCircle else Icons.Outlined.RadioButtonUnchecked,
+            contentDescription = null,
+            tint = if (item.seen) Mint.greenText() else MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(20.dp),
+        )
+        Text(item.name, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+        Column(horizontalAlignment = Alignment.End) {
+            Text(item.amount, style = MaterialTheme.typography.bodyMedium)
+            Text(item.status, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+/** What to do with what is left — or, when the month went short, that it did. */
+@Composable
+private fun Suggestion(text: String, using: Boolean) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(Field.Glass)
+            .border(1.dp, Field.GlassEdge, RoundedCornerShape(16.dp))
+            .padding(14.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            if (using) Icons.Outlined.Savings else Icons.Filled.WarningAmber,
+            contentDescription = null,
+            tint = Field.ink(0.9f),
+            modifier = Modifier.size(22.dp),
+        )
+        Text(text, style = MaterialTheme.typography.bodyMedium, color = Field.ink())
+    }
+}
+
+/** A month that has ended: every category at what was actually spent. */
+@Composable
+private fun Spent(state: BudgetUiState) {
+    val dark = isSystemInDarkTheme()
+    Text(
+        strings(Strings.budget_where_it_went),
+        style = MaterialTheme.typography.titleLarge,
+        fontWeight = FontWeight.Bold,
+        color = Field.ink(),
+        modifier = Modifier.semantics { heading() },
+    )
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(24.dp))
+            .background(Mint.panel())
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        if (state.spentRows.isEmpty()) {
+            Text(strings(Strings.budget_empty), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        state.spentRows.forEach { spend ->
+            val icon = state.iconOf(spend)
+            Row(
+                Modifier.fillMaxWidth().heightIn(min = 48.dp).semantics(mergeDescendants = true) {},
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(
+                    Modifier.size(36.dp).clip(RoundedCornerShape(10.dp)).background(Mint.tile(icon.tint(dark))),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(icon.vector(), contentDescription = null, tint = icon.tint(dark), modifier = Modifier.size(18.dp))
+                }
+                Text(spend.name, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                Text(spend.amount, style = MaterialTheme.typography.bodyLarge)
+            }
         }
     }
 }

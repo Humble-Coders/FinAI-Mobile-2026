@@ -99,6 +99,26 @@ data class Budget(
     val monthSpending: String? = null,
     @SerialName("month_net")
     val monthNet: String? = null,
+    /** Setup's commitments, each with the payment seen for it this month. */
+    val commitments: List<BudgetCommitment> = emptyList(),
+    /** True once the month is over: shown as it happened, with nothing still to come. */
+    @SerialName("month_ended")
+    val monthEnded: Boolean = false,
+    /** While the month runs: setup's income not yet seen. Null once it has ended. */
+    @SerialName("income_expected")
+    val incomeExpected: String? = null,
+    /** While the month runs: commitments not seen paid yet. */
+    @SerialName("commitments_due")
+    val commitmentsDue: String? = null,
+    /** While the month runs: what the lines have left beyond the commitments still due in them. */
+    @SerialName("budget_rest")
+    val budgetRest: String? = null,
+    /** While the month runs: left now, plus income still expected, less everything still to come. */
+    @SerialName("projected_left")
+    val projectedLeft: String? = null,
+    /** Where the month's money went, largest first; sums to [monthSpending]. */
+    @SerialName("spending_by_category")
+    val spendingByCategory: List<CategorySpend> = emptyList(),
 ) {
     /** What "Spent … of …" says: all of it, or the lines alone from an older server. */
     val spentTotal: String get() = spentOverall ?: totalSpent
@@ -126,6 +146,26 @@ data class Budget(
      * [lines] — but they are still rows on the screen, and still editable.
      */
     val allLines: List<BudgetLine> get() = lines + listOfNotNull(savings, debt)
+}
+
+/**
+ * One setup commitment and whether its payment was seen this month. A null
+ * [paidOn] is "not seen", never "unpaid" — as on Home.
+ */
+@Serializable
+data class BudgetCommitment(
+    val name: String = "",
+    val expected: String = "0",
+    @SerialName("due_day")
+    val dueDay: Int? = null,
+    /** The spending category it belongs to (`rent`), or null. */
+    val category: String? = null,
+    @SerialName("paid_on")
+    val paidOn: String? = null,
+    @SerialName("paid_amount")
+    val paidAmount: String? = null,
+) {
+    val wasSeen: Boolean get() = paidOn != null
 }
 
 /** Spending in a category the month's budget has no line for. */

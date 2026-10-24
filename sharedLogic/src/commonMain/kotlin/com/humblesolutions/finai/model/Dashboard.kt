@@ -179,6 +179,8 @@ data class Commitment(
     /** The day of the month it falls due, when the person said; null otherwise. */
     @SerialName("due_day")
     val dueDay: Int? = null,
+    /** The spending category it belongs to (`rent`), or null when it has none. */
+    val category: String? = null,
 ) {
     val wasSeen: Boolean get() = match != null
 
