@@ -17,6 +17,8 @@ class BudgetOverviewTest {
         monthIncome = "5000.00",
         monthSpending = "2857.37",
         monthNet = "2142.63",
+        monthSaved = "500.00",
+        monthLeft = "1642.63",
         commitments = listOf(
             BudgetCommitment(name = "Rent", expected = "1800.00", dueDay = 1, category = "rent", paidOn = "2026-10-01", paidAmount = "1800.00"),
             BudgetCommitment(name = "Internet", expected = "80.00", dueDay = 25, category = "utilities"),
@@ -35,6 +37,8 @@ class BudgetOverviewTest {
         monthIncome = "5000.00",
         monthSpending = "4716.79",
         monthNet = "283.21",
+        monthSaved = "500.00",
+        monthLeft = "-216.79",
         commitments = listOf(BudgetCommitment(name = "GoodLife Fitness", expected = "54.99", dueDay = 3)),
         spendingByCategory = listOf(
             CategorySpend("cat-rent", "rent", "Rent & mortgage", "1800.00"),
@@ -51,7 +55,8 @@ class BudgetOverviewTest {
             listOf(
                 OverviewRow("Income received", "$5,000.00"),
                 OverviewRow("Spent", "$2,857.37"),
-                OverviewRow("Left now", "$2,142.63", isTotal = true),
+                OverviewRow("Saved", "$500.00"),
+                OverviewRow("Left now", "$1,642.63", isTotal = true),
             ),
             BudgetOverview.soFar(october),
         )
@@ -79,7 +84,7 @@ class BudgetOverviewTest {
             BudgetOverview.stillExpected(october),
         )
         assertEquals(
-            "If the month goes to plan, you'll have $1,280.63 left. Put it toward your goals or into savings.",
+            "If the month goes to plan, you'll have $1,280.63 left after spending and saving. Put it toward your goals or add it to your savings.",
             BudgetOverview.suggestion(october),
         )
     }
@@ -91,9 +96,12 @@ class BudgetOverviewTest {
         assertEquals("Left over", BudgetOverview.soFar(august)?.last()?.label)
         assertNull(BudgetOverview.stillExpected(august))
         assertEquals("Not seen this month", BudgetOverview.commitments(august).single().status)
+        // $283.21 net, less the $500 moved to savings.
+        assertEquals("You spent $216.79 more than came in this month.", BudgetOverview.suggestion(august))
+        val kept = august.copy(monthLeft = "83.21")
         assertEquals(
-            "You had $283.21 left this month. Put it toward your goals or into savings.",
-            BudgetOverview.suggestion(august),
+            "After spending and saving, you had $83.21 left this month. Put it toward your goals or add it to your savings.",
+            BudgetOverview.suggestion(kept),
         )
     }
 
@@ -111,7 +119,7 @@ class BudgetOverviewTest {
 
     @Test
     fun a_month_that_went_short_says_so_instead_of_suggesting() {
-        val short = august.copy(monthNet = "-200.00")
+        val short = august.copy(monthLeft = "-200.00")
         assertEquals("You spent $200.00 more than came in this month.", BudgetOverview.suggestion(short))
         assertFalse(BudgetOverview.suggestsUsing(short))
         val heading = october.copy(projectedLeft = "-50.00")
@@ -131,5 +139,26 @@ class BudgetOverviewTest {
     fun a_due_day_past_the_month_end_is_its_last_day() {
         val february = october.copy(month = "2027-02-01", commitments = listOf(BudgetCommitment(name = "Rent", expected = "1800.00", dueDay = 31)))
         assertEquals("Not seen yet · due Feb 28", BudgetOverview.commitments(february).single().status)
+    }
+
+    @Test
+    fun a_savings_target_still_to_set_aside_is_counted_before_what_is_left() {
+        val target = com.humblesolutions.finai.model.BudgetLine(categoryId = "cat-savings", slug = "savings", name = "Savings", allocated = "800.00", isUserSet = true)
+        val withTarget = october.copy(savings = target, savingsDue = "300.00")
+        assertEquals(
+            OverviewRow("Savings still to set aside", "−$300.00"),
+            BudgetOverview.stillExpected(withTarget)?.get(3),
+        )
+        assertNull(BudgetOverview.stillExpected(october)?.firstOrNull { it.label == "Savings still to set aside" }, "no target, no row")
+    }
+
+    @Test
+    fun until_a_target_is_set_the_room_for_one_is_offered() {
+        val room = october.copy(savingsRoom = "1562.00", savingsCategoryId = "cat-savings")
+        assertEquals("Up to $1,562.00 is left after your other lines.", BudgetOverview.savingsRoom(room))
+        val line = BudgetOverview.savingsTargetToSet(room)
+        assertEquals("cat-savings", line?.categoryId)
+        assertEquals("savings", line?.slug)
+        assertNull(BudgetOverview.savingsTargetToSet(october), "an older server names no savings category")
     }
 }

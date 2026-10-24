@@ -251,6 +251,17 @@ final class BudgetViewModel: ObservableObject {
         editErrorKey = nil
     }
 
+    /// "Set a savings target": an editor on a new savings line, its amount the person's to type.
+    func setSavingsTarget() {
+        guard let budget, budget.savings == nil,
+              let line = BudgetOverview.shared.savingsTargetToSet(budget: budget, locale: locale) else { return }
+        picking = false
+        editing = line
+        editingIsNew = true
+        draftAmount = ""
+        editErrorKey = nil
+    }
+
     func cancelEdit() {
         editing = nil
         editingIsNew = false

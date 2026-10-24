@@ -19,6 +19,7 @@ import com.humblesolutions.finai.repository.CapabilitiesRepository
 import com.humblesolutions.finai.repository.CategoriesRepository
 import com.humblesolutions.finai.usecase.BudgetDraft
 import com.humblesolutions.finai.usecase.BudgetEdit
+import com.humblesolutions.finai.usecase.BudgetOverview
 import com.humblesolutions.finai.usecase.DashboardMonths
 import com.humblesolutions.finai.util.BudgetChanged
 import com.humblesolutions.finai.util.LedgerChanged
@@ -271,6 +272,14 @@ class BudgetViewModel(
                 editErrorKey = null,
             )
         }
+    }
+
+    /** "Set a savings target": an editor on a new savings line, its amount the person's to type. */
+    fun setSavingsTarget() {
+        val budget = _uiState.value.budget ?: return
+        if (budget.savings != null) return
+        val line = BudgetOverview.savingsTargetToSet(budget, _uiState.value.locale) ?: return
+        update { it.copy(picking = false, editing = line, editingIsNew = true, draft = BudgetDraft(), editErrorKey = null) }
     }
 
     fun onAmountChange(amount: String) = update { it.copy(draft = BudgetDraft(amount), editErrorKey = null) }

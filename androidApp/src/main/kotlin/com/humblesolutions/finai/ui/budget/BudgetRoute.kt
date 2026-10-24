@@ -45,6 +45,7 @@ internal fun BudgetRoute(
         onEdit = model::edit,
         onAddCategory = model::addCategory,
         onAddUnbudgeted = model::addFromUnbudgeted,
+        onSetSavingsTarget = model::setSavingsTarget,
         onReviewUnfiled = onReview,
         onRetry = { model.load() },
         onImport = onImport,

@@ -347,8 +347,26 @@ struct BudgetView: View {
             ForEach(model.lines, id: \.categoryId) { line in
                 LineRow(model: model, line: line, dark: dark)
             }
+            // Savings is a target the person sets, never a figure filled in for them.
             if let savings = model.savings {
-                LineRow(model: model, line: savings, dark: dark)
+                LineRow(model: model, line: savings, dark: dark, caption: L.t(Strings.shared.budget_savings_caption))
+            } else if let budget = model.budget, budget.savingsCategoryId != nil {
+                Button { model.setSavingsTarget() } label: {
+                    HStack(spacing: 12) {
+                        IconTile(symbol: "banknote", accent: Mint.greenText(dark), size: 40, iconSize: 18)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(L.t(Strings.shared.budget_set_target))
+                                .font(.body)
+                                .foregroundColor(Mint.greenText(dark))
+                            if let room = BudgetOverview.shared.savingsRoom(budget: budget, locale: model.locale) {
+                                Text(room).font(.caption).foregroundColor(.secondary)
+                            }
+                        }
+                        Spacer(minLength: 0)
+                    }
+                    .frame(minHeight: 44)
+                }
+                .buttonStyle(.plain)
             }
             if let debt = model.debt {
                 LineRow(model: model, line: debt, dark: dark, caption: L.t(Strings.shared.budget_debt_caption))
@@ -370,6 +388,9 @@ struct BudgetView: View {
                 .frame(minHeight: 44)
             }
             .buttonStyle(.plain)
+            Text(L.t(Strings.shared.budget_carries_forward))
+                .font(.caption2)
+                .foregroundColor(.secondary)
 
             if let unfiled = unfiledLabel {
                 VStack(alignment: .leading, spacing: 6) {

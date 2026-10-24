@@ -97,6 +97,8 @@ internal fun BudgetScreen(
     onImport: () -> Unit,
     /** "Add to budget" on a category spent in with no line. */
     onAddUnbudgeted: (String) -> Unit = {},
+    /** "Set a savings target", when there is none. */
+    onSetSavingsTarget: () -> Unit = {},
     /** Your plan (#76), from the Savings line; null when the plan is off, which hides the link. */
     onOpenPlan: (() -> Unit)? = null,
 ) {
@@ -142,7 +144,7 @@ internal fun BudgetScreen(
                             // full month (PRD F9), and hiding someone's own
                             // figures would be a lie about what they had set.
                             PlanSummary(state, onOpenPlan)
-                            Sheet(state, onEdit, onAddCategory, onReviewUnfiled, onAddUnbudgeted)
+                            Sheet(state, onEdit, onAddCategory, onReviewUnfiled, onAddUnbudgeted, onSetSavingsTarget)
                         } else {
                             // A month that has ended is a record, not a plan:
                             // a one-off is a row in its month, not a line.
@@ -439,6 +441,7 @@ private fun Sheet(
     onAddCategory: () -> Unit,
     onReviewUnfiled: () -> Unit,
     onAddUnbudgeted: (String) -> Unit,
+    onSetSavingsTarget: () -> Unit,
 ) {
     Column(
         Modifier
@@ -458,7 +461,11 @@ private fun Sheet(
 
         state.lines.forEach { line -> LineRow(state, line) { onEdit(line.categoryId) } }
 
-        state.savings?.let { line -> LineRow(state, line) { onEdit(line.categoryId) } }
+        // Savings is a target the person sets, never a figure filled in for them.
+        state.savings?.let { line ->
+            LineRow(state, line, caption = strings(Strings.budget_savings_caption)) { onEdit(line.categoryId) }
+        }
+        if (state.canSetSavingsTarget) SetSavingsTargetRow(state.savingsRoomLabel, onSetSavingsTarget)
 
         state.debt?.let { line ->
             LineRow(state, line, caption = strings(Strings.budget_debt_caption)) { onEdit(line.categoryId) }
@@ -467,6 +474,11 @@ private fun Sheet(
         state.unbudgetedLabel?.let { Unbudgeted(state, it, onAddUnbudgeted) }
 
         AddCategoryRow(onAddCategory)
+        Text(
+            strings(Strings.budget_carries_forward),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
 
         state.unfiledLabel?.let { label ->
             Column(
@@ -628,6 +640,32 @@ private fun Unbudgeted(state: BudgetUiState, label: String, onAdd: (String) -> U
                     Text(strings(Strings.budget_unbudgeted_add), maxLines = 1)
                 }
             }
+        }
+    }
+}
+
+/** "Set a savings target", with how much room there is for one. */
+@Composable
+private fun SetSavingsTargetRow(room: String?, onClick: () -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .clickable(role = Role.Button, onClick = onClick)
+            .heightIn(min = 48.dp)
+            .padding(vertical = 10.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            Modifier.size(40.dp).clip(RoundedCornerShape(12.dp)).background(Mint.tile(Mint.greenText())),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(Icons.Outlined.Savings, contentDescription = null, tint = Mint.greenText(), modifier = Modifier.size(20.dp))
+        }
+        Column(Modifier.weight(1f)) {
+            Text(strings(Strings.budget_set_target), style = MaterialTheme.typography.bodyLarge, color = Mint.greenText())
+            room?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         }
     }
 }

@@ -158,7 +158,13 @@ data class BudgetUiState(
 
     fun iconOf(spend: UnbudgetedSpend): CategoryIcon = CategoryIcons.forSlug(spend.slug)
 
-    /** "Set aside $900", or null when there is no savings line. */
+    /** "Up to $1,562.00 is left after your other lines.", shown until a savings target is set. */
+    val savingsRoomLabel: String? get() = budget?.takeIf { it.savings == null }?.let { BudgetOverview.savingsRoom(it, locale) }
+
+    /** Whether "Set a savings target" can be offered: there is no target yet, and the server names the category. */
+    val canSetSavingsTarget: Boolean get() = budget?.let { it.savings == null && it.savingsCategoryId != null } ?: false
+
+    /** "Savings target $900", or null when no target is set. */
     val savingsLabel: String? get() = savings?.let { text(Strings.budget_set_aside, money(it.allocated)) }
 
     /** "Your budget is $200 more than your income", or null when it is not. */
@@ -231,11 +237,16 @@ data class BudgetUiState(
 
     val canSave: Boolean get() = !saving && !resetting && editBlock == null
 
-    /** "Use suggestion ($440)", shown only for a line the person has overridden. */
+    /**
+     * "Use suggestion ($440)", shown only for a line the person has
+     * overridden — or "Remove target" on the savings target, which has no
+     * suggestion to go back to.
+     */
     val useSuggestionLabel: String?
         get() {
             val line = editing ?: return null
             if (editingIsNew || !line.isUserSet) return null
+            if (line.slug == SAVINGS_SLUG) return text(Strings.budget_remove_target)
             return text(Strings.budget_edit_use_suggestion, money(line.suggested))
         }
 
@@ -259,3 +270,5 @@ data class BudgetUiState(
 
     fun iconOf(category: Category): CategoryIcon = CategoryIcons.forSlug(category.slug)
 }
+
+private const val SAVINGS_SLUG = "savings"

@@ -116,6 +116,21 @@ data class Budget(
     /** While the month runs: left now, plus income still expected, less everything still to come. */
     @SerialName("projected_left")
     val projectedLeft: String? = null,
+    /** While the month runs: the savings target not yet moved to savings. */
+    @SerialName("savings_due")
+    val savingsDue: String? = null,
+    /** Money moved to savings this month, less any taken back out. */
+    @SerialName("month_saved")
+    val monthSaved: String? = null,
+    /** Income less spending less savings. */
+    @SerialName("month_left")
+    val monthLeft: String? = null,
+    /** Expected income less every line but savings: the room for a savings target. */
+    @SerialName("savings_room")
+    val savingsRoom: String = "0",
+    /** The category a savings target is set on. */
+    @SerialName("savings_category_id")
+    val savingsCategoryId: String? = null,
     /** Where the month's money went, largest first; sums to [monthSpending]. */
     @SerialName("spending_by_category")
     val spendingByCategory: List<CategorySpend> = emptyList(),

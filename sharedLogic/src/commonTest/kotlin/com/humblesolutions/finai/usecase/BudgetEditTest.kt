@@ -219,7 +219,7 @@ class BudgetEditTest {
             unbudgetedSpent = "1800.00",
         )
         assertEquals(
-            "$1,800.00 spent this month in categories with no line. It counts toward what you've spent.",
+            "$1,800.00 went to categories your budget doesn't plan for yet. Add one and it's planned for this month and every month after.",
             BudgetEdit.unbudgetedLine(budget),
         )
     }

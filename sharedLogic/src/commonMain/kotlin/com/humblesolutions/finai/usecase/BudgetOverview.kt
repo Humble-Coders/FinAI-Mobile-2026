@@ -57,14 +57,15 @@ object BudgetOverview {
     fun soFar(budget: Budget, locale: String = "en"): List<OverviewRow>? {
         val income = budget.monthIncome ?: return null
         val spending = budget.monthSpending ?: return null
-        val net = budget.monthNet ?: return null
+        val left = budget.monthLeft ?: return null
         fun money(amount: String) = Money.format(amount, budget.currency, locale)
         fun text(key: String) = LocalizationRegistry.get(key, locale)
         val ended = budget.monthEnded
         return listOf(
             OverviewRow(text(if (ended) Strings.budget_income else Strings.budget_income_received), money(income)),
             OverviewRow(text(Strings.budget_spent), money(spending)),
-            OverviewRow(text(if (ended) Strings.budget_left_over else Strings.budget_left_now), money(net), isTotal = true),
+            OverviewRow(text(Strings.budget_saved), money(budget.monthSaved ?: "0")),
+            OverviewRow(text(if (ended) Strings.budget_left_over else Strings.budget_left_now), money(left), isTotal = true),
         )
     }
 
@@ -108,16 +109,21 @@ object BudgetOverview {
         fun money(amount: String) = Money.format(amount, budget.currency, locale)
         fun text(key: String, amount: String) = LocalizationRegistry.format(key, listOf(money(amount)), locale)
         fun label(key: String) = LocalizationRegistry.get(key, locale)
-        return listOf(
+        val savingsDue = budget.savingsDue?.takeIf { budget.savings != null }
+        return listOfNotNull(
             OverviewRow(label(Strings.budget_income_still_expected), text(Strings.budget_plus, income)),
             OverviewRow(label(Strings.budget_commitments_not_seen), text(Strings.budget_minus, due)),
             OverviewRow(label(Strings.budget_rest_of_budget), text(Strings.budget_minus, rest)),
+            savingsDue?.let { OverviewRow(label(Strings.budget_savings_still_due), text(Strings.budget_minus, it)) },
             OverviewRow(label(Strings.budget_left_at_month_end), money(left), isTotal = true),
         )
     }
 
-    /** What is left to put to use: the month's net once it has ended, else where the plan lands. */
-    fun leftover(budget: Budget): String? = if (budget.monthEnded) budget.monthNet else budget.projectedLeft
+    /**
+     * What is free to put to use — income less spending less savings: what
+     * was left once the month has ended, else where the plan lands.
+     */
+    fun leftover(budget: Budget): String? = if (budget.monthEnded) budget.monthLeft else budget.projectedLeft
 
     /**
      * "You had $283.21 left this month. Put it toward your goals or into
@@ -147,6 +153,28 @@ object BudgetOverview {
 
     /** A month that has ended, category by category, largest first. */
     fun spent(budget: Budget, locale: String = "en"): List<OverviewSpend> = budget.spendingByCategory.map { spend(it, budget, locale) }
+
+    // ── The savings target ──────────────────────────────────────────────
+
+    /** "Up to $1,562.00 is left after your other lines.", when there is room for a target. */
+    fun savingsRoom(budget: Budget, locale: String = "en"): String? {
+        if (!Money.isPositive(budget.savingsRoom, Money.fractionDigits(budget.currency))) return null
+        return LocalizationRegistry.format(Strings.budget_savings_room, listOf(Money.format(budget.savingsRoom, budget.currency, locale)), locale)
+    }
+
+    /**
+     * The line "Set a savings target" opens the editor on: a new one, on the
+     * savings category — or null from a server that does not name it.
+     */
+    fun savingsTargetToSet(budget: Budget, locale: String = "en"): com.humblesolutions.finai.model.BudgetLine? {
+        val id = budget.savingsCategoryId ?: return null
+        return com.humblesolutions.finai.model.BudgetLine(
+            categoryId = id,
+            slug = "savings",
+            name = LocalizationRegistry.get(Strings.category_savings, locale),
+            suggested = budget.savingsRoom,
+        )
+    }
 
     private fun spend(item: CategorySpend, budget: Budget, locale: String): OverviewSpend = OverviewSpend(
         name = item.name ?: LocalizationRegistry.get(Strings.budget_not_filed, locale),

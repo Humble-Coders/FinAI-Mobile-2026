@@ -526,6 +526,8 @@ class BudgetViewModelTest {
             monthIncome = "5000.00",
             monthSpending = "4716.79",
             monthNet = "283.21",
+            monthSaved = "200.00",
+            monthLeft = "83.21",
             spendingByCategory = listOf(CategorySpend("cat-shopping", "shopping", "Shopping", "1249.99")),
         )
         val state = model(FakeBudgets(answer = ended)).uiState.value
@@ -533,7 +535,10 @@ class BudgetViewModelTest {
         assertFalse(state.showsPlan)
         assertEquals(listOf("Shopping"), state.spentRows.map { it.name })
         assertNull(state.stillExpected)
-        assertEquals("You had $283.21 left this month. Put it toward your goals or into savings.", state.suggestion)
+        assertEquals(
+            "After spending and saving, you had $83.21 left this month. Put it toward your goals or add it to your savings.",
+            state.suggestion,
+        )
     }
 
     @Test
@@ -552,6 +557,21 @@ class BudgetViewModelTest {
         assertTrue(state.showsPlan)
         assertEquals("$1,280.63", state.stillExpected?.last()?.amount)
         assertTrue(state.suggestsUsing)
+    }
+
+    @Test
+    fun set_a_savings_target_opens_a_new_savings_line_and_saves_it() = runTest {
+        val budgets = FakeBudgets(answer = ready().copy(savingsRoom = "4250.00", savingsCategoryId = "cat-savings"))
+        val model = model(budgets)
+
+        assertTrue(model.uiState.value.canSetSavingsTarget)
+        model.setSavingsTarget()
+        assertEquals("cat-savings", model.uiState.value.editing?.categoryId)
+        assertTrue(model.uiState.value.editingIsNew)
+        model.onAmountChange("800")
+        model.save()
+
+        assertEquals(Triple(model.uiState.value.month, "cat-savings", "800"), budgets.writes.last())
     }
 
     // ── Fixtures ────────────────────────────────────────────────────────
