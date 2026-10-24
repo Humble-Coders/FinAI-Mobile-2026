@@ -222,7 +222,7 @@ final class MoneyDetailViewModel: ObservableObject {
     // MARK: - Adding a debt
 
     func openDebt() {
-        debtDraft = ItemDraft(name: "", amount: "", minimumPayment: "", interestRatePercent: "", dueDay: "")
+        debtDraft = ItemDraft(name: "", amount: "", minimumPayment: "", interestRatePercent: "", dueDay: "", category: "")
         editingDebt = nil
         debtTouched = false
         debtErrorKey = nil
@@ -246,7 +246,8 @@ final class MoneyDetailViewModel: ObservableObject {
             amount: amount ?? draft.amount,
             minimumPayment: minimumPayment ?? draft.minimumPayment,
             interestRatePercent: interestRatePercent ?? draft.interestRatePercent,
-            dueDay: dueDay.map { String($0.filter(\.isNumber).prefix(2)) } ?? draft.dueDay
+            dueDay: dueDay.map { String($0.filter(\.isNumber).prefix(2)) } ?? draft.dueDay,
+            category: draft.category
         )
         debtTouched = true
         debtErrorKey = nil
@@ -302,17 +303,20 @@ final class MoneyDetailViewModel: ObservableObject {
     // MARK: - Adding an obligation
 
     func openObligation() {
-        obligationDraft = CommitmentDraft(name: "", amount: "", dueDay: "")
+        obligationDraft = CommitmentDraft(name: "", amount: "", dueDay: "", category: "")
         obligationTouched = false
         obligationErrorKey = nil
     }
 
-    func setObligation(name: String? = nil, amount: String? = nil, dueDay: String? = nil) {
-        guard let draft = obligationDraft else { return }
+    func setObligation(name: String? = nil, amount: String? = nil, dueDay: String? = nil, category: String? = nil) {
+        guard var draft = obligationDraft else { return }
+        // A name like a preset's starts in its category; one already chosen stays.
+        if let name { draft = CommitmentEdit.shared.withName(draft: draft, name: name, locale: "en") }
         obligationDraft = CommitmentDraft(
-            name: name ?? draft.name,
+            name: draft.name,
             amount: amount ?? draft.amount,
-            dueDay: dueDay.map { String($0.filter(\.isNumber).prefix(2)) } ?? draft.dueDay
+            dueDay: dueDay.map { String($0.filter(\.isNumber).prefix(2)) } ?? draft.dueDay,
+            category: category ?? draft.category
         )
         obligationTouched = true
         obligationErrorKey = nil
@@ -351,7 +355,12 @@ final class MoneyDetailViewModel: ObservableObject {
         Task { [weak self] in
             guard let self else { return }
             let failed = await self.addObligation(
-                CommitmentDraft(name: name, amount: amount, dueDay: dueDay.map(String.init) ?? "")
+                // Its category from the preset its name matches, if any.
+                CommitmentEdit.shared.withName(
+                    draft: CommitmentDraft(name: "", amount: amount, dueDay: dueDay.map(String.init) ?? "", category: ""),
+                    name: name,
+                    locale: "en"
+                )
             )
             self.noticeKey = failed == nil ? Strings.shared.money_obligation_added : Strings.shared.money_obligation_failed
             if failed == nil { self.load(refresh: true) }

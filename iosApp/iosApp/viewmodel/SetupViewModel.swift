@@ -312,7 +312,7 @@ final class SetupViewModel: ObservableObject {
         errorKey = nil
     }
 
-    private static let emptyRow = ItemDraft(name: "", amount: "", minimumPayment: "", interestRatePercent: "", dueDay: "")
+    private static let emptyRow = ItemDraft(name: "", amount: "", minimumPayment: "", interestRatePercent: "", dueDay: "", category: "")
 
     func addRow() {
         rows.append(Self.emptyRow)

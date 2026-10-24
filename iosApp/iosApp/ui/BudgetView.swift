@@ -50,11 +50,20 @@ struct BudgetView: View {
                         if let progress = model.learning {
                             LearningFieldCard(progress: progress, onImport: onImport)
                         }
-                        // Hand-set lines show whatever the status says:
-                        // manual budgeting is available before the first full
-                        // month (PRD F9), and hiding someone's own figures
-                        // would be a lie about what they had set.
-                        sheet(dark)
+                        // The month as the statements tell it, first.
+                        if let budget = model.budget { overview(budget, dark: dark) }
+                        if model.budget.map({ BudgetOverview.shared.showsPlan(budget: $0) }) ?? true {
+                            // Hand-set lines show whatever the status says:
+                            // manual budgeting is available before the first
+                            // full month (PRD F9), and hiding someone's own
+                            // figures would be a lie about what they had set.
+                            planSummary
+                            sheet(dark)
+                        } else if let budget = model.budget {
+                            // A month that has ended is a record, not a plan:
+                            // a one-off is a row in its month, not a line.
+                            spent(budget, dark: dark)
+                        }
                     }
                 }
                 .frame(maxWidth: 560)
@@ -111,7 +120,16 @@ struct BudgetView: View {
                 }
 
             monthButton
+        }
+    }
 
+    /// "Your budget": spent of allocated, expected income, what is set aside.
+    private var planSummary: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(L.t(Strings.shared.budget_your_budget))
+                .font(.title2.weight(.bold))
+                .foregroundColor(Field.ink())
+                .accessibilityAddTraits(.isHeader)
             if let budget = model.budget {
                 Text(totalsLabel(budget))
                     .font(.headline)
@@ -130,12 +148,6 @@ struct BudgetView: View {
                         .foregroundColor(Field.ink())
                 }
 
-                // What actually came in and went out, the whole month — Home's figures.
-                if let monthNet = BudgetEdit.shared.monthLine(budget: budget, locale: model.locale) {
-                    Text(monthNet)
-                        .font(.subheadline.weight(.medium))
-                        .foregroundColor(Field.ink(0.92))
-                }
 
                 if let savings = budget.savings {
                     Text(L.t(Strings.shared.budget_set_aside, money(savings.allocated)))
@@ -154,6 +166,129 @@ struct BudgetView: View {
                     shortfallRow(L.t(Strings.shared.budget_shortfall, money(shortfall)))
                 }
             }
+        }
+    }
+
+    // MARK: - Above the lines
+
+    /// The month so far, its commitments, what is still to come, and what to do with the rest.
+    @ViewBuilder
+    private func overview(_ budget: Budget, dark: Bool) -> some View {
+        let words = BudgetOverview.shared
+        if let rows = words.soFar(budget: budget, locale: model.locale) {
+            card(words.soFarTitle(budget: budget, locale: model.locale), subtitle: L.t(Strings.shared.budget_from_statements), dark: dark) {
+                ForEach(Array(rows.enumerated()), id: \.offset) { _, row in figureRow(row) }
+            }
+        }
+        let commitments = words.commitments(budget: budget, locale: model.locale)
+        if !commitments.isEmpty {
+            card(L.t(Strings.shared.budget_commitments_title), dark: dark) {
+                ForEach(Array(commitments.enumerated()), id: \.offset) { _, item in commitmentRow(item, dark: dark) }
+            }
+        }
+        if let rows = words.stillExpected(budget: budget, locale: model.locale) {
+            card(L.t(Strings.shared.budget_still_expected_title), dark: dark) {
+                ForEach(Array(rows.enumerated()), id: \.offset) { _, row in figureRow(row) }
+            }
+        }
+        if let text = words.suggestion(budget: budget, locale: model.locale) {
+            HStack(spacing: 10) {
+                Image(systemName: words.suggestsUsing(budget: budget) ? "banknote" : "exclamationmark.triangle.fill")
+                    .foregroundColor(Field.ink(0.9))
+                    .accessibilityHidden(true)
+                Text(text)
+                    .font(.subheadline)
+                    .foregroundColor(Field.ink())
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
+            }
+            .padding(14)
+            .background(RoundedRectangle(cornerRadius: 16).fill(Field.glass))
+            .overlay(RoundedRectangle(cornerRadius: 16).stroke(Field.glassEdge, lineWidth: 1))
+        }
+    }
+
+    private func card<Content: View>(_ title: String, subtitle: String? = nil, dark: Bool, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+                .accessibilityAddTraits(.isHeader)
+            if let subtitle {
+                Text(subtitle).font(.caption).foregroundColor(.secondary)
+            }
+            content()
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 20).fill(Mint.panel(dark)))
+    }
+
+    /// A label and its amount; the card's bottom line is ruled off and set in bold.
+    @ViewBuilder
+    private func figureRow(_ row: OverviewRow) -> some View {
+        if row.isTotal { Divider() }
+        HStack(spacing: 12) {
+            Text(row.label)
+            Spacer(minLength: 8)
+            Text(row.amount)
+        }
+        .font(row.isTotal ? .subheadline.weight(.semibold) : .subheadline)
+        .frame(minHeight: 32)
+        .accessibilityElement(children: .combine)
+    }
+
+    /// A tick when its payment was seen, a dashed circle when not — and the words, always.
+    private func commitmentRow(_ item: OverviewCommitment, dark: Bool) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: item.seen ? "checkmark.circle.fill" : "circle.dashed")
+                .foregroundColor(item.seen ? Mint.greenText(dark) : .secondary)
+            Text(item.name)
+                .font(.subheadline)
+                .lineLimit(1)
+                .truncationMode(.tail)
+            Spacer(minLength: 8)
+            VStack(alignment: .trailing, spacing: 2) {
+                Text(item.amount).font(.subheadline)
+                Text(item.status).font(.caption2).foregroundColor(.secondary)
+            }
+        }
+        .frame(minHeight: 44)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(item.description_)
+    }
+
+    /// A month that has ended: every category at what was actually spent.
+    private func spent(_ budget: Budget, dark: Bool) -> some View {
+        let rows = BudgetOverview.shared.spent(budget: budget, locale: model.locale)
+        return VStack(alignment: .leading, spacing: 12) {
+            Text(L.t(Strings.shared.budget_where_it_went))
+                .font(.title2.weight(.bold))
+                .foregroundColor(Field.ink())
+                .accessibilityAddTraits(.isHeader)
+            VStack(alignment: .leading, spacing: 10) {
+                if rows.isEmpty {
+                    Text(L.t(Strings.shared.budget_empty)).font(.subheadline).foregroundColor(.secondary)
+                }
+                ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+                    HStack(spacing: 12) {
+                        IconTile(
+                            symbol: CategoryIcons.shared.forSlug(slug: row.slug).systemName,
+                            accent: CategoryIcons.shared.forSlug(slug: row.slug).tint(dark),
+                            size: 36,
+                            iconSize: 16
+                        )
+                        Text(row.name).font(.body).lineLimit(1).truncationMode(.tail)
+                        Spacer(minLength: 8)
+                        Text(row.amount).font(.body)
+                    }
+                    .frame(minHeight: 44)
+                    .accessibilityElement(children: .combine)
+                }
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 24).fill(Mint.panel(dark)))
         }
     }
 

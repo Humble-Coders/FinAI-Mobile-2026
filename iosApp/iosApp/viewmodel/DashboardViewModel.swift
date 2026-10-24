@@ -51,7 +51,7 @@ final class DashboardViewModel: ObservableObject {
     @Published private(set) var addingCommitment = false
     /// Asking "Delete Rent?" before anything is sent.
     @Published var confirmingCommitmentDelete = false
-    @Published private(set) var commitmentDraft = CommitmentDraft(name: "", amount: "", dueDay: "")
+    @Published private(set) var commitmentDraft = CommitmentDraft(name: "", amount: "", dueDay: "", category: "")
     @Published private(set) var commitmentSaving = false
     @Published private(set) var commitmentErrorKey: String?
 
@@ -277,12 +277,17 @@ final class DashboardViewModel: ObservableObject {
     }
 
     func setCommitmentName(_ name: String) {
-        commitmentDraft = CommitmentDraft(name: name, amount: commitmentDraft.amount, dueDay: commitmentDraft.dueDay)
+        commitmentDraft = CommitmentEdit.shared.withName(draft: commitmentDraft, name: name, locale: locale)
+        commitmentErrorKey = nil
+    }
+
+    func setCommitmentCategory(_ slug: String) {
+        commitmentDraft = CommitmentDraft(name: commitmentDraft.name, amount: commitmentDraft.amount, dueDay: commitmentDraft.dueDay, category: slug)
         commitmentErrorKey = nil
     }
 
     func setCommitmentAmount(_ amount: String) {
-        commitmentDraft = CommitmentDraft(name: commitmentDraft.name, amount: amount, dueDay: commitmentDraft.dueDay)
+        commitmentDraft = CommitmentDraft(name: commitmentDraft.name, amount: amount, dueDay: commitmentDraft.dueDay, category: commitmentDraft.category)
         commitmentErrorKey = nil
     }
 
@@ -291,7 +296,7 @@ final class DashboardViewModel: ObservableObject {
         addingCommitment = true
         editingCommitment = nil
         confirmingCommitmentDelete = false
-        commitmentDraft = CommitmentDraft(name: "", amount: "", dueDay: "")
+        commitmentDraft = CommitmentDraft(name: "", amount: "", dueDay: "", category: "")
         commitmentSaving = false
         commitmentErrorKey = nil
     }

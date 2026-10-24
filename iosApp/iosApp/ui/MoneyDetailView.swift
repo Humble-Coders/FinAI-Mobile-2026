@@ -779,6 +779,10 @@ private struct ObligationSheet: View {
                         isError: notice == .dueDayInvalid,
                         text: Binding(get: { model.obligationDraft?.dueDay ?? "" }, set: { model.setObligation(dueDay: $0) })
                     )
+                    CommitmentCategoryField(
+                        selected: model.obligationDraft?.category ?? "",
+                        isError: notice == .noCategory
+                    ) { model.setObligation(category: $0) }
                     ErrorText(messageKey: model.obligationErrorKey ?? notice?.messageKey)
                     GradientButton(
                         title: L.t(Strings.shared.money_obligation_save),

@@ -1126,6 +1126,8 @@ private struct CommitmentEditor: View {
                         large: false,
                         text: Binding(get: { model.commitmentDraft.amount }, set: { model.setCommitmentAmount($0) })
                     )
+                    // Its budget line: the line never allocates less than it.
+                    CommitmentCategoryField(selected: model.commitmentDraft.category) { model.setCommitmentCategory($0) }
                 }
                 Section {
                     ErrorText(messageKey: model.commitmentNotice)

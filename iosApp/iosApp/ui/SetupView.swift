@@ -453,7 +453,10 @@ private struct ItemListView: View {
                                 label: L.t(Strings.shared.setup_item_name),
                                 autocapitalization: .words,
                                 text: binding(index, \.name) { row, value in
-                                    rebuilt(row, name: value)
+                                    // A commitment named like a preset starts in its category.
+                                    list == .obligations && row.category.isEmpty
+                                        ? rebuilt(row, name: value, category: CommitmentCategories.shared.presetSlug(name: value, locale: "en") ?? "")
+                                        : rebuilt(row, name: value)
                                 }
                             )
                             AmountField(
@@ -495,6 +498,15 @@ private struct ItemListView: View {
                                     }
                                 )
                             }
+                            if list == .obligations, model.rows.indices.contains(index) {
+                                CommitmentCategoryField(
+                                    selected: model.rows[index].category,
+                                    isError: model.rowBlock(at: index) == .categoryMissing
+                                ) { slug in
+                                    guard model.rows.indices.contains(index) else { return }
+                                    model.rows[index] = rebuilt(model.rows[index], category: slug)
+                                }
+                            }
                             if let block = model.rowBlock(at: index) {
                                 ErrorText(messageKey: block.messageKey)
                             }
@@ -533,14 +545,16 @@ private struct ItemListView: View {
         amount: String? = nil,
         minimumPayment: String? = nil,
         interestRatePercent: String? = nil,
-        dueDay: String? = nil
+        dueDay: String? = nil,
+        category: String? = nil
     ) -> ItemDraft {
         ItemDraft(
             name: name ?? row.name,
             amount: amount ?? row.amount,
             minimumPayment: minimumPayment ?? row.minimumPayment,
             interestRatePercent: interestRatePercent ?? row.interestRatePercent,
-            dueDay: dueDay ?? row.dueDay
+            dueDay: dueDay ?? row.dueDay,
+            category: category ?? row.category
         )
     }
 
