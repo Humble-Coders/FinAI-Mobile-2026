@@ -28,6 +28,8 @@ struct BudgetView: View {
     /// How far the big title has shrunk into the bar, as on Home.
     @State private var collapse = HeaderCollapse()
     @State private var pickingMonth = false
+    /// "Ask AI for a budget": the suggested budget, over this screen.
+    @State private var askingAi = false
 
     private static let space = "budget"
 
@@ -88,6 +90,12 @@ struct BudgetView: View {
         .onChange(of: model.snapshot) { _, snapshot in stored = snapshot }
         .sheet(isPresented: editingShown) { BudgetEditorSheet(model: model) }
         .sheet(isPresented: $model.picking) { BudgetCategorySheet(model: model) }
+        .fullScreenCover(isPresented: $askingAi) {
+            AiBudgetView(userId: userId, inSetup: false) {
+                askingAi = false
+                Task { await model.load(refresh: true) }
+            }
+        }
         .sheet(isPresented: $pickingMonth) {
             MonthYearPickerSheet(
                 selected: model.month,
@@ -206,6 +214,88 @@ struct BudgetView: View {
             .background(RoundedRectangle(cornerRadius: 16).fill(Field.glass))
             .overlay(RoundedRectangle(cornerRadius: 16).stroke(Field.glassEdge, lineWidth: 1))
         }
+        // The month's AI review, in words only — every figure here is the server's.
+        if words.showsPlan(budget: budget), let advice = budget.aiAdvice {
+            card(L.t(Strings.shared.ai_budget_review_title), dark: dark) {
+                HStack(alignment: .top, spacing: 10) {
+                    Image(systemName: "sparkles").foregroundColor(Mint.greenText(dark)).accessibilityHidden(true)
+                    Text(advice).font(.subheadline).fixedSize(horizontal: false, vertical: true)
+                }
+                if let onOpenPlan {
+                    Button(L.t(Strings.shared.ai_budget_see_plan), action: onOpenPlan)
+                        .font(.subheadline.weight(.semibold))
+                        .frame(minHeight: 44)
+                }
+            }
+        }
+    }
+
+    /// "AI suggests $430.00 · why", with Use, under a line whose suggestion differs.
+    @ViewBuilder
+    private func aiHint(_ line: BudgetLine, dark: Bool) -> some View {
+        if let label = AiBudgetEdit.shared.suggestionLabel(line: line, currency: model.currency, locale: model.locale) {
+            HStack(spacing: 8) {
+                Image(systemName: "sparkles")
+                    .font(.caption)
+                    .foregroundColor(Mint.greenText(dark))
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(label).font(.caption.weight(.semibold)).foregroundColor(Mint.greenText(dark))
+                    if let reason = line.aiReason {
+                        Text(reason).font(.caption2).foregroundColor(.secondary)
+                    }
+                }
+                Spacer(minLength: 8)
+                Button(L.t(Strings.shared.ai_budget_use)) { model.useAiSuggestion(categoryId: line.categoryId) }
+                    .font(.subheadline.weight(.semibold))
+                    .frame(minHeight: 44)
+                    .disabled(model.saving)
+                    .accessibilityLabel("\(L.t(Strings.shared.ai_budget_use)), \(label), \(line.name)")
+            }
+            .padding(.leading, 52)
+        }
+    }
+
+    /// Categories the AI suggests planning for that have no line and no spending yet.
+    private func aiExtras(_ budget: Budget, dark: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(L.t(Strings.shared.ai_budget_extra_title))
+                .font(.subheadline.weight(.semibold))
+                .accessibilityAddTraits(.isHeader)
+            ForEach(budget.aiExtra, id: \.categoryId) { extra in
+                HStack(spacing: 12) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("\(extra.name) · \(money(extra.amount))").font(.body)
+                        if let reason = extra.reason {
+                            Text(reason).font(.caption).foregroundColor(.secondary)
+                        }
+                    }
+                    Spacer(minLength: 8)
+                    Button(L.t(Strings.shared.budget_unbudgeted_add)) { model.addFromAi(categoryId: extra.categoryId) }
+                        .font(.subheadline.weight(.semibold))
+                        .frame(minHeight: 44)
+                }
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 16).fill(Mint.card(dark)))
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(Mint.edge(dark), lineWidth: 1))
+    }
+
+    private func askAiRow(dark: Bool) -> some View {
+        Button { askingAi = true } label: {
+            HStack(spacing: 12) {
+                IconTile(symbol: "sparkles", accent: Mint.greenText(dark), size: 40, iconSize: 18)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(L.t(Strings.shared.ai_budget_open)).font(.body).foregroundColor(Mint.greenText(dark))
+                    Text(L.t(Strings.shared.ai_budget_open_hint)).font(.caption).foregroundColor(.secondary)
+                }
+                Spacer(minLength: 0)
+            }
+            .frame(minHeight: 44)
+        }
+        .buttonStyle(.plain)
     }
 
     private func card<Content: View>(_ title: String, subtitle: String? = nil, dark: Bool, @ViewBuilder content: () -> Content) -> some View {
@@ -346,10 +436,12 @@ struct BudgetView: View {
 
             ForEach(model.lines, id: \.categoryId) { line in
                 LineRow(model: model, line: line, dark: dark)
+                aiHint(line, dark: dark)
             }
             // Savings is a target the person sets, never a figure filled in for them.
             if let savings = model.savings {
                 LineRow(model: model, line: savings, dark: dark, caption: L.t(Strings.shared.budget_savings_caption))
+                aiHint(savings, dark: dark)
             } else if let budget = model.budget, budget.savingsCategoryId != nil {
                 Button { model.setSavingsTarget() } label: {
                     HStack(spacing: 12) {
@@ -377,6 +469,10 @@ struct BudgetView: View {
                 unbudgetedCard(budget, label: unbudgeted, dark: dark)
             }
 
+            if let budget = model.budget, !budget.aiExtra.isEmpty, BudgetOverview.shared.showsPlan(budget: budget) {
+                aiExtras(budget, dark: dark)
+            }
+
             Button { model.addCategory() } label: {
                 HStack(spacing: 12) {
                     IconTile(symbol: "plus", accent: Mint.greenText(dark), size: 40, iconSize: 18)
@@ -388,6 +484,9 @@ struct BudgetView: View {
                 .frame(minHeight: 44)
             }
             .buttonStyle(.plain)
+            if let budget = model.budget, BudgetOverview.shared.showsPlan(budget: budget), budget.aiKind != "review" {
+                askAiRow(dark: dark)
+            }
             Text(L.t(Strings.shared.budget_carries_forward))
                 .font(.caption2)
                 .foregroundColor(.secondary)
@@ -437,6 +536,11 @@ struct BudgetView: View {
                         Text(money(spend.spent))
                             .font(.caption)
                             .foregroundColor(.secondary)
+                        if let ai = spend.aiSuggested {
+                            Text(L.t(Strings.shared.ai_budget_suggests, money(ai)))
+                                .font(.caption2.weight(.semibold))
+                                .foregroundColor(Mint.greenText(dark))
+                        }
                     }
                     Spacer(minLength: 8)
                     Button(L.t(Strings.shared.budget_unbudgeted_add)) {

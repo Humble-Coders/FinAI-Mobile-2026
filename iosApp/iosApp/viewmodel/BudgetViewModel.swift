@@ -183,6 +183,7 @@ final class BudgetViewModel: ObservableObject {
         switchingMonth = false
         loadFailed = false
         errorKey = nil
+        reviewIfDue(answer)
     }
 
     private func failed(_ error: Error, categories fetched: [SharedLogic.Category], payload: Capabilities?) {
@@ -229,6 +230,8 @@ final class BudgetViewModel: ObservableObject {
             allocated: "0",
             isUserSet: false,
             spent: "0",
+            aiSuggested: nil,
+            aiReason: nil,
             over: nil
         )
         editingIsNew = true
@@ -247,7 +250,67 @@ final class BudgetViewModel: ObservableObject {
         picking = false
         editing = BudgetEdit.shared.lineFor(spend: spend)
         editingIsNew = true
-        draftAmount = BudgetEdit.shared.draftFor(spend: spend, currency: currency).amount
+        // The AI's amount when it suggested one; otherwise what was spent.
+        draftAmount = spend.aiSuggested ?? BudgetEdit.shared.draftFor(spend: spend, currency: currency).amount
+        editErrorKey = nil
+    }
+
+    // MARK: The AI's suggestions
+
+    /// This month's review is asked for once per screen when the budget says one is due.
+    private var reviewAsked: String?
+
+    private func reviewIfDue(_ answer: Budget) {
+        guard let budgets, AiBudgetEdit.shared.shouldReview(budget: answer), reviewAsked != month else { return }
+        reviewAsked = month
+        let asked = month
+        let started = generation
+        Task {
+            // Quietly: a review that cannot be made leaves the budget as it was.
+            guard let reviewed = try? await budgets.review(month: asked),
+                  started == generation, asked == month else { return }
+            budget = reviewed
+        }
+    }
+
+    /// "Use" on a line's AI suggestion: the line is set to it, by hand.
+    func useAiSuggestion(categoryId: String) {
+        guard let budgets, !saving,
+              let line = budget?.allLines.first(where: { $0.categoryId == categoryId }),
+              let amount = line.aiSuggested else { return }
+        saving = true
+        let asked = month
+        Task {
+            do {
+                let answer = try await budgets.setLine(month: asked, categoryId: categoryId, amount: amount)
+                saving = false
+                budget = answer
+                BudgetChanged.announce()
+            } catch {
+                saving = false
+                errorKey = (error as? ApiException)?.messageKey ?? Strings.shared.error_unexpected
+            }
+        }
+    }
+
+    /// "Add" on a category the AI suggests: the editor on a new line, started at the AI's amount.
+    func addFromAi(categoryId: String) {
+        guard let extra = budget?.aiExtra.first(where: { $0.categoryId == categoryId }) else { return }
+        picking = false
+        editing = BudgetLine(
+            categoryId: extra.categoryId,
+            slug: extra.slug,
+            name: extra.name,
+            suggested: "0",
+            allocated: "0",
+            isUserSet: false,
+            spent: "0",
+            aiSuggested: nil,
+            aiReason: nil,
+            over: nil
+        )
+        editingIsNew = true
+        draftAmount = extra.amount
         editErrorKey = nil
     }
 
@@ -429,6 +492,8 @@ final class BudgetViewModel: ObservableObject {
             allocated: parts[6],
             isUserSet: parts[7] == "1",
             spent: parts[8],
+            aiSuggested: nil,
+            aiReason: nil,
             over: nil
         )
         editingIsNew = parts[9] == "1"
