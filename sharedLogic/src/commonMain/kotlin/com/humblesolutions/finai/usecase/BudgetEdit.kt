@@ -1,8 +1,10 @@
 package com.humblesolutions.finai.usecase
 
+import com.humblesolutions.finai.i18n.LocalizationRegistry
 import com.humblesolutions.finai.i18n.Strings
 import com.humblesolutions.finai.model.Budget
 import com.humblesolutions.finai.model.BudgetLine
+import com.humblesolutions.finai.model.UnbudgetedSpend
 import com.humblesolutions.finai.util.Money
 import com.humblesolutions.finai.util.MoneyInput
 
@@ -160,10 +162,39 @@ object BudgetEdit {
     }
 
     /**
+     * "This month: income $5,000.00 − spending $2,857.37 = $2,142.63" — the
+     * month's actual figures, the server's, as Home counts them. Null from a
+     * server that predates them.
+     */
+    fun monthLine(budget: Budget, locale: String = "en"): String? {
+        val income = budget.monthIncome ?: return null
+        val spending = budget.monthSpending ?: return null
+        val net = budget.monthNet ?: return null
+        fun money(amount: String) = Money.format(amount, budget.currency, locale)
+        return LocalizationRegistry.format(Strings.budget_month_net, listOf(money(income), money(spending), money(net)), locale)
+    }
+
+    /** "$2,357.37 spent in categories with no line this month", or null when there is none. */
+    fun unbudgetedLine(budget: Budget, locale: String = "en"): String? {
+        if (!budget.hasUnbudgeted) return null
+        return LocalizationRegistry.format(Strings.budget_unbudgeted_body, listOf(Money.format(budget.unbudgetedSpent, budget.currency, locale)), locale)
+    }
+
+    /**
+     * The line "Add to budget" opens the editor on, for [spend]'s category:
+     * a new line, its amount started at what was spent — the person's to
+     * change before saving.
+     */
+    fun lineFor(spend: UnbudgetedSpend): BudgetLine = BudgetLine(categoryId = spend.categoryId, slug = spend.slug, name = spend.name)
+
+    fun draftFor(spend: UnbudgetedSpend, currency: String): BudgetDraft = BudgetDraft(amount = Money.normalize(spend.spent, Money.fractionDigits(currency)) ?: spend.spent)
+
+    /**
      * The `YYYY-MM` for a budget's [Budget.month], which is a full date.
      *
      * The endpoint takes a month and answers with its 1st, so going back for
      * the same month — after a save, or on retry — means dropping the day.
      */
+
     fun monthKeyOf(budget: Budget): String = DashboardMonths.parse(budget.month)?.let { DashboardMonths.wire(it) } ?: budget.month.take(7)
 }

@@ -55,6 +55,7 @@ import com.humblesolutions.finai.model.Capabilities
 import com.humblesolutions.finai.model.OnboardingStep
 import com.humblesolutions.finai.model.ResetStage
 import com.humblesolutions.finai.model.SocialProvider
+import com.humblesolutions.finai.ui.aibudget.AiBudgetRoute
 import com.humblesolutions.finai.ui.budget.BudgetRoute
 import com.humblesolutions.finai.ui.components.AppLoader
 import com.humblesolutions.finai.ui.components.LoaderHost
@@ -269,6 +270,13 @@ private fun SetupRoute(userId: String, onFinished: () -> Unit) {
     val model: SetupViewModel = viewModel()
     val state by model.uiState.collectAsStateWithLifecycle()
     LaunchedEffect(userId) { model.bind(userId, logging = BuildConfig.DEBUG) }
+    // Step 4: once steps 1–3 are saved, the AI's suggested budget. Start or
+    // Skip there is what finishes setup.
+    var suggesting by rememberSaveable { mutableStateOf(false) }
+    if (suggesting) {
+        AiBudgetRoute(userId = userId, inSetup = true, onDone = onFinished)
+        return
+    }
     // The first load is the only wait here that uses the coin; Continue does not.
     LoaderSignal(key = "setup", active = state.loading)
 
@@ -280,8 +288,8 @@ private fun SetupRoute(userId: String, onFinished: () -> Unit) {
         onIncomeChange = model::onIncomeChange,
         onExpenseChange = model::onExpenseChange,
         onOpenList = model::openList,
-        onContinue = { model.continueStep(onFinished) },
-        onSkip = { model.skip(onFinished) },
+        onContinue = { model.continueStep { suggesting = true } },
+        onSkip = { model.skip { suggesting = true } },
         onGoTo = model::goTo,
         onRowChange = model::onRowChange,
         onAddRow = model::addRow,

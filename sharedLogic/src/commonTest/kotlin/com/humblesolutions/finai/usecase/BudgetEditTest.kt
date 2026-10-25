@@ -2,6 +2,7 @@ package com.humblesolutions.finai.usecase
 
 import com.humblesolutions.finai.model.Budget
 import com.humblesolutions.finai.model.BudgetLine
+import com.humblesolutions.finai.model.UnbudgetedSpend
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -188,6 +189,49 @@ class BudgetEditTest {
         val budget = Budget(currency = "CAD", lines = lines)
 
         assertEquals(BudgetEdit.ordered(lines, "CAD").take(4), BudgetEdit.forHome(budget))
+    }
+
+    // ── Spending with no line and the month's figures ───────────────────
+
+    @Test
+    fun the_month_line_reads_income_minus_spending() {
+        val budget = Budget(currency = "CAD", monthIncome = "5000.00", monthSpending = "2857.37", monthNet = "2142.63")
+        assertEquals("This month: income $5,000.00 − spending $2,857.37 = $2,142.63", BudgetEdit.monthLine(budget))
+    }
+
+    @Test
+    fun a_month_that_spent_more_than_came_in_reads_negative() {
+        val budget = Budget(currency = "CAD", monthIncome = "0.00", monthSpending = "200.00", monthNet = "-200.00")
+        assertEquals("This month: income $0.00 − spending $200.00 = -$200.00", BudgetEdit.monthLine(budget))
+    }
+
+    @Test
+    fun an_older_server_has_no_month_line() {
+        assertNull(BudgetEdit.monthLine(Budget(currency = "CAD")))
+    }
+
+    @Test
+    fun the_unbudgeted_sentence_is_there_only_when_something_was_spent_outside_the_lines() {
+        assertNull(BudgetEdit.unbudgetedLine(Budget(currency = "CAD")))
+        val budget = Budget(
+            currency = "CAD",
+            unbudgeted = listOf(UnbudgetedSpend("cat-rent", "rent", "Rent", "1800.00")),
+            unbudgetedSpent = "1800.00",
+        )
+        assertEquals(
+            "$1,800.00 went to categories your budget doesn't plan for yet. Add one and it's planned for this month and every month after.",
+            BudgetEdit.unbudgetedLine(budget),
+        )
+    }
+
+    @Test
+    fun adding_an_unbudgeted_category_starts_a_new_line_at_what_was_spent() {
+        val spend = UnbudgetedSpend("cat-rent", "rent", "Rent", "1800")
+        val line = BudgetEdit.lineFor(spend)
+
+        assertEquals(BudgetLine(categoryId = "cat-rent", slug = "rent", name = "Rent"), line)
+        assertEquals(BudgetDraft("1800.00"), BudgetEdit.draftFor(spend, "CAD"))
+        assertNull(BudgetEdit.blockingReasonForNew(BudgetEdit.draftFor(spend, "CAD"), "CAD"))
     }
 
     // ── Months ──────────────────────────────────────────────────────────

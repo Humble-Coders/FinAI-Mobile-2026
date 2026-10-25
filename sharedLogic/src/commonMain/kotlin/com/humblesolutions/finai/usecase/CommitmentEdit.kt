@@ -12,6 +12,8 @@ data class CommitmentDraft(
     val amount: String = "",
     /** The day of the month it falls due, as typed; blank for "not said". */
     val dueDay: String = "",
+    /** The budget category it belongs to, by slug; blank until chosen. */
+    val category: String = "",
 ) {
     /** The due day as a number, or null when blank or not a day of a month. */
     val dueDayNumber: Int? get() = dueDay.trim().toIntOrNull()?.takeIf { it in 1..31 }
@@ -27,6 +29,7 @@ enum class CommitmentBlock(val messageKey: String) {
     NOTHING_CHANGED(Strings.commitment_edit_unchanged),
     TOO_MANY(Strings.commitment_add_limit),
     DUE_DAY_INVALID(Strings.commitment_due_day_invalid),
+    NO_CATEGORY(Strings.setup_commitment_category_missing),
 }
 
 /**
@@ -50,7 +53,15 @@ object CommitmentEdit {
         name = commitment.name,
         amount = commitment.expected,
         dueDay = commitment.dueDay?.toString().orEmpty(),
+        category = commitment.category ?: CommitmentCategories.presetSlug(commitment.name).orEmpty(),
     )
+
+    /**
+     * [draft] renamed to [name]. A blank category is filled from the preset
+     * the name matches; one already there is kept — renaming "Streaming" to
+     * "Netflix" is still a subscription.
+     */
+    fun withName(draft: CommitmentDraft, name: String, locale: String = "en"): CommitmentDraft = draft.copy(name = name, category = draft.category.ifBlank { CommitmentCategories.presetSlug(name, locale).orEmpty() })
 
     fun blockingReason(original: Commitment, draft: CommitmentDraft, currency: String): CommitmentBlock? {
         valid(draft, currency)?.let { return it }
@@ -59,7 +70,8 @@ object CommitmentEdit {
         if (
             draft.name.trim() == original.name &&
             Money.normalize(draft.amount, digits) == Money.normalize(original.expected, digits) &&
-            draft.dueDayNumber == original.dueDay
+            draft.dueDayNumber == original.dueDay &&
+            draft.category == (original.category ?: CommitmentCategories.presetSlug(original.name).orEmpty())
         ) {
             return CommitmentBlock.NOTHING_CHANGED
         }
@@ -86,6 +98,7 @@ object CommitmentEdit {
         if (!Money.isPositive(amount, digits)) return CommitmentBlock.AMOUNT_ZERO
         // Optional, but a day no month has is refused rather than dropped.
         if (draft.dueDay.isNotBlank() && draft.dueDayNumber == null) return CommitmentBlock.DUE_DAY_INVALID
+        if (!CommitmentCategories.isCategory(draft.category)) return CommitmentBlock.NO_CATEGORY
         return null
     }
 
@@ -104,7 +117,12 @@ object CommitmentEdit {
         if (index < 0) return null
         val amount = Money.normalize(draft.amount, Money.fractionDigits(setup.currency)) ?: return null
         val changed = setup.obligations.toMutableList()
-        changed[index] = changed[index].copy(name = draft.name.trim(), monthlyAmount = amount, dueDay = draft.dueDayNumber)
+        changed[index] = changed[index].copy(
+            name = draft.name.trim(),
+            monthlyAmount = amount,
+            dueDay = draft.dueDayNumber,
+            category = draft.category.takeIf(CommitmentCategories::isCategory),
+        )
         return setup.copy(obligations = changed)
     }
 
@@ -117,7 +135,13 @@ object CommitmentEdit {
         if (setup.obligations.size >= COUNT_LIMIT) return null
         val amount = Money.normalize(draft.amount, Money.fractionDigits(setup.currency)) ?: return null
         val name = draft.name.trim().takeIf { it.isNotEmpty() } ?: return null
-        return setup.copy(obligations = setup.obligations + Obligation(name = name, monthlyAmount = amount, dueDay = draft.dueDayNumber))
+        val obligation = Obligation(
+            name = name,
+            monthlyAmount = amount,
+            dueDay = draft.dueDayNumber,
+            category = draft.category.takeIf(CommitmentCategories::isCategory),
+        )
+        return setup.copy(obligations = setup.obligations + obligation)
     }
 
     /**

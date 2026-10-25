@@ -55,6 +55,7 @@ internal fun DashboardRoute(
             onAdd = model::addCommitment,
             onName = model::onCommitmentName,
             onAmount = model::onCommitmentAmount,
+            onCategory = model::onCommitmentCategory,
             onSave = model::saveCommitment,
             onCancel = model::cancelCommitment,
             onAskDelete = model::askDeleteCommitment,

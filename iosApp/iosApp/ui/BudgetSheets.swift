@@ -88,9 +88,11 @@ struct BudgetEditorSheet: View {
         .onAppear { amountFocused = true }
     }
 
-    /// "Use suggestion ($440)", shown only for a line the person overrode.
+    /// "Use suggestion ($440)", shown only for a line the person overrode — or
+    /// "Remove target" on the savings target, which has no suggestion to go back to.
     private var useSuggestionLabel: String? {
         guard let line = model.editing, !model.editingIsNew, line.isUserSet else { return nil }
+        if line.slug == "savings" { return L.t(Strings.shared.budget_remove_target) }
         let amount = Money.shared.format(
             amount: line.suggested,
             currency: model.currency,

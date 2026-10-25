@@ -441,7 +441,7 @@ struct MoneyDetailView: View {
                 if model.debts.isEmpty {
                     Text(L.t(Strings.shared.money_no_debts)).font(.subheadline).foregroundColor(Brand.textMuted)
                 }
-                ForEach(Array(model.debts.enumerated()), id: \.offset) { _, debt in
+                ForEach(Array(model.debts.enumerated()), id: \.offset) { index, debt in
                     let icon = MoneyDetail.shared.iconFor(name: debt.name)
                     let balance = model.amount(debt.balance)
                     let detail = model.debtDetail(debt)
@@ -452,8 +452,21 @@ struct MoneyDetailView: View {
                         detail: detail,
                         description: [debt.name, balance, detail].compactMap { $0 }.joined(separator: ", ")
                     ) {
-                        Text(balance).font(.subheadline.weight(.bold)).lineLimit(1)
+                        VStack(alignment: .trailing, spacing: 2) {
+                            Text(balance).font(.subheadline.weight(.bold)).lineLimit(1)
+                            Button(L.t(Strings.shared.action_edit)) { model.editDebt(at: index) }
+                                .font(.caption.weight(.semibold))
+                                .foregroundColor(Brand.green)
+                                .frame(minHeight: 28)
+                        }
                     }
+                    // The row edits it too, with the same sheet that adds one.
+                    // One element for VoiceOver, whose activation is Edit.
+                    .contentShape(Rectangle())
+                    .onTapGesture { model.editDebt(at: index) }
+                    .accessibilityAddTraits(.isButton)
+                    .accessibilityHint(L.t(Strings.shared.action_edit))
+                    .accessibilityAction { model.editDebt(at: index) }
                 }
                 // Their payoff order, months and interest, and editing them (#76).
                 if let onOpenPlan {
@@ -720,7 +733,7 @@ private struct DebtSheet: View {
                 }
                 .padding(24)
             }
-            .navigationTitle(L.t(Strings.shared.money_add_debt))
+            .navigationTitle(L.t(model.editingDebt == nil ? Strings.shared.money_add_debt : Strings.shared.money_edit_debt))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -766,6 +779,10 @@ private struct ObligationSheet: View {
                         isError: notice == .dueDayInvalid,
                         text: Binding(get: { model.obligationDraft?.dueDay ?? "" }, set: { model.setObligation(dueDay: $0) })
                     )
+                    CommitmentCategoryField(
+                        selected: model.obligationDraft?.category ?? "",
+                        isError: notice == .noCategory
+                    ) { model.setObligation(category: $0) }
                     ErrorText(messageKey: model.obligationErrorKey ?? notice?.messageKey)
                     GradientButton(
                         title: L.t(Strings.shared.money_obligation_save),

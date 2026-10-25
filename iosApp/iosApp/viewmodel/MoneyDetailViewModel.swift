@@ -37,6 +37,8 @@ final class MoneyDetailViewModel: ObservableObject {
     @Published private(set) var debtTouched = false
     @Published private(set) var savingDebt = false
     @Published private(set) var debtErrorKey: String?
+    /// The setup debt being edited, as it was read; nil while adding a new one.
+    @Published private(set) var editingDebt: Debt?
     /// A one-off line after a save — "Added to your monthly obligations".
     @Published var noticeKey: String?
 
@@ -220,7 +222,18 @@ final class MoneyDetailViewModel: ObservableObject {
     // MARK: - Adding a debt
 
     func openDebt() {
-        debtDraft = ItemDraft(name: "", amount: "", minimumPayment: "", interestRatePercent: "", dueDay: "")
+        debtDraft = ItemDraft(name: "", amount: "", minimumPayment: "", interestRatePercent: "", dueDay: "", category: "")
+        editingDebt = nil
+        debtTouched = false
+        debtErrorKey = nil
+    }
+
+    /// A tap on one of My debts: the same sheet, filled in.
+    func editDebt(at index: Int) {
+        guard debts.indices.contains(index) else { return }
+        let debt = debts[index]
+        debtDraft = SetupWizard.shared.debtDraftOf(debt: debt)
+        editingDebt = debt
         debtTouched = false
         debtErrorKey = nil
     }
@@ -233,7 +246,8 @@ final class MoneyDetailViewModel: ObservableObject {
             amount: amount ?? draft.amount,
             minimumPayment: minimumPayment ?? draft.minimumPayment,
             interestRatePercent: interestRatePercent ?? draft.interestRatePercent,
-            dueDay: dueDay.map { String($0.filter(\.isNumber).prefix(2)) } ?? draft.dueDay
+            dueDay: dueDay.map { String($0.filter(\.isNumber).prefix(2)) } ?? draft.dueDay,
+            category: draft.category
         )
         debtTouched = true
         debtErrorKey = nil
@@ -242,6 +256,7 @@ final class MoneyDetailViewModel: ObservableObject {
     func cancelDebt() {
         guard !savingDebt else { return }
         debtDraft = nil
+        editingDebt = nil
         debtErrorKey = nil
     }
 
@@ -253,6 +268,7 @@ final class MoneyDetailViewModel: ObservableObject {
             debtTouched = true
             return
         }
+        let original = editingDebt
         savingDebt = true
         debtErrorKey = nil
         Task { [weak self] in
@@ -260,10 +276,13 @@ final class MoneyDetailViewModel: ObservableObject {
             do {
                 let current = try await setupRepository.get()
                 let digits = Money.shared.fractionDigits(currency: current.currency)
-                if let next = SetupWizard.shared.debtAdded(setup: current, item: draft, fractionDigits: digits) {
+                let next = original.map {
+                    SetupWizard.shared.debtEdited(setup: current, original: $0, item: draft, fractionDigits: digits)
+                } ?? SetupWizard.shared.debtAdded(setup: current, item: draft, fractionDigits: digits)
+                if let next {
                     _ = try await setupRepository.save(setup: next)
                 } else {
-                    failed = Strings.shared.setup_list_limit
+                    failed = original == nil ? Strings.shared.setup_list_limit : Strings.shared.setup_debt_changed
                 }
             } catch {
                 failed = Self.messageKey(error)
@@ -274,7 +293,8 @@ final class MoneyDetailViewModel: ObservableObject {
                 self.debtErrorKey = failed
             } else {
                 self.debtDraft = nil
-                self.noticeKey = Strings.shared.money_debt_added
+                self.editingDebt = nil
+                self.noticeKey = original == nil ? Strings.shared.money_debt_added : Strings.shared.money_debt_updated
                 self.load(refresh: true)
             }
         }
@@ -283,17 +303,20 @@ final class MoneyDetailViewModel: ObservableObject {
     // MARK: - Adding an obligation
 
     func openObligation() {
-        obligationDraft = CommitmentDraft(name: "", amount: "", dueDay: "")
+        obligationDraft = CommitmentDraft(name: "", amount: "", dueDay: "", category: "")
         obligationTouched = false
         obligationErrorKey = nil
     }
 
-    func setObligation(name: String? = nil, amount: String? = nil, dueDay: String? = nil) {
-        guard let draft = obligationDraft else { return }
+    func setObligation(name: String? = nil, amount: String? = nil, dueDay: String? = nil, category: String? = nil) {
+        guard var draft = obligationDraft else { return }
+        // A name like a preset's starts in its category; one already chosen stays.
+        if let name { draft = CommitmentEdit.shared.withName(draft: draft, name: name, locale: "en") }
         obligationDraft = CommitmentDraft(
-            name: name ?? draft.name,
+            name: draft.name,
             amount: amount ?? draft.amount,
-            dueDay: dueDay.map { String($0.filter(\.isNumber).prefix(2)) } ?? draft.dueDay
+            dueDay: dueDay.map { String($0.filter(\.isNumber).prefix(2)) } ?? draft.dueDay,
+            category: category ?? draft.category
         )
         obligationTouched = true
         obligationErrorKey = nil
@@ -332,7 +355,12 @@ final class MoneyDetailViewModel: ObservableObject {
         Task { [weak self] in
             guard let self else { return }
             let failed = await self.addObligation(
-                CommitmentDraft(name: name, amount: amount, dueDay: dueDay.map(String.init) ?? "")
+                // Its category from the preset its name matches, if any.
+                CommitmentEdit.shared.withName(
+                    draft: CommitmentDraft(name: "", amount: amount, dueDay: dueDay.map(String.init) ?? "", category: ""),
+                    name: name,
+                    locale: "en"
+                )
             )
             self.noticeKey = failed == nil ? Strings.shared.money_obligation_added : Strings.shared.money_obligation_failed
             if failed == nil { self.load(refresh: true) }
@@ -536,13 +564,16 @@ final class MoneyDetailViewModel: ObservableObject {
     /// Why the new debt cannot be saved: step 3's rules, and the 20-debt limit.
     var debtBlock: SetupBlock? {
         guard let debtDraft else { return nil }
-        return SetupWizard.shared.blockingReasonForNewDebt(
-            item: debtDraft, existing: Int32(debts.count), fractionDigits: Money.shared.fractionDigits(currency: currency)
-        )
+        let digits = Money.shared.fractionDigits(currency: currency)
+        if let editingDebt {
+            return SetupWizard.shared.blockingReasonForDebtEdit(original: editingDebt, item: debtDraft, fractionDigits: digits)
+        }
+        return SetupWizard.shared.blockingReasonForNewDebt(item: debtDraft, existing: Int32(debts.count), fractionDigits: digits)
     }
 
+    /// "Nothing has changed" is never said: an untouched edit simply can't be saved.
     var debtNotice: SetupBlock? {
-        guard let block = debtBlock else { return nil }
+        guard let block = debtBlock, block != .unchanged else { return nil }
         return debtTouched || block == .tooMany ? block : nil
     }
 

@@ -1,5 +1,7 @@
 package com.humblesolutions.finai.data
 
+import com.humblesolutions.finai.model.AiAccept
+import com.humblesolutions.finai.model.AiProposal
 import com.humblesolutions.finai.model.ApiException
 import com.humblesolutions.finai.model.Budget
 import com.humblesolutions.finai.repository.BudgetRepository
@@ -24,6 +26,18 @@ class KtorBudgetRepository internal constructor(
 
     @Throws(ApiException::class, CancellationException::class)
     override suspend fun resetLine(month: String, categoryId: String): Budget = http.deleteJson("budgets/$month/lines/$categoryId/override")
+
+    @Throws(ApiException::class, CancellationException::class)
+    override suspend fun suggestSetup(): AiProposal = http.postEmpty("budgets/ai/setup")
+
+    @Throws(ApiException::class, CancellationException::class)
+    override suspend fun setupSuggestion(): AiProposal = http.getJson("budgets/ai/setup")
+
+    @Throws(ApiException::class, CancellationException::class)
+    override suspend fun acceptSetup(accept: AiAccept): Budget = http.postJson("budgets/ai/setup/accept", accept)
+
+    @Throws(ApiException::class, CancellationException::class)
+    override suspend fun review(month: String): Budget = http.postEmpty("budgets/$month/ai/review")
 
     override fun close() = http.close()
 }

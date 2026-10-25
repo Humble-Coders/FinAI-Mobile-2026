@@ -37,6 +37,10 @@ internal object ApiErrorMapper {
     private const val DATE_IN_PAST = "date_in_past"
     private const val ORDER_MISMATCH = "order_mismatch"
     private const val IMPORT_SUPERSEDED = "import_superseded"
+    private const val AI_UNAVAILABLE = "ai_unavailable"
+    private const val AI_BUDGET_LIMIT = "ai_budget_limit_reached"
+    private const val SETUP_INCOME_MISSING = "setup_income_missing"
+    private const val STILL_LEARNING = "still_learning"
 
     fun fromResponse(status: Int, body: String): ApiException = when (status) {
         401 -> ApiException.Unauthorized("token rejected")
@@ -58,10 +62,10 @@ internal object ApiErrorMapper {
 
         502 -> if (code(body) == PARSE_FAILED) ApiException.ParseFailed() else ApiException.Server(status)
 
-        503 -> if (code(body) == AI_PROCESSING_UNAVAILABLE) {
-            ApiException.ImportUnavailable()
-        } else {
-            ApiException.Server(status)
+        503 -> when (code(body)) {
+            AI_PROCESSING_UNAVAILABLE -> ApiException.ImportUnavailable()
+            AI_UNAVAILABLE -> ApiException.AiUnavailable()
+            else -> ApiException.Server(status)
         }
 
         in 500..599 -> ApiException.Server(status)
@@ -77,6 +81,7 @@ internal object ApiErrorMapper {
     /** 429 is the import quota when it says so; any other 429 stays unexplained. */
     private fun quota(body: String): ApiException {
         val detail = detail(body)
+        if (detail?.string("code") == AI_BUDGET_LIMIT) return ApiException.AiBudgetLimitReached()
         if (detail?.string("code") != IMPORT_QUOTA_EXCEEDED) return ApiException.Unexpected(429)
         return ApiException.ImportQuotaExceeded(
             limit = detail.string("limit")?.toIntOrNull(),
@@ -139,6 +144,10 @@ internal object ApiErrorMapper {
                 DATE_IN_PAST -> return ApiException.DateInPast()
 
                 ORDER_MISMATCH -> return ApiException.OrderMismatch()
+
+                SETUP_INCOME_MISSING -> return ApiException.SetupIncomeMissing()
+
+                STILL_LEARNING -> return ApiException.StillLearning()
             }
         }
         return ApiException.Validation(status)

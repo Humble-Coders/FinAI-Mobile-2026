@@ -215,12 +215,13 @@ class MoneyDetailViewModelTest {
         val wired = wired(MoneyKind.EXPENSES, setup = setup)
 
         wired.model.openObligation()
-        wired.model.onObligationChange(CommitmentDraft(name = "Rent", amount = "1800", dueDay = "5"))
+        wired.model.onObligationChange(CommitmentDraft(name = "Rent", amount = "1800", dueDay = "5", category = "rent"))
         wired.model.saveObligation()
 
         val written = setup.saved.single().obligations
         assertEquals(listOf("Phone", "Rent"), written.map { it.name }, "the existing one is kept")
         assertEquals(5, written.last().dueDay)
+        assertEquals("rent", written.last().category)
         assertNull(wired.model.uiState.value.obligationDraft, "the sheet closes")
     }
 
@@ -246,6 +247,27 @@ class MoneyDetailViewModelTest {
         assertEquals(existing.income to existing.obligations, written.income to written.obligations, "nothing else in setup changes")
         assertNull(wired.model.uiState.value.debtDraft, "the sheet closes")
         assertEquals(Strings.money_debt_added, wired.model.uiState.value.noticeKey)
+    }
+
+    @Test
+    fun a_debt_is_edited_in_its_place_from_the_list() = runTest {
+        val visa = Debt(name = "Visa", balance = "5293.18", minimumPayment = "120.00", interestRatePercent = "20.99", dueDay = 12)
+        val loan = Debt(name = "Car loan", balance = "12000.00", minimumPayment = "350.00", interestRatePercent = "6.90", dueDay = 5)
+        val setup = FakeSetup(FinancialSetup(currency = "CAD", income = "5000.00", debts = listOf(visa, loan)))
+        val wired = wired(MoneyKind.DEBTS, setup = setup)
+
+        wired.model.editDebt(1)
+        val opened = wired.model.uiState.value
+        assertEquals("Car loan", opened.debtDraft?.name)
+        assertFalse(opened.canSaveDebt, "nothing changed yet")
+        assertNull(opened.debtNotice, "and that is not said")
+
+        wired.model.onDebtChange(opened.debtDraft!!.copy(amount = "11650"))
+        wired.model.saveDebt()
+
+        assertEquals(listOf(visa, loan.copy(balance = "11650.00")), setup.saved.single().debts)
+        assertNull(wired.model.uiState.value.editingDebt)
+        assertEquals(Strings.money_debt_updated, wired.model.uiState.value.noticeKey)
     }
 
     @Test

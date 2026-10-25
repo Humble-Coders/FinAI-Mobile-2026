@@ -1,16 +1,20 @@
 package com.humblesolutions.finai.ui.budget
 
 import androidx.lifecycle.SavedStateHandle
+import com.humblesolutions.finai.model.AiAccept
+import com.humblesolutions.finai.model.AiProposal
 import com.humblesolutions.finai.model.ApiException
 import com.humblesolutions.finai.model.Budget
 import com.humblesolutions.finai.model.BudgetLine
 import com.humblesolutions.finai.model.BudgetStatus
 import com.humblesolutions.finai.model.Capabilities
 import com.humblesolutions.finai.model.Category
+import com.humblesolutions.finai.model.CategorySpend
 import com.humblesolutions.finai.model.Feature
 import com.humblesolutions.finai.model.FeatureReason
 import com.humblesolutions.finai.model.LearningNeeds
 import com.humblesolutions.finai.model.LearningProgress
+import com.humblesolutions.finai.model.UnbudgetedSpend
 import com.humblesolutions.finai.repository.BudgetRepository
 import com.humblesolutions.finai.repository.CapabilitiesRepository
 import com.humblesolutions.finai.repository.CategoriesRepository
@@ -69,6 +73,23 @@ class BudgetViewModelTest {
             failWrite?.let { throw it }
             return answer
         }
+
+        /** What a review answers with; null means the review fails quietly. */
+        var reviewed: Budget? = null
+        val reviews = mutableListOf<String>()
+
+        override suspend fun review(month: String): Budget {
+            reviews += month
+            // As the server does: once made, the review is part of every read.
+            reviewed?.let { answer = it }
+            return reviewed ?: throw ApiException.AiUnavailable()
+        }
+
+        override suspend fun suggestSetup(): AiProposal = throw UnsupportedOperationException()
+
+        override suspend fun setupSuggestion(): AiProposal = throw UnsupportedOperationException()
+
+        override suspend fun acceptSetup(accept: AiAccept): Budget = throw UnsupportedOperationException()
 
         override fun close() = Unit
     }
@@ -480,6 +501,154 @@ class BudgetViewModelTest {
         model.save()
 
         assertEquals(0, announced)
+    }
+
+    // ── Spending with no line ───────────────────────────────────────────
+
+    @Test
+    fun add_to_budget_opens_a_new_line_started_at_what_was_spent() = runTest {
+        val budgets = FakeBudgets(
+            answer = ready().copy(
+                unbudgeted = listOf(UnbudgetedSpend("cat-rent", "rent", "Rent", "1800.00")),
+                unbudgetedSpent = "1800.00",
+                spentOverall = "2270.00",
+            ),
+        )
+        val model = model(budgets)
+
+        assertEquals("Spent $2,270.00 of $1,400.00", model.uiState.value.totalsLabel)
+        model.addFromUnbudgeted("cat-rent")
+
+        val state = model.uiState.value
+        assertEquals("cat-rent", state.editing?.categoryId)
+        assertTrue(state.editingIsNew)
+        assertEquals("1800.00", state.draft.amount)
+        assertNull(state.editBlock)
+
+        model.save()
+        assertEquals(Triple(model.uiState.value.month, "cat-rent", "1800.00"), budgets.writes.last())
+    }
+
+    @Test
+    fun add_to_budget_ignores_a_category_that_is_not_listed() = runTest {
+        val model = model()
+        model.addFromUnbudgeted("cat-nowhere")
+        assertNull(model.uiState.value.editing)
+    }
+
+    // ── Above the lines ─────────────────────────────────────────────────
+
+    @Test
+    fun a_month_that_has_ended_shows_what_was_spent_instead_of_its_plan() = runTest {
+        val ended = ready().copy(
+            monthEnded = true,
+            monthIncome = "5000.00",
+            monthSpending = "4716.79",
+            monthNet = "283.21",
+            monthSaved = "200.00",
+            monthLeft = "83.21",
+            spendingByCategory = listOf(CategorySpend("cat-shopping", "shopping", "Shopping", "1249.99")),
+        )
+        val state = model(FakeBudgets(answer = ended)).uiState.value
+
+        assertFalse(state.showsPlan)
+        assertEquals(listOf("Shopping"), state.spentRows.map { it.name })
+        assertNull(state.stillExpected)
+        assertEquals(
+            "After spending and saving, you had $83.21 left this month. Put it toward your goals or add it to your savings.",
+            state.suggestion,
+        )
+    }
+
+    @Test
+    fun a_running_month_shows_its_plan_and_what_is_still_to_come() = runTest {
+        val running = ready().copy(
+            monthIncome = "5000.00",
+            monthSpending = "2857.37",
+            monthNet = "2142.63",
+            incomeExpected = "0.00",
+            commitmentsDue = "222.00",
+            budgetRest = "640.00",
+            projectedLeft = "1280.63",
+        )
+        val state = model(FakeBudgets(answer = running)).uiState.value
+
+        assertTrue(state.showsPlan)
+        assertEquals("$1,280.63", state.stillExpected?.last()?.amount)
+        assertTrue(state.suggestsUsing)
+    }
+
+    @Test
+    fun set_a_savings_target_opens_a_new_savings_line_and_saves_it() = runTest {
+        val budgets = FakeBudgets(answer = ready().copy(savingsRoom = "4250.00", savingsCategoryId = "cat-savings"))
+        val model = model(budgets)
+
+        assertTrue(model.uiState.value.canSetSavingsTarget)
+        model.setSavingsTarget()
+        assertEquals("cat-savings", model.uiState.value.editing?.categoryId)
+        assertTrue(model.uiState.value.editingIsNew)
+        model.onAmountChange("800")
+        model.save()
+
+        assertEquals(Triple(model.uiState.value.month, "cat-savings", "800"), budgets.writes.last())
+    }
+
+    // ── The AI's suggestions ────────────────────────────────────────────
+
+    @Test
+    fun a_due_review_is_asked_for_once_and_shown_when_it_comes() = runTest {
+        val budgets = FakeBudgets(answer = ready().copy(aiReviewDue = true))
+        val reviewed = ready().copy(
+            aiKind = "review",
+            aiAdvice = "Put what is left toward your buffer.",
+            lines = ready().lines.map { if (it.slug == "groceries") it.copy(aiSuggested = "430.00") else it },
+        )
+        budgets.reviewed = reviewed
+        val model = model(budgets)
+
+        model.load(refresh = true)
+
+        assertEquals(1, budgets.reviews.size, "once, however often the budget is read")
+        val state = model.uiState.value
+        assertEquals("Put what is left toward your buffer.", state.aiAdvice)
+        assertEquals("AI suggests $430.00", state.aiLabel(state.lines.first { it.slug == "groceries" }))
+    }
+
+    @Test
+    fun a_review_that_fails_leaves_the_budget_as_it_was() = runTest {
+        val budgets = FakeBudgets(answer = ready().copy(aiReviewDue = true))
+        val model = model(budgets)
+
+        assertEquals(1, budgets.reviews.size)
+        assertNull(model.uiState.value.aiAdvice)
+        assertTrue(model.uiState.value.isReady)
+    }
+
+    @Test
+    fun use_sets_the_line_to_the_ai_number() = runTest {
+        val budgets = FakeBudgets(
+            answer = ready().copy(lines = ready().lines.map { if (it.slug == "groceries") it.copy(aiSuggested = "430.00") else it }),
+        )
+        val model = model(budgets)
+
+        model.useAiSuggestion("cat-groceries")
+
+        assertEquals(Triple(model.uiState.value.month, "cat-groceries", "430.00"), budgets.writes.last())
+    }
+
+    @Test
+    fun add_on_an_ai_extra_opens_a_new_line_at_its_amount() = runTest {
+        val budgets = FakeBudgets(
+            answer = ready().copy(aiExtra = listOf(com.humblesolutions.finai.model.AiLine("cat-gym", "personal_care", "Personal care", "40.00"))),
+        )
+        val model = model(budgets)
+
+        model.addFromAi("cat-gym")
+
+        val state = model.uiState.value
+        assertEquals("cat-gym", state.editing?.categoryId)
+        assertTrue(state.editingIsNew)
+        assertEquals("40.00", state.draft.amount)
     }
 
     // ── Fixtures ────────────────────────────────────────────────────────

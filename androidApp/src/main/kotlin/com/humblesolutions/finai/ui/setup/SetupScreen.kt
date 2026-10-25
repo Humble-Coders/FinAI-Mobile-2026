@@ -62,6 +62,7 @@ import androidx.compose.ui.unit.dp
 import com.humblesolutions.finai.R
 import com.humblesolutions.finai.i18n.Strings
 import com.humblesolutions.finai.ui.components.AmountField
+import com.humblesolutions.finai.ui.components.CommitmentCategoryField
 import com.humblesolutions.finai.ui.components.ErrorText
 import com.humblesolutions.finai.ui.components.GradientButton
 import com.humblesolutions.finai.ui.components.WarningText
@@ -69,7 +70,9 @@ import com.humblesolutions.finai.ui.components.WizardField
 import com.humblesolutions.finai.ui.components.fieldFrame
 import com.humblesolutions.finai.ui.strings
 import com.humblesolutions.finai.ui.theme.FinAiPalette
+import com.humblesolutions.finai.usecase.CommitmentCategories
 import com.humblesolutions.finai.usecase.ItemDraft
+import com.humblesolutions.finai.usecase.SetupBlock
 import com.humblesolutions.finai.usecase.SetupStep
 
 /**
@@ -602,7 +605,15 @@ private fun ItemListScreen(
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     WizardField(
                         value = row.name,
-                        onValueChange = { onRowChange(index, row.copy(name = it)) },
+                        onValueChange = { name ->
+                            // A commitment named like a preset starts in its category.
+                            val category = if (list == ItemList.OBLIGATIONS) {
+                                row.category.ifBlank { CommitmentCategories.presetSlug(name).orEmpty() }
+                            } else {
+                                row.category
+                            }
+                            onRowChange(index, row.copy(name = name, category = category))
+                        },
                         label = strings(Strings.setup_item_name),
                     )
                     AmountField(
@@ -642,6 +653,13 @@ private fun ItemListScreen(
                             label = strings(Strings.setup_due_day),
                             keyboardType = KeyboardType.Number,
                             capitalization = KeyboardCapitalization.None,
+                        )
+                    }
+                    if (list == ItemList.OBLIGATIONS) {
+                        CommitmentCategoryField(
+                            selected = row.category,
+                            onPick = { onRowChange(index, row.copy(category = it)) },
+                            isError = state.rowBlock(index) == SetupBlock.CATEGORY_MISSING,
                         )
                     }
                     state.rowBlock(index)?.let { ErrorText(it.messageKey) }

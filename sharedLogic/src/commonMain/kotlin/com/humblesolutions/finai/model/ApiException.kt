@@ -264,6 +264,28 @@ sealed class ApiException(message: String, cause: Throwable? = null) : Exception
         override val messageKey: String = Strings.budget_error_month_in_future
     }
 
+    // ── AI budget suggestions ───────────────────────────────────────────
+
+    /** The AI could not make a suggestion just now (503 `ai_unavailable`). Safe to retry. */
+    class AiUnavailable : ApiException("ai suggestion unavailable") {
+        override val messageKey: String = Strings.ai_budget_error_unavailable
+    }
+
+    /** The setup suggestion was asked for three times (429). The last one stays. */
+    class AiBudgetLimitReached : ApiException("ai budget suggestion limit reached") {
+        override val messageKey: String = Strings.ai_budget_error_limit
+    }
+
+    /** Setup has no monthly income to divide (409 `setup_income_missing`). */
+    class SetupIncomeMissing : ApiException("setup income missing") {
+        override val messageKey: String = Strings.ai_budget_error_no_income
+    }
+
+    /** The review needs a full month to learn from (409 `still_learning`). */
+    class StillLearning : ApiException("still learning") {
+        override val messageKey: String = Strings.ai_budget_error_learning
+    }
+
     // ── Goals (#52) ─────────────────────────────────────────────────────
 
     /**

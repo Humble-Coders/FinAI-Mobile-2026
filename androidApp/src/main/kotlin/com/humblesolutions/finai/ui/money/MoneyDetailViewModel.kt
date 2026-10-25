@@ -182,17 +182,23 @@ class MoneyDetailViewModel : ViewModel() {
     // ── Adding a debt ───────────────────────────────────────────────────
 
     /** "+" on Debts: one debt, with step 3's fields and rules. */
-    fun openDebt() = _uiState.update { it.copy(debtDraft = ItemDraft(), debtTouched = false, debtErrorKey = null) }
+    fun openDebt() = _uiState.update { it.copy(debtDraft = ItemDraft(), editingDebt = null, debtTouched = false, debtErrorKey = null) }
+
+    /** A tap on one of My debts: the same sheet, filled in. */
+    fun editDebt(index: Int) {
+        val debt = _uiState.value.debts.getOrNull(index) ?: return
+        _uiState.update { it.copy(debtDraft = SetupWizard.debtDraftOf(debt), editingDebt = debt, debtTouched = false, debtErrorKey = null) }
+    }
 
     fun onDebtChange(draft: ItemDraft) = _uiState.update { it.copy(debtDraft = draft, debtTouched = true, debtErrorKey = null) }
 
     fun cancelDebt() {
         if (_uiState.value.savingDebt) return
-        _uiState.update { it.copy(debtDraft = null, debtErrorKey = null) }
+        _uiState.update { it.copy(debtDraft = null, editingDebt = null, debtErrorKey = null) }
     }
 
     /**
-     * Added as setup's last debt, as step 3 would save it — read fresh and
+     * Added as setup's last debt (or, when editing, put back in its place), as step 3 would save it — read fresh and
      * written back whole, because a save replaces every list the wizard owns.
      */
     fun saveDebt() {
@@ -207,9 +213,11 @@ class MoneyDetailViewModel : ViewModel() {
         viewModelScope.launch {
             val failed = try {
                 val setup = repos.setup.get()
-                val next = SetupWizard.debtAdded(setup, draft, Money.fractionDigits(setup.currency))
+                val digits = Money.fractionDigits(setup.currency)
+                val original = state.editingDebt
+                val next = if (original == null) SetupWizard.debtAdded(setup, draft, digits) else SetupWizard.debtEdited(setup, original, draft, digits)
                 if (next == null) {
-                    Strings.setup_list_limit
+                    if (original == null) Strings.setup_list_limit else Strings.setup_debt_changed
                 } else {
                     repos.setup.save(next)
                     null
@@ -221,7 +229,12 @@ class MoneyDetailViewModel : ViewModel() {
             }
             _uiState.update {
                 if (failed == null) {
-                    it.copy(savingDebt = false, debtDraft = null, noticeKey = Strings.money_debt_added)
+                    it.copy(
+                        savingDebt = false,
+                        debtDraft = null,
+                        editingDebt = null,
+                        noticeKey = if (state.editingDebt == null) Strings.money_debt_added else Strings.money_debt_updated,
+                    )
                 } else {
                     it.copy(savingDebt = false, debtErrorKey = failed)
                 }
@@ -273,7 +286,10 @@ class MoneyDetailViewModel : ViewModel() {
      */
     fun markAsObligation(name: String, amount: String, dueDay: Int?) {
         viewModelScope.launch {
-            val failed = addObligation(CommitmentDraft(name = name, amount = amount, dueDay = dueDay?.toString().orEmpty()))
+            // Its category from the preset its name matches, if any; the
+            // commitment can be given one from Home later.
+            val draft = CommitmentEdit.withName(CommitmentDraft(amount = amount, dueDay = dueDay?.toString().orEmpty()), name)
+            val failed = addObligation(draft)
             _uiState.update { it.copy(noticeKey = if (failed == null) Strings.money_obligation_added else Strings.money_obligation_failed) }
             if (failed == null) load(refresh = true)
         }

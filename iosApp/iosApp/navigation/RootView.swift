@@ -55,6 +55,8 @@ struct RootView: View {
     /// for at least two seconds.
     @StateObject private var loader = AppLoader()
     @State private var changingRegion = false
+    /// Setup's step 4: the AI's suggested budget, once steps 1–3 are saved.
+    @State private var suggestingBudget = false
     /// Whether this process has shown the app yet; see `onAppear`.
     @MainActor private static var launched = false
 
@@ -199,9 +201,17 @@ struct RootView: View {
         case .consent:
             ConsentView(model: model) { changingRegion = true }
         case .financialSetup:
-            SetupView(model: setupModel) { model.loadMe() }
-                .onAppear { setupModel.bind() }
-                .onDisappear { setupModel.unbind() }
+            if suggestingBudget {
+                // Start or Skip there is what finishes setup.
+                AiBudgetView(userId: model.me?.user.id ?? "", inSetup: true) {
+                    suggestingBudget = false
+                    model.loadMe()
+                }
+            } else {
+                SetupView(model: setupModel) { suggestingBudget = true }
+                    .onAppear { setupModel.bind() }
+                    .onDisappear { setupModel.unbind() }
+            }
         case .updateRequired:
             UpdateRequiredView()
         case .home:

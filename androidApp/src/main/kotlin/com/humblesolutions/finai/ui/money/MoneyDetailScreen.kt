@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -87,6 +88,7 @@ import com.humblesolutions.finai.R
 import com.humblesolutions.finai.i18n.Strings
 import com.humblesolutions.finai.model.Transaction
 import com.humblesolutions.finai.ui.components.AmountField
+import com.humblesolutions.finai.ui.components.CommitmentCategoryField
 import com.humblesolutions.finai.ui.components.ErrorText
 import com.humblesolutions.finai.ui.components.FinAiIcon
 import com.humblesolutions.finai.ui.components.GradientButton
@@ -99,6 +101,7 @@ import com.humblesolutions.finai.ui.strings
 import com.humblesolutions.finai.ui.theme.FinAiPalette
 import com.humblesolutions.finai.usecase.CommitmentBlock
 import com.humblesolutions.finai.usecase.CommitmentDraft
+import com.humblesolutions.finai.usecase.CommitmentEdit
 import com.humblesolutions.finai.usecase.ItemDraft
 import com.humblesolutions.finai.usecase.MoneyDetail
 import com.humblesolutions.finai.usecase.MoneyKind
@@ -124,6 +127,7 @@ class MoneyDetailActions(
     val onDebtChange: (ItemDraft) -> Unit = {},
     val onSaveDebt: () -> Unit = {},
     val onCancelDebt: () -> Unit = {},
+    val onEditDebt: (Int) -> Unit = {},
     /** Your debts in the plan (#76), from Debts; null when the plan is off. */
     val onOpenPlan: (() -> Unit)? = null,
 )
@@ -702,7 +706,7 @@ private fun DebtsBody(state: MoneyDetailUiState, actions: MoneyDetailActions, ac
         if (state.debts.isEmpty()) {
             Text(strings(Strings.money_no_debts), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        state.debts.forEach { debt ->
+        state.debts.forEachIndexed { index, debt ->
             val icon = MoneyDetail.iconFor(debt.name)
             val balance = state.amount(debt.balance)
             val detail = state.debtDetail(debt.minimumPayment, debt.interestRatePercent)
@@ -711,8 +715,17 @@ private fun DebtsBody(state: MoneyDetailUiState, actions: MoneyDetailActions, ac
                 tint = icon.tint(dark),
                 title = debt.name,
                 detail = detail,
-                trailing = { Text(balance, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, maxLines = 1) },
+                trailing = {
+                    Column(horizontalAlignment = Alignment.End) {
+                        Text(balance, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, maxLines = 1)
+                        TextButton(onClick = { actions.onEditDebt(index) }, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)) {
+                            Text(strings(Strings.action_edit), style = MaterialTheme.typography.labelLarge)
+                        }
+                    }
+                },
                 description = listOfNotNull(debt.name, balance, detail).joinToString(", "),
+                // The row edits it too, with the same sheet that adds one.
+                onClick = { actions.onEditDebt(index) },
             )
         }
         // Their payoff order, months and interest, and editing them (#76).
@@ -827,7 +840,12 @@ private fun DebtSheet(state: MoneyDetailUiState, draft: ItemDraft, actions: Mone
             Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).imePadding().padding(horizontal = 24.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Text(strings(Strings.money_add_debt), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, modifier = Modifier.semantics { heading() })
+            Text(
+                strings(if (state.editingDebt != null) Strings.money_edit_debt else Strings.money_add_debt),
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.semantics { heading() },
+            )
             val notice = state.debtNotice
             WizardField(
                 value = draft.name,
@@ -910,7 +928,7 @@ private fun ObligationSheet(state: MoneyDetailUiState, draft: CommitmentDraft, a
             val notice = state.obligationNotice
             WizardField(
                 value = draft.name,
-                onValueChange = { actions.onObligationChange(draft.copy(name = it)) },
+                onValueChange = { actions.onObligationChange(CommitmentEdit.withName(draft, it)) },
                 label = strings(Strings.money_name_label),
                 placeholder = strings(Strings.money_merchant_hint),
                 isError = notice == CommitmentBlock.NO_NAME || notice == CommitmentBlock.NAME_TOO_LONG,
@@ -934,6 +952,11 @@ private fun ObligationSheet(state: MoneyDetailUiState, draft: CommitmentDraft, a
                 imeAction = ImeAction.Done,
                 onDone = { focus.clearFocus() },
                 isError = notice == CommitmentBlock.DUE_DAY_INVALID,
+            )
+            CommitmentCategoryField(
+                selected = draft.category,
+                onPick = { actions.onObligationChange(draft.copy(category = it)) },
+                isError = notice == CommitmentBlock.NO_CATEGORY,
             )
             ErrorText(state.obligationErrorKey ?: notice?.messageKey)
             GradientButton(

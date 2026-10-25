@@ -78,7 +78,82 @@ data class Budget(
 
     @SerialName("uncategorised_count")
     val uncategorisedCount: Int = 0,
+    /**
+     * Spending in categories this month has no line for, largest first — a
+     * first month has nothing to learn lines from, and a one-off has a median
+     * of 0. Empty from a server that predates it.
+     */
+    val unbudgeted: List<UnbudgetedSpend> = emptyList(),
+    @SerialName("unbudgeted_spent")
+    val unbudgetedSpent: String = "0",
+    /**
+     * Everything spent against the budget this month: the lines, [unbudgeted]
+     * and the uncategorised spending. Null from a server that predates it.
+     */
+    @SerialName("spent_overall")
+    val spentOverall: String? = null,
+    /** The month's actual income, spending and income minus spending, as Home counts them. */
+    @SerialName("month_income")
+    val monthIncome: String? = null,
+    @SerialName("month_spending")
+    val monthSpending: String? = null,
+    @SerialName("month_net")
+    val monthNet: String? = null,
+    /** Setup's commitments, each with the payment seen for it this month. */
+    val commitments: List<BudgetCommitment> = emptyList(),
+    /** True once the month is over: shown as it happened, with nothing still to come. */
+    @SerialName("month_ended")
+    val monthEnded: Boolean = false,
+    /** While the month runs: setup's income not yet seen. Null once it has ended. */
+    @SerialName("income_expected")
+    val incomeExpected: String? = null,
+    /** While the month runs: commitments not seen paid yet. */
+    @SerialName("commitments_due")
+    val commitmentsDue: String? = null,
+    /** While the month runs: what the lines have left beyond the commitments still due in them. */
+    @SerialName("budget_rest")
+    val budgetRest: String? = null,
+    /** While the month runs: left now, plus income still expected, less everything still to come. */
+    @SerialName("projected_left")
+    val projectedLeft: String? = null,
+    /** While the month runs: the savings target not yet moved to savings. */
+    @SerialName("savings_due")
+    val savingsDue: String? = null,
+    /** Money moved to savings this month, less any taken back out. */
+    @SerialName("month_saved")
+    val monthSaved: String? = null,
+    /** Income less spending less savings. */
+    @SerialName("month_left")
+    val monthLeft: String? = null,
+    /** Expected income less every line but savings: the room for a savings target. */
+    @SerialName("savings_room")
+    val savingsRoom: String = "0",
+    /** The category a savings target is set on. */
+    @SerialName("savings_category_id")
+    val savingsCategoryId: String? = null,
+    /** "review" (the monthly one) or "setup" (the first budget), else null. */
+    @SerialName("ai_kind")
+    val aiKind: String? = null,
+    /** AI suggestions for categories with no line and no spending yet. */
+    @SerialName("ai_extra")
+    val aiExtra: List<AiLine> = emptyList(),
+    @SerialName("ai_savings")
+    val aiSavings: String? = null,
+    /** A few sentences, never a figure: what went over, what was saved, where the rest is best put. */
+    @SerialName("ai_advice")
+    val aiAdvice: String? = null,
+    /** The app may ask for this month's review. */
+    @SerialName("ai_review_due")
+    val aiReviewDue: Boolean = false,
+    /** Where the month's money went, largest first; sums to [monthSpending]. */
+    @SerialName("spending_by_category")
+    val spendingByCategory: List<CategorySpend> = emptyList(),
 ) {
+    /** What "Spent … of …" says: all of it, or the lines alone from an older server. */
+    val spentTotal: String get() = spentOverall ?: totalSpent
+
+    val hasUnbudgeted: Boolean get() = unbudgeted.isNotEmpty()
+
     val symbol: String get() = Money.symbol(currency)
 
     val fractionDigits: Int get() = Money.fractionDigits(currency)
@@ -101,6 +176,51 @@ data class Budget(
      */
     val allLines: List<BudgetLine> get() = lines + listOfNotNull(savings, debt)
 }
+
+/**
+ * One setup commitment and whether its payment was seen this month. A null
+ * [paidOn] is "not seen", never "unpaid" — as on Home.
+ */
+@Serializable
+data class BudgetCommitment(
+    val name: String = "",
+    val expected: String = "0",
+    @SerialName("due_day")
+    val dueDay: Int? = null,
+    /** The spending category it belongs to (`rent`), or null. */
+    val category: String? = null,
+    @SerialName("paid_on")
+    val paidOn: String? = null,
+    @SerialName("paid_amount")
+    val paidAmount: String? = null,
+) {
+    val wasSeen: Boolean get() = paidOn != null
+}
+
+/** Spending in a category the month's budget has no line for. */
+@Serializable
+data class UnbudgetedSpend(
+    @SerialName("category_id")
+    val categoryId: String = "",
+    val slug: String = "",
+    val name: String = "",
+    val spent: String = "0",
+    @SerialName("ai_suggested")
+    val aiSuggested: String? = null,
+    @SerialName("ai_reason")
+    val aiReason: String? = null,
+)
+
+/** An AI suggestion for a category the budget has no line for yet. */
+@Serializable
+data class AiLine(
+    @SerialName("category_id")
+    val categoryId: String = "",
+    val slug: String = "",
+    val name: String = "",
+    val amount: String = "0",
+    val reason: String? = null,
+)
 
 /** Whether a budget could be generated yet (PRD F8). */
 @Serializable(with = BudgetStatusSerializer::class)
@@ -186,6 +306,16 @@ data class BudgetLine(
 
     /** This month's countable debits in the category, by the dashboard's rule. */
     val spent: String = "0",
+
+    /**
+     * What the AI suggests for this line this month, checked by the server,
+     * and why. Null without one. Advisory: nothing changes until the person
+     * uses it.
+     */
+    @SerialName("ai_suggested")
+    val aiSuggested: String? = null,
+    @SerialName("ai_reason")
+    val aiReason: String? = null,
 
     /**
      * How far spending is past the allocation, as the server worked it out —

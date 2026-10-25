@@ -74,8 +74,14 @@ enum class SetupBlock(val messageKey: String) {
     RATE_INVALID(Strings.setup_rate_invalid),
     DUE_DAY_INVALID(Strings.setup_due_day_invalid),
 
+    /** A commitment with an amount but no budget category. */
+    CATEGORY_MISSING(Strings.setup_commitment_category_missing),
+
     /** The server keeps at most [SetupWizard.LIST_LIMIT] rows in a list. */
     TOO_MANY(Strings.setup_list_limit),
+
+    /** An edit that changes nothing — not worth a save. */
+    UNCHANGED(Strings.debts_block_unchanged),
     ;
 
     /**
@@ -92,7 +98,7 @@ enum class SetupBlock(val messageKey: String) {
         get() = when (this) {
             INCOME_MISSING, INCOME_NOT_MONEY -> SetupStep.INCOME
             EXPENSE_MISSING, EXPENSE_NOT_MONEY -> SetupStep.EXPENSES
-            ITEM_NAME_MISSING, ITEM_AMOUNT_INVALID, RATE_INVALID, DUE_DAY_INVALID, TOO_MANY -> null
+            ITEM_NAME_MISSING, ITEM_AMOUNT_INVALID, RATE_INVALID, DUE_DAY_INVALID, CATEGORY_MISSING, TOO_MANY, UNCHANGED -> null
         }
 }
 
@@ -109,6 +115,12 @@ data class ItemDraft(
      * typed. Blank when not given, which is allowed.
      */
     val dueDay: String = "",
+    /**
+     * Commitments only: the spending category it belongs to, by slug
+     * ([CommitmentCategories.SLUGS]). Blank until chosen; a preset starts
+     * with its own.
+     */
+    val category: String = "",
 )
 
 /** Everything the wizard is holding, as typed. */
@@ -257,15 +269,53 @@ object SetupWizard {
      */
     fun debtAdded(setup: FinancialSetup, item: ItemDraft, fractionDigits: Int = 2): FinancialSetup? {
         if (blockingReasonForNewDebt(item, setup.debts.size, fractionDigits) != null) return null
-        val debt = Debt(
-            name = item.name.trim(),
-            balance = Money.normalize(item.amount, fractionDigits).orEmpty(),
-            minimumPayment = Money.normalize(item.minimumPayment, fractionDigits),
-            interestRatePercent = Money.normalize(item.interestRatePercent, fractionDigits = 2),
-            dueDay = dueDayOf(item),
-        )
-        return setup.copy(debts = setup.debts + debt)
+        return setup.copy(debts = setup.debts + debtOf(item, fractionDigits))
     }
+
+    // ── A debt edited outside the wizard ────────────────────────────────
+
+    /** [debt] as a row to edit, as step 3 would show it. */
+    fun debtDraftOf(debt: Debt): ItemDraft = ItemDraft(
+        name = debt.name,
+        amount = debt.balance,
+        minimumPayment = debt.minimumPayment.orEmpty(),
+        interestRatePercent = debt.interestRatePercent.orEmpty(),
+        dueDay = debt.dueDay?.toString().orEmpty(),
+    )
+
+    /** Why [item] cannot replace [original]: step 3's rules, or nothing changed. */
+    fun blockingReasonForDebtEdit(original: Debt, item: ItemDraft, fractionDigits: Int = 2): SetupBlock? {
+        itemBlock(item, fractionDigits, debt = true)?.let { return it }
+        if (debtOf(item, fractionDigits) == debtOf(debtDraftOf(original), fractionDigits)) return SetupBlock.UNCHANGED
+        return null
+    }
+
+    /**
+     * [setup] with [original] replaced by [item], or null when it cannot be:
+     * [item] is not a debt, or [original] is no longer in [setup].
+     *
+     * Null for a missing original is not papered over. It means setup
+     * changed since the screen read it — on another phone, say — and writing
+     * the list back would overwrite that change. Found by name and balance,
+     * all a setup row has; two identical rows are interchangeable. The row
+     * keeps its place, so the debt's type, promotion and account link (kept
+     * by position on the server) stay with it.
+     */
+    fun debtEdited(setup: FinancialSetup, original: Debt, item: ItemDraft, fractionDigits: Int = 2): FinancialSetup? {
+        if (itemBlock(item, fractionDigits, debt = true) != null) return null
+        val wanted = Money.normalize(original.balance, fractionDigits)
+        val index = setup.debts.indexOfFirst { it.name == original.name && Money.normalize(it.balance, fractionDigits) == wanted }
+        if (index < 0) return null
+        return setup.copy(debts = setup.debts.mapIndexed { i, debt -> if (i == index) debtOf(item, fractionDigits) else debt })
+    }
+
+    private fun debtOf(item: ItemDraft, fractionDigits: Int): Debt = Debt(
+        name = item.name.trim(),
+        balance = Money.normalize(item.amount, fractionDigits).orEmpty(),
+        minimumPayment = Money.normalize(item.minimumPayment, fractionDigits),
+        interestRatePercent = Money.normalize(item.interestRatePercent, fractionDigits = 2),
+        dueDay = dueDayOf(item),
+    )
 
     // ── Commitments ─────────────────────────────────────────────────────
 
@@ -297,7 +347,10 @@ object SetupWizard {
     fun commitmentRows(saved: List<ItemDraft>, locale: String = "en"): List<ItemDraft> {
         val presets = COMMITMENT_PRESETS.map { LocalizationRegistry.get(it, locale) }
         val byName = saved.associateBy { it.name.trim().lowercase() }
-        val fromPresets = presets.map { name -> byName[name.lowercase()] ?: ItemDraft(name = name) }
+        val fromPresets = presets.map { name ->
+            val row = byName[name.lowercase()] ?: ItemDraft(name = name)
+            row.copy(category = row.category.ifBlank { CommitmentCategories.presetSlug(name, locale).orEmpty() })
+        }
         val presetNames = presets.map { it.lowercase() }.toSet()
         return fromPresets + saved.filter { it.name.trim().lowercase() !in presetNames }
     }
@@ -313,6 +366,7 @@ object SetupWizard {
         if (item.name.isBlank()) return SetupBlock.ITEM_NAME_MISSING
         if (!Money.isMoney(item.amount, fractionDigits)) return SetupBlock.ITEM_AMOUNT_INVALID
         if (item.dueDay.isNotBlank() && !isDueDay(item.dueDay)) return SetupBlock.DUE_DAY_INVALID
+        if (!CommitmentCategories.isCategory(item.category)) return SetupBlock.CATEGORY_MISSING
         return null
     }
 
@@ -365,7 +419,9 @@ object SetupWizard {
     fun draftFrom(setup: FinancialSetup): SetupDraft = SetupDraft(
         income = setup.income.orEmpty(),
         monthlyExpense = setup.monthlyExpense.orEmpty(),
-        obligations = setup.obligations.map { ItemDraft(name = it.name, amount = it.monthlyAmount, dueDay = it.dueDay?.toString().orEmpty()) },
+        obligations = setup.obligations.map {
+            ItemDraft(name = it.name, amount = it.monthlyAmount, dueDay = it.dueDay?.toString().orEmpty(), category = it.category.orEmpty())
+        },
         debts = setup.debts.map {
             ItemDraft(
                 name = it.name,
@@ -397,6 +453,7 @@ object SetupWizard {
                 name = item.name.trim(),
                 monthlyAmount = Money.normalize(item.amount, fractionDigits).orEmpty(),
                 dueDay = dueDayOf(item),
+                category = item.category.takeIf(CommitmentCategories::isCategory),
             )
         },
         debts = draft.debts.mapNotNull { item ->

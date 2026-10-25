@@ -10,52 +10,52 @@ import kotlin.test.assertNull
 
 class CommitmentEditTest {
 
-    private val rent = Commitment(name = "Rent", expected = "1800.00")
+    private val rent = Commitment(name = "Rent", expected = "1800.00", category = "rent")
 
     private fun setup(vararg obligations: Obligation) = FinancialSetup(currency = "CAD", obligations = obligations.toList())
 
     @Test
     fun a_draft_starts_as_the_commitment_is() {
-        assertEquals(CommitmentDraft("Rent", "1800.00"), CommitmentEdit.draftOf(rent))
+        assertEquals(CommitmentDraft("Rent", "1800.00", category = "rent"), CommitmentEdit.draftOf(rent))
     }
 
     @Test
     fun an_unchanged_draft_cannot_be_saved() {
-        assertEquals(CommitmentBlock.NOTHING_CHANGED, CommitmentEdit.blockingReason(rent, CommitmentDraft("Rent", "1800.00"), "CAD"))
+        assertEquals(CommitmentBlock.NOTHING_CHANGED, CommitmentEdit.blockingReason(rent, CommitmentDraft("Rent", "1800.00", category = "rent"), "CAD"))
         // The same amount written differently is not a change.
-        assertEquals(CommitmentBlock.NOTHING_CHANGED, CommitmentEdit.blockingReason(rent, CommitmentDraft("Rent ", "1800"), "CAD"))
+        assertEquals(CommitmentBlock.NOTHING_CHANGED, CommitmentEdit.blockingReason(rent, CommitmentDraft("Rent ", "1800", category = "rent"), "CAD"))
     }
 
     @Test
     fun a_name_or_an_amount_change_can_be_saved() {
-        assertNull(CommitmentEdit.blockingReason(rent, CommitmentDraft("Rent + parking", "1800.00"), "CAD"))
-        assertNull(CommitmentEdit.blockingReason(rent, CommitmentDraft("Rent", "1850"), "CAD"))
+        assertNull(CommitmentEdit.blockingReason(rent, CommitmentDraft("Rent + parking", "1800.00", category = "rent"), "CAD"))
+        assertNull(CommitmentEdit.blockingReason(rent, CommitmentDraft("Rent", "1850", category = "rent"), "CAD"))
     }
 
     @Test
     fun a_draft_that_is_not_a_commitment_is_refused_with_its_reason() {
-        assertEquals(CommitmentBlock.NO_NAME, CommitmentEdit.blockingReason(rent, CommitmentDraft("  ", "10"), "CAD"))
-        assertEquals(CommitmentBlock.NAME_TOO_LONG, CommitmentEdit.blockingReason(rent, CommitmentDraft("x".repeat(256), "10"), "CAD"))
-        assertEquals(CommitmentBlock.NO_AMOUNT, CommitmentEdit.blockingReason(rent, CommitmentDraft("Rent", ""), "CAD"))
-        assertEquals(CommitmentBlock.AMOUNT_NOT_MONEY, CommitmentEdit.blockingReason(rent, CommitmentDraft("Rent", "ten"), "CAD"))
-        assertEquals(CommitmentBlock.AMOUNT_ZERO, CommitmentEdit.blockingReason(rent, CommitmentDraft("Rent", "0"), "CAD"))
+        assertEquals(CommitmentBlock.NO_NAME, CommitmentEdit.blockingReason(rent, CommitmentDraft("  ", "10", category = "rent"), "CAD"))
+        assertEquals(CommitmentBlock.NAME_TOO_LONG, CommitmentEdit.blockingReason(rent, CommitmentDraft("x".repeat(256), "10", category = "rent"), "CAD"))
+        assertEquals(CommitmentBlock.NO_AMOUNT, CommitmentEdit.blockingReason(rent, CommitmentDraft("Rent", "", category = "rent"), "CAD"))
+        assertEquals(CommitmentBlock.AMOUNT_NOT_MONEY, CommitmentEdit.blockingReason(rent, CommitmentDraft("Rent", "ten", category = "rent"), "CAD"))
+        assertEquals(CommitmentBlock.AMOUNT_ZERO, CommitmentEdit.blockingReason(rent, CommitmentDraft("Rent", "0", category = "rent"), "CAD"))
     }
 
     @Test
     fun applying_changes_the_matching_obligation_and_nothing_else() {
         val before = setup(Obligation("Phone", "65.00"), Obligation("Rent", "1800.00"), Obligation("Gym", "40.00"))
 
-        val after = assertNotNull(CommitmentEdit.applied(before, rent, CommitmentDraft(" Rent + parking ", "1850")))
+        val after = assertNotNull(CommitmentEdit.applied(before, rent, CommitmentDraft(" Rent + parking ", "1850", category = "rent")))
 
         assertEquals(
-            listOf(Obligation("Phone", "65.00"), Obligation("Rent + parking", "1850.00"), Obligation("Gym", "40.00")),
+            listOf(Obligation("Phone", "65.00"), Obligation("Rent + parking", "1850.00", category = "rent"), Obligation("Gym", "40.00")),
             after.obligations,
         )
     }
 
     @Test
     fun the_match_reads_amounts_the_way_money_reads_them() {
-        val after = CommitmentEdit.applied(setup(Obligation("Rent", "1800")), rent, CommitmentDraft("Rent", "1900"))
+        val after = CommitmentEdit.applied(setup(Obligation("Rent", "1800")), rent, CommitmentDraft("Rent", "1900", category = "rent"))
         assertEquals("1900.00", assertNotNull(after).obligations.single().monthlyAmount)
     }
 
@@ -63,8 +63,8 @@ class CommitmentEditTest {
     fun a_commitment_changed_elsewhere_is_not_written_over() {
         // The wizard's answers moved on since the dashboard was read. Writing
         // the list back would replace that change with a stale one.
-        assertNull(CommitmentEdit.applied(setup(Obligation("Rent", "1950.00")), rent, CommitmentDraft("Rent", "2000")))
-        assertNull(CommitmentEdit.applied(setup(), rent, CommitmentDraft("Rent", "2000")))
+        assertNull(CommitmentEdit.applied(setup(Obligation("Rent", "1950.00")), rent, CommitmentDraft("Rent", "2000", category = "rent")))
+        assertNull(CommitmentEdit.applied(setup(), rent, CommitmentDraft("Rent", "2000", category = "rent")))
     }
 
     @Test
@@ -72,7 +72,7 @@ class CommitmentEditTest {
         val after = CommitmentEdit.applied(
             setup(Obligation("Rent", "1800.00"), Obligation("Rent", "1800.00")),
             rent,
-            CommitmentDraft("Rent", "1900"),
+            CommitmentDraft("Rent", "1900", category = "rent"),
         )
         assertEquals(listOf("1900.00", "1800.00"), assertNotNull(after).obligations.map { it.monthlyAmount })
     }
@@ -81,15 +81,15 @@ class CommitmentEditTest {
 
     @Test
     fun a_new_commitment_goes_at_the_end_with_its_amount_written_as_money() {
-        val after = CommitmentEdit.added(setup(Obligation("Rent", "1800.00")), CommitmentDraft(" Gym ", "40"))
-        assertEquals(listOf(Obligation("Rent", "1800.00"), Obligation("Gym", "40.00")), assertNotNull(after).obligations)
+        val after = CommitmentEdit.added(setup(Obligation("Rent", "1800.00")), CommitmentDraft(" Gym ", "40", category = "subscriptions"))
+        assertEquals(listOf(Obligation("Rent", "1800.00"), Obligation("Gym", "40.00", category = "subscriptions")), assertNotNull(after).obligations)
     }
 
     @Test
     fun a_new_commitment_is_checked_like_an_edited_one() {
-        assertEquals(CommitmentBlock.NO_NAME, CommitmentEdit.blockingReasonForNew(CommitmentDraft("", "10"), "CAD", 0))
-        assertEquals(CommitmentBlock.AMOUNT_ZERO, CommitmentEdit.blockingReasonForNew(CommitmentDraft("Gym", "0"), "CAD", 0))
-        assertNull(CommitmentEdit.blockingReasonForNew(CommitmentDraft("Gym", "40"), "CAD", 3))
+        assertEquals(CommitmentBlock.NO_NAME, CommitmentEdit.blockingReasonForNew(CommitmentDraft("", "10", category = "rent"), "CAD", 0))
+        assertEquals(CommitmentBlock.AMOUNT_ZERO, CommitmentEdit.blockingReasonForNew(CommitmentDraft("Gym", "0", category = "subscriptions"), "CAD", 0))
+        assertNull(CommitmentEdit.blockingReasonForNew(CommitmentDraft("Gym", "40", category = "subscriptions"), "CAD", 3))
     }
 
     @Test
@@ -98,14 +98,14 @@ class CommitmentEditTest {
         // after both fields are filled in is the worse time.
         assertEquals(
             CommitmentBlock.TOO_MANY,
-            CommitmentEdit.blockingReasonForNew(CommitmentDraft("Gym", "40"), "CAD", CommitmentEdit.COUNT_LIMIT),
+            CommitmentEdit.blockingReasonForNew(CommitmentDraft("Gym", "40", category = "subscriptions"), "CAD", CommitmentEdit.COUNT_LIMIT),
         )
     }
 
     @Test
     fun a_list_that_filled_up_elsewhere_is_not_added_to() {
         val full = setup(*Array(CommitmentEdit.COUNT_LIMIT) { Obligation("Bill $it", "10.00") })
-        assertNull(CommitmentEdit.added(full, CommitmentDraft("Gym", "40")))
+        assertNull(CommitmentEdit.added(full, CommitmentDraft("Gym", "40", category = "subscriptions")))
     }
 
     // ── Deleting ────────────────────────────────────────────────────────
@@ -134,7 +134,7 @@ class CommitmentEditTest {
 
     @Test
     fun a_due_day_is_optional_but_must_be_a_day_of_a_month() {
-        val ok = CommitmentDraft(name = "Rent", amount = "1800", dueDay = "")
+        val ok = CommitmentDraft(name = "Rent", amount = "1800", dueDay = "", category = "rent")
         kotlin.test.assertNull(CommitmentEdit.blockingReasonForNew(ok, "CAD", existing = 0))
         kotlin.test.assertNull(CommitmentEdit.blockingReasonForNew(ok.copy(dueDay = "31"), "CAD", existing = 0))
         for (bad in listOf("0", "32", "x")) {
@@ -160,10 +160,36 @@ class CommitmentEditTest {
     @Test
     fun changing_only_the_due_day_is_a_change() {
         val original = com.humblesolutions.finai.model.Commitment(name = "Rent", expected = "1800.00", dueDay = 5)
-        kotlin.test.assertNull(CommitmentEdit.blockingReason(original, CommitmentDraft("Rent", "1800", "6"), "CAD"))
+        kotlin.test.assertNull(CommitmentEdit.blockingReason(original, CommitmentDraft("Rent", "1800", "6", category = "rent"), "CAD"))
         kotlin.test.assertEquals(
             CommitmentBlock.NOTHING_CHANGED,
             CommitmentEdit.blockingReason(original, CommitmentEdit.draftOf(original), "CAD"),
         )
+    }
+
+    @Test
+    fun a_commitment_needs_a_budget_category() {
+        assertEquals(CommitmentBlock.NO_CATEGORY, CommitmentEdit.blockingReasonForNew(CommitmentDraft("Piano lessons", "80"), "CAD", 0))
+        assertEquals(CommitmentBlock.NO_CATEGORY, CommitmentEdit.blockingReasonForNew(CommitmentDraft("Gym", "40", category = "income"), "CAD", 0))
+    }
+
+    @Test
+    fun a_preset_name_fills_a_blank_category_and_a_rename_keeps_it() {
+        val typed = CommitmentEdit.withName(CommitmentDraft(), "Streaming")
+        assertEquals("subscriptions", typed.category)
+        assertEquals("subscriptions", CommitmentEdit.withName(typed, "Netflix").category)
+    }
+
+    @Test
+    fun changing_only_the_category_is_a_change_and_it_is_written_back() {
+        assertNull(CommitmentEdit.blockingReason(rent, CommitmentDraft("Rent", "1800.00", category = "other"), "CAD"))
+        val after = assertNotNull(CommitmentEdit.applied(setup(Obligation("Rent", "1800.00")), rent, CommitmentDraft("Rent", "1800", category = "other")))
+        assertEquals("other", after.obligations.single().category)
+    }
+
+    @Test
+    fun an_older_commitment_with_no_category_starts_from_its_preset() {
+        assertEquals("rent", CommitmentEdit.draftOf(Commitment(name = "Rent", expected = "1800.00")).category)
+        assertEquals("", CommitmentEdit.draftOf(Commitment(name = "Piano lessons", expected = "80.00")).category)
     }
 }
