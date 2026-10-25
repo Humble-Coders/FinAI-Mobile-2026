@@ -2,6 +2,8 @@ package com.humblesolutions.finai.repository
 
 import com.humblesolutions.finai.model.ApiException
 import com.humblesolutions.finai.model.Plan
+import com.humblesolutions.finai.model.PlanDiagnostic
+import com.humblesolutions.finai.model.PlanDiagnostics
 import com.humblesolutions.finai.model.PlanPreferences
 import com.humblesolutions.finai.model.PlanPreferencesToSave
 import com.humblesolutions.finai.model.Terms
@@ -28,6 +30,18 @@ interface PlanRepository {
     /** The region's not-financial-advice disclaimer, or null when it has none. */
     @Throws(ApiException::class, CancellationException::class)
     suspend fun disclaimer(): Terms?
+
+    /** The last run of each diagnostic and what the form starts with. */
+    @Throws(ApiException::class, CancellationException::class)
+    suspend fun diagnostics(): PlanDiagnostics
+
+    /**
+     * Run a diagnostic on the person's savings figures (decimal strings).
+     * The same figures as last time return the stored run; past four fresh
+     * runs a month, [ApiException.DiagnosticLimitReached].
+     */
+    @Throws(ApiException::class, CancellationException::class)
+    suspend fun runDiagnostic(kind: String, savingsTarget: String, savingsNow: String): PlanDiagnostic
 
     fun close()
 }

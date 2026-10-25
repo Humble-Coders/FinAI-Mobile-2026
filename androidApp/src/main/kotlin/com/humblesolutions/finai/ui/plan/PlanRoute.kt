@@ -34,6 +34,13 @@ internal fun PlanRoute(userId: String, startOnDebts: Boolean, onClose: () -> Uni
     LaunchedEffect(userId) { model.bind(userId, logging = BuildConfig.DEBUG) }
     LoaderSignal(key = "plan", active = state.loading)
 
+    // A diagnostic, over the plan; back returns to it.
+    var diagnostic by rememberSaveable { mutableStateOf<String?>(null) }
+    diagnostic?.let { kind ->
+        DiagnosticRoute(userId = userId, kind = kind) { diagnostic = null }
+        return
+    }
+
     val back = {
         if (state.page == PlanPage.DEBTS && !startOnDebts) model.showPage(PlanPage.PLAN) else onClose()
     }
@@ -47,6 +54,7 @@ internal fun PlanRoute(userId: String, startOnDebts: Boolean, onClose: () -> Uni
         onStrategy = model::chooseStrategy,
         onEditDebt = model::editDebt,
         onUpdateBalance = model::startBalance,
+        onRunDiagnostic = { diagnostic = it },
     )
     when (state.page) {
         PlanPage.PLAN -> PlanScreen(state, actions)

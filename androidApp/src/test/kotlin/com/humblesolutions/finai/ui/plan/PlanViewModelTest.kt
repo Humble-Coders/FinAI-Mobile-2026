@@ -13,6 +13,8 @@ import com.humblesolutions.finai.model.DebtsPage
 import com.humblesolutions.finai.model.NewAccount
 import com.humblesolutions.finai.model.Plan
 import com.humblesolutions.finai.model.PlanDebt
+import com.humblesolutions.finai.model.PlanDiagnostic
+import com.humblesolutions.finai.model.PlanDiagnostics
 import com.humblesolutions.finai.model.PlanPreferences
 import com.humblesolutions.finai.model.PlanPreferencesToSave
 import com.humblesolutions.finai.model.PlanSplit
@@ -72,6 +74,10 @@ class PlanViewModelTest {
         }
 
         override suspend fun disclaimer(): Terms? = Terms(version = "ca-v1", body = "Educational guidance, not financial advice.")
+
+        override suspend fun diagnostics(): PlanDiagnostics = PlanDiagnostics()
+
+        override suspend fun runDiagnostic(kind: String, savingsTarget: String, savingsNow: String): PlanDiagnostic = throw UnsupportedOperationException()
 
         override fun close() = Unit
     }
