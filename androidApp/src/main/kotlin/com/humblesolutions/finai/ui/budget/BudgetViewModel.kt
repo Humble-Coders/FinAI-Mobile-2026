@@ -17,6 +17,7 @@ import com.humblesolutions.finai.model.Category
 import com.humblesolutions.finai.repository.BudgetRepository
 import com.humblesolutions.finai.repository.CapabilitiesRepository
 import com.humblesolutions.finai.repository.CategoriesRepository
+import com.humblesolutions.finai.usecase.AiBudgetEdit
 import com.humblesolutions.finai.usecase.BudgetDraft
 import com.humblesolutions.finai.usecase.BudgetEdit
 import com.humblesolutions.finai.usecase.BudgetOverview
@@ -165,6 +166,64 @@ class BudgetViewModel(
         }
     }
 
+    /** This month's AI review, asked for once per screen when the budget says one is due. */
+    private var reviewAsked: String? = null
+
+    private fun reviewIfDue(budget: Budget) {
+        val repos = repositories ?: return
+        val month = _uiState.value.month
+        if (!AiBudgetEdit.shouldReview(budget) || reviewAsked == month) return
+        reviewAsked = month
+        val started = generation
+        viewModelScope.launch {
+            // Quietly: a review that cannot be made leaves the budget as it was.
+            val reviewed = try {
+                repos.budgets.review(month)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: ApiException) {
+                null
+            } ?: return@launch
+            if (started != generation) return@launch
+            update { it.copy(budget = reviewed, editing = freshEditing(it, reviewed)) }
+        }
+    }
+
+    /** "Use" on a line's AI suggestion: the line is set to it, by hand. */
+    fun useAiSuggestion(categoryId: String) {
+        val repos = repositories ?: return
+        val state = _uiState.value
+        val line = state.budget?.allLines?.firstOrNull { it.categoryId == categoryId } ?: return
+        val amount = line.aiSuggested ?: return
+        if (state.saving) return
+        update { it.copy(saving = true, errorKey = null) }
+        viewModelScope.launch {
+            try {
+                val budget = repos.budgets.setLine(state.month, categoryId, amount)
+                update { it.copy(budget = budget, saving = false) }
+                BudgetChanged.announce()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: ApiException) {
+                update { it.copy(saving = false, errorKey = e.messageKey) }
+            }
+        }
+    }
+
+    /** "Add" on a category the AI suggests: the editor on a new line, started at the AI's amount. */
+    fun addFromAi(categoryId: String) {
+        val extra = _uiState.value.budget?.aiExtra?.firstOrNull { it.categoryId == categoryId } ?: return
+        update {
+            it.copy(
+                picking = false,
+                editing = BudgetLine(categoryId = extra.categoryId, slug = extra.slug, name = extra.name),
+                editingIsNew = true,
+                draft = BudgetDraft(extra.amount),
+                editErrorKey = null,
+            )
+        }
+    }
+
     private fun settle(budget: Budget, categories: List<Category>, capabilities: Capabilities?) {
         update {
             it.copy(
@@ -182,6 +241,7 @@ class BudgetViewModel(
                 errorKey = null,
             )
         }
+        reviewIfDue(budget)
     }
 
     /**
@@ -268,7 +328,8 @@ class BudgetViewModel(
                 picking = false,
                 editing = BudgetEdit.lineFor(spend),
                 editingIsNew = true,
-                draft = BudgetEdit.draftFor(spend, state.currency),
+                // The AI's amount when it suggested one; otherwise what was spent.
+                draft = spend.aiSuggested?.let { amount -> BudgetDraft(amount) } ?: BudgetEdit.draftFor(spend, state.currency),
                 editErrorKey = null,
             )
         }

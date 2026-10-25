@@ -1,5 +1,7 @@
 package com.humblesolutions.finai.repository
 
+import com.humblesolutions.finai.model.AiAccept
+import com.humblesolutions.finai.model.AiProposal
 import com.humblesolutions.finai.model.ApiException
 import com.humblesolutions.finai.model.Budget
 import kotlin.coroutines.cancellation.CancellationException
@@ -43,6 +45,22 @@ interface BudgetRepository {
      */
     @Throws(ApiException::class, CancellationException::class)
     suspend fun resetLine(month: String, categoryId: String): Budget
+
+    /** A first budget from setup's answers; at most three times, then [ApiException.AiBudgetLimitReached]. */
+    @Throws(ApiException::class, CancellationException::class)
+    suspend fun suggestSetup(): AiProposal
+
+    /** The setup suggestion made last this month, or [ApiException.NotFound]. */
+    @Throws(ApiException::class, CancellationException::class)
+    suspend fun setupSuggestion(): AiProposal
+
+    /** Start the budget from the person's edited lines. Answers with the month's budget. */
+    @Throws(ApiException::class, CancellationException::class)
+    suspend fun acceptSetup(accept: AiAccept): Budget
+
+    /** This month's AI review — made once a month, then returned as stored. */
+    @Throws(ApiException::class, CancellationException::class)
+    suspend fun review(month: String): Budget
 
     fun close()
 }

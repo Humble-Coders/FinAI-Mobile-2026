@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.WarningAmber
+import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.RadioButtonUnchecked
 import androidx.compose.material.icons.outlined.Savings
 import androidx.compose.material3.HorizontalDivider
@@ -99,6 +100,12 @@ internal fun BudgetScreen(
     onAddUnbudgeted: (String) -> Unit = {},
     /** "Set a savings target", when there is none. */
     onSetSavingsTarget: () -> Unit = {},
+    /** "Use" on a line's AI suggestion. */
+    onUseAi: (String) -> Unit = {},
+    /** "Add" on a category the AI suggests a line for. */
+    onAddAi: (String) -> Unit = {},
+    /** "Ask AI for a budget". */
+    onAskAi: () -> Unit = {},
     /** Your plan (#76), from the Savings line; null when the plan is off, which hides the link. */
     onOpenPlan: (() -> Unit)? = null,
 ) {
@@ -137,14 +144,14 @@ internal fun BudgetScreen(
                     else -> {
                         state.learning?.let { LearningFieldCard(it, onImport = onImport) }
                         // The month as the statements tell it, first.
-                        Overview(state)
+                        Overview(state, onOpenPlan)
                         if (state.showsPlan) {
                             // Hand-set lines still show while learning:
                             // manual budgeting is available before the first
                             // full month (PRD F9), and hiding someone's own
                             // figures would be a lie about what they had set.
                             PlanSummary(state, onOpenPlan)
-                            Sheet(state, onEdit, onAddCategory, onReviewUnfiled, onAddUnbudgeted, onSetSavingsTarget)
+                            Sheet(state, onEdit, onAddCategory, onReviewUnfiled, onAddUnbudgeted, onSetSavingsTarget, BudgetAiActions(onUseAi, onAddAi, onAskAi))
                         } else {
                             // A month that has ended is a record, not a plan:
                             // a one-off is a row in its month, not a line.
@@ -222,7 +229,7 @@ private fun PlanSummary(state: BudgetUiState, onOpenPlan: (() -> Unit)?) {
 
 /** The month so far, its commitments, what is still to come, and what to do with the rest. */
 @Composable
-private fun Overview(state: BudgetUiState) {
+private fun Overview(state: BudgetUiState, onOpenPlan: (() -> Unit)?) {
     state.soFar?.let { rows ->
         Card(state.soFarTitle, subtitle = strings(Strings.budget_from_statements)) { rows.forEach { FigureRow(it) } }
     }
@@ -233,6 +240,99 @@ private fun Overview(state: BudgetUiState) {
         Card(strings(Strings.budget_still_expected_title)) { rows.forEach { FigureRow(it) } }
     }
     state.suggestion?.let { Suggestion(it, state.suggestsUsing) }
+    state.aiAdvice?.let { AiAdvice(it, onOpenPlan) }
+}
+
+/** What the AI rows can ask of the model. */
+internal class BudgetAiActions(
+    val onUse: (String) -> Unit = {},
+    val onAdd: (String) -> Unit = {},
+    val onAsk: () -> Unit = {},
+)
+
+/** The month's AI review, in words only — every figure on the screen is the server's. */
+@Composable
+private fun AiAdvice(text: String, onOpenPlan: (() -> Unit)?) {
+    Card(strings(Strings.ai_budget_review_title)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Icon(Icons.Outlined.AutoAwesome, contentDescription = null, tint = Mint.greenText(), modifier = Modifier.size(20.dp))
+            Text(text, style = MaterialTheme.typography.bodyMedium)
+        }
+        onOpenPlan?.let { open ->
+            TextButton(onClick = open, contentPadding = PaddingValues(0.dp)) {
+                Text(strings(Strings.ai_budget_see_plan), fontWeight = FontWeight.SemiBold)
+            }
+        }
+    }
+}
+
+/** "AI suggests $430.00 · why", with Use, under a line whose suggestion differs. */
+@Composable
+private fun AiHint(state: BudgetUiState, line: BudgetLine, onUse: (String) -> Unit) {
+    val label = state.aiLabel(line) ?: return
+    Row(
+        Modifier.fillMaxWidth().padding(start = 52.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Outlined.AutoAwesome, contentDescription = null, tint = Mint.greenText(), modifier = Modifier.size(16.dp))
+        Column(Modifier.weight(1f)) {
+            Text(label, style = MaterialTheme.typography.labelLarge, color = Mint.greenText())
+            line.aiReason?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        }
+        TextButton(onClick = { onUse(line.categoryId) }, enabled = !state.saving) { Text(strings(Strings.ai_budget_use)) }
+    }
+}
+
+/** Categories the AI suggests planning for that have no line and no spending yet. */
+@Composable
+private fun AiExtras(state: BudgetUiState, onAdd: (String) -> Unit) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(Mint.card())
+            .border(1.dp, Mint.edge(), RoundedCornerShape(16.dp))
+            .padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Text(strings(Strings.ai_budget_extra_title), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, modifier = Modifier.semantics { heading() })
+        state.aiExtras.forEach { extra ->
+            Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("${extra.name} · ${state.amountOf(extra)}", style = MaterialTheme.typography.bodyLarge)
+                    extra.reason?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                }
+                TextButton(onClick = { onAdd(extra.categoryId) }) { Text(strings(Strings.budget_unbudgeted_add), maxLines = 1) }
+            }
+        }
+    }
+}
+
+/** "Ask AI for a budget": the suggested budget, for a household already set up. */
+@Composable
+private fun AskAiRow(onClick: () -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .clickable(role = Role.Button, onClick = onClick)
+            .heightIn(min = 48.dp)
+            .padding(vertical = 10.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            Modifier.size(40.dp).clip(RoundedCornerShape(12.dp)).background(Mint.tile(Mint.greenText())),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(Icons.Outlined.AutoAwesome, contentDescription = null, tint = Mint.greenText(), modifier = Modifier.size(20.dp))
+        }
+        Column(Modifier.weight(1f)) {
+            Text(strings(Strings.ai_budget_open), style = MaterialTheme.typography.bodyLarge, color = Mint.greenText())
+            Text(strings(Strings.ai_budget_open_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
 }
 
 @Composable
@@ -442,6 +542,7 @@ private fun Sheet(
     onReviewUnfiled: () -> Unit,
     onAddUnbudgeted: (String) -> Unit,
     onSetSavingsTarget: () -> Unit,
+    ai: BudgetAiActions,
 ) {
     Column(
         Modifier
@@ -459,11 +560,15 @@ private fun Sheet(
             )
         }
 
-        state.lines.forEach { line -> LineRow(state, line) { onEdit(line.categoryId) } }
+        state.lines.forEach { line ->
+            LineRow(state, line) { onEdit(line.categoryId) }
+            AiHint(state, line, ai.onUse)
+        }
 
         // Savings is a target the person sets, never a figure filled in for them.
         state.savings?.let { line ->
             LineRow(state, line, caption = strings(Strings.budget_savings_caption)) { onEdit(line.categoryId) }
+            AiHint(state, line, ai.onUse)
         }
         if (state.canSetSavingsTarget) SetSavingsTargetRow(state.savingsRoomLabel, onSetSavingsTarget)
 
@@ -473,7 +578,10 @@ private fun Sheet(
 
         state.unbudgetedLabel?.let { Unbudgeted(state, it, onAddUnbudgeted) }
 
+        if (state.aiExtras.isNotEmpty()) AiExtras(state, ai.onAdd)
+
         AddCategoryRow(onAddCategory)
+        if (state.canAskAi) AskAiRow(ai.onAsk)
         Text(
             strings(Strings.budget_carries_forward),
             style = MaterialTheme.typography.labelSmall,
@@ -635,6 +743,7 @@ private fun Unbudgeted(state: BudgetUiState, label: String, onAdd: (String) -> U
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                    state.aiLabel(spend)?.let { Text(it, style = MaterialTheme.typography.labelMedium, color = Mint.greenText()) }
                 }
                 TextButton(onClick = { onAdd(spend.categoryId) }) {
                     Text(strings(Strings.budget_unbudgeted_add), maxLines = 1)

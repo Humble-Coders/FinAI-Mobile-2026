@@ -131,6 +131,20 @@ data class Budget(
     /** The category a savings target is set on. */
     @SerialName("savings_category_id")
     val savingsCategoryId: String? = null,
+    /** "review" (the monthly one) or "setup" (the first budget), else null. */
+    @SerialName("ai_kind")
+    val aiKind: String? = null,
+    /** AI suggestions for categories with no line and no spending yet. */
+    @SerialName("ai_extra")
+    val aiExtra: List<AiLine> = emptyList(),
+    @SerialName("ai_savings")
+    val aiSavings: String? = null,
+    /** A few sentences, never a figure: what went over, what was saved, where the rest is best put. */
+    @SerialName("ai_advice")
+    val aiAdvice: String? = null,
+    /** The app may ask for this month's review. */
+    @SerialName("ai_review_due")
+    val aiReviewDue: Boolean = false,
     /** Where the month's money went, largest first; sums to [monthSpending]. */
     @SerialName("spending_by_category")
     val spendingByCategory: List<CategorySpend> = emptyList(),
@@ -191,6 +205,21 @@ data class UnbudgetedSpend(
     val slug: String = "",
     val name: String = "",
     val spent: String = "0",
+    @SerialName("ai_suggested")
+    val aiSuggested: String? = null,
+    @SerialName("ai_reason")
+    val aiReason: String? = null,
+)
+
+/** An AI suggestion for a category the budget has no line for yet. */
+@Serializable
+data class AiLine(
+    @SerialName("category_id")
+    val categoryId: String = "",
+    val slug: String = "",
+    val name: String = "",
+    val amount: String = "0",
+    val reason: String? = null,
 )
 
 /** Whether a budget could be generated yet (PRD F8). */
@@ -277,6 +306,16 @@ data class BudgetLine(
 
     /** This month's countable debits in the category, by the dashboard's rule. */
     val spent: String = "0",
+
+    /**
+     * What the AI suggests for this line this month, checked by the server,
+     * and why. Null without one. Advisory: nothing changes until the person
+     * uses it.
+     */
+    @SerialName("ai_suggested")
+    val aiSuggested: String? = null,
+    @SerialName("ai_reason")
+    val aiReason: String? = null,
 
     /**
      * How far spending is past the allocation, as the server worked it out —

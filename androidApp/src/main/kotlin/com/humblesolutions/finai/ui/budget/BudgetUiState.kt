@@ -2,10 +2,12 @@ package com.humblesolutions.finai.ui.budget
 
 import com.humblesolutions.finai.i18n.LocalizationRegistry
 import com.humblesolutions.finai.i18n.Strings
+import com.humblesolutions.finai.model.AiLine
 import com.humblesolutions.finai.model.Budget
 import com.humblesolutions.finai.model.BudgetLine
 import com.humblesolutions.finai.model.Category
 import com.humblesolutions.finai.model.UnbudgetedSpend
+import com.humblesolutions.finai.usecase.AiBudgetEdit
 import com.humblesolutions.finai.usecase.BudgetBlock
 import com.humblesolutions.finai.usecase.BudgetDraft
 import com.humblesolutions.finai.usecase.BudgetEdit
@@ -147,6 +149,25 @@ data class BudgetUiState(
     val spentRows: List<OverviewSpend> get() = budget?.let { BudgetOverview.spent(it, locale) }.orEmpty()
 
     fun iconOf(spend: OverviewSpend): CategoryIcon = CategoryIcons.forSlug(spend.slug)
+
+    // ── The AI's suggestions (ai_budget) ────────────────────────────────
+
+    /** "AI suggests $430.00", when the AI's number for the line differs from it. */
+    fun aiLabel(line: BudgetLine): String? = AiBudgetEdit.suggestionLabel(line, currency, locale)
+
+    /** The month's AI review advice, shown while the month runs. */
+    val aiAdvice: String? get() = budget?.takeIf { showsPlan }?.aiAdvice
+
+    /** Categories the AI suggests a line for that have none yet. */
+    val aiExtras: List<AiLine> get() = budget?.takeIf { showsPlan }?.aiExtra.orEmpty()
+
+    fun amountOf(extra: AiLine): String = money(extra.amount)
+
+    /** "AI suggests $60.00" for a category spent in with no line. */
+    fun aiLabel(spend: UnbudgetedSpend): String? = spend.aiSuggested?.let { text(Strings.ai_budget_suggests, money(it)) }
+
+    /** "Ask AI for a budget", until this month has a review. */
+    val canAskAi: Boolean get() = budget != null && showsPlan && budget.aiKind != "review"
 
     /** Spending in categories with no line, largest first. */
     val unbudgeted: List<UnbudgetedSpend> get() = budget?.unbudgeted.orEmpty()
