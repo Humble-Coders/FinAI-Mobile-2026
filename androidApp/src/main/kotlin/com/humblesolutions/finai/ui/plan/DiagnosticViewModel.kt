@@ -19,6 +19,7 @@ import com.humblesolutions.finai.usecase.DiagnosticCheck
 import com.humblesolutions.finai.usecase.DiagnosticRow
 import com.humblesolutions.finai.usecase.PlanDiagnosticWords
 import com.humblesolutions.finai.util.Money
+import com.humblesolutions.finai.util.PlanChanged
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -205,6 +206,8 @@ class DiagnosticViewModel : ViewModel() {
                     ),
                 )
                 _uiState.update { it.copy(applying = false, applied = true) }
+                // Home's plan card and Goals' suggested amounts follow the plan.
+                PlanChanged.announce()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: ApiException) {

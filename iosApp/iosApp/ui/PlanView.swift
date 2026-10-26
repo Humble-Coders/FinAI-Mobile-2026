@@ -85,7 +85,11 @@ struct PlanView: View {
         .sheet(isPresented: balanceShown) { BalanceSheet(model: model) }
         .fullScreenCover(isPresented: diagnosticShown) {
             if let kind = diagnostic {
-                DiagnosticView(kind: kind) { diagnostic = nil }
+                DiagnosticView(kind: kind) {
+                    diagnostic = nil
+                    // A diagnostic can change the plan's choices ("Pay debt before goals").
+                    Task { await model.load(refresh: true) }
+                }
             }
         }
     }

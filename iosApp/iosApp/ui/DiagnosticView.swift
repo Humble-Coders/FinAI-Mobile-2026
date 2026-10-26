@@ -32,6 +32,7 @@ struct DiagnosticView: View {
                 } else if model.diagnostics != nil {
                     form
                     if model.result != nil { result(dark) }
+                    if let title = model.recommendation { recommendationCard(title, dark: dark) }
                 } else if !model.loading {
                     ErrorText(messageKey: model.errorKey)
                 }
@@ -154,6 +155,41 @@ struct DiagnosticView: View {
             if let next = answer?.next {
                 Text(L.t(Strings.shared.diagnostic_next)).font(.caption.weight(.semibold)).foregroundColor(Mint.greenText(dark))
                 Text(next).font(.subheadline)
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 20).fill(Color(.secondarySystemBackground)))
+    }
+
+    /// The AI's pick between the plan's order and paying debt before goals, with both side by side.
+    private func recommendationCard(_ title: String, dark: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: "sparkles").foregroundColor(Mint.greenText(dark)).accessibilityHidden(true)
+                Text(title).font(.headline).accessibilityAddTraits(.isHeader)
+            }
+            if let why = model.result?.recommendWhy { Text(why).font(.subheadline) }
+            ForEach(Array(model.orders.enumerated()), id: \.offset) { _, row in
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(row.label)
+                        if let detail = row.detail { Text(detail).font(.caption).foregroundColor(.secondary) }
+                    }
+                    Spacer(minLength: 8)
+                    Text(row.amount).font(.subheadline.weight(.semibold))
+                }
+                .frame(minHeight: 36)
+                .accessibilityElement(children: .combine)
+            }
+            if let waiting = model.waiting { Text(waiting).font(.caption).foregroundColor(.secondary) }
+            if model.applied {
+                Text(L.t(Strings.shared.diagnostic_applied)).font(.subheadline).foregroundColor(Mint.greenText(dark))
+            } else if model.canApplyDebtFirst {
+                GradientButton(title: L.t(Strings.shared.diagnostic_apply_debt_first), busy: model.applying) {
+                    Task { await model.applyDebtFirst() }
+                }
+                Text(L.t(Strings.shared.diagnostic_apply_hint)).font(.caption).foregroundColor(.secondary)
             }
         }
         .padding(16)
