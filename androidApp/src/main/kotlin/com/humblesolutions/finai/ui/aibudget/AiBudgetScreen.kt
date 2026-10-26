@@ -224,6 +224,9 @@ private fun Proposal(state: AiBudgetUiState, actions: AiBudgetActions) {
                         enabled = !state.starting,
                     )
                 }
+                AiBudgetEdit.usualLabel(line.line, state.currency, state.locale)?.let {
+                    Text(it, style = MaterialTheme.typography.labelMedium, color = Mint.greenText())
+                }
                 AiBudgetEdit.committedLabel(line.line, state.currency, state.locale)?.let {
                     Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }

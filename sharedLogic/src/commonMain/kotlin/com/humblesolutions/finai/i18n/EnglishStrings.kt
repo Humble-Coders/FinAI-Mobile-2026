@@ -766,6 +766,7 @@ val EnglishStrings: Map<String, String> = mapOf(
     Strings.budget_unbudgeted_title to "Not in your budget",
     Strings.budget_unbudgeted_body to "{0} went to categories your budget doesn't plan for yet. Add one and it's planned for this month and every month after.",
     Strings.budget_unbudgeted_add to "Add to budget",
+    Strings.ai_budget_usual to "You usually spend {0} a month",
     Strings.diagnostic_recommend_debt_first to "AI suggests: pay debt before your goals",
     Strings.diagnostic_recommend_plan to "AI suggests: keep funding your goals as planned",
     Strings.diagnostic_order_plan to "Your plan ({0}% to goals)",

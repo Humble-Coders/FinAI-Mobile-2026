@@ -119,6 +119,13 @@ object AiBudgetEdit {
         return LocalizationRegistry.format(Strings.ai_budget_committed, listOf(Money.format(line.committed, currency, locale)), locale)
     }
 
+    /** "You usually spend $450.00 a month", when there is history to go on. */
+    fun usualLabel(line: AiProposalLine, currency: String, locale: String = "en"): String? {
+        val usual = line.usual ?: return null
+        if (line.isDebt) return null
+        return LocalizationRegistry.format(Strings.ai_budget_usual, listOf(Money.format(usual, currency, locale)), locale)
+    }
+
     fun attemptsLabel(proposal: AiProposal, locale: String = "en"): String? = if (proposal.attemptsLeft <= 0) null else LocalizationRegistry.format(Strings.ai_budget_try_again, listOf(proposal.attemptsLeft.toString()), locale)
 
     // ── On the Budget screen ────────────────────────────────────────────

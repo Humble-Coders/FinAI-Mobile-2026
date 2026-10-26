@@ -41,6 +41,8 @@ data class AiProposalLine(
     /** What the person's commitments in the category already hold: the least the line can be. */
     val committed: String = "0",
     val reason: String? = null,
+    /** What the person usually spends here a month — the median of their last three months — or null on a new account. */
+    val usual: String? = null,
 ) {
     val isDebt: Boolean get() = kind == "debt"
 }

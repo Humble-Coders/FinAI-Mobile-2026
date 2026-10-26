@@ -799,6 +799,7 @@ object Strings {
     const val budget_unbudgeted_title = "budget_unbudgeted_title" // "Not in your budget"
     const val budget_unbudgeted_body = "budget_unbudgeted_body" // "{0} spent this month in categories with no line. It counts toward what you've spent."
     const val budget_unbudgeted_add = "budget_unbudgeted_add" // "Add to budget"
+    const val ai_budget_usual = "ai_budget_usual" // "You usually spend {0} a month"
     const val diagnostic_recommend_debt_first = "diagnostic_recommend_debt_first" // "AI suggests: pay debt before your goals"
     const val diagnostic_recommend_plan = "diagnostic_recommend_plan" // "AI suggests: keep funding your goals as planned"
     const val diagnostic_order_plan = "diagnostic_order_plan" // "Your plan ({0}% to goals)"

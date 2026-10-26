@@ -191,6 +191,9 @@ struct AiBudgetView: View {
                     )
                 )
             }
+            if let usual = AiBudgetEdit.shared.usualLabel(line: item.line, currency: model.currency, locale: model.locale) {
+                Text(usual).font(.caption.weight(.semibold)).foregroundColor(Mint.greenText(scheme == .dark))
+            }
             if let committed = AiBudgetEdit.shared.committedLabel(line: item.line, currency: model.currency, locale: model.locale) {
                 Text(committed).font(.caption).foregroundColor(.secondary)
             }
