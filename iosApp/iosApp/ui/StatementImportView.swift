@@ -701,8 +701,9 @@ struct StatementImportView: View {
     }
 }
 
-/// A box nothing pre-ticks, with its label as the tap target.
-private struct CheckboxStyle: ToggleStyle {
+/// A box nothing pre-ticks, with its label as the tap target. Shared by every
+/// screen that asks for consent.
+struct CheckboxStyle: ToggleStyle {
     func makeBody(configuration: Configuration) -> some View {
         Button { configuration.isOn.toggle() } label: {
             HStack(spacing: 12) {
