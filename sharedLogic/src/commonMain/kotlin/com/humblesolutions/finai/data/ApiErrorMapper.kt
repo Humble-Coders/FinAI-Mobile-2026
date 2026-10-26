@@ -41,6 +41,7 @@ internal object ApiErrorMapper {
     private const val AI_BUDGET_LIMIT = "ai_budget_limit_reached"
     private const val SETUP_INCOME_MISSING = "setup_income_missing"
     private const val STILL_LEARNING = "still_learning"
+    private const val DIAGNOSTIC_LIMIT = "diagnostic_limit_reached"
 
     fun fromResponse(status: Int, body: String): ApiException = when (status) {
         401 -> ApiException.Unauthorized("token rejected")
@@ -82,6 +83,7 @@ internal object ApiErrorMapper {
     private fun quota(body: String): ApiException {
         val detail = detail(body)
         if (detail?.string("code") == AI_BUDGET_LIMIT) return ApiException.AiBudgetLimitReached()
+        if (detail?.string("code") == DIAGNOSTIC_LIMIT) return ApiException.DiagnosticLimitReached()
         if (detail?.string("code") != IMPORT_QUOTA_EXCEEDED) return ApiException.Unexpected(429)
         return ApiException.ImportQuotaExceeded(
             limit = detail.string("limit")?.toIntOrNull(),

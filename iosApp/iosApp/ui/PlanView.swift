@@ -21,6 +21,8 @@ struct PlanView: View {
     let onClose: () -> Void
 
     @SceneStorage("plan.draft") private var stored = ""
+    /// A diagnostic open over the plan: `allocation` or `invest`.
+    @State private var diagnostic: String?
     @Environment(\.colorScheme) private var scheme
 
     var body: some View {
@@ -81,6 +83,11 @@ struct PlanView: View {
         .sheet(isPresented: choicesShown) { ChoicesSheet(model: model) }
         .sheet(isPresented: debtShown) { DebtEditorSheet(model: model) }
         .sheet(isPresented: balanceShown) { BalanceSheet(model: model) }
+        .fullScreenCover(isPresented: diagnosticShown) {
+            if let kind = diagnostic {
+                DiagnosticView(kind: kind) { diagnostic = nil }
+            }
+        }
     }
 
     private func back() {
@@ -143,7 +150,32 @@ struct PlanView: View {
             }
             .buttonStyle(.plain)
         }
+        if model.plan != nil {
+            PlanSheet(dark: dark) {
+                SheetTitle(text: L.t(Strings.shared.diagnostic_card_title))
+                Text(L.t(Strings.shared.diagnostic_card_body)).font(.caption).foregroundColor(.secondary)
+                diagnosticRow(PlanDiagnostics.companion.ALLOCATION, title: Strings.shared.diagnostic_allocation_title, icon: .piggy, dark: dark)
+                diagnosticRow(PlanDiagnostics.companion.INVEST, title: Strings.shared.diagnostic_invest_title, icon: .salary, dark: dark)
+            }
+        }
         disclaimer
+    }
+
+    private var diagnosticShown: Binding<Bool> {
+        Binding(get: { diagnostic != nil }, set: { if !$0 { diagnostic = nil } })
+    }
+
+    private func diagnosticRow(_ kind: String, title: String, icon: CategoryIcon, dark: Bool) -> some View {
+        Button { diagnostic = kind } label: {
+            HStack(spacing: 12) {
+                IconTile(symbol: icon.systemName, accent: icon.tint(dark), size: 40, iconSize: 18)
+                Text(L.t(title)).foregroundColor(.primary)
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right").foregroundColor(.secondary)
+            }
+            .frame(minHeight: 44)
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Your debts

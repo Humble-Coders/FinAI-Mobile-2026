@@ -56,6 +56,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.humblesolutions.finai.R
 import com.humblesolutions.finai.i18n.Strings
+import com.humblesolutions.finai.model.PlanDiagnostics
 import com.humblesolutions.finai.model.PlanStrategy
 import com.humblesolutions.finai.ui.components.Field
 import com.humblesolutions.finai.ui.components.FieldVectors
@@ -80,6 +81,8 @@ internal data class PlanActions(
     val onStrategy: (PlanStrategy) -> Unit,
     val onEditDebt: (String) -> Unit,
     val onUpdateBalance: (String) -> Unit,
+    /** Opens a diagnostic: `allocation` or `invest`. */
+    val onRunDiagnostic: (String) -> Unit = {},
 )
 
 /**
@@ -108,6 +111,14 @@ internal fun PlanScreen(state: PlanUiState, actions: PlanActions) {
             state.choiceRows.forEach { ChoiceLine(it) }
             HorizontalDivider(Modifier.padding(vertical = 4.dp))
             LinkRow(strings(Strings.plan_debts_link), CategoryIcon.CARD, actions.onOpenDebts)
+        }
+        if (state.plan != null) {
+            Sheet {
+                SectionTitle(strings(Strings.diagnostic_card_title))
+                Text(strings(Strings.diagnostic_card_body), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                LinkRow(strings(Strings.diagnostic_allocation_title), CategoryIcon.PIGGY) { actions.onRunDiagnostic(PlanDiagnostics.ALLOCATION) }
+                LinkRow(strings(Strings.diagnostic_invest_title), CategoryIcon.SALARY) { actions.onRunDiagnostic(PlanDiagnostics.INVEST) }
+            }
         }
         Disclaimer(state)
     }

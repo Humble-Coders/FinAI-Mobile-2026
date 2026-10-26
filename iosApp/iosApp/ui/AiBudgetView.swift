@@ -205,20 +205,3 @@ struct AiBudgetView: View {
         .background(RoundedRectangle(cornerRadius: 18).fill(Color(.secondarySystemBackground)))
     }
 }
-
-/// A box nothing pre-ticks, with its label as the tap target.
-private struct CheckboxStyle: ToggleStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        Button { configuration.isOn.toggle() } label: {
-            HStack(spacing: 12) {
-                Image(systemName: configuration.isOn ? "checkmark.square.fill" : "square")
-                    .font(.title3)
-                configuration.label
-                Spacer(minLength: 0)
-            }
-            .frame(minHeight: 44)
-        }
-        .buttonStyle(.plain)
-        .accessibilityAddTraits(configuration.isOn ? [.isButton, .isSelected] : .isButton)
-    }
-}

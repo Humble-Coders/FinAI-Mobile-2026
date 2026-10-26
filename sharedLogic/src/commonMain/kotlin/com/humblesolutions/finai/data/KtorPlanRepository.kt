@@ -1,7 +1,10 @@
 package com.humblesolutions.finai.data
 
 import com.humblesolutions.finai.model.ApiException
+import com.humblesolutions.finai.model.DiagnosticBody
 import com.humblesolutions.finai.model.Plan
+import com.humblesolutions.finai.model.PlanDiagnostic
+import com.humblesolutions.finai.model.PlanDiagnostics
 import com.humblesolutions.finai.model.PlanPreferences
 import com.humblesolutions.finai.model.PlanPreferencesToSave
 import com.humblesolutions.finai.model.Terms
@@ -36,6 +39,12 @@ class KtorPlanRepository internal constructor(
         // `no_disclaimer`: the region has none. Shown as no line, not an error.
         null
     }
+
+    @Throws(ApiException::class, CancellationException::class)
+    override suspend fun diagnostics(): PlanDiagnostics = http.getJson("plan/diagnostics")
+
+    @Throws(ApiException::class, CancellationException::class)
+    override suspend fun runDiagnostic(kind: String, savingsTarget: String, savingsNow: String): PlanDiagnostic = http.postJson("plan/diagnostics/$kind", DiagnosticBody(savingsTarget, savingsNow))
 
     override fun close() = http.close()
 }
