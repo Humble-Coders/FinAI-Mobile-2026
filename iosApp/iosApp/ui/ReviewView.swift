@@ -110,12 +110,6 @@ struct ReviewView: View {
             // list keeps its place.
             if model.refreshing { ProgressView().progressViewStyle(.linear) }
             List {
-                Section {
-                    Text(L.t(Strings.shared.review_intro))
-                        .font(.subheadline)
-                        .foregroundColor(Brand.textMuted)
-                        .listRowSeparator(.hidden)
-                }
                 ForEach(model.byDate, id: \.day) { group in
                     Section {
                         ForEach(group.rows, id: \.id) { row in

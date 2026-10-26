@@ -67,7 +67,7 @@ object PlanDiagnosticWords {
         if (d.goals.isEmpty()) {
             rows += DiagnosticRow(text(Strings.diagnostic_to_goals, locale), money(d.toGoals), null, zero(d.toGoals))
         } else {
-            d.goals.forEach { rows += DiagnosticRow(it.name, money(it.amount), text(Strings.diagnostic_goal_detail, locale), zero(it.amount)) }
+            d.goals.forEach { rows += DiagnosticRow(it.name, money(it.amount), null, zero(it.amount)) }
         }
         val debtLabel = d.debtFirst?.let { format(Strings.diagnostic_to_debt_named, locale, it) } ?: text(Strings.diagnostic_to_debt, locale)
         val debtDetail = d.debtFirstRatePercent?.let { format(Strings.diagnostic_debt_detail, locale, it) }

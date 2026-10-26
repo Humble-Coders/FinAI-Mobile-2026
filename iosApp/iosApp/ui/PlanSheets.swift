@@ -170,7 +170,6 @@ struct DebtEditorSheet: View {
                     }
                 } footer: {
                     VStack(alignment: .leading, spacing: 6) {
-                        Text(L.t(Strings.shared.debts_field_account_hint))
                         if let notice = model.debtNotice {
                             Text(DebtEdit.shared.blockText(block: notice, currency: model.moneyCurrency, locale: model.locale)).foregroundColor(.red)
                         }

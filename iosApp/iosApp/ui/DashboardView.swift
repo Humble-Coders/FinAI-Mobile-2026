@@ -176,9 +176,6 @@ struct DashboardView: View {
                 Text(L.t(Strings.shared.dashboard_greeting))
                     .font(.title2.weight(.bold))
                     .foregroundColor(Field.ink())
-                Text(L.t(Strings.shared.dashboard_subtitle))
-                    .font(.subheadline)
-                    .foregroundColor(Field.ink(0.82))
             }
             Spacer(minLength: 0)
 

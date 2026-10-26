@@ -272,11 +272,6 @@ private fun Header(state: DashboardUiState, onReview: () -> Unit, modifier: Modi
                 fontWeight = FontWeight.Bold,
                 color = Field.ink(),
             )
-            Text(
-                text = strings(Strings.dashboard_subtitle),
-                style = MaterialTheme.typography.bodyMedium,
-                color = Field.ink(0.82f),
-            )
         }
         Bell(state, onReview, 48.dp)
     }

@@ -120,7 +120,7 @@ struct PlanView: View {
     @ViewBuilder
     private func planContent(_ dark: Bool) -> some View {
         if let headline = model.headline {
-            Headline(text: headline, detail: model.showsSplit ? L.t(Strings.shared.plan_leftover_from) : nil)
+            Headline(text: headline, detail: nil)
         }
         PlanSheet(dark: dark) {
             if model.showsSplit {
@@ -157,7 +157,6 @@ struct PlanView: View {
         if model.plan != nil {
             PlanSheet(dark: dark) {
                 SheetTitle(text: L.t(Strings.shared.diagnostic_card_title))
-                Text(L.t(Strings.shared.diagnostic_card_body)).font(.caption).foregroundColor(.secondary)
                 diagnosticRow(PlanDiagnostics.companion.ALLOCATION, title: Strings.shared.diagnostic_allocation_title, icon: .piggy, dark: dark)
                 diagnosticRow(PlanDiagnostics.companion.INVEST, title: Strings.shared.diagnostic_invest_title, icon: .salary, dark: dark)
             }
@@ -323,7 +322,6 @@ private struct ChoiceLine: View {
                 Spacer(minLength: 8)
                 Text(row.value).font(.body.weight(.semibold)).lineLimit(1)
             }
-            Text(row.explanation).font(.caption).foregroundColor(.secondary)
             if let suggestion = row.suggestion {
                 Text(suggestion).font(.caption.weight(.medium)).foregroundColor(Mint.greenText(dark))
             }

@@ -103,7 +103,6 @@ internal fun DiagnosticScreen(
                     Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = strings(Strings.action_back))
                 }
                 Text(state.title, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, modifier = Modifier.semantics { heading() })
-                Text(state.question, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
                 if (state.policy != null) {
                     Consent(state, onConsentTicked, onAgree)
@@ -215,7 +214,6 @@ private fun Result(state: DiagnosticUiState) {
                 }
             }
             result.why?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
-            result.note?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             result.where?.let {
                 Text(strings(Strings.diagnostic_where), style = MaterialTheme.typography.labelLarge, color = Mint.greenText())
                 Text(it, style = MaterialTheme.typography.bodyMedium)

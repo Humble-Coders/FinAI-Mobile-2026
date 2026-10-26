@@ -184,7 +184,7 @@ struct BudgetView: View {
     private func overview(_ budget: Budget, dark: Bool) -> some View {
         let words = BudgetOverview.shared
         if let rows = words.soFar(budget: budget, locale: model.locale) {
-            card(words.soFarTitle(budget: budget, locale: model.locale), subtitle: L.t(Strings.shared.budget_from_statements), dark: dark) {
+            card(words.soFarTitle(budget: budget, locale: model.locale), dark: dark) {
                 ForEach(Array(rows.enumerated()), id: \.offset) { _, row in figureRow(row) }
             }
         }
@@ -241,9 +241,6 @@ struct BudgetView: View {
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(label).font(.caption.weight(.semibold)).foregroundColor(Mint.greenText(dark))
-                    if let reason = line.aiReason {
-                        Text(reason).font(.caption2).foregroundColor(.secondary)
-                    }
                 }
                 Spacer(minLength: 8)
                 Button(L.t(Strings.shared.ai_budget_use)) { model.useAiSuggestion(categoryId: line.categoryId) }
@@ -266,9 +263,6 @@ struct BudgetView: View {
                 HStack(spacing: 12) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("\(extra.name) · \(money(extra.amount))").font(.body)
-                        if let reason = extra.reason {
-                            Text(reason).font(.caption).foregroundColor(.secondary)
-                        }
                     }
                     Spacer(minLength: 8)
                     Button(L.t(Strings.shared.budget_unbudgeted_add)) { model.addFromAi(categoryId: extra.categoryId) }
@@ -289,7 +283,6 @@ struct BudgetView: View {
                 IconTile(symbol: "sparkles", accent: Mint.greenText(dark), size: 40, iconSize: 18)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(L.t(Strings.shared.ai_budget_open)).font(.body).foregroundColor(Mint.greenText(dark))
-                    Text(L.t(Strings.shared.ai_budget_open_hint)).font(.caption).foregroundColor(.secondary)
                 }
                 Spacer(minLength: 0)
             }
@@ -440,7 +433,7 @@ struct BudgetView: View {
             }
             // Savings is a target the person sets, never a figure filled in for them.
             if let savings = model.savings {
-                LineRow(model: model, line: savings, dark: dark, caption: L.t(Strings.shared.budget_savings_caption))
+                LineRow(model: model, line: savings, dark: dark)
                 aiHint(savings, dark: dark)
             } else if let budget = model.budget, budget.savingsCategoryId != nil {
                 Button { model.setSavingsTarget() } label: {
@@ -487,9 +480,6 @@ struct BudgetView: View {
             if let budget = model.budget, BudgetOverview.shared.showsPlan(budget: budget), budget.aiKind != "review" {
                 askAiRow(dark: dark)
             }
-            Text(L.t(Strings.shared.budget_carries_forward))
-                .font(.caption2)
-                .foregroundColor(.secondary)
 
             if let unfiled = unfiledLabel {
                 VStack(alignment: .leading, spacing: 6) {

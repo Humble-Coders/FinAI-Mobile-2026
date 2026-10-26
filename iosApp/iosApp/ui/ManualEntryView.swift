@@ -171,13 +171,6 @@ struct ManualEntryView: View {
                             leading: "tag",
                             trailing: "chevron.right"
                         ) { choosingCategory = true }
-                        // Said out loud, so an empty category reads as a choice
-                        // made, not a field forgotten.
-                        if model.draft.categoryId == nil {
-                            Text(L.t(Strings.shared.manual_entry_category_auto))
-                                .font(.footnote)
-                                .foregroundColor(Brand.textMuted)
-                        }
                     }
                     }
                 }

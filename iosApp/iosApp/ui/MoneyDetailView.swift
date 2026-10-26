@@ -523,7 +523,6 @@ struct MoneyDetailView: View {
                         }
                     }
                 }
-                Text(L.t(Strings.shared.money_holdings_later)).font(.caption).foregroundColor(Brand.textMuted)
             }
             Button(action: openEntry) {
                 HStack(spacing: 8) {

@@ -97,7 +97,7 @@ internal data class PlanActions(
 @Composable
 internal fun PlanScreen(state: PlanUiState, actions: PlanActions) {
     PlanFrame(state, actions, title = strings(Strings.plan_title)) {
-        state.headline?.let { Headline(it, if (state.showsSplit) strings(Strings.plan_leftover_from) else null) }
+        state.headline?.let { Headline(it, null) }
         Sheet {
             if (state.showsSplit) {
                 SectionTitle(strings(Strings.plan_split_title))
@@ -115,7 +115,6 @@ internal fun PlanScreen(state: PlanUiState, actions: PlanActions) {
         if (state.plan != null) {
             Sheet {
                 SectionTitle(strings(Strings.diagnostic_card_title))
-                Text(strings(Strings.diagnostic_card_body), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 LinkRow(strings(Strings.diagnostic_allocation_title), CategoryIcon.PIGGY) { actions.onRunDiagnostic(PlanDiagnostics.ALLOCATION) }
                 LinkRow(strings(Strings.diagnostic_invest_title), CategoryIcon.SALARY) { actions.onRunDiagnostic(PlanDiagnostics.INVEST) }
             }
@@ -274,7 +273,6 @@ private fun ChoiceLine(row: ChoiceRow) {
             Spacer(Modifier.width(8.dp))
             Text(row.value, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold, maxLines = 1)
         }
-        Text(row.explanation, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         row.suggestion?.let { Text(it, style = MaterialTheme.typography.labelMedium, color = Mint.greenText()) }
     }
 }

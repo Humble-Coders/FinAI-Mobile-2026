@@ -555,7 +555,7 @@ class BudgetViewModelTest {
         assertEquals(listOf("Shopping"), state.spentRows.map { it.name })
         assertNull(state.stillExpected)
         assertEquals(
-            "After spending and saving, you had $83.21 left this month. Put it toward your goals or add it to your savings.",
+            "You had $83.21 left this month. Put it toward goals or savings.",
             state.suggestion,
         )
     }

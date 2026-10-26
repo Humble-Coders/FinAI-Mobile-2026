@@ -49,7 +49,7 @@ class PlanDiagnosticWordsTest {
         val withGoals = allocation.copy(goals = listOf(DiagnosticGoal("g1", "Vacation", "120.00")))
         val rows = PlanDiagnosticWords.allocationRows(withGoals)
         assertEquals("Vacation", rows[1].label)
-        assertEquals("By priority", rows[1].detail)
+        assertNull(rows[1].detail)
     }
 
     @Test

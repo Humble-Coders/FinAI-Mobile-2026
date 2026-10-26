@@ -171,9 +171,6 @@ struct SetupView: View {
                 isError: model.step == .income && model.notice?.step == .income,
                 text: Binding(get: { model.draft.income }, set: { model.setIncome($0) })
             )
-            Text(L.t(Strings.shared.setup_income_hint))
-                .font(.footnote)
-                .foregroundColor(Brand.textMuted)
         }
     }
 
@@ -205,7 +202,7 @@ struct SetupView: View {
         VStack(alignment: .leading, spacing: 16) {
             StepTitle(step: .portfolio,
                       titleKey: Strings.shared.setup_portfolio_title,
-                      bodyKey: Strings.shared.setup_portfolio_body)
+                      bodyKey: nil)
             ListRow(
                 label: L.t(Strings.shared.setup_debts_label),
                 total: model.total(of: .debts),
@@ -360,7 +357,7 @@ private struct SetupRequiredView: View {
 private struct StepTitle: View {
     let step: SetupStep
     let titleKey: String
-    let bodyKey: String
+    let bodyKey: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -368,9 +365,11 @@ private struct StepTitle: View {
                 .font(.caption.weight(.bold))
                 .foregroundColor(Brand.green)
             Text(L.t(titleKey)).font(.title2.weight(.bold))
-            Text(L.t(bodyKey))
-                .font(.subheadline)
-                .foregroundColor(Brand.textMuted)
+            if let bodyKey {
+                Text(L.t(bodyKey))
+                    .font(.subheadline)
+                    .foregroundColor(Brand.textMuted)
+            }
         }
     }
 }

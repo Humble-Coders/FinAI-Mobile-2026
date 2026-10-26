@@ -159,7 +159,7 @@ object YourPlan {
             rows += row(SplitKind.BUFFER, words.text(Strings.plan_split_buffer), split.buffer, detail, words)
         }
         split.goals.forEach { share ->
-            rows += row(SplitKind.GOAL, share.name, share.amount, words.text(Strings.plan_split_goal_detail), words)
+            rows += row(SplitKind.GOAL, share.name, share.amount, null, words)
         }
         val focus = focus(plan)
         rows += row(
@@ -173,7 +173,7 @@ object YourPlan {
             SplitKind.SAVE_OR_INVEST,
             words.text(Strings.plan_split_save_or_invest),
             split.saveOrInvest,
-            words.text(Strings.plan_split_save_or_invest_detail),
+            null,
             words,
         )
         return rows

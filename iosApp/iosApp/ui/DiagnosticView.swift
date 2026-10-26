@@ -25,7 +25,6 @@ struct DiagnosticView: View {
                 }
                 .accessibilityLabel(L.t(Strings.shared.action_back))
                 Text(model.title).font(.largeTitle.weight(.bold)).accessibilityAddTraits(.isHeader)
-                Text(model.question).font(.subheadline).foregroundColor(.secondary)
 
                 if model.policy != nil {
                     consentStep
@@ -147,7 +146,6 @@ struct DiagnosticView: View {
                 }
             }
             if let why = answer?.why { Text(why).font(.subheadline) }
-            if let note = answer?.note { Text(note).font(.subheadline).foregroundColor(.secondary) }
             if let whereTo = answer?.where {
                 Text(L.t(Strings.shared.diagnostic_where)).font(.caption.weight(.semibold)).foregroundColor(Mint.greenText(dark))
                 Text(whereTo).font(.subheadline)

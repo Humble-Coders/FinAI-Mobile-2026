@@ -99,11 +99,6 @@ struct WelcomeView: View {
                 .font(.title3.weight(.semibold))
                 .multilineTextAlignment(.center)
                 .padding(.top, 12)
-            Text(L.t(Strings.shared.app_tagline))
-                .font(.subheadline)
-                .foregroundColor(Brand.textMuted)
-                .multilineTextAlignment(.center)
-                .padding(.top, 8)
         }
         .padding(.horizontal, 32)
         .padding(.top, 48)
@@ -172,13 +167,6 @@ private struct AuthSheet: View {
                      : Strings.shared.welcome_sign_in_title))
                 .font(.title2.weight(.bold))
                 .padding(.top, 20)
-            Text(L.t(model.creatingAccount
-                     ? Strings.shared.welcome_create_subtitle
-                     : Strings.shared.welcome_sign_in_subtitle))
-                .font(.subheadline)
-                .foregroundColor(Brand.textMuted)
-                .multilineTextAlignment(.center)
-                .padding(.top, 8)
 
             SheetField(
                 placeholder: L.t(Strings.shared.welcome_email_hint),

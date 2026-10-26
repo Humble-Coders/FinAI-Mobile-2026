@@ -245,14 +245,7 @@ private fun Queue(state: ReviewUiState, actions: ReviewActions, modifier: Modifi
             state = listState,
             contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 24.dp),
         ) {
-            item {
-                Text(
-                    text = strings(Strings.review_intro),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(vertical = 12.dp),
-                )
-            }
+            item { Spacer(Modifier.height(12.dp)) }
             state.byDate.forEach { (day, rows) ->
                 item(key = "day-$day") { DayHeading(day) }
                 items(rows, key = { it.id }) { row ->

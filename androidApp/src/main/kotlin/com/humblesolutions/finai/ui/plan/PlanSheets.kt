@@ -292,7 +292,6 @@ internal fun DebtEditorSheet(state: PlanUiState, actions: DebtEditorActions) {
                     }
                 }
             }
-            Why(strings(Strings.debts_field_account_hint))
 
             notice?.let { Problem(DebtEdit.blockText(it, state.moneyCurrency, state.locale)) }
             state.debtErrorKey?.let { Problem(strings(it)) }

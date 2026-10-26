@@ -251,7 +251,6 @@ private fun Proposal(state: AiBudgetUiState, actions: AiBudgetActions) {
                 imeAction = ImeAction.Done,
                 enabled = !state.starting,
             )
-            Text(strings(Strings.ai_budget_savings_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 
@@ -264,7 +263,6 @@ private fun Proposal(state: AiBudgetUiState, actions: AiBudgetActions) {
         )
     }
     ErrorText(state.errorKey ?: state.block?.takeIf { it != AiBudgetBlock.BELOW_COMMITMENT }?.messageKey)
-    Text(strings(Strings.ai_budget_privacy), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     GradientButton(text = strings(Strings.ai_budget_start), onClick = actions.onStart, enabled = state.canStart, busy = state.starting)
     state.attemptsLabel?.let { label ->
         TextButton(onClick = actions.onSuggestAgain, enabled = state.canSuggestAgain, modifier = Modifier.fillMaxWidth()) {
