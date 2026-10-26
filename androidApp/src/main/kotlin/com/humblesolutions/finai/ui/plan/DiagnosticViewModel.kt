@@ -11,6 +11,7 @@ import com.humblesolutions.finai.model.AiPolicy
 import com.humblesolutions.finai.model.ApiException
 import com.humblesolutions.finai.model.PlanDiagnostic
 import com.humblesolutions.finai.model.PlanDiagnostics
+import com.humblesolutions.finai.model.PlanPreferencesToSave
 import com.humblesolutions.finai.repository.AiConsentRepository
 import com.humblesolutions.finai.repository.PlanRepository
 import com.humblesolutions.finai.usecase.DiagnosticBlock
@@ -40,6 +41,9 @@ data class DiagnosticUiState(
     val policy: AiPolicy? = null,
     val consentTicked: Boolean = false,
     val consentBusy: Boolean = false,
+    /** "Pay debt before goals" is being saved, or was. */
+    val applying: Boolean = false,
+    val applied: Boolean = false,
     val locale: String = "en",
 ) {
     val currency: String get() = diagnostics?.currency.orEmpty()
@@ -70,6 +74,14 @@ data class DiagnosticUiState(
     val payoff: String? get() = result?.takeIf { it.isAllocation }?.let { PlanDiagnosticWords.payoff(it, locale) }
 
     fun stepLabel(key: String): String = PlanDiagnosticWords.stepLabel(key, locale)
+
+    val recommendation: String? get() = result?.takeIf { it.isAllocation }?.let { PlanDiagnosticWords.recommendation(it, locale) }
+
+    val orders: List<DiagnosticRow> get() = result?.takeIf { it.isAllocation }?.let { PlanDiagnosticWords.orders(it, locale) }.orEmpty()
+
+    val waiting: String? get() = result?.takeIf { it.isAllocation }?.let { PlanDiagnosticWords.waiting(it, locale) }
+
+    val canApplyDebtFirst: Boolean get() = !applied && result?.let(PlanDiagnosticWords::canApplyDebtFirst) == true
 }
 
 /**
@@ -169,6 +181,34 @@ class DiagnosticViewModel : ViewModel() {
                 askForConsent()
             } catch (e: ApiException) {
                 _uiState.update { it.copy(running = false, errorKey = e.messageKey) }
+            }
+        }
+    }
+
+    /**
+     * "Pay debt before goals": the plan's goal share set to 0%, every other
+     * choice kept as it is now — the same save as Your choices, one figure changed.
+     */
+    fun applyDebtFirst() {
+        val repos = repositories ?: return
+        if (!_uiState.value.canApplyDebtFirst || _uiState.value.applying) return
+        _uiState.update { it.copy(applying = true, errorKey = null) }
+        viewModelScope.launch {
+            try {
+                val now = repos.plan.plan(null).preferences
+                repos.plan.savePreferences(
+                    PlanPreferencesToSave(
+                        buffer = now.buffer,
+                        goalSharePercent = "0",
+                        rateLinePercent = now.rateLinePercent,
+                        strategy = now.strategy,
+                    ),
+                )
+                _uiState.update { it.copy(applying = false, applied = true) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: ApiException) {
+                _uiState.update { it.copy(applying = false, errorKey = e.messageKey) }
             }
         }
     }

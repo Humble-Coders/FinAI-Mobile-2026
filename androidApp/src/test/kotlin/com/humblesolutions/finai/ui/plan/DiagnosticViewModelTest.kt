@@ -60,8 +60,16 @@ class DiagnosticViewModelTest {
             return answer
         }
 
-        override suspend fun plan(month: String?): Plan = throw UnsupportedOperationException()
-        override suspend fun savePreferences(choices: PlanPreferencesToSave): PlanPreferences = throw UnsupportedOperationException()
+        val saved = mutableListOf<PlanPreferencesToSave>()
+
+        override suspend fun plan(month: String?): Plan = Plan(
+            preferences = PlanPreferences(buffer = "3643.00", goalSharePercent = "20.00", rateLinePercent = "6.00"),
+        )
+
+        override suspend fun savePreferences(choices: PlanPreferencesToSave): PlanPreferences {
+            saved += choices
+            return PlanPreferences(saved = true, goalSharePercent = choices.goalSharePercent)
+        }
         override suspend fun disclaimer(): Terms? = null
         override fun close() = Unit
     }
@@ -143,5 +151,31 @@ class DiagnosticViewModelTest {
         model.run()
 
         assertEquals(ApiException.DiagnosticLimitReached().messageKey, model.uiState.value.errorKey)
+    }
+
+    @Test
+    fun pay_debt_before_goals_keeps_every_choice_but_the_goal_share() = runTest {
+        val recommended = answer.copy(
+            toGoals = "120.00",
+            goalSharePercent = "20.00",
+            altAvailable = true,
+            altToDebt = "1082.00",
+            recommend = "debt_first",
+            recommendWhy = "The card costs more than the trip can wait.",
+        )
+        val plan = FakePlan(answer = recommended)
+        val model = model(plan)
+        model.run()
+        assertTrue(model.uiState.value.canApplyDebtFirst)
+        assertEquals("AI suggests: pay debt before your goals", model.uiState.value.recommendation)
+
+        model.applyDebtFirst()
+
+        val sent = plan.saved.single()
+        assertEquals("0", sent.goalSharePercent)
+        assertEquals("3643.00", sent.buffer, "the buffer stays")
+        assertEquals("6.00", sent.rateLinePercent)
+        assertTrue(model.uiState.value.applied)
+        assertFalse(model.uiState.value.canApplyDebtFirst, "offered once")
     }
 }

@@ -37,7 +37,11 @@ internal fun PlanRoute(userId: String, startOnDebts: Boolean, onClose: () -> Uni
     // A diagnostic, over the plan; back returns to it.
     var diagnostic by rememberSaveable { mutableStateOf<String?>(null) }
     diagnostic?.let { kind ->
-        DiagnosticRoute(userId = userId, kind = kind) { diagnostic = null }
+        DiagnosticRoute(userId = userId, kind = kind) {
+            diagnostic = null
+            // A diagnostic can change the plan's choices ("Pay debt before goals").
+            model.load(refresh = true)
+        }
         return
     }
 

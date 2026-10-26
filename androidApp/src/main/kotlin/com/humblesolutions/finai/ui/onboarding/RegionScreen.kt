@@ -59,6 +59,8 @@ fun RegionScreen(state: OnboardingUiState, onPick: (String) -> Unit) {
             onValueChange = { query = it },
             label = { Text(strings(Strings.region_label)) },
             singleLine = true,
+            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Done),
+            keyboardActions = com.humblesolutions.finai.ui.components.closingKeyboardActions(),
             modifier = Modifier.fillMaxWidth(),
         )
         ErrorText(state.errorKey)

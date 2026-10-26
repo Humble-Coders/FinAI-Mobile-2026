@@ -72,6 +72,7 @@ internal fun DiagnosticRoute(userId: String, kind: String, onClose: () -> Unit) 
         onSavingsTarget = model::onSavingsTarget,
         onSavingsNow = model::onSavingsNow,
         onRun = model::run,
+        onApplyDebtFirst = model::applyDebtFirst,
         onConsentTicked = model::onConsentTicked,
         onAgree = model::agree,
     )
@@ -86,6 +87,7 @@ internal fun DiagnosticScreen(
     onRun: () -> Unit,
     onConsentTicked: (Boolean) -> Unit,
     onAgree: () -> Unit,
+    onApplyDebtFirst: () -> Unit = {},
 ) {
     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         Column(Modifier.fillMaxSize().safeDrawingPadding().imePadding(), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -108,6 +110,7 @@ internal fun DiagnosticScreen(
                 } else if (state.diagnostics != null) {
                     Form(state, onSavingsTarget, onSavingsNow, onRun)
                     state.result?.let { Result(state) }
+                    state.recommendation?.let { Recommendation(state, it, onApplyDebtFirst) }
                 } else if (!state.loading) {
                     ErrorText(state.errorKey)
                 }
@@ -220,6 +223,33 @@ private fun Result(state: DiagnosticUiState) {
             result.next?.let {
                 Text(strings(Strings.diagnostic_next), style = MaterialTheme.typography.labelLarge, color = Mint.greenText())
                 Text(it, style = MaterialTheme.typography.bodyMedium)
+            }
+        }
+    }
+}
+
+/** The AI's pick between the plan's order and paying debt before goals, with both side by side. */
+@Composable
+private fun Recommendation(state: DiagnosticUiState, title: String, onApply: () -> Unit) {
+    Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp), tonalElevation = 2.dp) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Icon(Icons.Outlined.AutoAwesome, contentDescription = null, tint = Mint.greenText())
+                Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.semantics { heading() })
+            }
+            state.result?.recommendWhy?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
+            state.orders.forEach { Figure(it) }
+            state.waiting?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            if (state.applied) {
+                Text(
+                    strings(Strings.diagnostic_applied),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Mint.greenText(),
+                    modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+                )
+            } else if (state.canApplyDebtFirst) {
+                GradientButton(text = strings(Strings.diagnostic_apply_debt_first), onClick = onApply, busy = state.applying)
+                Text(strings(Strings.diagnostic_apply_hint), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }

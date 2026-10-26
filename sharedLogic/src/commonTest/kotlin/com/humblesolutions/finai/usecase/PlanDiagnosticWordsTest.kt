@@ -96,4 +96,39 @@ class PlanDiagnosticWordsTest {
         assertEquals("3 fresh runs left this month", PlanDiagnosticWords.runsLeft(diagnostics, "allocation"))
         assertEquals("No fresh runs left this month — the last answer stays.", PlanDiagnosticWords.runsLeft(diagnostics, "invest"))
     }
+
+    @Test
+    fun the_two_orders_sit_side_by_side_with_what_would_wait() {
+        val choice = allocation.copy(
+            toGoals = "120.00",
+            goalSharePercent = "20.00",
+            altAvailable = true,
+            altToDebt = "1082.00",
+            altInterestSaved = "1150.00",
+            altDebtFree = "2029-03-01",
+            goalsWaiting = listOf("Trip to Lisbon"),
+            recommend = "debt_first",
+            recommendWhy = "The card costs more than the trip can wait.",
+        )
+        assertEquals("AI suggests: pay debt before your goals", PlanDiagnosticWords.recommendation(choice))
+        val rows = PlanDiagnosticWords.orders(choice)
+        assertEquals("Your plan (20.00% to goals)", rows[0].label)
+        assertEquals("$962.00 a month to debt", rows[0].amount)
+        assertEquals("debt-free Jun 2030 · $1,004.37 less interest", rows[0].detail)
+        assertEquals("Debt before goals", rows[1].label)
+        assertEquals("debt-free Mar 2029 · $1,150.00 less interest", rows[1].detail)
+        assertEquals("Would wait: Trip to Lisbon", PlanDiagnosticWords.waiting(choice))
+        assertTrue(PlanDiagnosticWords.canApplyDebtFirst(choice))
+        assertFalse(PlanDiagnosticWords.canApplyDebtFirst(choice.copy(goalSharePercent = "0.00")), "already debt first")
+        assertFalse(PlanDiagnosticWords.canApplyDebtFirst(choice.copy(recommend = "plan")))
+    }
+
+    @Test
+    fun with_no_choice_there_is_no_recommendation() {
+        val none = allocation.copy(altAvailable = false, recommend = "debt_first")
+        assertNull(PlanDiagnosticWords.recommendation(none))
+        assertTrue(PlanDiagnosticWords.orders(none).isEmpty())
+        assertNull(PlanDiagnosticWords.waiting(none))
+        assertFalse(PlanDiagnosticWords.canApplyDebtFirst(none))
+    }
 }
