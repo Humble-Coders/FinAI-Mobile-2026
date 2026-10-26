@@ -110,7 +110,11 @@ internal fun DiagnosticScreen(
                     Form(state, onSavingsTarget, onSavingsNow, onRun)
                     state.result?.let { Result(state) }
                     state.recommendation?.let { Recommendation(state, it, onApplyDebtFirst) }
-                } else if (!state.loading) {
+                } else if (state.loading) {
+                    Box(Modifier.fillMaxWidth().padding(vertical = 24.dp), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(Modifier.size(24.dp))
+                    }
+                } else {
                     ErrorText(state.errorKey)
                 }
                 Text(strings(Strings.diagnostic_guidance), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)

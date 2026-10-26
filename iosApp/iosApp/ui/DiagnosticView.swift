@@ -32,7 +32,11 @@ struct DiagnosticView: View {
                     form
                     if model.result != nil { result(dark) }
                     if let title = model.recommendation { recommendationCard(title, dark: dark) }
-                } else if !model.loading {
+                } else if model.loading {
+                    ProgressView()
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 24)
+                } else {
                     ErrorText(messageKey: model.errorKey)
                 }
                 Text(L.t(Strings.shared.diagnostic_guidance)).font(.caption).foregroundColor(.secondary)

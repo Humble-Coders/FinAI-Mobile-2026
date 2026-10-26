@@ -127,7 +127,8 @@ struct SetupView: View {
                 title: L.t(model.step.isLast
                            ? Strings.shared.setup_complete
                            : Strings.shared.action_continue),
-                enabled: model.canContinue
+                enabled: model.canContinue,
+                busy: model.busy
             ) {
                 dismissKeyboard()
                 withAnimation(Self.slide) { model.continueStep(onFinished: onFinished) }

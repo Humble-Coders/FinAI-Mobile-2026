@@ -213,6 +213,7 @@ fun SetupScreen(
                         onContinue()
                     },
                     enabled = state.canContinue,
+                    busy = state.busy,
                 )
                 Spacer(Modifier.height(16.dp))
             }

@@ -4,8 +4,8 @@ import SharedLogic
 /// The app's one coin loader, for every signed-out screen and the wizard.
 ///
 /// Whenever it is up, it is in the middle of the screen with everything behind it
-/// blurred, and it stays for at least `LoaderTiming.MIN_VISIBLE_MS` — or as long
-/// as the work really takes. A card with a coin resting on its edge tells the
+/// blurred. Signing in or up holds it for `LoaderTiming.MIN_VISIBLE_MS`; after
+/// that it stays exactly as long as the work takes. A card with a coin resting on its edge tells the
 /// loader where that coin is, so the loader's coin sets off from there and goes
 /// back there: one coin moving, rather than one vanishing while another appears.
 final class AppLoader: ObservableObject {
@@ -42,9 +42,10 @@ extension EnvironmentValues {
 }
 
 /// Wraps the whole app: blurs it and puts the coin over it while `active`, held
-/// for the minimum however quickly the work finishes.
+/// for at least `minimumMs` — taken as it shows — however quickly the work finishes.
 struct LoaderHost<Content: View>: View {
     let active: Bool
+    let minimumMs: Int64
     /// What the wait is for, shown under the coin — "Reading page 3 of 12…".
     /// A long wait with nothing said reads as a hang (#31).
     var caption: String? = nil
@@ -53,6 +54,7 @@ struct LoaderHost<Content: View>: View {
 
     @State private var shown = false
     @State private var shownAt = Date.distantPast
+    @State private var heldFor: Int64 = 0
     @State private var coinVisible = false
     @State private var offset: CGSize = .zero
     @State private var scale: CGFloat = LoaderHost.loadingScale
@@ -111,13 +113,14 @@ struct LoaderHost<Content: View>: View {
         if active {
             guard !shown else { return }
             shownAt = Date()
+            heldFor = minimumMs
             shown = true
             // Typing is over for now, and a keyboard would cover the coin.
             dismissKeyboard()
             await travelOut()
         } else if shown {
             let elapsed = Int64(Date().timeIntervalSince(shownAt) * 1000)
-            let wait = LoaderTiming.shared.remainingMs(shownAtMs: 0, nowMs: elapsed)
+            let wait = LoaderTiming.shared.remainingMs(shownAtMs: 0, nowMs: elapsed, minimumMs: heldFor)
             if wait > 0 { try? await Task.sleep(for: .milliseconds(wait)) }
             guard !Task.isCancelled else { return }
             shown = false

@@ -51,8 +51,8 @@ struct RootView: View {
     @SceneStorage("home.reviewFrom") private var reviewFrom = HomeRoute.home.rawValue
     /// Where the plan's back arrow goes: the screen it was opened from (#76).
     @SceneStorage("home.planFrom") private var planFrom = HomeRoute.home.rawValue
-    /// One coin loader for the whole app: centred, everything behind it blurred,
-    /// for at least two seconds.
+    /// One coin loader for the whole app: centred, everything behind it blurred.
+    /// Signing in or up holds it for two seconds; after that, as long as it takes.
     @StateObject private var loader = AppLoader()
     @State private var changingRegion = false
     /// Setup's step 4: the AI's suggested budget, once steps 1–3 are saved.
@@ -61,7 +61,7 @@ struct RootView: View {
     @MainActor private static var launched = false
 
     var body: some View {
-        LoaderHost(active: loaderActive, caption: showingImport ? importModel.loaderCaption : nil, loader: loader) {
+        LoaderHost(active: loaderActive, minimumMs: LoaderTiming.shared.minimumMs(signedIn: model.session == .signedIn), caption: showingImport ? importModel.loaderCaption : nil, loader: loader) {
         Group {
             if let problemKey = model.configurationProblemKey {
                 NotConfiguredView(messageKey: problemKey)
@@ -113,6 +113,10 @@ struct RootView: View {
             || (showingBudget && (budgetModel.loading || budgetModel.switchingMonth))
             // The plan's first read (#76); a return refreshes under what is shown.
             || (showingPlan && planModel.loading && planModel.plan == nil)
+            // The other tabs and Home's money screens, as Android: a first load only.
+            || (showingGoals && goalsModel.loading && goalsModel.page == nil)
+            || (showingTransactions && transactionsModel.loading)
+            || (showingMoney && moneyModel.loading)
     }
 
     private var showingPlan: Bool {
@@ -122,6 +126,14 @@ struct RootView: View {
     private var showingHome: Bool { atHome && homeRoute == HomeRoute.home.rawValue }
 
     private var showingBudget: Bool { atHome && homeRoute == HomeRoute.budget.rawValue }
+
+    private var showingGoals: Bool { atHome && homeRoute == HomeRoute.goals.rawValue }
+
+    private var showingTransactions: Bool { atHome && homeRoute == HomeRoute.transactions.rawValue }
+
+    private var showingMoney: Bool {
+        atHome && [HomeRoute.income, .expenses, .investments, .debts].map(\.rawValue).contains(homeRoute)
+    }
 
     private var atHome: Bool {
         model.configurationProblemKey == nil

@@ -1,21 +1,25 @@
 package com.humblesolutions.finai.util
 
 /**
- * How long the coin loader stays on screen: at least [MIN_VISIBLE_MS], or as
- * long as the work really takes when that is longer.
+ * How long the coin loader stays on screen.
  *
- * A loader that flashes up for a fast answer and vanishes reads as a glitch,
- * and the coin needs a full slow turn to read as a coin at all. Shared, so
- * Android and iOS hold it for exactly the same time.
+ * Signing in or up holds it for at least [MIN_VISIBLE_MS]: the coin travels off
+ * the card and needs a full slow turn to read as a coin at all. Everything after
+ * that — the hand-over between steps, setup, every signed-in screen — shows it
+ * for exactly as long as the work takes. Shared, so Android and iOS agree.
  */
 object LoaderTiming {
 
     const val MIN_VISIBLE_MS: Long = 2_000
 
+    /** The least time a loader shown now stays up: the minimum only while signed out. */
+    fun minimumMs(signedIn: Boolean): Long = if (signedIn) 0L else MIN_VISIBLE_MS
+
     /**
      * How much longer a loader that appeared at [shownAtMs] must stay up at
-     * [nowMs]. Never negative, and never more than the minimum — a clock that
-     * steps backwards cannot hold it up for longer than that.
+     * [nowMs], given the [minimumMs] it was shown with. Never negative, and never
+     * more than that minimum — a clock that steps backwards cannot hold it up
+     * for longer.
      */
-    fun remainingMs(shownAtMs: Long, nowMs: Long): Long = (MIN_VISIBLE_MS - (nowMs - shownAtMs)).coerceIn(0L, MIN_VISIBLE_MS)
+    fun remainingMs(shownAtMs: Long, nowMs: Long, minimumMs: Long = MIN_VISIBLE_MS): Long = (minimumMs - (nowMs - shownAtMs)).coerceIn(0L, minimumMs.coerceAtLeast(0L))
 }
