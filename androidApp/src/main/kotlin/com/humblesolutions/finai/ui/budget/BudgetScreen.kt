@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -14,11 +15,14 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -32,10 +36,14 @@ import androidx.compose.material.icons.filled.WarningAmber
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.RadioButtonUnchecked
 import androidx.compose.material.icons.outlined.Savings
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -46,10 +54,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
@@ -58,9 +68,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.humblesolutions.finai.i18n.Strings
 import com.humblesolutions.finai.model.BudgetLine
+import com.humblesolutions.finai.model.SpendingCheck
 import com.humblesolutions.finai.ui.components.CollapsingTitleBar
+import com.humblesolutions.finai.ui.components.ErrorText
 import com.humblesolutions.finai.ui.components.Field
 import com.humblesolutions.finai.ui.components.FieldVectors
+import com.humblesolutions.finai.ui.components.GradientButton
 import com.humblesolutions.finai.ui.components.LearningFieldCard
 import com.humblesolutions.finai.ui.components.LightStatusBarIcons
 import com.humblesolutions.finai.ui.components.Mint
@@ -74,6 +87,9 @@ import com.humblesolutions.finai.ui.strings
 import com.humblesolutions.finai.usecase.DashboardMonths
 import com.humblesolutions.finai.usecase.OverviewCommitment
 import com.humblesolutions.finai.usecase.OverviewRow
+import com.humblesolutions.finai.usecase.SpendingCheckWords
+import com.humblesolutions.finai.usecase.SpendingShareRow
+import com.humblesolutions.finai.usecase.SpendingStatus
 
 /**
  * The month's budget: every category with what has been spent against it,
@@ -108,6 +124,8 @@ internal fun BudgetScreen(
     onAskAi: () -> Unit = {},
     /** Your plan (#76), from the Savings line; null when the plan is off, which hides the link. */
     onOpenPlan: (() -> Unit)? = null,
+    /** "How you're spending": asking the AI, and its consent. */
+    spending: SpendingActions = SpendingActions(),
 ) {
     val dark = isSystemInDarkTheme()
     LightStatusBarIcons(dark)
@@ -144,7 +162,7 @@ internal fun BudgetScreen(
                     else -> {
                         state.learning?.let { LearningFieldCard(it, onImport = onImport) }
                         // The month as the statements tell it, first.
-                        Overview(state, onOpenPlan)
+                        Overview(state, onOpenPlan, spending)
                         if (state.showsPlan) {
                             // Hand-set lines still show while learning:
                             // manual budgeting is available before the first
@@ -229,10 +247,11 @@ private fun PlanSummary(state: BudgetUiState, onOpenPlan: (() -> Unit)?) {
 
 /** The month so far, its commitments, what is still to come, and what to do with the rest. */
 @Composable
-private fun Overview(state: BudgetUiState, onOpenPlan: (() -> Unit)?) {
+private fun Overview(state: BudgetUiState, onOpenPlan: (() -> Unit)?, spending: SpendingActions) {
     state.soFar?.let { rows ->
         Card(state.soFarTitle) { rows.forEach { FigureRow(it) } }
     }
+    state.spendingCheck?.let { SpendingCard(state, it, spending) }
     if (state.commitments.isNotEmpty()) {
         Card(strings(Strings.budget_commitments_title)) { state.commitments.forEach { CommitmentLine(it) } }
     }
@@ -241,6 +260,127 @@ private fun Overview(state: BudgetUiState, onOpenPlan: (() -> Unit)?) {
     }
     state.suggestion?.let { Suggestion(it, state.suggestsUsing) }
     state.aiAdvice?.let { AiAdvice(it, onOpenPlan) }
+}
+
+/** What "How you're spending" can ask of the model. */
+internal class SpendingActions(
+    val onAsk: () -> Unit = {},
+    val onConsentTicked: (Boolean) -> Unit = {},
+    val onAgree: () -> Unit = {},
+)
+
+/**
+ * The month's needs, wants and savings as shares of income beside what the
+ * rule aims for, and the AI's advice on spending the right way for that
+ * income. Every figure is the server's; the AI's part is words.
+ */
+@Composable
+private fun SpendingCard(state: BudgetUiState, check: SpendingCheck, actions: SpendingActions) {
+    Card(SpendingCheckWords.title(state.locale), subtitle = SpendingCheckWords.incomeLine(check, state.locale)) {
+        state.spendingRows.forEach { ShareRow(it) }
+        val policy = state.spendingPolicy
+        if (policy != null) {
+            Text(strings(Strings.ai_budget_consent_title), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+            Text(strings(Strings.ai_budget_consent_body), style = MaterialTheme.typography.bodySmall)
+            Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), tonalElevation = 2.dp) {
+                Text(policy.body, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(12.dp))
+            }
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 48.dp)
+                    .toggleable(value = state.spendingConsentTicked, role = Role.Checkbox, onValueChange = actions.onConsentTicked),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Checkbox(checked = state.spendingConsentTicked, onCheckedChange = null)
+                Text(strings(Strings.import_consent_agree), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(start = 12.dp))
+            }
+            ErrorText(state.spendingErrorKey)
+            GradientButton(
+                text = strings(Strings.ai_budget_consent_allow),
+                onClick = actions.onAgree,
+                enabled = state.spendingConsentTicked,
+                busy = state.spendingConsentBusy,
+            )
+            return@Card
+        }
+        check.headline?.let { headline ->
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Icon(Icons.Outlined.AutoAwesome, contentDescription = null, tint = Mint.greenText(), modifier = Modifier.size(20.dp))
+                Text(headline, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+            }
+        }
+        check.tips.forEach { tip ->
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("•", style = MaterialTheme.typography.bodyMedium, color = Mint.greenText())
+                Text(tip, style = MaterialTheme.typography.bodyMedium)
+            }
+        }
+        if (check.hasAdvice && check.stale) {
+            Text(strings(Strings.spending_stale), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        ErrorText(state.spendingErrorKey)
+        if (state.checkingSpending) {
+            Row(
+                Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                Text(strings(Strings.spending_asking), style = MaterialTheme.typography.bodyMedium)
+            }
+        } else if (SpendingCheckWords.canAsk(check)) {
+            OutlinedButton(onClick = actions.onAsk, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+                Icon(Icons.Outlined.AutoAwesome, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text(SpendingCheckWords.askLabel(check, state.locale))
+            }
+            Text(SpendingCheckWords.runsLeft(check, state.locale), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        if (check.hasAdvice) {
+            Text(strings(Strings.diagnostic_guidance), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+/** One share of income: what it is, the bar with the aim marked, and how it sits. */
+@Composable
+private fun ShareRow(row: SpendingShareRow) {
+    val tone = when (row.status) {
+        SpendingStatus.OVER, SpendingStatus.SHORT -> MaterialTheme.colorScheme.error
+        SpendingStatus.TO_GO -> MaterialTheme.colorScheme.onSurfaceVariant
+        SpendingStatus.ON_TRACK -> Mint.greenText()
+    }
+    Column(
+        Modifier.fillMaxWidth().clearAndSetSemantics { contentDescription = "${row.label}, ${row.amount}, ${row.share}. ${row.aim}. ${row.statusLabel}" },
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(row.label, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+            Text("${row.amount} · ${row.share}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, maxLines = 1)
+        }
+        Box(Modifier.fillMaxWidth().height(6.dp)) {
+            LinearProgressIndicator(
+                progress = { row.fraction },
+                modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)),
+                color = tone,
+            )
+            // Where the aim sits on the bar.
+            BoxWithConstraints(Modifier.fillMaxWidth().height(6.dp)) {
+                Box(
+                    Modifier
+                        .offset(x = maxWidth * row.aimFraction - 1.dp)
+                        .width(2.dp)
+                        .height(6.dp)
+                        .background(MaterialTheme.colorScheme.onSurface),
+                )
+            }
+        }
+        Row {
+            Text(row.aim, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+            Text(row.statusLabel, style = MaterialTheme.typography.labelMedium, color = tone, fontWeight = FontWeight.SemiBold)
+        }
+    }
 }
 
 /** What the AI rows can ask of the model. */
@@ -685,6 +825,15 @@ private fun LineRow(
             state.suggestionLabel(line)?.let {
                 Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
+            state.oneOffOf(line)?.let {
+                Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            state.thisMonthOnlyOf(line)?.let {
+                Text(it, style = MaterialTheme.typography.labelSmall, color = Mint.greenText(), fontWeight = FontWeight.SemiBold)
+            }
+            state.tipFor(line.categoryId)?.let {
+                Text(it, style = MaterialTheme.typography.labelMedium, color = Mint.greenText())
+            }
             caption?.let {
                 Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
@@ -736,6 +885,8 @@ private fun Unbudgeted(state: BudgetUiState, label: String, onAdd: (String) -> U
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     state.aiLabel(spend)?.let { Text(it, style = MaterialTheme.typography.labelMedium, color = Mint.greenText()) }
+                    state.oneOffOf(spend)?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    state.tipFor(spend.categoryId)?.let { Text(it, style = MaterialTheme.typography.labelMedium, color = Mint.greenText()) }
                 }
                 TextButton(onClick = { onAdd(spend.categoryId) }) {
                     Text(strings(Strings.budget_unbudgeted_add), maxLines = 1)

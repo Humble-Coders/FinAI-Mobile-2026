@@ -537,6 +537,7 @@ class StatementImportViewModelTest {
 
         override suspend fun delete(id: String): DeleteOutcome = unreachable()
 
+        override suspend fun setOneOff(id: String, oneOff: Boolean): Transaction = error("not called")
         override fun close() = Unit
 
         private fun unreachable(): Nothing = error("the import screen does not call this")

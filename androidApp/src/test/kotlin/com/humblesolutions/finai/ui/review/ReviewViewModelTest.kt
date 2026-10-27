@@ -696,6 +696,7 @@ class ReviewViewModelTest {
             return DeleteOutcome()
         }
 
+        override suspend fun setOneOff(id: String, oneOff: Boolean): Transaction = error("not called")
         override fun close() = Unit
     }
 

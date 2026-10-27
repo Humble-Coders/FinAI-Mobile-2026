@@ -36,6 +36,8 @@ final class TransactionsViewModel: ObservableObject {
     @Published private(set) var draft = TransactionsViewModel.emptyDraft
     @Published private(set) var saving = false
     @Published private(set) var deleting = false
+    /// "One-off purchase" is being saved for the row being edited.
+    @Published private(set) var oneOffSaving = false
     @Published private(set) var editErrorKey: String?
     @Published private(set) var today = ManualEntry.shared.today()
     @Published private(set) var newCategoryName: String?
@@ -572,6 +574,34 @@ final class TransactionsViewModel: ObservableObject {
     /// What the delete question names the row by: title, amount, day.
     var deleteSummary: [String] {
         editing.map { ImportedRows.shared.summary(row: $0, locale: "en") } ?? []
+    }
+
+    /// "One-off purchase" — offered on money going out only.
+    var editingOneOff: Bool? {
+        guard let row = editing, row.direction == .debit else { return nil }
+        return row.oneOff
+    }
+
+    /// Saved at once and apart from any correction in the sheet. The month's
+    /// figures do not move, but the months after are budgeted differently, so
+    /// it is announced like any change. Android's `setOneOff`.
+    func setOneOff(_ oneOff: Bool) {
+        guard let transactionsRepository, let row = editing, !oneOffSaving, row.oneOff != oneOff else { return }
+        oneOffSaving = true
+        editErrorKey = nil
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                let saved = try await transactionsRepository.setOneOff(id: row.id, oneOff: oneOff)
+                self.oneOffSaving = false
+                if self.editing?.id == saved.id { self.editing = saved }
+                self.rows = self.rows.map { $0.id == saved.id ? saved : $0 }
+                LedgerChanged.announce()
+            } catch {
+                self.oneOffSaving = false
+                self.editErrorKey = Self.messageKey(error)
+            }
+        }
     }
 
     /// Deletes the row being edited — the sheet asked first. Any row, not only

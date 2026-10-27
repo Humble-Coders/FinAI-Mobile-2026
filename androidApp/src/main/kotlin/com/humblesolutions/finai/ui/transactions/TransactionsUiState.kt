@@ -49,6 +49,8 @@ data class TransactionsUiState(
 
     // ── Editing one row ─────────────────────────────────────────────────
     val editing: Transaction? = null,
+    /** "One-off purchase" is being saved for the row being edited. */
+    val oneOffSaving: Boolean = false,
     val draft: CorrectionDraft = CorrectionDraft(),
     val saving: Boolean = false,
     val deleting: Boolean = false,
@@ -210,6 +212,7 @@ data class TransactionsUiState(
                 titleKey = Strings.transactions_edit_title,
                 deleting = deleting,
                 deleteSummary = ImportedRows.summary(row, locale),
+                oneOffSaving = oneOffSaving,
             )
         }
 }

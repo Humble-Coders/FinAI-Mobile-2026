@@ -209,6 +209,9 @@ data class UnbudgetedSpend(
     val aiSuggested: String? = null,
     @SerialName("ai_reason")
     val aiReason: String? = null,
+    /** The part of [spent] marked one-off; null when none of it is. */
+    @SerialName("one_off")
+    val oneOff: String? = null,
 )
 
 /** An AI suggestion for a category the budget has no line for yet. */
@@ -323,6 +326,14 @@ data class BudgetLine(
      * `/budgets`, where [overBy] stands in.
      */
     val over: String? = null,
+
+    /** The part of [spent] marked one-off; null when none of it is. */
+    @SerialName("one_off")
+    val oneOff: String? = null,
+
+    /** Set by hand for this month alone: the months after start from something else. */
+    @SerialName("this_month_only")
+    val thisMonthOnly: Boolean = false,
 ) {
     /**
      * How far through the allocation this line's spending is, 0 to 1 — the

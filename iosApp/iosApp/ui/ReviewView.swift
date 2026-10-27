@@ -293,6 +293,12 @@ protocol TransactionEditing: ObservableObject {
     var deleteConfirmKey: String { get }
     /// The question's body; the saved-row wording names the row by its summary.
     var deleteConfirmMessage: String { get }
+
+    /// "One-off purchase" on the row being edited, saved as soon as it is
+    /// switched; nil where the screen does not offer it.
+    var editingOneOff: Bool? { get }
+    var oneOffSaving: Bool { get }
+    func setOneOff(_ oneOff: Bool)
 }
 
 /// What every screen but the import's check step says: a saved row, deleted.
@@ -306,6 +312,9 @@ extension TransactionEditing {
         guard parts.count == 3 else { return "" }
         return L.t(Strings.shared.transaction_delete_confirm_body, parts[0], parts[1], parts[2])
     }
+    var editingOneOff: Bool? { nil }
+    var oneOffSaving: Bool { false }
+    func setOneOff(_ oneOff: Bool) {}
 }
 
 extension ReviewViewModel: TransactionEditing {
@@ -375,6 +384,20 @@ struct CorrectionSheet<Model: TransactionEditing>: View {
                             value: model.editCategoryName,
                             placeholder: L.t(Strings.shared.review_category_choose)
                         ) { choosingCategory = true }
+                    }
+                }
+                // Saved at once, apart from the correction: it never is one.
+                if let oneOff = model.editingOneOff {
+                    Section {
+                        Toggle(isOn: Binding(get: { oneOff }, set: { model.setOneOff($0) })) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(L.t(Strings.shared.transaction_one_off))
+                                Text(L.t(Strings.shared.transaction_one_off_hint))
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        .disabled(busy || model.oneOffSaving)
                     }
                 }
                 Section {

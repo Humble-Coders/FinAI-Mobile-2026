@@ -2,6 +2,8 @@ package com.humblesolutions.finai.ui.budget
 
 import androidx.lifecycle.SavedStateHandle
 import com.humblesolutions.finai.model.AiAccept
+import com.humblesolutions.finai.model.AiConsentStatus
+import com.humblesolutions.finai.model.AiPolicy
 import com.humblesolutions.finai.model.AiProposal
 import com.humblesolutions.finai.model.ApiException
 import com.humblesolutions.finai.model.Budget
@@ -10,11 +12,14 @@ import com.humblesolutions.finai.model.BudgetStatus
 import com.humblesolutions.finai.model.Capabilities
 import com.humblesolutions.finai.model.Category
 import com.humblesolutions.finai.model.CategorySpend
+import com.humblesolutions.finai.model.CategoryTip
 import com.humblesolutions.finai.model.Feature
 import com.humblesolutions.finai.model.FeatureReason
 import com.humblesolutions.finai.model.LearningNeeds
 import com.humblesolutions.finai.model.LearningProgress
+import com.humblesolutions.finai.model.SpendingCheck
 import com.humblesolutions.finai.model.UnbudgetedSpend
+import com.humblesolutions.finai.repository.AiConsentRepository
 import com.humblesolutions.finai.repository.BudgetRepository
 import com.humblesolutions.finai.repository.CapabilitiesRepository
 import com.humblesolutions.finai.repository.CategoriesRepository
@@ -62,8 +67,11 @@ class BudgetViewModelTest {
             return answer
         }
 
-        override suspend fun setLine(month: String, categoryId: String, amount: String): Budget {
+        val thisMonthOnly = mutableListOf<Boolean>()
+
+        override suspend fun setLine(month: String, categoryId: String, amount: String, thisMonthOnly: Boolean): Budget {
             writes += Triple(month, categoryId, amount)
+            this.thisMonthOnly += thisMonthOnly
             failWrite?.let { throw it }
             return answer
         }
@@ -91,6 +99,20 @@ class BudgetViewModelTest {
 
         override suspend fun acceptSetup(accept: AiAccept): Budget = throw UnsupportedOperationException()
 
+        /** What the spending check reads and runs as; null fails the read quietly. */
+        var spending: SpendingCheck? = null
+        var ran: SpendingCheck? = null
+        var failRun: ApiException? = null
+        val runs = mutableListOf<String>()
+
+        override suspend fun spendingCheck(month: String): SpendingCheck = spending ?: throw ApiException.SetupIncomeMissing()
+
+        override suspend fun runSpendingCheck(month: String): SpendingCheck {
+            runs += month
+            failRun?.let { throw it }
+            return ran ?: throw ApiException.AiUnavailable()
+        }
+
         override fun close() = Unit
     }
 
@@ -114,12 +136,23 @@ class BudgetViewModelTest {
         override fun close() = Unit
     }
 
+    private class FakeConsent : AiConsentRepository {
+        var agreed: String? = null
+        override suspend fun policy() = AiPolicy(version = "ai-v2", body = "What is sent, and why.")
+        override suspend fun consent(version: String) {
+            agreed = version
+        }
+        override suspend fun status(): AiConsentStatus = throw UnsupportedOperationException()
+        override fun close() = Unit
+    }
+
     private fun model(
         budgets: FakeBudgets = FakeBudgets(),
         categories: FakeCategories = FakeCategories(),
         capabilities: FakeCapabilities = FakeCapabilities(),
+        consent: FakeConsent = FakeConsent(),
     ): BudgetViewModel = BudgetViewModel(SavedStateHandle()).also {
-        it.bind("user-1") { BudgetRepositories(budgets, categories, capabilities) }
+        it.bind("user-1") { BudgetRepositories(budgets, categories, capabilities, consent) }
     }
 
     // ── Loading ─────────────────────────────────────────────────────────
@@ -277,6 +310,84 @@ class BudgetViewModelTest {
         assertEquals(BudgetBlock.NOTHING_CHANGED, state.editBlock)
         assertNull(state.editNotice)
         assertFalse(state.canSave)
+    }
+
+    @Test
+    fun a_line_saved_for_this_month_only_says_so() = runTest {
+        val budgets = FakeBudgets()
+        val model = model(budgets)
+        model.edit("cat-groceries")
+        model.onAmountChange("1400")
+
+        assertTrue(model.uiState.value.asksHowLong)
+        model.save(thisMonthOnly = true)
+
+        assertEquals(listOf(true), budgets.thisMonthOnly)
+    }
+
+    // ── How you're spending ─────────────────────────────────────────────
+
+    private val spending = SpendingCheck(month = "2026-09-01", currency = "CAD", income = "5000.00", wantsPercent = 41, wantsOver = true, runsLeft = 4)
+
+    @Test
+    fun the_spending_check_is_read_with_the_budget() = runTest {
+        val budgets = FakeBudgets().apply { spending = this@BudgetViewModelTest.spending }
+
+        val model = model(budgets)
+
+        assertEquals(spending, model.uiState.value.spendingCheck)
+        assertEquals("41%", model.uiState.value.spendingRows[1].share)
+    }
+
+    @Test
+    fun without_an_income_there_is_no_card_and_no_error() = runTest {
+        val model = model(FakeBudgets())
+
+        assertNull(model.uiState.value.spendingCheck)
+        assertNull(model.uiState.value.errorKey)
+    }
+
+    @Test
+    fun asking_takes_the_ais_words_and_the_tips_land_on_their_lines() = runTest {
+        val budgets = FakeBudgets().apply {
+            spending = this@BudgetViewModelTest.spending
+            ran = this@BudgetViewModelTest.spending.copy(
+                headline = "Wants are taking your savings' room.",
+                tips = listOf("Cook at home more."),
+                categories = listOf(CategoryTip("cat-groceries", "groceries", "Shop with a list.")),
+            )
+        }
+        val model = model(budgets)
+
+        model.askSpending()
+
+        val state = model.uiState.value
+        assertEquals("Wants are taking your savings' room.", state.spendingCheck?.headline)
+        assertEquals("AI: Shop with a list.", state.tipFor("cat-groceries"))
+        assertFalse(state.checkingSpending)
+    }
+
+    @Test
+    fun asking_without_consent_shows_the_policy_then_asks_once_agreed() = runTest {
+        val budgets = FakeBudgets().apply {
+            spending = this@BudgetViewModelTest.spending
+            failRun = ApiException.ConsentRequired(null)
+        }
+        val consent = FakeConsent()
+        val model = model(budgets, consent = consent)
+
+        model.askSpending()
+        assertEquals("ai-v2", model.uiState.value.spendingPolicy?.version)
+
+        budgets.failRun = null
+        budgets.ran = spending.copy(headline = "Fine so far.")
+        model.onSpendingConsentTicked(true)
+        model.agreeSpending()
+
+        assertEquals("ai-v2", consent.agreed)
+        assertNull(model.uiState.value.spendingPolicy)
+        assertEquals("Fine so far.", model.uiState.value.spendingCheck?.headline)
+        assertEquals(2, budgets.runs.size)
     }
 
     @Test

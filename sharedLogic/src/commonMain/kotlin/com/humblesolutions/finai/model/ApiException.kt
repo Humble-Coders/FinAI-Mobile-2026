@@ -286,6 +286,11 @@ sealed class ApiException(message: String, cause: Throwable? = null) : Exception
         override val messageKey: String = Strings.ai_budget_error_learning
     }
 
+    /** The month's fresh spending checks are used up (429). The last one stays. */
+    class SpendingCheckLimitReached : ApiException("spending check limit reached") {
+        override val messageKey: String = Strings.spending_error_limit
+    }
+
     /** This month's fresh runs of a plan diagnostic are used up (429). The last answer stays. */
     class DiagnosticLimitReached : ApiException("diagnostic limit reached") {
         override val messageKey: String = Strings.diagnostic_error_limit

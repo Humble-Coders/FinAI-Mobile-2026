@@ -346,6 +346,35 @@ class TransactionsViewModel : ViewModel() {
     }
 
     /**
+     * "One-off purchase", saved at once and apart from any correction in the
+     * sheet. The ledger's figures for the month do not move, but the months
+     * after are budgeted differently, so it is announced like any change.
+     */
+    fun setOneOff(oneOff: Boolean) {
+        val repos = repositories ?: return
+        val row = _uiState.value.editing ?: return
+        if (_uiState.value.oneOffSaving || row.oneOff == oneOff) return
+        _uiState.update { it.copy(oneOffSaving = true, editErrorKey = null) }
+        viewModelScope.launch {
+            try {
+                val saved = repos.transactions.setOneOff(row.id, oneOff)
+                _uiState.update { state ->
+                    state.copy(
+                        oneOffSaving = false,
+                        editing = state.editing?.takeIf { it.id == row.id }?.copy(oneOff = saved.oneOff) ?: state.editing,
+                        rows = state.rows.map { if (it.id == row.id) it.copy(oneOff = saved.oneOff) else it },
+                    )
+                }
+                LedgerChanged.announce()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: ApiException) {
+                _uiState.update { it.copy(oneOffSaving = false, editErrorKey = e.messageKey) }
+            }
+        }
+    }
+
+    /**
      * Deletes the row being edited — the editor asked first. Any row, not
      * only one still waiting: a wrong row found after confirming it is just
      * as wrong. On success the ledger has moved, so it is announced, and home

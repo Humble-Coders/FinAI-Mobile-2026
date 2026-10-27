@@ -66,6 +66,11 @@ internal fun BudgetRoute(
         onRetry = { model.load() },
         onImport = onImport,
         onOpenPlan = onOpenPlan,
+        spending = SpendingActions(
+            onAsk = model::askSpending,
+            onConsentTicked = model::onSpendingConsentTicked,
+            onAgree = model::agreeSpending,
+        ),
     )
 
     if (state.editing != null) {
@@ -73,9 +78,10 @@ internal fun BudgetRoute(
             state = state,
             actions = BudgetEditorActions(
                 onAmountChange = model::onAmountChange,
-                onSave = model::save,
+                onSave = { model.save() },
                 onUseSuggestion = model::useSuggestion,
                 onCancel = model::cancelEdit,
+                onSaveThisMonth = { model.save(thisMonthOnly = true) },
             ),
         )
     }

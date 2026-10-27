@@ -177,6 +177,111 @@ struct BudgetView: View {
         }
     }
 
+    // MARK: - How you're spending
+
+    /// Needs, wants and savings as shares of income beside what the rule aims
+    /// for, and the AI's advice on spending the right way for that income.
+    /// Every figure is the server's; the AI's part is words. Android's `SpendingCard`.
+    private func spendingCard(_ check: SpendingCheck, dark: Bool) -> some View {
+        let words = SpendingCheckWords.shared
+        return card(
+            words.title(locale: model.locale),
+            subtitle: words.incomeLine(c: check, locale: model.locale),
+            dark: dark
+        ) {
+            ForEach(Array(model.spendingRows.enumerated()), id: \.offset) { _, row in shareRow(row, dark: dark) }
+            if let policy = model.spendingPolicy {
+                Text(L.t(Strings.shared.ai_budget_consent_title)).font(.subheadline.weight(.semibold))
+                Text(L.t(Strings.shared.ai_budget_consent_body)).font(.caption)
+                Text(policy.body)
+                    .font(.caption)
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(RoundedRectangle(cornerRadius: 12).fill(Color(.secondarySystemBackground)))
+                Toggle(isOn: $model.spendingConsentTicked) { Text(L.t(Strings.shared.import_consent_agree)) }
+                    .toggleStyle(CheckboxStyle())
+                ErrorText(messageKey: model.spendingErrorKey)
+                GradientButton(
+                    title: L.t(Strings.shared.ai_budget_consent_allow),
+                    enabled: model.spendingConsentTicked,
+                    busy: model.spendingConsentBusy
+                ) { model.agreeSpending() }
+            } else {
+                if let headline = check.headline {
+                    HStack(alignment: .top, spacing: 10) {
+                        Image(systemName: "sparkles")
+                            .foregroundColor(Mint.greenText(dark))
+                            .accessibilityHidden(true)
+                        Text(headline).font(.subheadline.weight(.semibold))
+                    }
+                }
+                ForEach(Array(check.tips.enumerated()), id: \.offset) { _, tip in
+                    HStack(alignment: .top, spacing: 8) {
+                        Text("•").foregroundColor(Mint.greenText(dark)).accessibilityHidden(true)
+                        Text(tip).font(.subheadline)
+                    }
+                }
+                if check.hasAdvice && check.stale {
+                    Text(L.t(Strings.shared.spending_stale)).font(.caption).foregroundColor(.secondary)
+                }
+                ErrorText(messageKey: model.spendingErrorKey)
+                if model.checkingSpending {
+                    HStack(spacing: 10) {
+                        ProgressView()
+                        Text(L.t(Strings.shared.spending_asking)).font(.subheadline)
+                    }
+                    .accessibilityElement(children: .combine)
+                } else if words.canAsk(c: check) {
+                    Button { model.askSpending() } label: {
+                        Label(words.askLabel(c: check, locale: model.locale), systemImage: "sparkles")
+                            .frame(maxWidth: .infinity, minHeight: 44)
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(Mint.greenText(dark))
+                    Text(words.runsLeft(c: check, locale: model.locale)).font(.caption2).foregroundColor(.secondary)
+                }
+                if check.hasAdvice {
+                    Text(L.t(Strings.shared.diagnostic_guidance)).font(.caption2).foregroundColor(.secondary)
+                }
+            }
+        }
+    }
+
+    /// One share of income: what it is, the bar with the aim marked, and how it sits.
+    private func shareRow(_ row: SpendingShareRow, dark: Bool) -> some View {
+        let tone: Color = switch row.status {
+        case .over, .short: .red
+        case .toGo: .secondary
+        default: Mint.greenText(dark)
+        }
+        return VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text(row.label).font(.body.weight(.medium))
+                Spacer(minLength: 8)
+                Text("\(row.amount) · \(row.share)").font(.subheadline.weight(.semibold)).lineLimit(1)
+            }
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color(.tertiarySystemFill))
+                    Capsule().fill(tone).frame(width: geo.size.width * CGFloat(row.fraction))
+                    // Where the aim sits on the bar.
+                    Rectangle()
+                        .fill(Color.primary)
+                        .frame(width: 2)
+                        .offset(x: geo.size.width * CGFloat(row.aimFraction) - 1)
+                }
+            }
+            .frame(height: 6)
+            HStack {
+                Text(row.aim).font(.caption2).foregroundColor(.secondary)
+                Spacer(minLength: 8)
+                Text(row.statusLabel).font(.caption.weight(.semibold)).foregroundColor(tone)
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(row.label), \(row.amount), \(row.share). \(row.aim). \(row.statusLabel)")
+    }
+
     // MARK: - Above the lines
 
     /// The month so far, its commitments, what is still to come, and what to do with the rest.
@@ -188,6 +293,7 @@ struct BudgetView: View {
                 ForEach(Array(rows.enumerated()), id: \.offset) { _, row in figureRow(row) }
             }
         }
+        if let check = model.spendingCheck { spendingCard(check, dark: dark) }
         let commitments = words.commitments(budget: budget, locale: model.locale)
         if !commitments.isEmpty {
             card(L.t(Strings.shared.budget_commitments_title), dark: dark) {
@@ -531,6 +637,12 @@ struct BudgetView: View {
                                 .font(.caption2.weight(.semibold))
                                 .foregroundColor(Mint.greenText(dark))
                         }
+                        if let oneOff = model.oneOff(spend) {
+                            Text(oneOff).font(.caption2).foregroundColor(.secondary)
+                        }
+                        if let tip = model.tip(for: spend.categoryId) {
+                            Text(tip).font(.caption2.weight(.medium)).foregroundColor(Mint.greenText(dark))
+                        }
                     }
                     Spacer(minLength: 8)
                     Button(L.t(Strings.shared.budget_unbudgeted_add)) {
@@ -653,6 +765,15 @@ private struct LineRow: View {
                     }
                     if let suggestion = suggestionLabel {
                         Text(suggestion).font(.caption2).foregroundColor(.secondary)
+                    }
+                    if let oneOff = model.oneOff(line) {
+                        Text(oneOff).font(.caption2).foregroundColor(.secondary)
+                    }
+                    if let only = model.thisMonthOnly(line) {
+                        Text(only).font(.caption2.weight(.semibold)).foregroundColor(Mint.greenText(dark))
+                    }
+                    if let tip = model.tip(for: line.categoryId) {
+                        Text(tip).font(.caption2.weight(.medium)).foregroundColor(Mint.greenText(dark))
                     }
                     if let caption {
                         Text(caption).font(.caption2).foregroundColor(.secondary)

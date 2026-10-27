@@ -3,9 +3,11 @@ package com.humblesolutions.finai.ui.budget
 import com.humblesolutions.finai.i18n.LocalizationRegistry
 import com.humblesolutions.finai.i18n.Strings
 import com.humblesolutions.finai.model.AiLine
+import com.humblesolutions.finai.model.AiPolicy
 import com.humblesolutions.finai.model.Budget
 import com.humblesolutions.finai.model.BudgetLine
 import com.humblesolutions.finai.model.Category
+import com.humblesolutions.finai.model.SpendingCheck
 import com.humblesolutions.finai.model.UnbudgetedSpend
 import com.humblesolutions.finai.usecase.AiBudgetEdit
 import com.humblesolutions.finai.usecase.BudgetBlock
@@ -18,6 +20,8 @@ import com.humblesolutions.finai.usecase.DashboardMonths
 import com.humblesolutions.finai.usecase.OverviewCommitment
 import com.humblesolutions.finai.usecase.OverviewRow
 import com.humblesolutions.finai.usecase.OverviewSpend
+import com.humblesolutions.finai.usecase.SpendingCheckWords
+import com.humblesolutions.finai.usecase.SpendingShareRow
 import com.humblesolutions.finai.util.Dates
 import com.humblesolutions.finai.util.Money
 
@@ -43,6 +47,14 @@ data class BudgetUiState(
      * mislabel them.
      */
     val switchingMonth: Boolean = false,
+    /** The month's spending against income, and its last AI check; null until read, or without an income. */
+    val spendingCheck: SpendingCheck? = null,
+    val checkingSpending: Boolean = false,
+    val spendingErrorKey: String? = null,
+    /** The AI may not be asked yet: the policy is shown first. */
+    val spendingPolicy: AiPolicy? = null,
+    val spendingConsentTicked: Boolean = false,
+    val spendingConsentBusy: Boolean = false,
     val loadFailed: Boolean = false,
     val errorKey: String? = null,
 
@@ -165,6 +177,22 @@ data class BudgetUiState(
 
     /** "AI suggests $60.00" for a category spent in with no line. */
     fun aiLabel(spend: UnbudgetedSpend): String? = spend.aiSuggested?.let { text(Strings.ai_budget_suggests, money(it)) }
+
+    // ── How you're spending, one-offs, this month only ──────────────────
+
+    val spendingRows: List<SpendingShareRow> get() = spendingCheck?.let { SpendingCheckWords.rows(it, locale) }.orEmpty()
+
+    /** The AI's tip for a category spent in this month, shown under its line. */
+    fun tipFor(categoryId: String): String? = SpendingCheckWords.tipFor(spendingCheck, categoryId, locale)
+
+    fun oneOffOf(line: BudgetLine): String? = SpendingCheckWords.oneOff(line.oneOff, currency, locale)
+
+    fun oneOffOf(spend: UnbudgetedSpend): String? = SpendingCheckWords.oneOff(spend.oneOff, currency, locale)
+
+    fun thisMonthOnlyOf(line: BudgetLine): String? = SpendingCheckWords.thisMonthOnly(line, locale)
+
+    /** Whether the editor asks "this month only, or every month". */
+    val asksHowLong: Boolean get() = SpendingCheckWords.asksHowLong(editing)
 
     /** "Ask AI for a budget", until this month has a review. */
     val canAskAi: Boolean get() = budget != null && showsPlan && budget.aiKind != "review"

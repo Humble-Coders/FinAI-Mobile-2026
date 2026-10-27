@@ -44,9 +44,20 @@ final class BudgetViewModel: ObservableObject {
     @Published private(set) var editErrorKey: String?
     @Published var picking = false
 
+    /// How you're spending: the month's spending against income, and its last
+    /// AI check. Nil until read, or without an income from setup.
+    @Published private(set) var spendingCheck: SpendingCheck?
+    @Published private(set) var checkingSpending = false
+    @Published private(set) var spendingErrorKey: String?
+    /// The AI may not be asked yet: the policy is shown first.
+    @Published private(set) var spendingPolicy: AiPolicy?
+    @Published var spendingConsentTicked = false
+    @Published private(set) var spendingConsentBusy = false
+
     private var budgets: BudgetRepository?
     private var categoriesRepository: CategoriesRepository?
     private var capabilities: CapabilitiesRepository?
+    private var consent: AiConsentRepository?
     private var owner: String?
     private var generation = 0
     private var listener: Task<Void, Never>?
@@ -71,6 +82,7 @@ final class BudgetViewModel: ObservableObject {
         budgets = KtorBudgetRepository(baseUrl: base, tokens: tokens, logging: logging)
         categoriesRepository = KtorCategoriesRepository(baseUrl: base, tokens: tokens, logging: logging)
         capabilities = KtorCapabilitiesRepository(baseUrl: base, tokens: tokens, logging: logging)
+        consent = KtorAiConsentRepository(baseUrl: base, tokens: tokens, logging: logging)
         listenForChanges()
         Task { await load() }
     }
@@ -81,9 +93,11 @@ final class BudgetViewModel: ObservableObject {
         budgets?.close()
         categoriesRepository?.close()
         capabilities?.close()
+        consent?.close()
         budgets = nil
         categoriesRepository = nil
         capabilities = nil
+        consent = nil
     }
 
     private func reset() {
@@ -99,6 +113,9 @@ final class BudgetViewModel: ObservableObject {
         errorKey = nil
         cancelEdit()
         picking = false
+        spendingCheck = nil
+        spendingErrorKey = nil
+        spendingPolicy = nil
     }
 
     /**
@@ -129,6 +146,8 @@ final class BudgetViewModel: ObservableObject {
         switchingMonth = true
         errorKey = nil
         loadFailed = false
+        spendingCheck = nil
+        spendingErrorKey = nil
         Task { await load(refresh: true) }
     }
 
@@ -184,6 +203,111 @@ final class BudgetViewModel: ObservableObject {
         loadFailed = false
         errorKey = nil
         reviewIfDue(answer)
+        loadSpending()
+    }
+
+    // MARK: How you're spending
+
+    /// Quietly: a household with no income from setup has nothing to check,
+    /// and the card is simply not drawn. Android's `loadSpending`.
+    private func loadSpending() {
+        guard let budgets else { return }
+        let started = generation
+        let asked = month
+        Task {
+            let check = try? await budgets.spendingCheck(month: asked)
+            guard started == generation else { return }
+            spendingCheck = check
+        }
+    }
+
+    var spendingRows: [SpendingShareRow] {
+        spendingCheck.map { SpendingCheckWords.shared.rows(c: $0, locale: locale) } ?? []
+    }
+
+    func tip(for categoryId: String) -> String? {
+        SpendingCheckWords.shared.tipFor(c: spendingCheck, categoryId: categoryId, locale: locale)
+    }
+
+    func oneOff(_ line: BudgetLine) -> String? {
+        SpendingCheckWords.shared.oneOff(amount: line.oneOff, currency: budget?.currency ?? "", locale: locale)
+    }
+
+    func oneOff(_ spend: UnbudgetedSpend) -> String? {
+        SpendingCheckWords.shared.oneOff(amount: spend.oneOff, currency: budget?.currency ?? "", locale: locale)
+    }
+
+    func thisMonthOnly(_ line: BudgetLine) -> String? {
+        SpendingCheckWords.shared.thisMonthOnly(line: line, locale: locale)
+    }
+
+    /// Whether the editor asks "this month only, or every month".
+    var asksHowLong: Bool { SpendingCheckWords.shared.asksHowLong(line: editing) }
+
+    /// "Ask AI how to spend" / "Check again".
+    func askSpending() {
+        guard let budgets, let check = spendingCheck, !checkingSpending,
+              SpendingCheckWords.shared.canAsk(c: check) else { return }
+        let started = generation
+        let asked = month
+        checkingSpending = true
+        spendingErrorKey = nil
+        Task {
+            do {
+                let answer = try await budgets.runSpendingCheck(month: asked)
+                guard started == generation else { return }
+                checkingSpending = false
+                spendingCheck = answer
+            } catch {
+                checkingSpending = false
+                if Self.kotlin(error) is ApiException.ConsentRequired {
+                    await askForConsent()
+                } else {
+                    spendingErrorKey = Self.messageKey(error)
+                }
+            }
+        }
+    }
+
+    private func askForConsent() async {
+        guard let consent else { return }
+        do {
+            spendingPolicy = try await consent.policy()
+            spendingConsentTicked = false
+        } catch {
+            spendingErrorKey = Self.messageKey(error)
+        }
+    }
+
+    /// Records consent to the policy shown, then asks.
+    func agreeSpending() {
+        guard let consent, let shown = spendingPolicy, spendingConsentTicked else { return }
+        spendingConsentBusy = true
+        spendingErrorKey = nil
+        Task {
+            do {
+                try await consent.consent(version: shown.version)
+                spendingConsentBusy = false
+                spendingPolicy = nil
+                spendingConsentTicked = false
+                askSpending()
+            } catch {
+                spendingConsentBusy = false
+                if Self.kotlin(error) is ApiException.AiPolicyChanged {
+                    await askForConsent()
+                } else {
+                    spendingErrorKey = Self.messageKey(error)
+                }
+            }
+        }
+    }
+
+    private static func kotlin(_ error: Error) -> KotlinThrowable? {
+        (error as NSError).userInfo["KotlinException"] as? KotlinThrowable
+    }
+
+    private static func messageKey(_ error: Error) -> String {
+        (kotlin(error) as? ApiException)?.messageKey ?? Strings.shared.error_unexpected
     }
 
     private func failed(_ error: Error, categories fetched: [SharedLogic.Category], payload: Capabilities?) {
@@ -232,7 +356,9 @@ final class BudgetViewModel: ObservableObject {
             spent: "0",
             aiSuggested: nil,
             aiReason: nil,
-            over: nil
+            over: nil,
+            oneOff: nil,
+            thisMonthOnly: false
         )
         editingIsNew = true
         draftAmount = ""
@@ -282,7 +408,7 @@ final class BudgetViewModel: ObservableObject {
         let asked = month
         Task {
             do {
-                let answer = try await budgets.setLine(month: asked, categoryId: categoryId, amount: amount)
+                let answer = try await budgets.setLine(month: asked, categoryId: categoryId, amount: amount, thisMonthOnly: false)
                 saving = false
                 budget = answer
                 BudgetChanged.announce()
@@ -307,7 +433,9 @@ final class BudgetViewModel: ObservableObject {
             spent: "0",
             aiSuggested: nil,
             aiReason: nil,
-            over: nil
+            over: nil,
+            oneOff: nil,
+            thisMonthOnly: false
         )
         editingIsNew = true
         draftAmount = extra.amount
@@ -364,14 +492,16 @@ final class BudgetViewModel: ObservableObject {
      failure keeps the sheet open with what was typed: the person's input is
      the thing hardest to get back.
      */
-    func save() {
+    func save(thisMonthOnly: Bool = false) {
         guard let budgets, let line = editing, canSave else { return }
         let amount = draftAmount
         saving = true
         editErrorKey = nil
         Task {
             do {
-                let answer = try await budgets.setLine(month: month, categoryId: line.categoryId, amount: amount)
+                let answer = try await budgets.setLine(
+                    month: month, categoryId: line.categoryId, amount: amount, thisMonthOnly: thisMonthOnly
+                )
                 budget = answer
                 saving = false
                 cancelEdit()
@@ -494,7 +624,9 @@ final class BudgetViewModel: ObservableObject {
             spent: parts[8],
             aiSuggested: nil,
             aiReason: nil,
-            over: nil
+            over: nil,
+            oneOff: nil,
+            thisMonthOnly: false
         )
         editingIsNew = parts[9] == "1"
         draftAmount = parts[10]

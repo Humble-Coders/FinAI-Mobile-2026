@@ -396,6 +396,7 @@ class DashboardViewModelTest {
         override suspend fun confirm(id: String): PatchOutcome = error("not called")
         override suspend fun confirmAll(ids: List<String>): ConfirmOutcome = error("not called")
         override suspend fun delete(id: String): DeleteOutcome = error("not called")
+        override suspend fun setOneOff(id: String, oneOff: Boolean): Transaction = error("not called")
         override fun close() = Unit
     }
 
