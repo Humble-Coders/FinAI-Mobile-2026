@@ -36,16 +36,15 @@ import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.PieChart
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Savings
-import androidx.compose.material.icons.filled.TaskAlt
+import androidx.compose.material.icons.outlined.Assignment
 import androidx.compose.material.icons.outlined.AutoAwesome
-import androidx.compose.material.icons.outlined.Category
-import androidx.compose.material.icons.outlined.FactCheck
-import androidx.compose.material.icons.outlined.Flag
+import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.RadioButtonUnchecked
+import androidx.compose.material.icons.outlined.TrackChanges
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -293,8 +292,8 @@ private fun LeftPanel(board: BoardSoFar, dark: Boolean) {
 // ── Expected this month ─────────────────────────────────────────────────
 
 @Composable
-internal fun ForecastCard(forecast: BoardForecast, commitments: List<OverviewCommitment>) {
-    BoardCard(glow = Color(0xFF14B8A6)) {
+internal fun ForecastCard(forecast: BoardForecast, commitments: List<OverviewCommitment>, modifier: Modifier = Modifier) {
+    BoardCard(modifier = modifier, glow = Color(0xFF14B8A6)) {
         BoardHeader(Icons.Filled.BarChart, Mint.greenText(), forecast.title, forecast.subtitle)
         Row(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -546,7 +545,8 @@ internal fun CategoryBar(fraction: Float, color: Color) {
 @Composable
 internal fun NextStepsCard(title: String, subtitle: String, steps: List<NextStep>, onStep: (NextStep) -> Unit) {
     BoardCard {
-        BoardHeader(Icons.Filled.TaskAlt, Mint.greenText(), title, subtitle)
+        BoardHeader(Icons.Outlined.CheckCircle, Mint.greenText(), title, subtitle)
+        HorizontalDivider(color = Mint.edge())
         steps.forEach { StepRow(it, onStep) }
     }
 }
@@ -556,11 +556,9 @@ private fun StepRow(step: NextStep, onStep: (NextStep) -> Unit) {
     val dark = isSystemInDarkTheme()
     val shape = RoundedCornerShape(18.dp)
     val (icon, accent) = when (step.action) {
-        NextStepAction.REVIEW -> Icons.Outlined.FactCheck to BoardPalette.color(0, dark)
-        NextStepAction.IMPORT -> Icons.Filled.CloudUpload to BoardPalette.Orange
-        NextStepAction.PLAN -> Icons.Outlined.Flag to FinAiPalette.Green
-        NextStepAction.SAVINGS_TARGET -> Icons.Filled.Savings to BoardPalette.Violet
-        NextStepAction.ADD_UNBUDGETED -> Icons.Outlined.Category to BoardPalette.color(4, dark)
+        NextStepAction.INCOME -> Icons.Filled.Add to FinAiPalette.Green
+        NextStepAction.COMMITMENTS -> Icons.Outlined.Assignment to BoardPalette.Orange
+        NextStepAction.PLAN -> Icons.Outlined.TrackChanges to FinAiPalette.Green
     }
     Row(
         Modifier
@@ -569,20 +567,21 @@ private fun StepRow(step: NextStep, onStep: (NextStep) -> Unit) {
             .background(if (step.emphasized) FinAiPalette.Green.copy(alpha = if (dark) 0.14f else 0.08f) else Mint.card())
             .border(1.dp, if (step.emphasized) FinAiPalette.Green.copy(alpha = 0.45f) else Mint.edge(), shape)
             .clickable(role = Role.Button) { onStep(step) }
-            .heightIn(min = 56.dp)
-            .padding(horizontal = 14.dp, vertical = 12.dp),
+            .heightIn(min = 72.dp)
+            .padding(horizontal = 14.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         IconTile(
             icon,
             accent,
-            size = 36.dp,
-            iconSize = 18.dp,
+            size = 44.dp,
+            iconSize = 20.dp,
             filled = if (step.emphasized) Brush.linearGradient(listOf(FinAiPalette.Green, Color(0xFF15803D))) else null,
         )
         Column(Modifier.weight(1f)) {
             Text(step.title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(4.dp))
             Text(step.detail, style = MaterialTheme.typography.bodySmall, color = if (step.emphasized) Mint.greenText() else MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = if (step.emphasized) Mint.greenText() else MaterialTheme.colorScheme.onSurfaceVariant)

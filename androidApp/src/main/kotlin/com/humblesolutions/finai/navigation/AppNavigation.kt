@@ -424,6 +424,9 @@ private fun HomeOrEntry(userId: String, onSignOut: () -> Unit) {
     // is saveable with the route, as Review's is.
     val planOn = capabilities?.isEnabled(YourPlan.FEATURE) == true
     var planFrom by rememberSaveable { mutableStateOf(HomeRoute.HOME) }
+
+    /** Where Income's back arrow goes: Home, or the Budget tab's next step. */
+    var incomeFrom by rememberSaveable { mutableStateOf(HomeRoute.HOME) }
     val openPlan = { to: HomeRoute ->
         planFrom = route
         route = to
@@ -459,7 +462,7 @@ private fun HomeOrEntry(userId: String, onSignOut: () -> Unit) {
                         onSignOut = onSignOut,
                         onOpenMoney = { kind ->
                             route = when (kind) {
-                                MoneyKind.INCOME -> HomeRoute.INCOME
+                                MoneyKind.INCOME -> HomeRoute.INCOME.also { incomeFrom = HomeRoute.HOME }
                                 MoneyKind.EXPENSES -> HomeRoute.EXPENSES
                                 MoneyKind.INVESTMENTS -> HomeRoute.INVESTMENTS
                                 MoneyKind.DEBTS -> HomeRoute.DEBTS
@@ -518,13 +521,17 @@ private fun HomeOrEntry(userId: String, onSignOut: () -> Unit) {
                         } else {
                             null
                         },
+                        onOpenIncome = {
+                            incomeFrom = HomeRoute.BUDGET
+                            route = HomeRoute.INCOME
+                        },
                     )
 
                     HomeRoute.GOALS -> GoalsRoute(userId = userId, onClose = { route = HomeRoute.HOME })
 
                     // The four money screens open over the bar, like a flow,
                     // and back returns home.
-                    HomeRoute.INCOME -> MoneyDetailRoute(userId, MoneyKind.INCOME, onBack = { route = HomeRoute.HOME })
+                    HomeRoute.INCOME -> MoneyDetailRoute(userId, MoneyKind.INCOME, onBack = { route = incomeFrom })
 
                     HomeRoute.EXPENSES -> MoneyDetailRoute(userId, MoneyKind.EXPENSES, onBack = { route = HomeRoute.HOME })
 

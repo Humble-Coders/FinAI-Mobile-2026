@@ -26,6 +26,8 @@ internal fun BudgetRoute(
     onRequestedMonthShown: () -> Unit = {},
     /** Your plan (#76); null when it is off. */
     onOpenPlan: (() -> Unit)? = null,
+    /** The Income screen, from "Add any expected income". */
+    onOpenIncome: () -> Unit = {},
 ) {
     val model: BudgetViewModel = viewModel()
     val state by model.uiState.collectAsStateWithLifecycle()
@@ -66,6 +68,7 @@ internal fun BudgetRoute(
         onRetry = { model.load() },
         onImport = onImport,
         onOpenPlan = onOpenPlan,
+        onOpenIncome = onOpenIncome,
         spending = SpendingActions(
             onAsk = model::askSpending,
             onConsentTicked = model::onSpendingConsentTicked,

@@ -51,6 +51,9 @@ struct RootView: View {
     @SceneStorage("home.reviewFrom") private var reviewFrom = HomeRoute.home.rawValue
     /// Where the plan's back arrow goes: the screen it was opened from (#76).
     @SceneStorage("home.planFrom") private var planFrom = HomeRoute.home.rawValue
+    /// Where the money screens' back arrow goes: Home, or the Budget tab's
+    /// "Add any expected income".
+    @SceneStorage("home.moneyFrom") private var moneyFrom = HomeRoute.home.rawValue
     /// One coin loader for the whole app: centred, everything behind it blurred.
     /// Signing in or up holds it for two seconds; after that, as long as it takes.
     @StateObject private var loader = AppLoader()
@@ -245,7 +248,7 @@ struct RootView: View {
                     entry: moneyEntryModel,
                     userId: model.me?.user.id ?? "",
                     kind: moneyKind(homeRoute),
-                    onBack: { withAnimation(.easeOut(duration: 0.25)) { homeRoute = HomeRoute.home.rawValue } },
+                    onBack: { withAnimation(.easeOut(duration: 0.25)) { homeRoute = moneyFrom } },
                     onOpenPlan: homeRoute == HomeRoute.debts.rawValue && features.gate(FeaturesViewModel.planFeature) == .on
                         ? { openPlan(.planDebts) }
                         : nil
@@ -314,6 +317,7 @@ struct RootView: View {
                 onViewAll: { homeRoute = HomeRoute.transactions.rawValue },
                 onSignOut: { model.signOut() },
                 onOpenMoney: { kind in
+                    moneyFrom = HomeRoute.home.rawValue
                     withAnimation(.easeOut(duration: 0.3)) { homeRoute = HomeRoute.route(for: kind).rawValue }
                 },
                 // "See budget" only where the bar has a Budget tab to go to,
@@ -348,7 +352,11 @@ struct RootView: View {
                     onImport: { homeRoute = HomeRoute.importStatement.rawValue },
                     onOpenPlan: features.gate(FeaturesViewModel.planFeature) == .on
                         ? { openPlan(.plan) }
-                        : nil
+                        : nil,
+                    onOpenIncome: {
+                        moneyFrom = HomeRoute.budget.rawValue
+                        withAnimation(.easeOut(duration: 0.3)) { homeRoute = HomeRoute.income.rawValue }
+                    }
                 )
                 .tabItem { Label(L.t(Strings.shared.tab_budget), systemImage: "chart.pie.fill") }
                 .tag(HomeRoute.budget.rawValue)

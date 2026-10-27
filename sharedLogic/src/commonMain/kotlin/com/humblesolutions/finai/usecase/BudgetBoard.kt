@@ -69,11 +69,14 @@ data class BoardDonut(
 
 /** What a next step does when tapped. Each app maps it to its own navigation. */
 enum class NextStepAction {
-    REVIEW,
-    IMPORT,
+    /** The Income screen, where expected income is added. */
+    INCOME,
+
+    /** The commitments on this screen, in the Expected card. */
+    COMMITMENTS,
+
+    /** Your plan, which puts the money left over to use. */
     PLAN,
-    SAVINGS_TARGET,
-    ADD_UNBUDGETED,
 }
 
 /** One recommended next step, from the month's own figures. */
@@ -99,8 +102,6 @@ object BudgetBoard {
 
     /** How many categories the legend names before folding the rest into "Other". */
     private const val LEGEND_NAMED = 4
-
-    private const val MAX_STEPS = 3
 
     // ── This month so far ───────────────────────────────────────────────
 
@@ -250,48 +251,33 @@ object BudgetBoard {
     // ── Next steps ──────────────────────────────────────────────────────
 
     /**
-     * Up to three things worth doing, from the month's own figures: anything
-     * left to put to use last, as the one to do. [planAvailable] is whether
-     * Your plan is on, which the money-left step opens.
+     * The three next steps of a running month, as the reference design has
+     * them: add any expected income, check the commitments not seen yet, and
+     * — when the plan lands on money left over — put it to use. An ended
+     * month has none: there is nothing left to do in it. [planAvailable] is
+     * whether Your plan is on, which the last one opens.
      */
     fun nextSteps(budget: Budget, planAvailable: Boolean, locale: String = "en"): List<NextStep> {
-        val digits = budget.fractionDigits
-        fun money(amount: String) = Money.format(amount, budget.currency, locale)
-        val steps = mutableListOf<NextStep>()
-        if (budget.uncategorisedCount > 0) {
-            steps += NextStep(NextStepAction.REVIEW, format(Strings.board_step_review, locale, budget.uncategorisedCount.toString()), text(Strings.board_step_review_detail, locale))
-        }
-        val running = !budget.monthEnded
-        val nothingYet = !Money.isPositive(budget.monthIncome ?: "0", digits) && !Money.isPositive(budget.monthSpending ?: "0", digits)
-        if (running && nothingYet) {
-            steps += NextStep(NextStepAction.IMPORT, text(Strings.board_step_import, locale), text(Strings.board_step_import_detail, locale))
-        }
-        val unseen = budget.commitments.count { !it.wasSeen }
-        if (running && unseen > 0 && !nothingYet) {
-            steps += NextStep(NextStepAction.IMPORT, format(Strings.board_step_commitments, locale, unseen.toString()), text(Strings.board_step_commitments_detail, locale))
-        }
-        if (running && budget.unbudgeted.isNotEmpty()) {
+        if (budget.monthEnded) return emptyList()
+        val steps = mutableListOf(
+            NextStep(NextStepAction.INCOME, text(Strings.board_step_income, locale), text(Strings.board_step_income_detail, locale)),
+            NextStep(NextStepAction.COMMITMENTS, text(Strings.board_step_commitments, locale), text(Strings.board_step_commitments_detail, locale)),
+        )
+        val left = budget.projectedLeft
+        if (planAvailable && left != null && Money.signOf(left, budget.fractionDigits) > 0) {
             steps += NextStep(
-                NextStepAction.ADD_UNBUDGETED,
-                format(Strings.board_step_unbudgeted, locale, budget.unbudgeted.first().name),
-                text(Strings.board_step_unbudgeted_detail, locale),
-                categoryId = budget.unbudgeted.first().categoryId,
+                NextStepAction.PLAN,
+                format(Strings.board_step_plan, locale, Money.format(left, budget.currency, locale)),
+                text(Strings.board_step_plan_detail, locale),
+                emphasized = true,
             )
         }
-        if (running && budget.savings == null && budget.savingsCategoryId != null) {
-            steps += NextStep(NextStepAction.SAVINGS_TARGET, text(Strings.board_step_target, locale), BudgetOverview.savingsRoom(budget, locale) ?: text(Strings.board_step_target_detail, locale))
-        }
-        val left = BudgetOverview.leftover(budget)
-        val using = planAvailable && running && left != null && Money.signOf(left, digits) > 0
-        val picked = steps.take(if (using) MAX_STEPS - 1 else MAX_STEPS).toMutableList()
-        if (using) {
-            picked += NextStep(NextStepAction.PLAN, format(Strings.board_step_plan, locale, money(left!!)), text(Strings.board_step_plan_detail, locale), emphasized = true)
-        }
-        return picked
+        return steps
     }
 
     fun nextStepsTitle(locale: String = "en"): String = text(Strings.board_steps_title, locale)
 
+    /** "3 actions suggested to optimize budget". */
     fun nextStepsSubtitle(count: Int, locale: String = "en"): String = if (count == 1) text(Strings.board_steps_one, locale) else format(Strings.board_steps_many, locale, count.toString())
 
     // ── The header ──────────────────────────────────────────────────────

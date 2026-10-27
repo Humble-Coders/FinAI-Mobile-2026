@@ -21,6 +21,8 @@ import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
@@ -55,6 +57,8 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -103,6 +107,7 @@ import com.humblesolutions.finai.usecase.OverviewRow
 import com.humblesolutions.finai.usecase.SpendingCheckWords
 import com.humblesolutions.finai.usecase.SpendingShareRow
 import com.humblesolutions.finai.usecase.SpendingStatus
+import kotlinx.coroutines.launch
 
 /**
  * The month's budget, as a board of cards on the green field (#47, PRD F4):
@@ -139,6 +144,8 @@ internal fun BudgetScreen(
     onOpenPlan: (() -> Unit)? = null,
     /** "How you're spending": asking the AI, and its consent. */
     spending: SpendingActions = SpendingActions(),
+    /** The Income screen, where expected income is added. */
+    onOpenIncome: () -> Unit = {},
 ) {
     val dark = isSystemInDarkTheme()
     LightStatusBarIcons(dark)
@@ -146,13 +153,14 @@ internal fun BudgetScreen(
     // How far the big title has shrunk into the bar, as on Home.
     val collapsed = rememberTitleCollapse(scroll)
     var insightOpen by rememberSaveable { mutableStateOf(false) }
+    // "Check unseen commitments" brings the Expected card's list into view.
+    val commitmentsCard = remember { BringIntoViewRequester() }
+    val scope = rememberCoroutineScope()
     val onStep: (NextStep) -> Unit = { step ->
         when (step.action) {
-            NextStepAction.REVIEW -> onReviewUnfiled()
-            NextStepAction.IMPORT -> onImport()
+            NextStepAction.INCOME -> onOpenIncome()
+            NextStepAction.COMMITMENTS -> scope.launch { commitmentsCard.bringIntoView() }
             NextStepAction.PLAN -> onOpenPlan?.invoke()
-            NextStepAction.SAVINGS_TARGET -> onSetSavingsTarget()
-            NextStepAction.ADD_UNBUDGETED -> step.categoryId?.let(onAddUnbudgeted)
         }
     }
 
@@ -187,9 +195,9 @@ internal fun BudgetScreen(
                         state.boardSoFar?.let { SoFarCard(it) }
                         val forecast = state.boardForecast
                         if (forecast != null) {
-                            ForecastCard(forecast, state.commitments)
+                            ForecastCard(forecast, state.commitments, Modifier.bringIntoViewRequester(commitmentsCard))
                         } else if (state.commitments.isNotEmpty()) {
-                            BoardCard {
+                            BoardCard(Modifier.bringIntoViewRequester(commitmentsCard)) {
                                 Text(strings(Strings.budget_commitments_title), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.semantics { heading() })
                                 state.commitments.forEach { CommitmentRow(it) }
                             }

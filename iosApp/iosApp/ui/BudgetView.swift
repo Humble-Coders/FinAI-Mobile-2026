@@ -21,6 +21,8 @@ struct BudgetView: View {
     var onImport: () -> Void
     /// Your plan (#76); nil when the plan is off, which hides what opens it.
     var onOpenPlan: (() -> Void)?
+    /// The Income screen, from "Add any expected income".
+    var onOpenIncome: () -> Void = {}
 
     /// The edit in progress as the system keeps it for this scene, so the app
     /// coming back after iOS reclaimed it reopens the line being typed.
@@ -35,6 +37,8 @@ struct BudgetView: View {
     @State private var insightOpen = false
 
     private static let space = "budget"
+    /// The Expected card's commitments, which "Check unseen commitments" scrolls to.
+    private static let commitmentsAnchor = "budget.commitments"
 
     var body: some View {
         let dark = scheme == .dark
@@ -46,20 +50,22 @@ struct BudgetView: View {
             }
             .ignoresSafeArea()
 
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    header
-                    if model.loadFailed {
-                        loadFailed
-                    } else if let budget = model.budget {
-                        board(budget, dark: dark)
+            ScrollViewReader { reader in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        header
+                        if model.loadFailed {
+                            loadFailed
+                        } else if let budget = model.budget {
+                            board(budget, dark: dark) { step in run(step, reader: reader) }
+                        }
                     }
+                    .frame(maxWidth: 560)
+                    .frame(maxWidth: .infinity)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 12)
+                    .padding(.bottom, 24)
                 }
-                .frame(maxWidth: 560)
-                .frame(maxWidth: .infinity)
-                .padding(.horizontal, 16)
-                .padding(.top, 12)
-                .padding(.bottom, 24)
             }
             .coordinateSpace(name: Self.space)
             .scrollBounceBehavior(.basedOnSize)
@@ -103,7 +109,7 @@ struct BudgetView: View {
     // MARK: - The board
 
     @ViewBuilder
-    private func board(_ budget: Budget, dark: Bool) -> some View {
+    private func board(_ budget: Budget, dark: Bool, onStep: @escaping (NextStep) -> Void) -> some View {
         let board = BudgetBoard.shared
         let locale = model.locale
         if let progress = model.learning {
@@ -115,11 +121,13 @@ struct BudgetView: View {
         let commitments = BudgetOverview.shared.commitments(budget: budget, locale: locale)
         if let forecast = board.forecast(budget: budget, locale: locale) {
             ForecastCard(forecast: forecast, commitments: commitments)
+                .id(Self.commitmentsAnchor)
         } else if !commitments.isEmpty {
             BoardCard {
                 Text(L.t(Strings.shared.budget_commitments_title)).font(.headline.weight(.bold)).accessibilityAddTraits(.isHeader)
                 ForEach(Array(commitments.enumerated()), id: \.offset) { _, item in CommitmentLine(item: item) }
             }
+            .id(Self.commitmentsAnchor)
         }
         if model.spendingCheck != nil || aiAdvice(budget) != nil {
             InsightCard(headline: insightHeadline(budget), detail: insightDetail) { insightOpen = true }
@@ -141,19 +149,17 @@ struct BudgetView: View {
                 title: board.nextStepsTitle(locale: locale),
                 subtitle: board.nextStepsSubtitle(count: Int32(steps.count), locale: locale),
                 steps: steps,
-                onStep: run
+                onStep: onStep
             )
         }
     }
 
-    private func run(_ step: NextStep) {
+    private func run(_ step: NextStep, reader: ScrollViewProxy) {
         switch step.action.name {
-        case "REVIEW": onReview()
-        case "IMPORT": onImport()
-        case "PLAN": onOpenPlan?()
-        case "SAVINGS_TARGET": model.setSavingsTarget()
-        default:
-            if let id = step.categoryId { model.addFromUnbudgeted(categoryId: id) }
+        case "INCOME": onOpenIncome()
+        case "COMMITMENTS":
+            withAnimation(.easeInOut(duration: 0.4)) { reader.scrollTo(Self.commitmentsAnchor, anchor: .top) }
+        default: onOpenPlan?()
         }
     }
 

@@ -4,7 +4,6 @@ import com.humblesolutions.finai.model.Budget
 import com.humblesolutions.finai.model.BudgetCommitment
 import com.humblesolutions.finai.model.BudgetLine
 import com.humblesolutions.finai.model.CategorySpend
-import com.humblesolutions.finai.model.UnbudgetedSpend
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -102,31 +101,25 @@ class BudgetBoardTest {
     }
 
     @Test
-    fun the_next_steps_end_on_the_money_left() {
-        val busy = october.copy(
-            monthIncome = "4000.00",
-            uncategorisedCount = 3,
-            unbudgeted = listOf(UnbudgetedSpend(categoryId = "electronics", slug = "electronics", name = "Electronics", spent = "1200.00")),
-        )
-        val steps = BudgetBoard.nextSteps(busy, planAvailable = true)
-        assertEquals(3, steps.size)
-        assertEquals(listOf(NextStepAction.REVIEW, NextStepAction.IMPORT, NextStepAction.PLAN), steps.map { it.action })
-        assertEquals("Sort 3 transactions", steps[0].title)
-        assertEquals("Commitments not seen yet: 1", steps[1].title)
-        assertEquals("Put $1,428.52 toward your goals", steps[2].title)
+    fun the_next_steps_are_income_commitments_and_the_money_left() {
+        val steps = BudgetBoard.nextSteps(october, planAvailable = true)
+        assertEquals(listOf(NextStepAction.INCOME, NextStepAction.COMMITMENTS, NextStepAction.PLAN), steps.map { it.action })
+        assertEquals("Add any expected income", steps[0].title)
+        assertEquals("Forecast salary or side gig inflows", steps[0].detail)
+        assertEquals("Check unseen commitments", steps[1].title)
+        assertEquals("Upcoming bills and recurring subscriptions", steps[1].detail)
+        assertEquals("Allocate $1,428.52 to savings goal", steps[2].title)
+        assertEquals("Keep your projected surplus working", steps[2].detail)
         assertTrue(steps[2].emphasized)
-
-        val noPlan = BudgetBoard.nextSteps(busy, planAvailable = false)
-        assertEquals(NextStepAction.ADD_UNBUDGETED, noPlan[2].action)
-        assertEquals("electronics", noPlan[2].categoryId)
-        assertEquals("1 thing worth doing", BudgetBoard.nextStepsSubtitle(1))
+        assertFalse(steps[0].emphasized)
+        assertEquals("3 actions suggested to optimize budget", BudgetBoard.nextStepsSubtitle(steps.size))
     }
 
     @Test
-    fun a_month_with_nothing_imported_asks_for_its_statement_first() {
-        val steps = BudgetBoard.nextSteps(october, planAvailable = false)
-        assertEquals(NextStepAction.IMPORT, steps[0].action)
-        assertEquals("Import this month's statement", steps[0].title)
-        assertEquals(NextStepAction.SAVINGS_TARGET, steps[1].action)
+    fun nothing_left_or_no_plan_leaves_two_and_an_ended_month_none() {
+        assertEquals(2, BudgetBoard.nextSteps(october, planAvailable = false).size)
+        assertEquals(2, BudgetBoard.nextSteps(october.copy(projectedLeft = "-10.00"), planAvailable = true).size)
+        assertTrue(BudgetBoard.nextSteps(october.copy(monthEnded = true), planAvailable = true).isEmpty())
+        assertEquals("1 action suggested to optimize budget", BudgetBoard.nextStepsSubtitle(1))
     }
 }

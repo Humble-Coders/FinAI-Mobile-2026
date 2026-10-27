@@ -522,7 +522,8 @@ struct NextStepsCard: View {
     var body: some View {
         let dark = scheme == .dark
         BoardCard {
-            BoardHeader(symbol: "checkmark.seal.fill", accent: Mint.greenText(dark), title: title, subtitle: subtitle)
+            BoardHeader(symbol: "checkmark.circle", accent: Mint.greenText(dark), title: title, subtitle: subtitle)
+            Divider().overlay(Mint.edge(dark))
             ForEach(Array(steps.enumerated()), id: \.offset) { _, step in row(step, dark: dark) }
         }
     }
@@ -534,11 +535,11 @@ struct NextStepsCard: View {
                 BoardTile(
                     symbol: symbol,
                     accent: accent,
-                    size: 36,
-                    iconSize: 16,
+                    size: 44,
+                    iconSize: 18,
                     filled: step.emphasized ? LinearGradient(colors: [BoardPalette.green, Color(red: 0.082, green: 0.502, blue: 0.239)], startPoint: .topLeading, endPoint: .bottomTrailing) : nil
                 )
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 4) {
                     Text(step.title).font(.subheadline.weight(.semibold)).foregroundColor(.primary).multilineTextAlignment(.leading)
                     Text(step.detail)
                         .font(.caption)
@@ -551,8 +552,8 @@ struct NextStepsCard: View {
                     .foregroundColor(step.emphasized ? Mint.greenText(dark) : .secondary)
             }
             .padding(.horizontal, 14)
-            .padding(.vertical, 12)
-            .frame(minHeight: 56)
+            .padding(.vertical, 14)
+            .frame(minHeight: 72)
             .background(RoundedRectangle(cornerRadius: 18).fill(step.emphasized ? BoardPalette.green.opacity(dark ? 0.14 : 0.08) : Mint.card(dark)))
             .overlay(RoundedRectangle(cornerRadius: 18).stroke(step.emphasized ? BoardPalette.green.opacity(0.45) : Mint.edge(dark), lineWidth: 1))
         }
@@ -561,11 +562,9 @@ struct NextStepsCard: View {
 
     private static func look(_ step: NextStep, dark: Bool) -> (String, Color) {
         switch step.action.name {
-        case "REVIEW": return ("checklist", BoardPalette.color(0, dark: dark))
-        case "IMPORT": return ("icloud.and.arrow.up", BoardPalette.orange)
-        case "PLAN": return ("flag.fill", BoardPalette.green)
-        case "SAVINGS_TARGET": return ("banknote", BoardPalette.violet)
-        default: return ("square.grid.2x2", BoardPalette.color(4, dark: dark))
+        case "INCOME": return ("plus", BoardPalette.green)
+        case "COMMITMENTS": return ("list.clipboard", BoardPalette.orange)
+        default: return ("target", BoardPalette.green)
         }
     }
 }
