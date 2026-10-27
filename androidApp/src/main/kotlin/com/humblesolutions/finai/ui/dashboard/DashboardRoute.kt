@@ -36,7 +36,7 @@ internal fun DashboardRoute(
     LaunchedEffect(userId) { model.bind(userId, logging = BuildConfig.DEBUG) }
     // Only a first load earns the coin. Stepping between months refreshes, and
     // the figures already on screen stay up while the next ones arrive.
-    LoaderSignal(key = "dashboard", active = state.loading)
+    LoaderSignal(key = "dashboard", active = state.loading || state.switchingMonth)
 
     DashboardScreen(
         state = state,

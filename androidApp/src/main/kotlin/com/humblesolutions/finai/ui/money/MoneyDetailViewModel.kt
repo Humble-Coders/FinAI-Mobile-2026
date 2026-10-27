@@ -123,6 +123,7 @@ class MoneyDetailViewModel : ViewModel() {
                     it.copy(
                         loading = false,
                         refreshing = false,
+                        switchingMonth = false,
                         data = loaded.data,
                         rows = loaded.page.rows,
                         nextCursor = loaded.page.nextCursor,
@@ -136,7 +137,7 @@ class MoneyDetailViewModel : ViewModel() {
             } catch (e: ApiException) {
                 if (started != generation) return@launch
                 // A failed refresh keeps what was on screen; only a first load fails outright.
-                _uiState.update { it.copy(loading = false, refreshing = false, loadFailed = it.rows.isEmpty() && !refresh, errorKey = e.messageKey) }
+                _uiState.update { it.copy(loading = false, refreshing = false, switchingMonth = false, loadFailed = it.rows.isEmpty() && !refresh, errorKey = e.messageKey) }
             }
         }
     }
@@ -165,7 +166,7 @@ class MoneyDetailViewModel : ViewModel() {
     fun showMonth(month: LocalDate) {
         val first = DashboardMonths.first(month)
         if (first == _uiState.value.month) return
-        _uiState.update { it.copy(month = first, rows = emptyList(), nextCursor = null, query = "") }
+        _uiState.update { it.copy(month = first, rows = emptyList(), nextCursor = null, query = "", switchingMonth = repositories != null) }
         load(refresh = true)
     }
 

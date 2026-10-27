@@ -35,6 +35,8 @@ final class DashboardViewModel: ObservableObject {
     /// Stepping between months. The figures stay up while the next ones
     /// arrive: blanking the screen on every step reads as the app restarting.
     @Published private(set) var refreshing = false
+    /// A new month was picked: the coin covers the wait for its figures.
+    @Published private(set) var switchingMonth = false
     @Published private(set) var loadFailed = false
     @Published private(set) var errorKey: String?
     /// Whether figures are masked. Session-only and deliberately not saved: it
@@ -168,6 +170,7 @@ final class DashboardViewModel: ObservableObject {
         )
         loading = true
         refreshing = false
+        switchingMonth = false
         loadFailed = false
         errorKey = nil
         recent = []
@@ -217,12 +220,14 @@ final class DashboardViewModel: ObservableObject {
                 self.loadedOnce = true
                 self.loading = false
                 self.refreshing = false
+                self.switchingMonth = false
                 self.loadFailed = false
                 self.errorKey = nil
             } catch {
                 guard started == self.generation else { return }
                 self.loading = false
                 self.refreshing = false
+                self.switchingMonth = false
                 self.loadFailed = !refresh
                 self.errorKey = Self.messageKey(error)
             }
@@ -577,6 +582,8 @@ final class DashboardViewModel: ObservableObject {
     private func show(_ next: Kotlinx_datetimeLocalDate) {
         guard next != month else { return }
         month = next
+        // Only when there is a read to wait for, or the coin would never go.
+        switchingMonth = dashboardRepository != nil
         load(refresh: true)
     }
 

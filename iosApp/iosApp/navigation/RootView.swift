@@ -108,15 +108,16 @@ struct RootView: View {
             || (showingImport && (importModel.working || importModel.accountsLoading))
             || (showingReview && reviewModel.loading)
             // Home's first read: figures, not a screen of zeroes, until they arrive.
-            || (showingHome && dashboardModel.loading)
+            || (showingHome && (dashboardModel.loading || dashboardModel.switchingMonth))
             // The Budget tab's first read, and each change of month, as Android.
             || (showingBudget && (budgetModel.loading || budgetModel.switchingMonth))
             // The plan's first read (#76); a return refreshes under what is shown.
             || (showingPlan && planModel.loading && planModel.plan == nil)
-            // The other tabs and Home's money screens, as Android: a first load only.
+            // The other tabs and Home's money screens, as Android: a first load, and
+            // each change of month.
             || (showingGoals && goalsModel.loading && goalsModel.page == nil)
-            || (showingTransactions && transactionsModel.loading)
-            || (showingMoney && moneyModel.loading)
+            || (showingTransactions && (transactionsModel.loading || transactionsModel.switchingMonth))
+            || (showingMoney && (moneyModel.loading || moneyModel.switchingMonth))
     }
 
     private var showingPlan: Bool {

@@ -431,21 +431,10 @@ struct DashboardView: View {
         let showsRecent = !rows.isEmpty || !model.showsEmptyState
         let sections = model.sections
         return VStack(alignment: .leading, spacing: 0) {
-            // Above the recent rows: how the month sits against its budget,
-            // then where the money went.
-            if let budget = sections.budget {
-                BudgetSection(
-                    card: budget,
-                    onOpenBudget: onOpenBudget.map { open in { open(DashboardMonths.shared.wire(month: model.month)) } }
-                )
-                .padding(.bottom, 28)
-            }
-            // Below the budget: where the money left over goes (#76), then goals.
+            // Above the recent rows: where the money left over goes (#76), then
+            // where the money went. The budget and goals have their own tabs.
             if let plan = model.planCard {
                 PlanSection(card: plan, onOpenPlan: onOpenPlan).padding(.bottom, 28)
-            }
-            if let goals = model.goalsCard {
-                GoalsSection(card: goals, onOpenGoals: onOpenGoals).padding(.bottom, 28)
             }
             if let spending = sections.spending {
                 SpendingSection(card: spending, expanded: model.spendingExpanded, onToggle: model.toggleSpending)

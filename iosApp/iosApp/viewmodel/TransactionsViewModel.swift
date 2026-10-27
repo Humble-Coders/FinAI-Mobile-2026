@@ -25,6 +25,8 @@ final class TransactionsViewModel: ObservableObject {
     /// Changing slice with rows on screen. They stay up until the new ones
     /// arrive rather than the list emptying on every tap.
     @Published private(set) var refreshing = false
+    /// A new month was picked: the coin covers the wait for its figures.
+    @Published private(set) var switchingMonth = false
     @Published private(set) var loadingMore = false
     @Published private(set) var loadFailed = false
     @Published private(set) var errorKey: String?
@@ -208,6 +210,8 @@ final class TransactionsViewModel: ObservableObject {
     func show(month next: Kotlinx_datetimeLocalDate) {
         guard next != month else { return }
         month = next
+        // Only when there is a read to wait for, or the coin would never go.
+        switchingMonth = transactionsRepository != nil
         load(refresh: true)
     }
 
@@ -251,10 +255,12 @@ final class TransactionsViewModel: ObservableObject {
                 self.nextCursor = page.nextCursor
                 self.loading = false
                 self.refreshing = false
+                self.switchingMonth = false
             } catch {
                 guard started == self.generation else { return }
                 self.loading = false
                 self.refreshing = false
+                self.switchingMonth = false
                 // A failed change keeps the rows it had; a first load has
                 // nothing to keep and must say so.
                 self.loadFailed = !refresh

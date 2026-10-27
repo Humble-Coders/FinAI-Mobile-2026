@@ -180,7 +180,7 @@ class TransactionsViewModel : ViewModel() {
 
     fun showMonth(month: LocalDate) {
         if (month == _uiState.value.month) return
-        _uiState.update { it.copy(month = month) }
+        _uiState.update { it.copy(month = month, switchingMonth = repositories != null) }
         load(refresh = true)
     }
 
@@ -223,6 +223,7 @@ class TransactionsViewModel : ViewModel() {
                         nextCursor = page.nextCursor,
                         loading = false,
                         refreshing = false,
+                        switchingMonth = false,
                         loadFailed = false,
                         errorKey = null,
                     )
@@ -235,6 +236,7 @@ class TransactionsViewModel : ViewModel() {
                     it.copy(
                         loading = false,
                         refreshing = false,
+                        switchingMonth = false,
                         // A failed refresh keeps the rows it had; a first load
                         // has nothing to keep and must say so.
                         loadFailed = !refresh,

@@ -41,6 +41,8 @@ data class TransactionsUiState(
 
     val loading: Boolean = true,
     val refreshing: Boolean = false,
+    /** A new month was picked: the coin covers the wait for its figures. */
+    val switchingMonth: Boolean = false,
     val loadingMore: Boolean = false,
     val loadFailed: Boolean = false,
     val errorKey: String? = null,
