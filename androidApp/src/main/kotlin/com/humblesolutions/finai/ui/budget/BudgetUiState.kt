@@ -10,13 +10,18 @@ import com.humblesolutions.finai.model.Category
 import com.humblesolutions.finai.model.SpendingCheck
 import com.humblesolutions.finai.model.UnbudgetedSpend
 import com.humblesolutions.finai.usecase.AiBudgetEdit
+import com.humblesolutions.finai.usecase.BoardDonut
+import com.humblesolutions.finai.usecase.BoardForecast
+import com.humblesolutions.finai.usecase.BoardSoFar
 import com.humblesolutions.finai.usecase.BudgetBlock
+import com.humblesolutions.finai.usecase.BudgetBoard
 import com.humblesolutions.finai.usecase.BudgetDraft
 import com.humblesolutions.finai.usecase.BudgetEdit
 import com.humblesolutions.finai.usecase.BudgetOverview
 import com.humblesolutions.finai.usecase.CategoryIcon
 import com.humblesolutions.finai.usecase.CategoryIcons
 import com.humblesolutions.finai.usecase.DashboardMonths
+import com.humblesolutions.finai.usecase.NextStep
 import com.humblesolutions.finai.usecase.OverviewCommitment
 import com.humblesolutions.finai.usecase.OverviewRow
 import com.humblesolutions.finai.usecase.OverviewSpend
@@ -180,6 +185,30 @@ data class BudgetUiState(
 
     // ── How you're spending, one-offs, this month only ──────────────────
 
+    // ── The board ───────────────────────────────────────────────────────
+
+    val boardSoFar: BoardSoFar? get() = budget?.let { BudgetBoard.soFar(it, locale) }
+
+    val boardForecast: BoardForecast? get() = budget?.let { BudgetBoard.forecast(it, locale) }
+
+    val boardDonut: BoardDonut? get() = budget?.let { BudgetBoard.donut(it, locale) }
+
+    fun nextSteps(planAvailable: Boolean): List<NextStep> = budget?.let { BudgetBoard.nextSteps(it, planAvailable, locale) }.orEmpty()
+
+    fun allottedOf(line: BudgetLine): String = budget?.let { BudgetBoard.allotted(line, it, locale) }.orEmpty()
+
+    fun colorIndexOf(line: BudgetLine): Int = budget?.let { BudgetBoard.colorIndexOf(line, it) } ?: (BudgetBoard.PALETTE_SIZE - 1)
+
+    fun shareOfSpending(index: Int): String = budget?.let { BudgetBoard.shareOfSpending(index, it, locale) }.orEmpty()
+
+    /** The AI card's words: the spending check's headline, else the monthly review's. */
+    val insightHeadline: String? get() = spendingCheck?.headline ?: aiAdvice
+
+    val insightDetail: String? get() = spendingCheck?.tips?.firstOrNull()?.takeIf { spendingCheck?.headline != null }
+
+    /** Whether the AI card is drawn: there is a check to open, or a review to read. */
+    val showsInsight: Boolean get() = spendingCheck != null || aiAdvice != null
+
     val spendingRows: List<SpendingShareRow> get() = spendingCheck?.let { SpendingCheckWords.rows(it, locale) }.orEmpty()
 
     /** The AI's tip for a category spent in this month, shown under its line. */
@@ -239,6 +268,11 @@ data class BudgetUiState(
     fun amountsOf(line: BudgetLine): String = text(Strings.budget_line_amounts, money(line.spent), money(line.allocated))
 
     fun fractionOf(line: BudgetLine): Float = line.fraction(digits).toFloat()
+
+    fun allocatedOf(line: BudgetLine): String = money(line.allocated)
+
+    /** Rows waiting in the review queue: the bell's dot. */
+    val unfiledCount: Int get() = budget?.uncategorisedCount ?: 0
 
     fun isOver(line: BudgetLine): Boolean = line.isOver(digits)
 
