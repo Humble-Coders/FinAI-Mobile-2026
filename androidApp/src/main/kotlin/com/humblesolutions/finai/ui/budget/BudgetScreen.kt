@@ -198,7 +198,7 @@ internal fun BudgetScreen(
                             ForecastCard(forecast, state.commitments, Modifier.bringIntoViewRequester(commitmentsCard))
                         } else if (state.commitments.isNotEmpty()) {
                             BoardCard(Modifier.bringIntoViewRequester(commitmentsCard)) {
-                                Text(strings(Strings.budget_commitments_title), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.semantics { heading() })
+                                Text(strings(Strings.budget_commitments_title), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, modifier = Modifier.semantics { heading() })
                                 state.commitments.forEach { CommitmentRow(it) }
                             }
                         }
@@ -249,7 +249,7 @@ private fun Header(state: BudgetUiState, onMonth: (String) -> Unit, onReview: ()
                 Text(
                     BudgetBoard.eyebrow(state.locale).uppercase(),
                     style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.Bold,
+                    fontWeight = FontWeight.SemiBold,
                     letterSpacing = 1.4.sp,
                     color = Color(0xFF86EFAC),
                 )
@@ -257,8 +257,8 @@ private fun Header(state: BudgetUiState, onMonth: (String) -> Unit, onReview: ()
             }
             Text(
                 text = strings(Strings.budget_title),
-                style = MaterialTheme.typography.headlineMedium,
-                fontWeight = FontWeight.ExtraBold,
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.SemiBold,
                 color = Field.ink(),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -329,7 +329,7 @@ private fun MonthButton(state: BudgetUiState, onMonth: (String) -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(Icons.Filled.CalendarMonth, contentDescription = null, tint = Field.ink(), modifier = Modifier.size(16.dp))
-        Text(label, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = Field.ink(), maxLines = 1)
+        Text(label, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Medium, color = Field.ink(), maxLines = 1)
         Icon(Icons.Filled.KeyboardArrowDown, contentDescription = null, tint = Field.ink(0.85f), modifier = Modifier.size(18.dp))
     }
     if (picking) {
@@ -377,12 +377,12 @@ private fun InsightSheet(state: BudgetUiState, actions: SpendingActions, onOpenP
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 IconTile(Icons.Outlined.AutoAwesome, BoardPalette.Violet, size = 40.dp, filled = Brush.linearGradient(listOf(BoardPalette.VioletSoft, BoardPalette.Violet)))
-                Text(strings(Strings.board_ai_title), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.semantics { heading() })
+                Text(strings(Strings.board_ai_title), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.semantics { heading() })
             }
             state.spendingCheck?.let { SpendingCheckBody(state, it, actions) }
             state.aiAdvice?.let { advice ->
                 HorizontalDivider(color = Mint.edge())
-                Text(strings(Strings.ai_budget_review_title), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                Text(strings(Strings.ai_budget_review_title), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Medium)
                 Text(advice, style = MaterialTheme.typography.bodyMedium)
             }
             onOpenPlan?.let { open ->
@@ -392,7 +392,7 @@ private fun InsightSheet(state: BudgetUiState, actions: SpendingActions, onOpenP
                         open()
                     },
                     contentPadding = PaddingValues(0.dp),
-                ) { Text(strings(Strings.ai_budget_see_plan), fontWeight = FontWeight.SemiBold) }
+                ) { Text(strings(Strings.ai_budget_see_plan), fontWeight = FontWeight.Medium) }
             }
         }
     }
@@ -400,12 +400,12 @@ private fun InsightSheet(state: BudgetUiState, actions: SpendingActions, onOpenP
 
 @Composable
 private fun SpendingCheckBody(state: BudgetUiState, check: SpendingCheck, actions: SpendingActions) {
-    Text(SpendingCheckWords.title(state.locale), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+    Text(SpendingCheckWords.title(state.locale), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Medium)
     Text(SpendingCheckWords.incomeLine(check, state.locale), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     state.spendingRows.forEach { ShareRow(it) }
     val policy = state.spendingPolicy
     if (policy != null) {
-        Text(strings(Strings.ai_budget_consent_title), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+        Text(strings(Strings.ai_budget_consent_title), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Medium)
         Text(strings(Strings.ai_budget_consent_body), style = MaterialTheme.typography.bodySmall)
         Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), tonalElevation = 2.dp) {
             Text(policy.body, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(12.dp))
@@ -432,7 +432,7 @@ private fun SpendingCheckBody(state: BudgetUiState, check: SpendingCheck, action
     check.headline?.let { headline ->
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Icon(Icons.Outlined.AutoAwesome, contentDescription = null, tint = BoardPalette.Violet, modifier = Modifier.size(20.dp))
-            Text(headline, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+            Text(headline, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
         }
     }
     check.tips.forEach { tip ->
@@ -476,8 +476,8 @@ private fun ShareRow(row: SpendingShareRow) {
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(row.label, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
-            Text("${row.amount} · ${row.share}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, maxLines = 1)
+            Text(row.label, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+            Text("${row.amount} · ${row.share}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, maxLines = 1)
         }
         Box(Modifier.fillMaxWidth().height(6.dp)) {
             LinearProgressIndicator(
@@ -498,7 +498,7 @@ private fun ShareRow(row: SpendingShareRow) {
         }
         Row {
             Text(row.aim, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
-            Text(row.statusLabel, style = MaterialTheme.typography.labelMedium, color = tone, fontWeight = FontWeight.SemiBold)
+            Text(row.statusLabel, style = MaterialTheme.typography.labelMedium, color = tone, fontWeight = FontWeight.Medium)
         }
     }
 }
@@ -566,7 +566,7 @@ private fun Extras(state: BudgetUiState, onReviewUnfiled: () -> Unit, onAddUnbud
         BoardCard(glow = BoardPalette.color(0, isSystemInDarkTheme())) {
             Text(label, style = MaterialTheme.typography.bodyMedium)
             TextButton(onClick = onReviewUnfiled, contentPadding = PaddingValues(0.dp)) {
-                Text(strings(Strings.budget_unfiled_action), fontWeight = FontWeight.SemiBold)
+                Text(strings(Strings.budget_unfiled_action), fontWeight = FontWeight.Medium)
             }
         }
     }
@@ -600,11 +600,11 @@ private fun EndedCategories(state: BudgetUiState) {
             ) {
                 IconTile(icon.vector(), icon.tint(dark))
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text(spend.name, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(spend.name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Box(Modifier.size(width = 64.dp, height = 4.dp).clip(CircleShape).background(color))
                 }
                 Column(horizontalAlignment = Alignment.End) {
-                    Text(spend.amount, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
+                    Text(spend.amount, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
                     Text(state.shareOfSpending(index), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
@@ -682,8 +682,8 @@ private fun LineRow(
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         state.nameOf(line),
-                        style = MaterialTheme.typography.bodyLarge,
-                        fontWeight = FontWeight.SemiBold,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Medium,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f, fill = false),
@@ -694,7 +694,7 @@ private fun LineRow(
                 Text(state.amountsOf(line), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(state.allocatedOf(line), style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold, maxLines = 1)
+                Text(state.allocatedOf(line), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, maxLines = 1)
                 Text(state.allottedOf(line), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Icon(Icons.Filled.Edit, contentDescription = null, tint = Mint.greenText(), modifier = Modifier.size(14.dp))
             }
@@ -735,7 +735,7 @@ private fun ActionRow(icon: ImageVector, title: String, detail: String?, onClick
     ) {
         IconTile(icon, accent, size = 36.dp, iconSize = 18.dp)
         Column(Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold, color = accent)
+            Text(title, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, color = accent)
             detail?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         }
     }
@@ -748,7 +748,7 @@ private fun AiExtras(state: BudgetUiState, onAdd: (String) -> Unit) {
         BoardHeader(Icons.Outlined.AutoAwesome, BoardPalette.Violet, strings(Strings.ai_budget_extra_title), null)
         state.aiExtras.forEach { extra ->
             Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("${extra.name} · ${state.amountOf(extra)}", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+                Text("${extra.name} · ${state.amountOf(extra)}", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
                 TextButton(onClick = { onAdd(extra.categoryId) }) { Text(strings(Strings.budget_unbudgeted_add), maxLines = 1) }
             }
         }
@@ -773,7 +773,7 @@ private fun Unbudgeted(state: BudgetUiState, label: String, onAdd: (String) -> U
             ) {
                 IconTile(icon.vector(), icon.tint(dark), size = 36.dp, iconSize = 18.dp)
                 Column(Modifier.weight(1f)) {
-                    Text(spend.name, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(spend.name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text(state.spentOf(spend), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     state.aiLabel(spend)?.let { Text(it, style = MaterialTheme.typography.labelMedium, color = BoardPalette.Violet) }
                     state.oneOffOf(spend)?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }

@@ -100,7 +100,7 @@ struct BoardHeader<Trailing: View>: View {
         HStack(spacing: 12) {
             BoardTile(symbol: symbol, accent: accent)
             VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.headline.weight(.bold)).accessibilityAddTraits(.isHeader)
+                Text(title).font(.subheadline.weight(.semibold)).accessibilityAddTraits(.isHeader)
                 if let subtitle {
                     Text(subtitle).font(.caption).foregroundColor(.secondary)
                 }
@@ -131,7 +131,7 @@ struct BoardStatusPill: View {
                 .frame(width: 7, height: 7)
                 .opacity(live && pulsing ? 0.35 : 1)
                 .animation(live ? .easeInOut(duration: 0.9).repeatForever(autoreverses: true) : nil, value: pulsing)
-            Text(text).font(.caption.weight(.semibold)).foregroundColor(Mint.greenText(scheme == .dark))
+            Text(text).font(.caption.weight(.medium)).foregroundColor(Mint.greenText(scheme == .dark))
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 4)
@@ -168,13 +168,13 @@ struct SoFarCard: View {
     private func figure(_ figure: BoardFigure, symbol: String, accent: Color) -> some View {
         HStack(spacing: 10) {
             Image(systemName: symbol)
-                .font(.caption2.weight(.bold))
+                .font(.caption2.weight(.semibold))
                 .foregroundColor(accent)
                 .frame(width: 26, height: 26)
                 .background(Circle().fill(accent.opacity(0.14)))
             Text(figure.label).font(.subheadline).lineLimit(1)
             Spacer(minLength: 4)
-            Text(figure.amount).font(.subheadline.weight(.bold)).lineLimit(1)
+            Text(figure.amount).font(.subheadline.weight(.semibold)).lineLimit(1)
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(figure.label), \(figure.amount)")
@@ -184,18 +184,18 @@ struct SoFarCard: View {
     private func leftPanel(_ dark: Bool) -> some View {
         VStack(spacing: 6) {
             Image(systemName: "wallet.pass")
-                .font(.subheadline.weight(.semibold))
+                .font(.subheadline.weight(.medium))
                 .foregroundColor(Mint.greenText(dark))
                 .frame(width: 36, height: 36)
                 .background(RoundedRectangle(cornerRadius: 12).fill(Mint.panel(dark)))
                 .overlay(RoundedRectangle(cornerRadius: 12).stroke(BoardPalette.green.opacity(0.25), lineWidth: 1))
             Text(board.leftLabel.uppercased())
-                .font(.caption2.weight(.bold))
+                .font(.caption2.weight(.semibold))
                 .tracking(1)
                 .foregroundColor(Mint.greenText(dark))
                 .multilineTextAlignment(.center)
             Text(board.left)
-                .font(.title2.weight(.heavy))
+                .font(.title3.weight(.semibold))
                 .foregroundColor(board.leftNegative ? .red : .primary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.6)
@@ -253,7 +253,7 @@ struct ForecastCard: View {
             if !commitments.isEmpty {
                 VStack(alignment: .leading, spacing: 0) {
                     Text(L.t(Strings.shared.budget_commitments_title))
-                        .font(.subheadline.weight(.semibold))
+                        .font(.subheadline.weight(.medium))
                         .padding(.top, 8)
                         .padding(.bottom, 2)
                     ForEach(Array(commitments.enumerated()), id: \.offset) { _, item in CommitmentLine(item: item) }
@@ -274,14 +274,14 @@ struct ForecastCard: View {
         let sign = incoming ? "+" : "−"
         return HStack(spacing: 8) {
             Image(systemName: incoming ? "plus" : "minus")
-                .font(.system(size: 10, weight: .bold))
+                .font(.system(size: 10, weight: .semibold))
                 .foregroundColor(accent)
                 .frame(width: 20, height: 20)
                 .background(Circle().fill(accent.opacity(0.14)))
             Text(row.label).font(.subheadline)
             Spacer(minLength: 4)
             Text("\(sign)\(row.amount)")
-                .font(.subheadline.weight(.semibold))
+                .font(.subheadline.weight(.medium))
                 .foregroundColor(incoming ? Mint.greenText(dark) : .primary)
                 .lineLimit(1)
         }
@@ -294,14 +294,14 @@ struct ForecastCard: View {
         return HStack {
             VStack(alignment: .leading, spacing: 2) {
                 Text(forecast.leftLabel.uppercased())
-                    .font(.caption2.weight(.bold))
+                    .font(.caption2.weight(.semibold))
                     .tracking(0.8)
                     .foregroundColor(forecast.surplus ? Mint.greenText(dark) : .red)
-                Text(forecast.left).font(.title3.weight(.heavy)).lineLimit(1).minimumScaleFactor(0.7)
+                Text(forecast.left).font(.headline.weight(.semibold)).lineLimit(1).minimumScaleFactor(0.7)
             }
             Spacer(minLength: 6)
             Text(forecast.statusLabel)
-                .font(.caption.weight(.bold))
+                .font(.caption.weight(.semibold))
                 .foregroundColor(.white)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 4)
@@ -327,7 +327,7 @@ struct ForecastCard: View {
                 )
                 .rotationEffect(.degrees(-90))
             VStack(spacing: 0) {
-                Text("\(forecast.percentLeft)%").font(.title3.weight(.heavy))
+                Text("\(forecast.percentLeft)%").font(.headline.weight(.semibold))
                 Text(forecast.gaugeLabel)
                     .font(.caption2)
                     .foregroundColor(.secondary)
@@ -353,7 +353,7 @@ struct CommitmentLine: View {
             Text(item.name).font(.subheadline).lineLimit(1).truncationMode(.tail)
             Spacer(minLength: 8)
             VStack(alignment: .trailing, spacing: 0) {
-                Text(item.amount).font(.subheadline.weight(.semibold))
+                Text(item.amount).font(.subheadline.weight(.medium))
                 Text(item.status).font(.caption2).foregroundColor(.secondary)
             }
         }
@@ -395,10 +395,10 @@ struct InsightCard: View {
                     )
                     VStack(alignment: .leading, spacing: 6) {
                         HStack(spacing: 8) {
-                            Text(L.t(Strings.shared.board_ai_title)).font(.subheadline.weight(.bold))
+                            Text(L.t(Strings.shared.board_ai_title)).font(.subheadline.weight(.semibold))
                             HStack(spacing: 3) {
-                                Image(systemName: "sparkles").font(.system(size: 8, weight: .bold))
-                                Text(L.t(Strings.shared.board_ai_badge).uppercased()).font(.system(size: 10, weight: .bold))
+                                Image(systemName: "sparkles").font(.system(size: 8, weight: .semibold))
+                                Text(L.t(Strings.shared.board_ai_badge).uppercased()).font(.system(size: 10, weight: .semibold))
                             }
                             .foregroundColor(.white)
                             .padding(.horizontal, 6)
@@ -414,7 +414,7 @@ struct InsightCard: View {
                         }
                     }
                     Spacer(minLength: 0)
-                    Image(systemName: "chevron.right").font(.subheadline.weight(.semibold)).foregroundColor(.secondary)
+                    Image(systemName: "chevron.right").font(.subheadline.weight(.medium)).foregroundColor(.secondary)
                 }
             }
         }
@@ -437,7 +437,7 @@ struct DonutHeader: View {
             BoardHeader(symbol: "chart.pie.fill", accent: BoardPalette.orange, title: donut.title) {
                 VStack(alignment: .trailing, spacing: 1) {
                     Text(donut.totalsLabel).font(.caption2).foregroundColor(.secondary)
-                    Text(donut.totals).font(.subheadline.weight(.bold)).lineLimit(1).minimumScaleFactor(0.7)
+                    Text(donut.totals).font(.subheadline.weight(.semibold)).lineLimit(1).minimumScaleFactor(0.7)
                 }
             }
             HStack(spacing: 18) {
@@ -448,7 +448,7 @@ struct DonutHeader: View {
                             Circle().fill(BoardPalette.color(slice.colorIndex, dark: dark)).frame(width: 9, height: 9)
                             Text(slice.label).font(.caption).lineLimit(1).truncationMode(.tail)
                             Spacer(minLength: 4)
-                            Text("\(slice.percent)%").font(.caption.weight(.semibold))
+                            Text("\(slice.percent)%").font(.caption.weight(.medium))
                         }
                         .accessibilityElement(children: .ignore)
                         .accessibilityLabel("\(slice.label), \(slice.percent)%")
@@ -477,7 +477,7 @@ struct DonutHeader: View {
                     .rotationEffect(.degrees(-90))
             }
             VStack(spacing: 0) {
-                Text(donut.centre).font(.headline.weight(.heavy)).lineLimit(1).minimumScaleFactor(0.6)
+                Text(donut.centre).font(.subheadline.weight(.semibold)).lineLimit(1).minimumScaleFactor(0.6)
                 Text(donut.centreCaption).font(.caption2).foregroundColor(.secondary)
             }
             .padding(.horizontal, 18)
@@ -540,7 +540,7 @@ struct NextStepsCard: View {
                     filled: step.emphasized ? LinearGradient(colors: [BoardPalette.green, Color(red: 0.082, green: 0.502, blue: 0.239)], startPoint: .topLeading, endPoint: .bottomTrailing) : nil
                 )
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(step.title).font(.subheadline.weight(.semibold)).foregroundColor(.primary).multilineTextAlignment(.leading)
+                    Text(step.title).font(.subheadline.weight(.medium)).foregroundColor(.primary).multilineTextAlignment(.leading)
                     Text(step.detail)
                         .font(.caption)
                         .foregroundColor(step.emphasized ? Mint.greenText(dark) : .secondary)
@@ -548,7 +548,7 @@ struct NextStepsCard: View {
                 }
                 Spacer(minLength: 4)
                 Image(systemName: "chevron.right")
-                    .font(.caption.weight(.semibold))
+                    .font(.caption.weight(.medium))
                     .foregroundColor(step.emphasized ? Mint.greenText(dark) : .secondary)
             }
             .padding(.horizontal, 14)

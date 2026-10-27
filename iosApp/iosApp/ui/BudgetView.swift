@@ -124,7 +124,7 @@ struct BudgetView: View {
                 .id(Self.commitmentsAnchor)
         } else if !commitments.isEmpty {
             BoardCard {
-                Text(L.t(Strings.shared.budget_commitments_title)).font(.headline.weight(.bold)).accessibilityAddTraits(.isHeader)
+                Text(L.t(Strings.shared.budget_commitments_title)).font(.subheadline.weight(.semibold)).accessibilityAddTraits(.isHeader)
                 ForEach(Array(commitments.enumerated()), id: \.offset) { _, item in CommitmentLine(item: item) }
             }
             .id(Self.commitmentsAnchor)
@@ -171,13 +171,13 @@ struct BudgetView: View {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     Text(BudgetBoard.shared.eyebrow(locale: model.locale).uppercased())
-                        .font(.caption2.weight(.bold))
+                        .font(.caption2.weight(.semibold))
                         .tracking(1.4)
                         .foregroundColor(Color(red: 0.525, green: 0.937, blue: 0.675))
                     Circle().fill(Color(red: 0.525, green: 0.937, blue: 0.675)).frame(width: 6, height: 6)
                 }
                 Text(L.t(Strings.shared.budget_title))
-                    .font(.title.weight(.heavy))
+                    .font(.title2.weight(.semibold))
                     .foregroundColor(Field.ink())
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
@@ -202,7 +202,7 @@ struct BudgetView: View {
         return Button(action: onReview) {
             ZStack(alignment: .topTrailing) {
                 Image(systemName: "bell")
-                    .font(.body.weight(.semibold))
+                    .font(.subheadline.weight(.semibold))
                     .foregroundColor(Field.ink())
                     .frame(width: 44, height: 44)
                     .background(Circle().fill(Field.glass))
@@ -229,8 +229,8 @@ struct BudgetView: View {
         Button { pickingMonth = true } label: {
             HStack(spacing: 6) {
                 Image(systemName: "calendar").font(.caption)
-                Text(monthLabel(model.month)).font(.subheadline.weight(.semibold)).lineLimit(1)
-                Image(systemName: "chevron.down").font(.caption2.weight(.semibold))
+                Text(monthLabel(model.month)).font(.subheadline.weight(.medium)).lineLimit(1)
+                Image(systemName: "chevron.down").font(.caption2.weight(.medium))
             }
             .foregroundColor(Field.ink())
             .padding(.horizontal, 12)
@@ -273,7 +273,7 @@ struct BudgetView: View {
                     if let check = model.spendingCheck { spendingBody(check, dark: dark) }
                     if let budget = model.budget, let advice = aiAdvice(budget) {
                         Divider()
-                        Text(L.t(Strings.shared.ai_budget_review_title)).font(.subheadline.weight(.semibold))
+                        Text(L.t(Strings.shared.ai_budget_review_title)).font(.subheadline.weight(.medium))
                         Text(advice).font(.subheadline)
                     }
                     if let onOpenPlan {
@@ -281,7 +281,7 @@ struct BudgetView: View {
                             insightOpen = false
                             onOpenPlan()
                         }
-                        .font(.subheadline.weight(.semibold))
+                        .font(.subheadline.weight(.medium))
                         .frame(minHeight: 44)
                     }
                 }
@@ -305,7 +305,7 @@ struct BudgetView: View {
         Text(words.incomeLine(c: check, locale: model.locale)).font(.caption).foregroundColor(.secondary)
         ForEach(Array(model.spendingRows.enumerated()), id: \.offset) { _, row in shareRow(row, dark: dark) }
         if let policy = model.spendingPolicy {
-            Text(L.t(Strings.shared.ai_budget_consent_title)).font(.subheadline.weight(.semibold))
+            Text(L.t(Strings.shared.ai_budget_consent_title)).font(.subheadline.weight(.medium))
             Text(L.t(Strings.shared.ai_budget_consent_body)).font(.caption)
             Text(policy.body)
                 .font(.caption)
@@ -324,7 +324,7 @@ struct BudgetView: View {
             if let headline = check.headline {
                 HStack(alignment: .top, spacing: 10) {
                     Image(systemName: "sparkles").foregroundColor(BoardPalette.violet).accessibilityHidden(true)
-                    Text(headline).font(.subheadline.weight(.semibold))
+                    Text(headline).font(.subheadline.weight(.medium))
                 }
             }
             ForEach(Array(check.tips.enumerated()), id: \.offset) { _, tip in
@@ -364,9 +364,9 @@ struct BudgetView: View {
         }
         return VStack(alignment: .leading, spacing: 4) {
             HStack {
-                Text(row.label).font(.body.weight(.medium))
+                Text(row.label).font(.subheadline.weight(.medium))
                 Spacer(minLength: 8)
-                Text("\(row.amount) · \(row.share)").font(.subheadline.weight(.semibold)).lineLimit(1)
+                Text("\(row.amount) · \(row.share)").font(.subheadline.weight(.medium)).lineLimit(1)
             }
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
@@ -383,7 +383,7 @@ struct BudgetView: View {
             HStack {
                 Text(row.aim).font(.caption2).foregroundColor(.secondary)
                 Spacer(minLength: 8)
-                Text(row.statusLabel).font(.caption.weight(.semibold)).foregroundColor(tone)
+                Text(row.statusLabel).font(.caption.weight(.medium)).foregroundColor(tone)
             }
         }
         .accessibilityElement(children: .ignore)
@@ -443,10 +443,10 @@ struct BudgetView: View {
                 BoardHeader(symbol: "sparkles", accent: BoardPalette.violet, title: L.t(Strings.shared.ai_budget_extra_title))
                 ForEach(budget.aiExtra, id: \.categoryId) { extra in
                     HStack(spacing: 12) {
-                        Text("\(extra.name) · \(money(extra.amount))").font(.body)
+                        Text("\(extra.name) · \(money(extra.amount))").font(.subheadline)
                         Spacer(minLength: 8)
                         Button(L.t(Strings.shared.budget_unbudgeted_add)) { model.addFromAi(categoryId: extra.categoryId) }
-                            .font(.subheadline.weight(.semibold))
+                            .font(.subheadline.weight(.medium))
                             .frame(minHeight: 44)
                     }
                 }
@@ -456,7 +456,7 @@ struct BudgetView: View {
             BoardCard(glow: BoardPalette.color(0, dark: dark)) {
                 Text(unfiled).font(.subheadline)
                 Button(L.t(Strings.shared.budget_unfiled_action), action: onReview)
-                    .font(.subheadline.weight(.semibold))
+                    .font(.subheadline.weight(.medium))
                     .frame(minHeight: 44)
             }
         }
@@ -483,14 +483,14 @@ struct BudgetView: View {
         return HStack(spacing: 12) {
             BoardTile(symbol: icon.systemName, accent: icon.tint(dark))
             VStack(alignment: .leading, spacing: 6) {
-                Text(spend.name).font(.body.weight(.semibold)).lineLimit(1).truncationMode(.tail)
+                Text(spend.name).font(.subheadline.weight(.semibold)).lineLimit(1).truncationMode(.tail)
                 Capsule()
                     .fill(BoardPalette.color(BudgetBoard.shared.colorIndexOfSpend(index: Int32(index)), dark: dark))
                     .frame(width: 64, height: 4)
             }
             Spacer(minLength: 8)
             VStack(alignment: .trailing, spacing: 2) {
-                Text(spend.amount).font(.body.weight(.bold))
+                Text(spend.amount).font(.subheadline.weight(.semibold))
                 Text(BudgetBoard.shared.shareOfSpending(index: Int32(index), budget: budget, locale: model.locale))
                     .font(.caption2)
                     .foregroundColor(.secondary)
@@ -508,7 +508,7 @@ struct BudgetView: View {
             HStack(spacing: 12) {
                 BoardTile(symbol: symbol, accent: accent, size: 36, iconSize: 16)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(title).font(.body.weight(.semibold)).foregroundColor(accent)
+                    Text(title).font(.subheadline.weight(.semibold)).foregroundColor(accent)
                     if let detail {
                         Text(detail).font(.caption).foregroundColor(.secondary).multilineTextAlignment(.leading)
                     }
@@ -556,11 +556,11 @@ struct BudgetView: View {
         return HStack(spacing: 12) {
             BoardTile(symbol: icon.systemName, accent: icon.tint(dark), size: 36, iconSize: 16)
             VStack(alignment: .leading, spacing: 2) {
-                Text(spend.name).font(.body.weight(.semibold)).lineLimit(1).truncationMode(.tail)
+                Text(spend.name).font(.subheadline.weight(.semibold)).lineLimit(1).truncationMode(.tail)
                 Text(money(spend.spent)).font(.caption).foregroundColor(.secondary)
                 if let ai = spend.aiSuggested {
                     Text(L.t(Strings.shared.ai_budget_suggests, money(ai)))
-                        .font(.caption2.weight(.semibold))
+                        .font(.caption2.weight(.medium))
                         .foregroundColor(BoardPalette.violet)
                 }
                 if let oneOff = model.oneOff(spend) {
@@ -574,7 +574,7 @@ struct BudgetView: View {
             Button(L.t(Strings.shared.budget_unbudgeted_add)) {
                 model.addFromUnbudgeted(categoryId: spend.categoryId)
             }
-            .font(.subheadline.weight(.semibold))
+            .font(.subheadline.weight(.medium))
             .lineLimit(1)
             .frame(minHeight: 44)
             .accessibilityLabel("\(L.t(Strings.shared.budget_unbudgeted_add)), \(spend.name)")
@@ -587,7 +587,7 @@ struct BudgetView: View {
             // "not included in your plan" beats "something went wrong".
             Text(L.t(model.errorKey ?? Strings.shared.error_title)).font(.subheadline)
             Button(L.t(Strings.shared.action_retry)) { model.retry() }
-                .font(.subheadline.weight(.semibold))
+                .font(.subheadline.weight(.medium))
                 .frame(minHeight: 44)
         }
     }
@@ -639,7 +639,7 @@ private struct LineRow: View {
                     VStack(alignment: .leading, spacing: 6) {
                         HStack(spacing: 6) {
                             Text(line.name)
-                                .font(.body.weight(.semibold))
+                                .font(.subheadline.weight(.semibold))
                                 .foregroundColor(.primary)
                                 .lineLimit(1)
                                 .truncationMode(.tail)
@@ -655,9 +655,9 @@ private struct LineRow: View {
                     }
                     Spacer(minLength: 6)
                     VStack(alignment: .trailing, spacing: 4) {
-                        Text(money(line.allocated)).font(.body.weight(.bold)).foregroundColor(.primary).lineLimit(1)
+                        Text(money(line.allocated)).font(.subheadline.weight(.semibold)).foregroundColor(.primary).lineLimit(1)
                         Text(allotted).font(.caption2).foregroundColor(.secondary)
-                        Image(systemName: "pencil").font(.caption2.weight(.semibold)).foregroundColor(Mint.greenText(dark))
+                        Image(systemName: "pencil").font(.caption2.weight(.medium)).foregroundColor(Mint.greenText(dark))
                     }
                 }
                 .padding(12)
@@ -681,10 +681,10 @@ private struct LineRow: View {
                     if let label = aiLabel {
                         HStack(spacing: 6) {
                             Image(systemName: "sparkles").font(.caption2).foregroundColor(BoardPalette.violet).accessibilityHidden(true)
-                            Text(label).font(.caption.weight(.semibold)).foregroundColor(BoardPalette.violet)
+                            Text(label).font(.caption.weight(.medium)).foregroundColor(BoardPalette.violet)
                             Spacer(minLength: 8)
                             Button(L.t(Strings.shared.ai_budget_use)) { model.useAiSuggestion(categoryId: line.categoryId) }
-                                .font(.subheadline.weight(.semibold))
+                                .font(.subheadline.weight(.medium))
                                 .frame(minHeight: 44)
                                 .disabled(model.saving)
                                 .accessibilityLabel("\(L.t(Strings.shared.ai_budget_use)), \(label), \(line.name)")

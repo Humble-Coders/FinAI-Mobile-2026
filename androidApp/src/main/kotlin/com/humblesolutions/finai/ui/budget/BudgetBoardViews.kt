@@ -172,7 +172,7 @@ internal fun BoardHeader(
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         IconTile(icon, accent)
         Column(Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.semantics { heading() })
+            Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, modifier = Modifier.semantics { heading() })
             subtitle?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         }
         trailing?.invoke()
@@ -200,7 +200,7 @@ internal fun StatusPill(text: String, live: Boolean) {
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         Box(Modifier.size(7.dp).alpha(pulse).clip(CircleShape).background(if (live) FinAiPalette.Green else MaterialTheme.colorScheme.onSurfaceVariant))
-        Text(text, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold, color = green)
+        Text(text, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Medium, color = green)
     }
 }
 
@@ -243,7 +243,7 @@ private fun FigureLine(figure: BoardFigure, icon: ImageVector, accent: Color) {
             Icon(icon, contentDescription = null, tint = accent, modifier = Modifier.size(15.dp))
         }
         Text(figure.label, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-        Text(figure.amount, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, maxLines = 1)
+        Text(figure.amount, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, maxLines = 1)
     }
 }
 
@@ -276,11 +276,11 @@ private fun LeftPanel(board: BoardSoFar, dark: Boolean) {
         ) {
             Icon(Icons.Filled.AccountBalanceWallet, contentDescription = null, tint = green, modifier = Modifier.size(18.dp))
         }
-        Text(board.leftLabel.uppercase(), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = green, letterSpacing = 1.sp, textAlign = TextAlign.Center)
+        Text(board.leftLabel.uppercase(), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold, color = green, letterSpacing = 1.sp, textAlign = TextAlign.Center)
         Text(
             board.left,
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.ExtraBold,
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.SemiBold,
             color = if (board.leftNegative) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
             maxLines = 1,
             softWrap = false,
@@ -309,7 +309,7 @@ internal fun ForecastCard(forecast: BoardForecast, commitments: List<OverviewCom
             Column(
                 Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(Mint.card()).border(1.dp, Mint.edge(), RoundedCornerShape(18.dp)).padding(horizontal = 14.dp, vertical = 6.dp),
             ) {
-                Text(strings(Strings.budget_commitments_title), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 8.dp, bottom = 2.dp))
+                Text(strings(Strings.budget_commitments_title), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Medium, modifier = Modifier.padding(top = 8.dp, bottom = 2.dp))
                 commitments.forEach { CommitmentRow(it) }
             }
         }
@@ -332,7 +332,7 @@ internal fun CommitmentRow(item: OverviewCommitment) {
         )
         Text(item.name, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
         Column(horizontalAlignment = Alignment.End) {
-            Text(item.amount, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+            Text(item.amount, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
             Text(item.status, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
@@ -354,7 +354,7 @@ private fun SignedLine(figure: BoardFigure) {
         Text(
             "$sign${figure.amount}",
             style = MaterialTheme.typography.bodyMedium,
-            fontWeight = FontWeight.SemiBold,
+            fontWeight = FontWeight.Medium,
             color = if (figure.sign > 0) Mint.greenText() else MaterialTheme.colorScheme.onSurface,
             maxLines = 1,
         )
@@ -376,13 +376,13 @@ private fun LeftAtEnd(forecast: BoardForecast) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {
-            Text(forecast.leftLabel.uppercase(), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, letterSpacing = 0.8.sp, color = if (forecast.surplus) Mint.greenText() else tone)
-            Text(forecast.left, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold, maxLines = 1)
+            Text(forecast.leftLabel.uppercase(), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold, letterSpacing = 0.8.sp, color = if (forecast.surplus) Mint.greenText() else tone)
+            Text(forecast.left, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 1)
         }
         Text(
             forecast.statusLabel,
             style = MaterialTheme.typography.labelMedium,
-            fontWeight = FontWeight.Bold,
+            fontWeight = FontWeight.SemiBold,
             color = Color.White,
             modifier = Modifier.clip(CircleShape).background(tone).padding(horizontal = 10.dp, vertical = 4.dp),
         )
@@ -415,7 +415,7 @@ private fun RingGauge(forecast: BoardForecast) {
             )
         }
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("${forecast.percentLeft}%", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
+            Text("${forecast.percentLeft}%", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             Text(forecast.gaugeLabel, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center, modifier = Modifier.widthIn(max = 76.dp))
         }
     }
@@ -450,14 +450,14 @@ internal fun InsightCard(headline: String?, detail: String?, onOpen: () -> Unit)
             )
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(strings(Strings.board_ai_title), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                    Text(strings(Strings.board_ai_title), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
                     Row(
                         Modifier.clip(RoundedCornerShape(6.dp)).background(BoardPalette.Violet).padding(horizontal = 6.dp, vertical = 2.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(3.dp),
                     ) {
                         Icon(Icons.Outlined.AutoAwesome, contentDescription = null, tint = Color.White, modifier = Modifier.size(10.dp))
-                        Text(strings(Strings.board_ai_badge).uppercase(), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = Color.White, fontSize = 10.sp)
+                        Text(strings(Strings.board_ai_badge).uppercase(), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold, color = Color.White, fontSize = 10.sp)
                     }
                 }
                 Text(headline ?: strings(Strings.board_ai_prompt), style = MaterialTheme.typography.bodyMedium)
@@ -477,7 +477,7 @@ internal fun DonutHeader(donut: BoardDonut) {
     BoardHeader(Icons.Filled.PieChart, BoardPalette.Orange, donut.title, null) {
         Column(horizontalAlignment = Alignment.End) {
             Text(donut.totalsLabel, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(donut.totals, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, maxLines = 1)
+            Text(donut.totals, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, maxLines = 1)
         }
     }
     Row(
@@ -495,7 +495,7 @@ internal fun DonutHeader(donut: BoardDonut) {
                 ) {
                     Box(Modifier.size(9.dp).clip(CircleShape).background(BoardPalette.color(slice.colorIndex, dark)))
                     Text(slice.label, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                    Text("${slice.percent}%", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+                    Text("${slice.percent}%", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
                 }
             }
         }
@@ -525,7 +525,7 @@ private fun Donut(donut: BoardDonut, dark: Boolean) {
             }
         }
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(donut.centre, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold, maxLines = 1)
+            Text(donut.centre, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, maxLines = 1)
             Text(donut.centreCaption, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
@@ -580,7 +580,7 @@ private fun StepRow(step: NextStep, onStep: (NextStep) -> Unit) {
             filled = if (step.emphasized) Brush.linearGradient(listOf(FinAiPalette.Green, Color(0xFF15803D))) else null,
         )
         Column(Modifier.weight(1f)) {
-            Text(step.title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
+            Text(step.title, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
             Spacer(Modifier.height(4.dp))
             Text(step.detail, style = MaterialTheme.typography.bodySmall, color = if (step.emphasized) Mint.greenText() else MaterialTheme.colorScheme.onSurfaceVariant)
         }
