@@ -16,8 +16,10 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -35,12 +37,15 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.BarChart
+import androidx.compose.material.icons.filled.CheckBox
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.PieChart
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Savings
 import androidx.compose.material.icons.outlined.Assignment
 import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material.icons.outlined.CheckBoxOutlineBlank
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.RadioButtonUnchecked
 import androidx.compose.material.icons.outlined.TrackChanges
@@ -69,6 +74,8 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -218,16 +225,17 @@ private fun animated(target: Float, delayMs: Int = 0): Float {
 internal fun SoFarCard(board: BoardSoFar) {
     val dark = isSystemInDarkTheme()
     BoardCard {
-        BoardHeader(Icons.AutoMirrored.Filled.TrendingUp, Mint.greenText(), board.title, board.subtitle) {
+        BoardHeader(Icons.AutoMirrored.Filled.TrendingUp, Mint.greenText(), board.title, null) {
             StatusPill(board.badge, board.running)
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        // The panel is exactly as tall as the three figures beside it.
+        Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.SpaceBetween) {
                 FigureLine(board.income, Icons.Filled.ArrowDownward, FinAiPalette.Green)
                 FigureLine(board.spent, Icons.Filled.ArrowUpward, BoardPalette.Orange)
                 FigureLine(board.saved, Icons.Filled.Savings, BoardPalette.Violet)
             }
-            LeftPanel(board, dark)
+            LeftPanel(board, dark, Modifier.fillMaxHeight())
         }
     }
 }
@@ -243,66 +251,68 @@ private fun FigureLine(figure: BoardFigure, icon: ImageVector, accent: Color) {
             Icon(icon, contentDescription = null, tint = accent, modifier = Modifier.size(15.dp))
         }
         Text(figure.label, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-        Text(figure.amount, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, maxLines = 1)
+        Text(figure.amount, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, maxLines = 1)
     }
 }
 
-/** What is left now: the card's bottom line, on a mint panel with a coin drawn faintly behind it. */
+/** What is left to spend: the card's bottom line, on a mint panel as tall as the figures beside it. */
 @Composable
-private fun LeftPanel(board: BoardSoFar, dark: Boolean) {
-    val shape = RoundedCornerShape(20.dp)
+private fun LeftPanel(board: BoardSoFar, dark: Boolean, modifier: Modifier) {
+    val shape = RoundedCornerShape(18.dp)
     val green = Mint.greenText()
     Column(
-        Modifier
-            .widthIn(min = 128.dp, max = 160.dp)
+        modifier
+            .width(132.dp)
             .clip(shape)
             .background(Brush.verticalGradient(listOf(FinAiPalette.Green.copy(alpha = if (dark) 0.18f else 0.10f), FinAiPalette.Green.copy(alpha = if (dark) 0.06f else 0.03f))))
             .border(1.dp, FinAiPalette.Green.copy(alpha = 0.25f), shape)
             .drawBehind {
                 // A faint coin in the corner — decoration, never a figure.
-                val r = 34.dp.toPx()
-                val c = Offset(size.width - 10.dp.toPx(), 14.dp.toPx())
+                val r = 26.dp.toPx()
+                val c = Offset(size.width - 6.dp.toPx(), 8.dp.toPx())
                 drawCircle(FinAiPalette.Green.copy(alpha = 0.10f), r, c)
-                drawCircle(FinAiPalette.Green.copy(alpha = 0.14f), r * 0.72f, c, style = Stroke(1.5.dp.toPx()))
             }
-            .padding(horizontal = 14.dp, vertical = 16.dp)
+            .padding(horizontal = 10.dp, vertical = 8.dp)
             .clearAndSetSemantics { contentDescription = "${board.leftLabel}, ${board.left}. ${board.leftCaption}" },
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.Center,
     ) {
-        Box(
-            Modifier.size(36.dp).clip(RoundedCornerShape(12.dp)).background(Mint.panel()).border(1.dp, FinAiPalette.Green.copy(alpha = 0.25f), RoundedCornerShape(12.dp)),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(Icons.Filled.AccountBalanceWallet, contentDescription = null, tint = green, modifier = Modifier.size(18.dp))
-        }
-        Text(board.leftLabel.uppercase(), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold, color = green, letterSpacing = 1.sp, textAlign = TextAlign.Center)
+        Text(board.leftLabel.uppercase(), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Medium, color = green, letterSpacing = 1.sp, textAlign = TextAlign.Center)
         Text(
             board.left,
-            style = MaterialTheme.typography.titleLarge,
+            style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold,
             color = if (board.leftNegative) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
             maxLines = 1,
             softWrap = false,
         )
-        Text(board.leftCaption, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
+        Text(board.leftCaption, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center, maxLines = 2)
     }
 }
 
 // ── Expected this month ─────────────────────────────────────────────────
 
+/**
+ * What is still to come, and on the right — the same height as the figures —
+ * the ring for how much of income the month lands on, with "Left at month
+ * end" under it. The commitments follow, each tappable to tick off by hand.
+ */
 @Composable
-internal fun ForecastCard(forecast: BoardForecast, commitments: List<OverviewCommitment>, modifier: Modifier = Modifier) {
+internal fun ForecastCard(forecast: BoardForecast, commitments: List<OverviewCommitment>, onTick: (String) -> Unit, modifier: Modifier = Modifier) {
     BoardCard(modifier = modifier, glow = Color(0xFF14B8A6)) {
         BoardHeader(Icons.Filled.BarChart, Mint.greenText(), forecast.title, forecast.subtitle)
-        Row(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.SpaceBetween) {
                 forecast.rows.forEach { SignedLine(it) }
-                LeftAtEnd(forecast)
             }
-            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Column(
+                Modifier.width(136.dp).fillMaxHeight(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.SpaceBetween,
+            ) {
                 RingGauge(forecast)
-                Text(forecast.gaugeCaption, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center, modifier = Modifier.widthIn(max = 116.dp))
+                Spacer(Modifier.height(8.dp))
+                LeftAtEnd(forecast)
             }
         }
         if (commitments.isNotEmpty()) {
@@ -310,25 +320,44 @@ internal fun ForecastCard(forecast: BoardForecast, commitments: List<OverviewCom
                 Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(Mint.card()).border(1.dp, Mint.edge(), RoundedCornerShape(18.dp)).padding(horizontal = 14.dp, vertical = 6.dp),
             ) {
                 Text(strings(Strings.budget_commitments_title), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Medium, modifier = Modifier.padding(top = 8.dp, bottom = 2.dp))
-                commitments.forEach { CommitmentRow(it) }
+                commitments.forEach { CommitmentRow(it, onTick) }
             }
         }
     }
 }
 
-/** A commitment: a tick when its payment was seen, an open circle when not — and the words, always. */
+/**
+ * A commitment: a ticked box when its payment was found, an empty one when
+ * not — and the words, always. Tapping it ticks it off, or changes how.
+ */
 @Composable
-internal fun CommitmentRow(item: OverviewCommitment) {
+internal fun CommitmentRow(item: OverviewCommitment, onTick: (String) -> Unit) {
+    val open = strings(Strings.tick_a11y_open, item.name)
+    val id = item.id
     Row(
-        Modifier.fillMaxWidth().heightIn(min = 44.dp).clearAndSetSemantics { contentDescription = item.description },
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .then(if (id != null) Modifier.clickable(role = Role.Button, onClickLabel = open) { onTick(id) } else Modifier)
+            .heightIn(min = 48.dp)
+            .clearAndSetSemantics {
+                contentDescription = item.description
+                if (id != null) {
+                    role = Role.Button
+                    onClick(label = open) {
+                        onTick(id)
+                        true
+                    }
+                }
+            },
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
-            if (item.seen) Icons.Filled.CheckCircle else Icons.Outlined.RadioButtonUnchecked,
+            if (item.seen) Icons.Filled.CheckBox else Icons.Outlined.CheckBoxOutlineBlank,
             contentDescription = null,
             tint = if (item.seen) Mint.greenText() else MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.size(20.dp),
+            modifier = Modifier.size(22.dp),
         )
         Text(item.name, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
         Column(horizontalAlignment = Alignment.End) {
@@ -350,10 +379,10 @@ private fun SignedLine(figure: BoardFigure) {
         Box(Modifier.size(20.dp).clip(CircleShape).background(Mint.tile(accent)), contentAlignment = Alignment.Center) {
             Icon(if (figure.sign > 0) Icons.Filled.Add else Icons.Filled.Remove, contentDescription = null, tint = accent, modifier = Modifier.size(13.dp))
         }
-        Text(figure.label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+        Text(figure.label, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
         Text(
             "$sign${figure.amount}",
-            style = MaterialTheme.typography.bodyMedium,
+            style = MaterialTheme.typography.bodySmall,
             fontWeight = FontWeight.Medium,
             color = if (figure.sign > 0) Mint.greenText() else MaterialTheme.colorScheme.onSurface,
             maxLines = 1,
@@ -361,30 +390,30 @@ private fun SignedLine(figure: BoardFigure) {
     }
 }
 
+/** "Left at month end", under the ring: the amount and whether it is a surplus. */
 @Composable
 private fun LeftAtEnd(forecast: BoardForecast) {
-    val shape = RoundedCornerShape(16.dp)
+    val shape = RoundedCornerShape(14.dp)
     val tone = if (forecast.surplus) FinAiPalette.Green else MaterialTheme.colorScheme.error
-    Row(
+    Column(
         Modifier
             .fillMaxWidth()
             .clip(shape)
             .background(tone.copy(alpha = 0.09f))
             .border(1.dp, tone.copy(alpha = 0.3f), shape)
-            .padding(12.dp)
+            .padding(horizontal = 8.dp, vertical = 8.dp)
             .clearAndSetSemantics { contentDescription = "${forecast.leftLabel}, ${forecast.left}, ${forecast.statusLabel}" },
-        verticalAlignment = Alignment.CenterVertically,
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(3.dp),
     ) {
-        Column(Modifier.weight(1f)) {
-            Text(forecast.leftLabel.uppercase(), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold, letterSpacing = 0.8.sp, color = if (forecast.surplus) Mint.greenText() else tone)
-            Text(forecast.left, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 1)
-        }
+        Text(forecast.leftLabel.uppercase(), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Medium, letterSpacing = 0.6.sp, color = if (forecast.surplus) Mint.greenText() else tone, textAlign = TextAlign.Center, maxLines = 1)
+        Text(forecast.left, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, maxLines = 1)
         Text(
             forecast.statusLabel,
-            style = MaterialTheme.typography.labelMedium,
-            fontWeight = FontWeight.SemiBold,
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.Medium,
             color = Color.White,
-            modifier = Modifier.clip(CircleShape).background(tone).padding(horizontal = 10.dp, vertical = 4.dp),
+            modifier = Modifier.clip(CircleShape).background(tone).padding(horizontal = 8.dp, vertical = 2.dp),
         )
     }
 }
@@ -396,11 +425,11 @@ private fun RingGauge(forecast: BoardForecast) {
     val track = MaterialTheme.colorScheme.surfaceVariant
     val tone = if (forecast.surplus) FinAiPalette.Green else MaterialTheme.colorScheme.error
     Box(
-        Modifier.size(112.dp).clearAndSetSemantics { contentDescription = "${forecast.percentLeft}% ${forecast.gaugeLabel}" },
+        Modifier.size(96.dp).clearAndSetSemantics { contentDescription = "${forecast.percentLeft}% ${forecast.gaugeLabel}" },
         contentAlignment = Alignment.Center,
     ) {
-        Canvas(Modifier.size(112.dp)) {
-            val stroke = 11.dp.toPx()
+        Canvas(Modifier.size(96.dp)) {
+            val stroke = 9.dp.toPx()
             val inset = stroke / 2
             val arcSize = Size(size.width - stroke, size.height - stroke)
             drawArc(track, -90f, 360f, false, Offset(inset, inset), arcSize, style = Stroke(stroke))
@@ -416,7 +445,56 @@ private fun RingGauge(forecast: BoardForecast) {
         }
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text("${forecast.percentLeft}%", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            Text(forecast.gaugeLabel, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center, modifier = Modifier.widthIn(max = 76.dp))
+            Text(forecast.gaugeLabel, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center, modifier = Modifier.widthIn(max = 68.dp))
+        }
+    }
+}
+
+// ── The savings target ──────────────────────────────────────────────────
+
+/**
+ * The savings target, apart from the categories: what is set aside each
+ * month, how much of it this month has, and a way to set or change it.
+ */
+@Composable
+internal fun SavingsCard(
+    title: String,
+    subtitle: String,
+    target: String?,
+    progress: String?,
+    fraction: Float,
+    setLabel: String,
+    room: String?,
+    onOpen: () -> Unit,
+) {
+    BoardCard(glow = BoardPalette.Violet, onClick = onOpen) {
+        BoardHeader(Icons.Filled.Savings, BoardPalette.Violet, title, subtitle) {
+            if (target != null) {
+                Column(horizontalAlignment = Alignment.End) {
+                    Text(target, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                    Icon(Icons.Filled.Edit, contentDescription = null, tint = Mint.greenText(), modifier = Modifier.size(14.dp))
+                }
+            }
+        }
+        if (target != null) {
+            CategoryBar(fraction, BoardPalette.Violet)
+            progress?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        } else {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(16.dp))
+                    .border(1.dp, BoardPalette.Violet.copy(alpha = 0.35f), RoundedCornerShape(16.dp))
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Icon(Icons.Filled.Add, contentDescription = null, tint = BoardPalette.Violet, modifier = Modifier.size(18.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(setLabel, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, color = BoardPalette.Violet)
+                    room?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                }
+            }
         }
     }
 }

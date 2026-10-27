@@ -43,6 +43,8 @@ internal object ApiErrorMapper {
     private const val STILL_LEARNING = "still_learning"
     private const val DIAGNOSTIC_LIMIT = "diagnostic_limit_reached"
     private const val SPENDING_CHECK_LIMIT = "spending_check_limit_reached"
+    private const val ALREADY_PAYS_ANOTHER = "already_pays_another_commitment"
+    private const val NOT_IN_MONTH = "not_in_month"
 
     fun fromResponse(status: Int, body: String): ApiException = when (status) {
         401 -> ApiException.Unauthorized("token rejected")
@@ -138,6 +140,10 @@ internal object ApiErrorMapper {
                     return ApiException.AiPolicyChanged(detail.string("current_version"))
 
                 NOT_BUDGETABLE -> return ApiException.NotBudgetable(detail.string("field"))
+
+                ALREADY_PAYS_ANOTHER -> return ApiException.AlreadyPaysAnother()
+
+                NOT_IN_MONTH -> return ApiException.NotInMonth()
 
                 INVALID_MONTH -> return ApiException.InvalidMonth()
 

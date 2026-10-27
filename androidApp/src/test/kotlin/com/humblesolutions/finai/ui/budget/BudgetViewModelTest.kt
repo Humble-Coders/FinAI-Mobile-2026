@@ -1,28 +1,43 @@
 package com.humblesolutions.finai.ui.budget
 
 import androidx.lifecycle.SavedStateHandle
+import com.humblesolutions.finai.model.Account
 import com.humblesolutions.finai.model.AiAccept
 import com.humblesolutions.finai.model.AiConsentStatus
 import com.humblesolutions.finai.model.AiPolicy
 import com.humblesolutions.finai.model.AiProposal
 import com.humblesolutions.finai.model.ApiException
 import com.humblesolutions.finai.model.Budget
+import com.humblesolutions.finai.model.BudgetCommitment
 import com.humblesolutions.finai.model.BudgetLine
 import com.humblesolutions.finai.model.BudgetStatus
 import com.humblesolutions.finai.model.Capabilities
 import com.humblesolutions.finai.model.Category
 import com.humblesolutions.finai.model.CategorySpend
 import com.humblesolutions.finai.model.CategoryTip
+import com.humblesolutions.finai.model.CommitmentPayment
+import com.humblesolutions.finai.model.ConfirmOutcome
+import com.humblesolutions.finai.model.DeleteOutcome
+import com.humblesolutions.finai.model.DuplicateMatch
 import com.humblesolutions.finai.model.Feature
 import com.humblesolutions.finai.model.FeatureReason
 import com.humblesolutions.finai.model.LearningNeeds
 import com.humblesolutions.finai.model.LearningProgress
+import com.humblesolutions.finai.model.NewAccount
+import com.humblesolutions.finai.model.NewTransaction
+import com.humblesolutions.finai.model.PatchOutcome
+import com.humblesolutions.finai.model.ReviewPage
 import com.humblesolutions.finai.model.SpendingCheck
+import com.humblesolutions.finai.model.Transaction
+import com.humblesolutions.finai.model.TransactionDirection
+import com.humblesolutions.finai.model.TransactionPatch
 import com.humblesolutions.finai.model.UnbudgetedSpend
+import com.humblesolutions.finai.repository.AccountsRepository
 import com.humblesolutions.finai.repository.AiConsentRepository
 import com.humblesolutions.finai.repository.BudgetRepository
 import com.humblesolutions.finai.repository.CapabilitiesRepository
 import com.humblesolutions.finai.repository.CategoriesRepository
+import com.humblesolutions.finai.repository.TransactionsRepository
 import com.humblesolutions.finai.usecase.BudgetBlock
 import com.humblesolutions.finai.util.BudgetChanged
 import kotlinx.coroutines.CompletableDeferred
@@ -107,6 +122,27 @@ class BudgetViewModelTest {
 
         override suspend fun spendingCheck(month: String): SpendingCheck = spending ?: throw ApiException.SetupIncomeMissing()
 
+        val ticks = mutableListOf<String>()
+        var payments = mutableListOf<CommitmentPayment>()
+        var failTick: ApiException? = null
+
+        override suspend fun tickOff(month: String, commitmentId: String, transactionId: String): Budget {
+            failTick?.let { throw it }
+            ticks += "$commitmentId:$transactionId"
+            return answer
+        }
+
+        override suspend fun tickOffWithNew(month: String, commitmentId: String, payment: CommitmentPayment): Budget {
+            failTick?.let { throw it }
+            payments += payment
+            return answer
+        }
+
+        override suspend fun untick(month: String, commitmentId: String): Budget {
+            ticks += "untick:$commitmentId"
+            return answer
+        }
+
         override suspend fun runSpendingCheck(month: String): SpendingCheck {
             runs += month
             failRun?.let { throw it }
@@ -146,13 +182,78 @@ class BudgetViewModelTest {
         override fun close() = Unit
     }
 
+    private class FakeMonthRows(val rows: List<Transaction>) : TransactionsRepository {
+        override suspend fun list(statementImportId: String?, month: String?, needsReview: Boolean?, cursor: String?) = ReviewPage(rows = rows)
+        override suspend fun create(entry: NewTransaction): Transaction = error("not called")
+        override suspend fun review(cursor: String?): ReviewPage = error("not called")
+        override suspend fun correct(id: String, patch: TransactionPatch): PatchOutcome = error("not called")
+        override suspend fun confirm(id: String): PatchOutcome = error("not called")
+        override suspend fun confirmAll(ids: List<String>): ConfirmOutcome = error("not called")
+        override suspend fun delete(id: String): DeleteOutcome = error("not called")
+        override suspend fun setOneOff(id: String, oneOff: Boolean): Transaction = error("not called")
+        override fun close() = Unit
+    }
+
+    private class FakeAccounts : AccountsRepository {
+        override suspend fun list(): List<Account> = listOf(Account(id = "acct-1", name = "Chequing"))
+        override suspend fun create(account: NewAccount): Account = error("not called")
+        override fun close() = Unit
+    }
+
     private fun model(
         budgets: FakeBudgets = FakeBudgets(),
         categories: FakeCategories = FakeCategories(),
         capabilities: FakeCapabilities = FakeCapabilities(),
         consent: FakeConsent = FakeConsent(),
+        rows: List<Transaction> = emptyList(),
     ): BudgetViewModel = BudgetViewModel(SavedStateHandle()).also {
-        it.bind("user-1") { BudgetRepositories(budgets, categories, capabilities, consent) }
+        it.bind("user-1") { BudgetRepositories(budgets, categories, capabilities, consent, FakeMonthRows(rows), FakeAccounts()) }
+    }
+
+    // ── Ticking a commitment off ────────────────────────────────────────
+
+    private fun withRent(): FakeBudgets = FakeBudgets(ready().copy(commitments = listOf(BudgetCommitment(id = "o-rent", name = "Rent", expected = "1800.00", dueDay = 1))))
+
+    @Test
+    fun a_commitment_opens_with_the_months_payments_and_its_expected_amount() = runTest {
+        val budgets = withRent()
+        val transfer = Transaction(id = "t-1", occurredOn = budgets.answer.month.take(8) + "02", amount = "1800.00", currency = "CAD", direction = TransactionDirection.DEBIT, description = "E-TRANSFER")
+        val model = model(budgets, rows = listOf(transfer))
+
+        model.openTick("o-rent")
+
+        val state = model.uiState.value
+        assertEquals("Mark Rent as paid", state.tickTitle)
+        assertEquals("1800.00", state.payAmount)
+        assertEquals("acct-1", state.payAccountId, "the only account is chosen")
+        assertEquals(listOf("t-1"), state.tickCandidates.map { it.transactionId })
+    }
+
+    @Test
+    fun matching_a_payment_ticks_it_off_and_closes_the_sheet() = runTest {
+        val budgets = withRent()
+        val model = model(budgets)
+        model.openTick("o-rent")
+
+        model.tickWith("t-1")
+
+        assertEquals(listOf("o-rent:t-1"), budgets.ticks)
+        assertNull(model.uiState.value.tickingId)
+    }
+
+    @Test
+    fun a_typed_in_payment_that_already_exists_offers_that_one() = runTest {
+        val budgets = withRent()
+        val model = model(budgets)
+        model.openTick("o-rent")
+        budgets.failTick = ApiException.DuplicateTransaction(DuplicateMatch(id = "t-old", amount = "1800.00", description = "Rent"))
+
+        model.addPayment()
+
+        assertEquals("t-old", model.uiState.value.tickDuplicate?.id)
+        budgets.failTick = null
+        model.useDuplicate()
+        assertEquals(listOf("o-rent:t-old"), budgets.ticks)
     }
 
     // ── Loading ─────────────────────────────────────────────────────────

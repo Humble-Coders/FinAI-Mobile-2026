@@ -146,6 +146,8 @@ internal fun BudgetScreen(
     spending: SpendingActions = SpendingActions(),
     /** The Income screen, where expected income is added. */
     onOpenIncome: () -> Unit = {},
+    /** Ticking a commitment off by hand. */
+    tick: TickActions = TickActions(),
 ) {
     val dark = isSystemInDarkTheme()
     LightStatusBarIcons(dark)
@@ -180,7 +182,7 @@ internal fun BudgetScreen(
                     .padding(horizontal = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
-                Header(state, onMonth, onReviewUnfiled, collapsed)
+                Header(state, onMonth, collapsed)
 
                 when {
                     // The coin loader covers a first load. Drawing the board
@@ -195,11 +197,11 @@ internal fun BudgetScreen(
                         state.boardSoFar?.let { SoFarCard(it) }
                         val forecast = state.boardForecast
                         if (forecast != null) {
-                            ForecastCard(forecast, state.commitments, Modifier.bringIntoViewRequester(commitmentsCard))
+                            ForecastCard(forecast, state.commitments, tick.onOpen, Modifier.bringIntoViewRequester(commitmentsCard))
                         } else if (state.commitments.isNotEmpty()) {
                             BoardCard(Modifier.bringIntoViewRequester(commitmentsCard)) {
                                 Text(strings(Strings.budget_commitments_title), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, modifier = Modifier.semantics { heading() })
-                                state.commitments.forEach { CommitmentRow(it) }
+                                state.commitments.forEach { CommitmentRow(it, tick.onOpen) }
                             }
                         }
                         if (state.showsInsight) {
@@ -210,7 +212,19 @@ internal fun BudgetScreen(
                             // manual budgeting is available before the first
                             // full month (PRD F9), and hiding someone's own
                             // figures would be a lie about what they had set.
-                            Categories(state, onEdit, onAddCategory, onSetSavingsTarget, BudgetAiActions(onUseAi, onAddAi, onAskAi))
+                            Categories(state, onEdit, onAddCategory, BudgetAiActions(onUseAi, onAddAi, onAskAi))
+                            if (state.savings != null || state.canSetSavingsTarget) {
+                                SavingsCard(
+                                    title = BudgetBoard.savingsTitle(state.locale),
+                                    subtitle = BudgetBoard.savingsSubtitle(state.locale),
+                                    target = state.savings?.let { state.allocatedOf(it) },
+                                    progress = state.budget?.let { BudgetBoard.savingsProgress(it, state.locale) },
+                                    fraction = state.budget?.let(BudgetBoard::savingsFraction) ?: 0f,
+                                    setLabel = strings(Strings.budget_set_target),
+                                    room = state.savingsRoomLabel,
+                                    onOpen = { state.savings?.let { onEdit(it.categoryId) } ?: onSetSavingsTarget() },
+                                )
+                            }
                             Extras(state, onReviewUnfiled, onAddUnbudgeted, onAddAi)
                         } else {
                             // A month that has ended is a record, not a plan:
@@ -232,13 +246,14 @@ internal fun BudgetScreen(
     }
 
     if (insightOpen) InsightSheet(state, spending, onOpenPlan) { insightOpen = false }
+    if (state.tickingId != null) CommitmentTickSheet(state, tick)
 }
 
 // ── In the field ────────────────────────────────────────────────────────
 
-/** "FINANCIAL PLANNING", the screen's name, the month, and the review bell. */
+/** "FINANCIAL PLANNING", the screen's name, and the month. */
 @Composable
-private fun Header(state: BudgetUiState, onMonth: (String) -> Unit, onReview: () -> Unit, collapsed: () -> Float) {
+private fun Header(state: BudgetUiState, onMonth: (String) -> Unit, collapsed: () -> Float) {
     Row(
         Modifier.fillMaxWidth().fadesAsTitleCollapses(collapsed),
         verticalAlignment = Alignment.CenterVertically,
@@ -266,36 +281,6 @@ private fun Header(state: BudgetUiState, onMonth: (String) -> Unit, onReview: ()
             )
         }
         MonthButton(state, onMonth)
-        ReviewBell(state.unfiledCount, onReview)
-    }
-}
-
-/** The bell: the review queue, with a dot while anything waits there. */
-@Composable
-private fun ReviewBell(waiting: Int, onClick: () -> Unit) {
-    val label = strings(Strings.board_review)
-    Box(
-        Modifier
-            .size(48.dp)
-            .clip(CircleShape)
-            .background(Field.Glass)
-            .border(1.dp, Field.GlassEdge, CircleShape)
-            .clickable(role = Role.Button, onClickLabel = label, onClick = onClick)
-            .semantics { contentDescription = if (waiting > 0) "$label, $waiting" else label },
-        contentAlignment = Alignment.Center,
-    ) {
-        Icon(Icons.Outlined.Notifications, contentDescription = null, tint = Field.ink(), modifier = Modifier.size(22.dp))
-        if (waiting > 0) {
-            Box(
-                Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(top = 11.dp, end = 12.dp)
-                    .size(10.dp)
-                    .clip(CircleShape)
-                    .background(Color(0xFF4ADE80))
-                    .border(2.dp, Field.top(isSystemInDarkTheme()), CircleShape),
-            )
-        }
     }
 }
 
@@ -533,7 +518,6 @@ private fun Categories(
     state: BudgetUiState,
     onEdit: (String) -> Unit,
     onAddCategory: () -> Unit,
-    onSetSavingsTarget: () -> Unit,
     ai: BudgetAiActions,
 ) {
     BoardCard(glow = BoardPalette.Orange) {
@@ -548,10 +532,7 @@ private fun Categories(
             Text(strings(Strings.budget_empty), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         state.lines.forEach { line -> LineRow(state, line, ai.onUse) { onEdit(line.categoryId) } }
-        // Savings is a target the person sets, never a figure filled in for them.
-        state.savings?.let { line -> LineRow(state, line, ai.onUse) { onEdit(line.categoryId) } }
         state.debt?.let { line -> LineRow(state, line, ai.onUse, caption = strings(Strings.budget_debt_caption)) { onEdit(line.categoryId) } }
-        if (state.canSetSavingsTarget) ActionRow(Icons.Outlined.Savings, strings(Strings.budget_set_target), state.savingsRoomLabel, onSetSavingsTarget)
         ActionRow(Icons.Filled.Add, strings(Strings.budget_add_category), null, onAddCategory)
         if (state.canAskAi) ActionRow(Icons.Outlined.AutoAwesome, strings(Strings.ai_budget_open), null, ai.onAsk, accent = BoardPalette.Violet)
     }

@@ -286,6 +286,16 @@ sealed class ApiException(message: String, cause: Throwable? = null) : Exception
         override val messageKey: String = Strings.ai_budget_error_learning
     }
 
+    /** That transaction already ticks off another commitment (409). */
+    class AlreadyPaysAnother : ApiException("transaction already pays another commitment") {
+        override val messageKey: String = Strings.tick_error_already_pays
+    }
+
+    /** A payment for a month has to fall in it (422 `not_in_month`). */
+    class NotInMonth : ApiException("payment outside the month") {
+        override val messageKey: String = Strings.tick_error_not_in_month
+    }
+
     /** The month's fresh spending checks are used up (429). The last one stays. */
     class SpendingCheckLimitReached : ApiException("spending check limit reached") {
         override val messageKey: String = Strings.spending_error_limit

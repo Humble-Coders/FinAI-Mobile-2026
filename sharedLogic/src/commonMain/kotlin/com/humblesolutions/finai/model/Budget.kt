@@ -193,9 +193,29 @@ data class BudgetCommitment(
     val paidOn: String? = null,
     @SerialName("paid_amount")
     val paidAmount: String? = null,
+    /** The setup row, for ticking it off; null from a server that predates it. */
+    val id: String? = null,
+    /** The transaction that paid it this month, when one did. */
+    @SerialName("transaction_id")
+    val transactionId: String? = null,
+    /** True when the person named that payment by hand. */
+    @SerialName("paid_by_hand")
+    val paidByHand: Boolean = false,
 ) {
     val wasSeen: Boolean get() = paidOn != null
 }
+
+/** A payment typed in to tick a commitment off (`POST …/commitments/{id}/payment`). */
+@Serializable
+data class CommitmentPayment(
+    @SerialName("account_id")
+    val accountId: String = "",
+    @SerialName("occurred_on")
+    val occurredOn: String = "",
+    val amount: String = "",
+    @SerialName("allow_duplicate")
+    val allowDuplicate: Boolean = false,
+)
 
 /** Spending in a category the month's budget has no line for. */
 @Serializable

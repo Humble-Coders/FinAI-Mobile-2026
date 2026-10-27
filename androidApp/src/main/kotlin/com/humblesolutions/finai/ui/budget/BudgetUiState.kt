@@ -2,12 +2,16 @@ package com.humblesolutions.finai.ui.budget
 
 import com.humblesolutions.finai.i18n.LocalizationRegistry
 import com.humblesolutions.finai.i18n.Strings
+import com.humblesolutions.finai.model.Account
 import com.humblesolutions.finai.model.AiLine
 import com.humblesolutions.finai.model.AiPolicy
 import com.humblesolutions.finai.model.Budget
+import com.humblesolutions.finai.model.BudgetCommitment
 import com.humblesolutions.finai.model.BudgetLine
 import com.humblesolutions.finai.model.Category
+import com.humblesolutions.finai.model.DuplicateMatch
 import com.humblesolutions.finai.model.SpendingCheck
+import com.humblesolutions.finai.model.Transaction
 import com.humblesolutions.finai.model.UnbudgetedSpend
 import com.humblesolutions.finai.usecase.AiBudgetEdit
 import com.humblesolutions.finai.usecase.BoardDonut
@@ -20,6 +24,7 @@ import com.humblesolutions.finai.usecase.BudgetEdit
 import com.humblesolutions.finai.usecase.BudgetOverview
 import com.humblesolutions.finai.usecase.CategoryIcon
 import com.humblesolutions.finai.usecase.CategoryIcons
+import com.humblesolutions.finai.usecase.CommitmentTick
 import com.humblesolutions.finai.usecase.DashboardMonths
 import com.humblesolutions.finai.usecase.NextStep
 import com.humblesolutions.finai.usecase.OverviewCommitment
@@ -27,8 +32,11 @@ import com.humblesolutions.finai.usecase.OverviewRow
 import com.humblesolutions.finai.usecase.OverviewSpend
 import com.humblesolutions.finai.usecase.SpendingCheckWords
 import com.humblesolutions.finai.usecase.SpendingShareRow
+import com.humblesolutions.finai.usecase.TickBlock
+import com.humblesolutions.finai.usecase.TickCandidate
 import com.humblesolutions.finai.util.Dates
 import com.humblesolutions.finai.util.Money
+import kotlinx.datetime.LocalDate
 
 /**
  * A month's budget as the screen reads it (#47, PRD F4).
@@ -60,6 +68,18 @@ data class BudgetUiState(
     val spendingPolicy: AiPolicy? = null,
     val spendingConsentTicked: Boolean = false,
     val spendingConsentBusy: Boolean = false,
+    /** The commitment being ticked off by hand, by its setup id; null when the sheet is closed. */
+    val tickingId: String? = null,
+    /** The month's payments out, for matching; null while they load. */
+    val tickRows: List<Transaction>? = null,
+    val accounts: List<Account> = emptyList(),
+    val payAmount: String = "",
+    val payDate: LocalDate? = null,
+    val payAccountId: String? = null,
+    val tickBusy: Boolean = false,
+    val tickErrorKey: String? = null,
+    /** A typed-in payment the server already has: offered to tick off with instead. */
+    val tickDuplicate: DuplicateMatch? = null,
     val loadFailed: Boolean = false,
     val errorKey: String? = null,
 
@@ -200,6 +220,28 @@ data class BudgetUiState(
     fun colorIndexOf(line: BudgetLine): Int = budget?.let { BudgetBoard.colorIndexOf(line, it) } ?: (BudgetBoard.PALETTE_SIZE - 1)
 
     fun shareOfSpending(index: Int): String = budget?.let { BudgetBoard.shareOfSpending(index, it, locale) }.orEmpty()
+
+    // ── Ticking a commitment off ────────────────────────────────────────
+
+    val ticking: BudgetCommitment? get() = tickingId?.let { id -> budget?.commitments?.firstOrNull { it.id == id } }
+
+    val tickTitle: String get() = ticking?.let { CommitmentTick.title(it, locale) }.orEmpty()
+
+    val tickSubtitle: String get() = ticking?.let { c -> budget?.let { CommitmentTick.subtitle(c, it, locale) } }.orEmpty()
+
+    val tickCandidates: List<TickCandidate>
+        get() {
+            val commitment = ticking ?: return emptyList()
+            val budget = budget ?: return emptyList()
+            return CommitmentTick.candidates(tickRows.orEmpty(), commitment, budget, locale)
+        }
+
+    val payBlock: TickBlock? get() = budget?.let { CommitmentTick.blockingReason(payAmount, payDate, payAccountId, it) }
+
+    val canPay: Boolean get() = !tickBusy && payBlock == null
+
+    /** Whether a date may be picked: only days in the budget's month. */
+    fun payDateAllowed(date: LocalDate): Boolean = budget?.let { CommitmentTick.inMonth(date, it) } ?: false
 
     /** The AI card's words: the spending check's headline, else the monthly review's. */
     val insightHeadline: String? get() = spendingCheck?.headline ?: aiAdvice

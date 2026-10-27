@@ -21,7 +21,14 @@ data class OverviewCommitment(
     val amount: String,
     val status: String,
     val seen: Boolean,
+    /** The setup row, for ticking it off; null from a server that predates it. */
+    val id: String? = null,
+    /** Ticked off by hand, so it can be unticked. */
+    val byHand: Boolean = false,
 ) {
+    /** Whether the row opens the tick-off sheet. */
+    val canTick: Boolean get() = id != null
+
     /** One sentence, so a screen reader hears the row once. */
     val description: String get() = "$name, $amount, $status"
 }
@@ -93,6 +100,8 @@ object BudgetOverview {
             amount = Money.format(item.paidAmount ?: item.expected, budget.currency, locale),
             status = status,
             seen = item.wasSeen,
+            id = item.id,
+            byHand = item.paidByHand,
         )
     }
 

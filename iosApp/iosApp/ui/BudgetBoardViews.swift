@@ -150,52 +150,51 @@ struct SoFarCard: View {
     var body: some View {
         let dark = scheme == .dark
         BoardCard {
-            BoardHeader(symbol: "chart.line.uptrend.xyaxis", accent: Mint.greenText(dark), title: board.title, subtitle: board.subtitle) {
+            BoardHeader(symbol: "chart.line.uptrend.xyaxis", accent: Mint.greenText(dark), title: board.title) {
                 BoardStatusPill(text: board.badge, live: board.running)
             }
+            // The panel is exactly as tall as the three figures beside it.
             HStack(alignment: .center, spacing: 14) {
-                VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: 0) {
                     figure(board.income, symbol: "arrow.down", accent: BoardPalette.green)
+                    Spacer(minLength: 10)
                     figure(board.spent, symbol: "arrow.up", accent: BoardPalette.orange)
+                    Spacer(minLength: 10)
                     figure(board.saved, symbol: "banknote", accent: BoardPalette.violet)
                 }
-                .frame(maxWidth: .infinity)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
                 leftPanel(dark)
+                    .frame(maxHeight: .infinity)
             }
+            .fixedSize(horizontal: false, vertical: true)
         }
     }
 
     private func figure(_ figure: BoardFigure, symbol: String, accent: Color) -> some View {
         HStack(spacing: 10) {
             Image(systemName: symbol)
-                .font(.caption2.weight(.semibold))
+                .font(.caption2.weight(.medium))
                 .foregroundColor(accent)
                 .frame(width: 26, height: 26)
                 .background(Circle().fill(accent.opacity(0.14)))
             Text(figure.label).font(.subheadline).lineLimit(1)
             Spacer(minLength: 4)
-            Text(figure.amount).font(.subheadline.weight(.semibold)).lineLimit(1)
+            Text(figure.amount).font(.subheadline.weight(.medium)).lineLimit(1)
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(figure.label), \(figure.amount)")
     }
 
-    /// What is left now: the card's bottom line, on a mint panel with a coin drawn faintly behind it.
+    /// What is left to spend: the card's bottom line, on a mint panel as tall as the figures beside it.
     private func leftPanel(_ dark: Bool) -> some View {
-        VStack(spacing: 6) {
-            Image(systemName: "wallet.pass")
-                .font(.subheadline.weight(.medium))
-                .foregroundColor(Mint.greenText(dark))
-                .frame(width: 36, height: 36)
-                .background(RoundedRectangle(cornerRadius: 12).fill(Mint.panel(dark)))
-                .overlay(RoundedRectangle(cornerRadius: 12).stroke(BoardPalette.green.opacity(0.25), lineWidth: 1))
+        VStack(spacing: 3) {
             Text(board.leftLabel.uppercased())
-                .font(.caption2.weight(.semibold))
+                .font(.caption2.weight(.medium))
                 .tracking(1)
                 .foregroundColor(Mint.greenText(dark))
                 .multilineTextAlignment(.center)
             Text(board.left)
-                .font(.title3.weight(.semibold))
+                .font(.headline.weight(.semibold))
                 .foregroundColor(board.leftNegative ? .red : .primary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.6)
@@ -203,21 +202,22 @@ struct SoFarCard: View {
                 .font(.caption2)
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
+                .lineLimit(2)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 16)
-        .frame(minWidth: 128, maxWidth: 160)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .frame(width: 132)
+        .frame(maxHeight: .infinity)
         .background {
             ZStack(alignment: .topTrailing) {
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
                     .fill(LinearGradient(colors: [BoardPalette.green.opacity(dark ? 0.18 : 0.10), BoardPalette.green.opacity(dark ? 0.06 : 0.03)], startPoint: .top, endPoint: .bottom))
                 // A faint coin in the corner — decoration, never a figure.
-                Circle().fill(BoardPalette.green.opacity(0.10)).frame(width: 68, height: 68).offset(x: 24, y: -20)
-                Circle().stroke(BoardPalette.green.opacity(0.14), lineWidth: 1.5).frame(width: 48, height: 48).offset(x: 14, y: -10)
+                Circle().fill(BoardPalette.green.opacity(0.10)).frame(width: 52, height: 52).offset(x: 20, y: -18)
             }
-            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         }
-        .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(BoardPalette.green.opacity(0.25), lineWidth: 1))
+        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(BoardPalette.green.opacity(0.25), lineWidth: 1))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(board.leftLabel), \(board.left). \(board.leftCaption)")
     }
@@ -225,9 +225,13 @@ struct SoFarCard: View {
 
 // MARK: - Expected this month
 
+/// What is still to come, and on the right — the same height as the figures —
+/// the ring for how much of income the month lands on, with "Left at month
+/// end" under it. The commitments follow, each tappable to tick off by hand.
 struct ForecastCard: View {
     let forecast: BoardForecast
     let commitments: [OverviewCommitment]
+    let onTick: (String) -> Void
     @Environment(\.colorScheme) private var scheme
     @State private var fill: CGFloat = 0
 
@@ -236,27 +240,29 @@ struct ForecastCard: View {
         BoardCard(glow: BoardPalette.teal) {
             BoardHeader(symbol: "chart.bar.fill", accent: Mint.greenText(dark), title: forecast.title, subtitle: forecast.subtitle)
             HStack(alignment: .center, spacing: 14) {
-                VStack(alignment: .leading, spacing: 10) {
-                    ForEach(Array(forecast.rows.enumerated()), id: \.offset) { _, row in signed(row, dark: dark) }
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(Array(forecast.rows.enumerated()), id: \.offset) { index, row in
+                        if index > 0 { Spacer(minLength: 8) }
+                        signed(row, dark: dark)
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                VStack(spacing: 8) {
+                    ring
+                    Spacer(minLength: 0)
                     leftAtEnd(dark)
                 }
-                .frame(maxWidth: .infinity)
-                VStack(spacing: 6) {
-                    ring
-                    Text(forecast.gaugeCaption)
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                        .multilineTextAlignment(.center)
-                        .frame(maxWidth: 116)
-                }
+                .frame(width: 136)
+                .frame(maxHeight: .infinity)
             }
+            .fixedSize(horizontal: false, vertical: true)
             if !commitments.isEmpty {
                 VStack(alignment: .leading, spacing: 0) {
                     Text(L.t(Strings.shared.budget_commitments_title))
                         .font(.subheadline.weight(.medium))
                         .padding(.top, 8)
                         .padding(.bottom, 2)
-                    ForEach(Array(commitments.enumerated()), id: \.offset) { _, item in CommitmentLine(item: item) }
+                    ForEach(Array(commitments.enumerated()), id: \.offset) { _, item in CommitmentLine(item: item, onTick: onTick) }
                 }
                 .padding(.horizontal, 14)
                 .padding(.vertical, 6)
@@ -278,10 +284,10 @@ struct ForecastCard: View {
                 .foregroundColor(accent)
                 .frame(width: 20, height: 20)
                 .background(Circle().fill(accent.opacity(0.14)))
-            Text(row.label).font(.subheadline)
+            Text(row.label).font(.caption)
             Spacer(minLength: 4)
             Text("\(sign)\(row.amount)")
-                .font(.subheadline.weight(.medium))
+                .font(.caption.weight(.medium))
                 .foregroundColor(incoming ? Mint.greenText(dark) : .primary)
                 .lineLimit(1)
         }
@@ -289,27 +295,28 @@ struct ForecastCard: View {
         .accessibilityLabel("\(row.label), \(sign)\(row.amount)")
     }
 
+    /// "Left at month end", under the ring: the amount and whether it is a surplus.
     private func leftAtEnd(_ dark: Bool) -> some View {
         let tone: Color = forecast.surplus ? BoardPalette.green : .red
-        return HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(forecast.leftLabel.uppercased())
-                    .font(.caption2.weight(.semibold))
-                    .tracking(0.8)
-                    .foregroundColor(forecast.surplus ? Mint.greenText(dark) : .red)
-                Text(forecast.left).font(.headline.weight(.semibold)).lineLimit(1).minimumScaleFactor(0.7)
-            }
-            Spacer(minLength: 6)
+        return VStack(spacing: 3) {
+            Text(forecast.leftLabel.uppercased())
+                .font(.caption2.weight(.medium))
+                .tracking(0.6)
+                .foregroundColor(forecast.surplus ? Mint.greenText(dark) : .red)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+            Text(forecast.left).font(.subheadline.weight(.semibold)).lineLimit(1).minimumScaleFactor(0.7)
             Text(forecast.statusLabel)
-                .font(.caption.weight(.semibold))
+                .font(.caption2.weight(.medium))
                 .foregroundColor(.white)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 4)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 2)
                 .background(Capsule().fill(tone))
         }
-        .padding(12)
-        .background(RoundedRectangle(cornerRadius: 16).fill(tone.opacity(0.09)))
-        .overlay(RoundedRectangle(cornerRadius: 16).stroke(tone.opacity(0.3), lineWidth: 1))
+        .padding(8)
+        .frame(maxWidth: .infinity)
+        .background(RoundedRectangle(cornerRadius: 14).fill(tone.opacity(0.09)))
+        .overlay(RoundedRectangle(cornerRadius: 14).stroke(tone.opacity(0.3), lineWidth: 1))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(forecast.leftLabel), \(forecast.left), \(forecast.statusLabel)")
     }
@@ -318,12 +325,12 @@ struct ForecastCard: View {
     private var ring: some View {
         let tone: Color = forecast.surplus ? BoardPalette.green : .red
         return ZStack {
-            Circle().stroke(Color(.tertiarySystemFill), lineWidth: 11)
+            Circle().stroke(Color(.tertiarySystemFill), lineWidth: 9)
             Circle()
                 .trim(from: 0, to: fill)
                 .stroke(
                     AngularGradient(colors: [tone.opacity(0.55), tone, tone.opacity(0.55)], center: .center),
-                    style: StrokeStyle(lineWidth: 11, lineCap: .round)
+                    style: StrokeStyle(lineWidth: 9, lineCap: .round)
                 )
                 .rotationEffect(.degrees(-90))
             VStack(spacing: 0) {
@@ -332,34 +339,97 @@ struct ForecastCard: View {
                     .font(.caption2)
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
-                    .frame(maxWidth: 76)
+                    .frame(maxWidth: 68)
             }
         }
-        .frame(width: 112, height: 112)
+        .frame(width: 96, height: 96)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(forecast.percentLeft)% \(forecast.gaugeLabel)")
     }
 }
 
-/// A commitment: a tick when its payment was seen, an open circle when not — and the words, always.
+/// A commitment: a ticked box when its payment was found, an empty one when
+/// not — and the words, always. Tapping it ticks it off, or changes how.
 struct CommitmentLine: View {
     let item: OverviewCommitment
+    var onTick: ((String) -> Void)?
     @Environment(\.colorScheme) private var scheme
 
     var body: some View {
-        HStack(spacing: 10) {
-            Image(systemName: item.seen ? "checkmark.circle.fill" : "circle")
-                .foregroundColor(item.seen ? Mint.greenText(scheme == .dark) : .secondary)
-            Text(item.name).font(.subheadline).lineLimit(1).truncationMode(.tail)
-            Spacer(minLength: 8)
-            VStack(alignment: .trailing, spacing: 0) {
-                Text(item.amount).font(.subheadline.weight(.medium))
-                Text(item.status).font(.caption2).foregroundColor(.secondary)
+        Button {
+            if let id = item.id { onTick?(id) }
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: item.seen ? "checkmark.square.fill" : "square")
+                    .font(.title3)
+                    .foregroundColor(item.seen ? Mint.greenText(scheme == .dark) : .secondary)
+                Text(item.name).font(.subheadline).foregroundColor(.primary).lineLimit(1).truncationMode(.tail)
+                Spacer(minLength: 8)
+                VStack(alignment: .trailing, spacing: 0) {
+                    Text(item.amount).font(.subheadline.weight(.medium)).foregroundColor(.primary)
+                    Text(item.status).font(.caption2).foregroundColor(.secondary)
+                }
             }
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
         }
-        .frame(minHeight: 44)
+        .buttonStyle(.plain)
+        .disabled(item.id == nil || onTick == nil)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(item.description_)
+        .accessibilityHint(L.t(Strings.shared.tick_a11y_open, item.name))
+        .accessibilityAddTraits(.isButton)
+    }
+}
+
+// MARK: - The savings target
+
+/// The savings target, apart from the categories: what is set aside each
+/// month, how much of it this month has, and a way to set or change it.
+struct SavingsCard: View {
+    let target: String?
+    let progress: String?
+    let fraction: Double
+    let room: String?
+    let locale: String
+    let onOpen: () -> Void
+    @Environment(\.colorScheme) private var scheme
+
+    var body: some View {
+        Button(action: onOpen) {
+            BoardCard(glow: BoardPalette.violet) {
+                BoardHeader(
+                    symbol: "banknote",
+                    accent: BoardPalette.violet,
+                    title: BudgetBoard.shared.savingsTitle(locale: locale),
+                    subtitle: BudgetBoard.shared.savingsSubtitle(locale: locale)
+                ) {
+                    if let target {
+                        VStack(alignment: .trailing, spacing: 2) {
+                            Text(target).font(.subheadline.weight(.semibold)).foregroundColor(.primary)
+                            Image(systemName: "pencil").font(.caption2).foregroundColor(Mint.greenText(scheme == .dark))
+                        }
+                    }
+                }
+                if target != nil {
+                    CategoryBar(fraction: fraction, color: BoardPalette.violet)
+                    if let progress { Text(progress).font(.caption).foregroundColor(.secondary) }
+                } else {
+                    HStack(spacing: 10) {
+                        Image(systemName: "plus").foregroundColor(BoardPalette.violet)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(L.t(Strings.shared.budget_set_target)).font(.subheadline.weight(.medium)).foregroundColor(BoardPalette.violet)
+                            if let room { Text(room).font(.caption).foregroundColor(.secondary) }
+                        }
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
+                    .overlay(RoundedRectangle(cornerRadius: 16).stroke(BoardPalette.violet.opacity(0.35), lineWidth: 1))
+                }
+            }
+        }
+        .buttonStyle(.plain)
     }
 }
 

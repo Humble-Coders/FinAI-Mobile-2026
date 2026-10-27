@@ -47,9 +47,13 @@ class BudgetBoardTest {
         assertEquals("In progress", soFar.badge)
         assertEquals("Income received", soFar.income.label)
         assertEquals(1, soFar.income.sign)
-        assertEquals("Left now", soFar.leftLabel)
-        assertEquals("$0.00", soFar.left)
+        assertEquals("Left to spend", soFar.leftLabel)
+        assertEquals("$3,435.00", soFar.left, "the whole budget, nothing spent yet")
         assertFalse(soFar.leftNegative)
+        val spending = october.copy(totalSpent = "500.00", spentOverall = "3600.00", savings = BudgetLine(categoryId = "savings", slug = "savings", allocated = "300.00"), totalAllocated = "3735.00")
+        val over = BudgetBoard.soFar(spending)!!
+        assertEquals("-$165.00", over.left, "every line but savings, less all spending")
+        assertTrue(over.leftNegative)
         assertEquals("Final", BudgetBoard.soFar(october.copy(monthEnded = true, monthLeft = "-20.00"))!!.badge)
         assertTrue(BudgetBoard.soFar(october.copy(monthEnded = true, monthLeft = "-20.00"))!!.leftNegative)
     }
@@ -121,5 +125,17 @@ class BudgetBoardTest {
         assertEquals(2, BudgetBoard.nextSteps(october.copy(projectedLeft = "-10.00"), planAvailable = true).size)
         assertTrue(BudgetBoard.nextSteps(october.copy(monthEnded = true), planAvailable = true).isEmpty())
         assertEquals("1 action suggested to optimize budget", BudgetBoard.nextStepsSubtitle(1))
+    }
+
+    @Test
+    fun savings_has_its_own_card_and_stays_out_of_the_donut() {
+        val withSavings = october.copy(savings = BudgetLine(categoryId = "savings", slug = "savings", name = "Savings", allocated = "500.00"), totalAllocated = "3935.00", monthSaved = "150.00")
+        val donut = BudgetBoard.donut(withSavings)!!
+        assertFalse(donut.slices.any { it.label == "Savings" })
+        assertEquals("$0.00 / $3,435.00", donut.totals)
+        assertEquals("52% allotted", BudgetBoard.allotted(withSavings.lines[0], withSavings))
+        assertEquals("$150.00 of $500.00 set aside this month", BudgetBoard.savingsProgress(withSavings))
+        assertEquals(0.3f, BudgetBoard.savingsFraction(withSavings))
+        assertNull(BudgetBoard.savingsProgress(october))
     }
 }

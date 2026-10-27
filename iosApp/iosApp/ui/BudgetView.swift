@@ -84,6 +84,7 @@ struct BudgetView: View {
         .sheet(isPresented: editingShown) { BudgetEditorSheet(model: model) }
         .sheet(isPresented: $model.picking) { BudgetCategorySheet(model: model) }
         .sheet(isPresented: $insightOpen) { insightSheet(dark) }
+        .sheet(isPresented: tickShown) { CommitmentTickSheet(model: model) }
         .fullScreenCover(isPresented: $askingAi) {
             AiBudgetView(userId: userId, inSetup: false) {
                 askingAi = false
@@ -100,6 +101,10 @@ struct BudgetView: View {
                 onCancel: { pickingMonth = false }
             )
         }
+    }
+
+    private var tickShown: Binding<Bool> {
+        Binding(get: { model.tickingId != nil }, set: { if !$0 { model.closeTick() } })
     }
 
     private var editingShown: Binding<Bool> {
@@ -120,12 +125,14 @@ struct BudgetView: View {
         }
         let commitments = BudgetOverview.shared.commitments(budget: budget, locale: locale)
         if let forecast = board.forecast(budget: budget, locale: locale) {
-            ForecastCard(forecast: forecast, commitments: commitments)
+            ForecastCard(forecast: forecast, commitments: commitments) { model.openTick($0) }
                 .id(Self.commitmentsAnchor)
         } else if !commitments.isEmpty {
             BoardCard {
                 Text(L.t(Strings.shared.budget_commitments_title)).font(.subheadline.weight(.semibold)).accessibilityAddTraits(.isHeader)
-                ForEach(Array(commitments.enumerated()), id: \.offset) { _, item in CommitmentLine(item: item) }
+                ForEach(Array(commitments.enumerated()), id: \.offset) { _, item in
+                    CommitmentLine(item: item) { model.openTick($0) }
+                }
             }
             .id(Self.commitmentsAnchor)
         }
@@ -137,6 +144,21 @@ struct BudgetView: View {
             // available before the first full month (PRD F9), and hiding
             // someone's own figures would be a lie about what they had set.
             categories(budget, dark: dark)
+            if model.savings != nil || budget.savingsCategoryId != nil {
+                SavingsCard(
+                    target: model.savings.map { money($0.allocated) },
+                    progress: BudgetBoard.shared.savingsProgress(budget: budget, locale: locale),
+                    fraction: Double(BudgetBoard.shared.savingsFraction(budget: budget)),
+                    room: BudgetOverview.shared.savingsRoom(budget: budget, locale: locale),
+                    locale: locale
+                ) {
+                    if let savings = model.savings {
+                        model.edit(categoryId: savings.categoryId)
+                    } else {
+                        model.setSavingsTarget()
+                    }
+                }
+            }
             extras(budget, dark: dark)
         } else {
             // A month that has ended is a record, not a plan: a one-off is a
@@ -165,7 +187,7 @@ struct BudgetView: View {
 
     // MARK: - In the field
 
-    /// "FINANCIAL PLANNING", the screen's name, the month, and the review bell.
+    /// "FINANCIAL PLANNING", the screen's name, and the month.
     private var header: some View {
         HStack(alignment: .center, spacing: 10) {
             VStack(alignment: .leading, spacing: 2) {
@@ -185,7 +207,6 @@ struct BudgetView: View {
             }
             Spacer(minLength: 4)
             monthButton
-            reviewBell
         }
         .modifier(HeaderFade(collapse: collapse))
         .onGeometryChange(for: CGFloat.self) { proxy in
@@ -193,31 +214,6 @@ struct BudgetView: View {
         } action: { (top: CGFloat) in
             collapse.track(top: top)
         }
-    }
-
-    /// The bell: the review queue, with a dot while anything waits there.
-    private var reviewBell: some View {
-        let waiting = Int(model.budget?.uncategorisedCount ?? 0)
-        let label = L.t(Strings.shared.board_review)
-        return Button(action: onReview) {
-            ZStack(alignment: .topTrailing) {
-                Image(systemName: "bell")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundColor(Field.ink())
-                    .frame(width: 44, height: 44)
-                    .background(Circle().fill(Field.glass))
-                    .overlay(Circle().stroke(Field.glassEdge, lineWidth: 1))
-                if waiting > 0 {
-                    Circle()
-                        .fill(Color(red: 0.290, green: 0.871, blue: 0.502))
-                        .frame(width: 10, height: 10)
-                        .overlay(Circle().stroke(Field.top(scheme == .dark), lineWidth: 2))
-                        .offset(x: -9, y: 9)
-                }
-            }
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(waiting > 0 ? "\(label), \(waiting)" : label)
     }
 
     /**
@@ -407,17 +403,6 @@ struct BudgetView: View {
                 Text(L.t(Strings.shared.budget_empty)).font(.subheadline).foregroundColor(.secondary)
             }
             ForEach(model.lines, id: \.categoryId) { line in LineRow(model: model, line: line, dark: dark) }
-            // Savings is a target the person sets, never a figure filled in for them.
-            if let savings = model.savings {
-                LineRow(model: model, line: savings, dark: dark)
-            } else if budget.savingsCategoryId != nil {
-                actionRow(
-                    symbol: "banknote",
-                    title: L.t(Strings.shared.budget_set_target),
-                    detail: BudgetOverview.shared.savingsRoom(budget: budget, locale: model.locale),
-                    accent: Mint.greenText(dark)
-                ) { model.setSavingsTarget() }
-            }
             if let debt = model.debt {
                 LineRow(model: model, line: debt, dark: dark, caption: L.t(Strings.shared.budget_debt_caption))
             }

@@ -17,7 +17,6 @@ data class BoardFigure(
 /** "This month so far": the month as the statements tell it, and what is left of it now. */
 data class BoardSoFar(
     val title: String,
-    val subtitle: String,
     /** "In progress" while the month runs, "Final" once it has ended. */
     val badge: String,
     val running: Boolean,
@@ -105,27 +104,44 @@ object BudgetBoard {
 
     // ── This month so far ───────────────────────────────────────────────
 
+    /**
+     * The month as the statements tell it, and beside it: while the month
+     * runs, what is **left to spend** of its budget — every line but savings,
+     * less everything spent so far, in or out of the lines, so an overspend
+     * anywhere shows; once it has ended, what was left over.
+     */
     fun soFar(budget: Budget, locale: String = "en"): BoardSoFar? {
         val income = budget.monthIncome ?: return null
         val spending = budget.monthSpending ?: return null
-        val left = budget.monthLeft ?: return null
         val ended = budget.monthEnded
         fun money(amount: String) = Money.format(amount, budget.currency, locale)
         val digits = budget.fractionDigits
+        val left = if (ended) budget.monthLeft ?: return null else leftToSpend(budget) ?: return null
         return BoardSoFar(
             title = BudgetOverview.soFarTitle(budget, locale),
-            subtitle = text(Strings.board_so_far_subtitle, locale),
             badge = text(if (ended) Strings.board_final else Strings.board_in_progress, locale),
             running = !ended,
             income = BoardFigure(text(if (ended) Strings.budget_income else Strings.budget_income_received, locale), money(income), 1),
             spent = BoardFigure(text(Strings.budget_spent, locale), money(spending), -1),
             saved = BoardFigure(text(Strings.budget_saved, locale), money(budget.monthSaved ?: "0"), 0),
-            leftLabel = text(if (ended) Strings.budget_left_over else Strings.budget_left_now, locale),
+            leftLabel = text(if (ended) Strings.budget_left_over else Strings.board_left_to_spend, locale),
             left = money(left),
-            leftCaption = text(if (ended) Strings.board_left_caption_ended else Strings.board_left_caption_running, locale),
+            leftCaption = text(if (ended) Strings.board_left_caption_ended else Strings.board_left_to_spend_caption, locale),
             leftNegative = Money.signOf(left, digits) < 0,
         )
     }
+
+    /** Every line but savings, less everything spent so far; negative once over. */
+    internal fun leftToSpend(budget: Budget): String? {
+        val digits = budget.fractionDigits
+        val spendingBudget = Money.difference(budget.totalAllocated, budget.savings?.allocated ?: "0", digits) ?: return null
+        return Money.difference(spendingBudget, budget.spentTotal, digits)
+    }
+
+    /** The lines the categories card shows: every line but savings, which has its own card. */
+    private fun spendingLines(budget: Budget): List<BudgetLine> = (budget.lines + listOfNotNull(budget.debt)).filter { Money.isPositive(it.allocated, budget.fractionDigits) }
+
+    private fun spendingTotal(budget: Budget): String = spendingLines(budget).fold("0") { sum, line -> Money.add(sum, line.allocated, budget.fractionDigits) ?: sum }
 
     // ── Expected this month ─────────────────────────────────────────────
 
@@ -184,21 +200,23 @@ object BudgetBoard {
                 slices = slices(spends.map { (it.name ?: text(Strings.budget_not_filed, locale)) to it.spent }, total, locale),
             )
         } else {
-            val lines = budget.allLines.filter { Money.isPositive(it.allocated, budget.fractionDigits) }
+            val lines = spendingLines(budget)
             if (lines.isEmpty()) return null
+            val total = spendingTotal(budget)
+            val spent = lines.fold("0") { sum, line -> Money.add(sum, line.spent, budget.fractionDigits) ?: sum }
             BoardDonut(
                 title = text(Strings.board_categories_title, locale),
-                centre = Money.compact(budget.totalAllocated, budget.currency, locale),
+                centre = Money.compact(total, budget.currency, locale),
                 centreCaption = text(Strings.board_donut_budgeted, locale),
                 totalsLabel = text(Strings.board_spent_of_total, locale),
-                totals = format(Strings.board_spent_of, locale, money(budget.totalSpent), money(budget.totalAllocated)),
-                slices = slices(lines.sortedByDescending { it.allocated.toDoubleOrNull() ?: 0.0 }.map { it.name to it.allocated }, budget.totalAllocated, locale),
+                totals = format(Strings.board_spent_of, locale, money(spent), money(total)),
+                slices = slices(lines.sortedByDescending { it.allocated.toDoubleOrNull() ?: 0.0 }.map { it.name to it.allocated }, total, locale),
             )
         }
     }
 
     /** "52% allotted": a line's share of everything budgeted. */
-    fun allotted(line: BudgetLine, budget: Budget, locale: String = "en"): String = format(Strings.board_allotted, locale, percentOf(line.allocated, budget.totalAllocated).coerceAtLeast(0).toString())
+    fun allotted(line: BudgetLine, budget: Budget, locale: String = "en"): String = format(Strings.board_allotted, locale, percentOf(line.allocated, spendingTotal(budget)).coerceAtLeast(0).toString())
 
     /** "18% of spending": an ended month's category as a share of what was spent. */
     fun shareOfSpending(index: Int, budget: Budget, locale: String = "en"): String {
@@ -210,7 +228,7 @@ object BudgetBoard {
 
     /** The colour a line is drawn in: its slice's, so the row and the donut agree. */
     fun colorIndexOf(line: BudgetLine, budget: Budget): Int {
-        val ranked = budget.allLines.filter { Money.isPositive(it.allocated, budget.fractionDigits) }.sortedByDescending { it.allocated.toDoubleOrNull() ?: 0.0 }
+        val ranked = spendingLines(budget).sortedByDescending { it.allocated.toDoubleOrNull() ?: 0.0 }
         val at = ranked.indexOfFirst { it.categoryId == line.categoryId }
         return if (at < 0) PALETTE_SIZE - 1 else at.coerceAtMost(PALETTE_SIZE - 1)
     }
@@ -283,6 +301,28 @@ object BudgetBoard {
     // ── The header ──────────────────────────────────────────────────────
 
     fun eyebrow(locale: String = "en"): String = text(Strings.board_eyebrow, locale)
+
+    // ── The savings target ──────────────────────────────────────────────
+
+    /** "Savings target", its own card: what is set aside each month. */
+    fun savingsTitle(locale: String = "en"): String = text(Strings.savings_card_title, locale)
+
+    fun savingsSubtitle(locale: String = "en"): String = text(Strings.savings_card_subtitle, locale)
+
+    /** "$150.00 of $500.00 set aside this month", when there is a target. */
+    fun savingsProgress(budget: Budget, locale: String = "en"): String? {
+        val target = budget.savings ?: return null
+        fun money(amount: String) = Money.format(amount, budget.currency, locale)
+        return format(Strings.savings_card_saved, locale, money(budget.monthSaved ?: "0"), money(target.allocated))
+    }
+
+    /** How far this month's saving is toward the target, 0 to 1 — a bar's length. A ratio, not money. */
+    fun savingsFraction(budget: Budget): Float {
+        val target = budget.savings?.allocated?.toDoubleOrNull() ?: return 0f
+        if (target <= 0.0) return 0f
+        val saved = budget.monthSaved?.toDoubleOrNull() ?: 0.0
+        return (saved / target).toFloat().coerceIn(0f, 1f)
+    }
 
     // ── Helpers ─────────────────────────────────────────────────────────
 

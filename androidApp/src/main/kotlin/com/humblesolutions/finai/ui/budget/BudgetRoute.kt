@@ -69,6 +69,17 @@ internal fun BudgetRoute(
         onImport = onImport,
         onOpenPlan = onOpenPlan,
         onOpenIncome = onOpenIncome,
+        tick = TickActions(
+            onOpen = model::openTick,
+            onClose = model::closeTick,
+            onMatch = model::tickWith,
+            onAmount = model::onPayAmount,
+            onDate = model::onPayDate,
+            onAccount = model::onPayAccount,
+            onAdd = { model.addPayment() },
+            onUseDuplicate = model::useDuplicate,
+            onUntick = model::untick,
+        ),
         spending = SpendingActions(
             onAsk = model::askSpending,
             onConsentTicked = model::onSpendingConsentTicked,

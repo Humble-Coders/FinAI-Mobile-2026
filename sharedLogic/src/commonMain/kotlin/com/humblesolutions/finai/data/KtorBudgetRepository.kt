@@ -4,6 +4,7 @@ import com.humblesolutions.finai.model.AiAccept
 import com.humblesolutions.finai.model.AiProposal
 import com.humblesolutions.finai.model.ApiException
 import com.humblesolutions.finai.model.Budget
+import com.humblesolutions.finai.model.CommitmentPayment
 import com.humblesolutions.finai.model.SpendingCheck
 import com.humblesolutions.finai.repository.BudgetRepository
 import com.humblesolutions.finai.repository.SessionTokenSource
@@ -42,6 +43,15 @@ class KtorBudgetRepository internal constructor(
     override suspend fun review(month: String): Budget = http.postEmpty("budgets/$month/ai/review")
 
     @Throws(ApiException::class, CancellationException::class)
+    override suspend fun tickOff(month: String, commitmentId: String, transactionId: String): Budget = http.putJson("budgets/$month/commitments/$commitmentId/payment", TickOffBody(transactionId))
+
+    @Throws(ApiException::class, CancellationException::class)
+    override suspend fun tickOffWithNew(month: String, commitmentId: String, payment: CommitmentPayment): Budget = http.postJson("budgets/$month/commitments/$commitmentId/payment", payment)
+
+    @Throws(ApiException::class, CancellationException::class)
+    override suspend fun untick(month: String, commitmentId: String): Budget = http.deleteJson("budgets/$month/commitments/$commitmentId/payment")
+
+    @Throws(ApiException::class, CancellationException::class)
     override suspend fun spendingCheck(month: String): SpendingCheck = http.getJson("budgets/$month/spending-check")
 
     @Throws(ApiException::class, CancellationException::class)
@@ -49,6 +59,10 @@ class KtorBudgetRepository internal constructor(
 
     override fun close() = http.close()
 }
+
+/** The body of `PUT /budgets/{month}/commitments/{id}/payment`. */
+@Serializable
+internal data class TickOffBody(@SerialName("transaction_id") val transactionId: String)
 
 /** The body of `PUT /budgets/{month}/lines/{category_id}`. */
 @Serializable
