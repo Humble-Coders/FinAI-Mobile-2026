@@ -1169,4 +1169,11 @@ object Strings {
     const val savings_card_saved = "savings_card_saved" // "{0} of {1} set aside this month"
     const val board_left_to_spend = "board_left_to_spend" // "Left to spend"
     const val board_left_to_spend_caption = "board_left_to_spend_caption" // "Of this month's budget"
+
+    // ── The emergency fund suggestion (2026-10-28) ──────────────────────
+    const val goals_emergency_title = "goals_emergency_title" // "Add an emergency fund"
+    const val goals_emergency_body = "goals_emergency_body" // "About a month of your spending, {0}, keeps a surprise bill off your credit card."
+    const val goals_emergency_body_plain = "goals_emergency_body_plain" // "A month of your spending set aside keeps a surprise bill off your credit card."
+    const val goals_emergency_name = "goals_emergency_name" // "Emergency fund"
+    const val goals_emergency_add = "goals_emergency_add" // "Add goal"
 }

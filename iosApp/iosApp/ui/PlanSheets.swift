@@ -17,25 +17,6 @@ struct ChoicesSheet: View {
         NavigationStack {
             Form {
                 Section {
-                    Toggle(L.t(Strings.shared.plan_field_keep_buffer), isOn: $model.hasBuffer)
-                    if model.hasBuffer {
-                        HStack(spacing: 6) {
-                            Text(L.t(Strings.shared.plan_field_buffer)).foregroundColor(.secondary)
-                            Spacer(minLength: 8)
-                            Text(model.currencySymbol).foregroundColor(.secondary)
-                            TextField(model.amountPlaceholder, text: $model.buffer)
-                                .keyboardType(.decimalPad)
-                                .multilineTextAlignment(.trailing)
-                                .focused($focused, equals: .buffer)
-                        }
-                    }
-                } header: {
-                    Text(L.t(Strings.shared.plan_choice_buffer))
-                } footer: {
-                    Text(L.t(Strings.shared.plan_choice_buffer_why))
-                }
-
-                Section {
                     percentField(L.t(Strings.shared.plan_field_goal_share), text: $model.goalShare, field: .goalShare)
                 } header: {
                     Text(L.t(Strings.shared.plan_choice_goal_share))

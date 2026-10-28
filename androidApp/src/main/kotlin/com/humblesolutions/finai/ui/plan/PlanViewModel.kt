@@ -295,7 +295,7 @@ class PlanViewModel(
         page = saved.get<String>(KEY_PAGE)?.let { runCatching { PlanPage.valueOf(it) }.getOrNull() } ?: PlanPage.PLAN,
         choosing = saved[KEY_CHOOSING] ?: false,
         choicesDraft = PlanChoicesDraft(
-            hasBuffer = saved[KEY_HAS_BUFFER] ?: true,
+            hasBuffer = false,
             buffer = saved[KEY_BUFFER] ?: "",
             goalSharePercent = saved[KEY_GOAL_SHARE] ?: "",
             rateLinePercent = saved[KEY_RATE_LINE] ?: "",

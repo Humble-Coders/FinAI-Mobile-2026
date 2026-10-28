@@ -121,8 +121,33 @@ struct GoalsView: View {
 
     // MARK: - The sheet
 
+    /// "Add an emergency fund": a month of spending set aside, offered until there is one.
+    private func emergencySuggestion(_ title: String, dark: Bool) -> some View {
+        let green = Mint.greenText(dark)
+        return HStack(spacing: 12) {
+            Image(systemName: "shield")
+                .font(.title3)
+                .foregroundColor(green)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.subheadline.weight(.semibold))
+                Text(model.emergencyBody).font(.caption).foregroundColor(.secondary)
+            }
+            Spacer(minLength: 4)
+            Button(L.t(Strings.shared.goals_emergency_add)) { model.startEmergency() }
+                .font(.subheadline.weight(.semibold))
+                .foregroundColor(green)
+                .frame(minHeight: 44)
+        }
+        .padding(14)
+        .background(RoundedRectangle(cornerRadius: 18).fill(green.opacity(dark ? 0.2 : 0.1)))
+        .overlay(RoundedRectangle(cornerRadius: 18).stroke(green.opacity(0.35), lineWidth: 1))
+    }
+
     private func sheet(_ dark: Bool) -> some View {
         VStack(alignment: .leading, spacing: 10) {
+            if let title = model.emergencyTitle { emergencySuggestion(title, dark: dark) }
+
             if model.showsEmpty {
                 Text(L.t(Strings.shared.goals_empty_title)).font(.headline)
                 Text(L.t(Strings.shared.goals_empty_body)).font(.subheadline).foregroundColor(.secondary)

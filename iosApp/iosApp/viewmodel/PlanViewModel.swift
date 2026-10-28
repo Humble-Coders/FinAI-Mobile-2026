@@ -37,7 +37,8 @@ final class PlanViewModel: ObservableObject {
 
     // MARK: The choices — Swift cannot `copy()` a Kotlin draft, so its fields live here
     @Published private(set) var choosing = false
-    @Published var hasBuffer = true { didSet { choicesErrorKey = nil } }
+    /// No buffer step since 2026-10-28: always false, kept for the shared draft's shape.
+    @Published var hasBuffer = false { didSet { choicesErrorKey = nil } }
     @Published var buffer = "" { didSet { choicesErrorKey = nil } }
     @Published var goalShare = "" { didSet { choicesErrorKey = nil } }
     @Published var rateLine = "" { didSet { choicesErrorKey = nil } }
@@ -473,7 +474,7 @@ final class PlanViewModel: ObservableObject {
         owner = value.owner
         page = Page(rawValue: value.page) ?? .plan
         choosing = value.choosing
-        hasBuffer = value.hasBuffer
+        hasBuffer = false
         buffer = value.buffer
         goalShare = value.goalShare
         rateLine = value.rateLine

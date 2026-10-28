@@ -308,4 +308,24 @@ class GoalEditTest {
 
         assertEquals(listOf("g1"), GoalEdit.forHome(GoalsPage(goals = reached)).map { it.id })
     }
+
+    @Test
+    fun an_emergency_fund_is_suggested_at_a_month_of_spending() {
+        val page = GoalsPage(suggestsEmergencyFund = true, emergencyFundTarget = "3643.00")
+
+        assertEquals("Add an emergency fund", GoalEdit.emergencyTitle(page))
+        assertEquals("About a month of your spending, $3,643.00, keeps a surprise bill off your credit card.", GoalEdit.emergencyBody(page, "CAD"))
+        val draft = GoalEdit.emergencyDraft(page, "CAD")
+        assertEquals("Emergency fund", draft.name)
+        assertEquals(GoalKind.EMERGENCY_FUND, draft.kind)
+        assertEquals(GoalHorizon.SHORT_TERM, draft.horizon)
+        assertEquals("3643.00", draft.target)
+    }
+
+    @Test
+    fun with_one_already_there_is_no_suggestion() {
+        assertEquals(null, GoalEdit.emergencyTitle(GoalsPage(suggestsEmergencyFund = false)))
+        assertEquals("A month of your spending set aside keeps a surprise bill off your credit card.", GoalEdit.emergencyBody(GoalsPage(suggestsEmergencyFund = true), "CAD"))
+        assertEquals("", GoalEdit.emergencyDraft(GoalsPage(suggestsEmergencyFund = true), "CAD").target)
+    }
 }

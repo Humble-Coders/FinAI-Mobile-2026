@@ -223,6 +223,20 @@ class GoalsViewModel(
         it.copy(creating = true, editingId = null, draft = GoalDraft(), editErrorKey = null, today = ManualEntry.today())
     }
 
+    /** The suggestion's "Add goal": a new goal, started as an emergency fund at the suggested amount. */
+    fun startEmergency() {
+        val page = _uiState.value.page ?: return
+        update {
+            it.copy(
+                creating = true,
+                editingId = null,
+                draft = GoalEdit.emergencyDraft(page, it.currency, it.locale),
+                editErrorKey = null,
+                today = ManualEntry.today(),
+            )
+        }
+    }
+
     fun edit(goalId: String) {
         val goal = _uiState.value.goals.firstOrNull { it.id == goalId } ?: return
         update { it.copy(creating = false, editingId = goal.id, draft = GoalEdit.draftOf(goal), editErrorKey = null, today = ManualEntry.today()) }

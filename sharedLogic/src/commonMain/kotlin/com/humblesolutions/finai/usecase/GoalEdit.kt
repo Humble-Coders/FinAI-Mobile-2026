@@ -89,6 +89,26 @@ object GoalEdit {
 
     // ── Drafts ──────────────────────────────────────────────────────────
 
+    // ── The emergency fund suggestion ───────────────────────────────────
+
+    /** "Add an emergency fund", while there is none and the screen may add a goal. */
+    fun emergencyTitle(page: GoalsPage, locale: String = "en"): String? = if (page.suggestsEmergencyFund) LocalizationRegistry.get(Strings.goals_emergency_title, locale) else null
+
+    /** Why, with the suggested amount when there is one. */
+    fun emergencyBody(page: GoalsPage, currency: String, locale: String = "en"): String {
+        val target = page.emergencyFundTarget
+            ?: return LocalizationRegistry.get(Strings.goals_emergency_body_plain, locale)
+        return LocalizationRegistry.format(Strings.goals_emergency_body, listOf(Money.format(target, currency, locale)), locale)
+    }
+
+    /** The editor's start for it: named, of its kind, short-term, at the suggested amount. */
+    fun emergencyDraft(page: GoalsPage, currency: String, locale: String = "en"): GoalDraft = GoalDraft(
+        name = LocalizationRegistry.get(Strings.goals_emergency_name, locale),
+        kind = GoalKind.EMERGENCY_FUND,
+        horizon = GoalHorizon.SHORT_TERM,
+        target = page.emergencyFundTarget?.let { Money.normalize(it, Money.fractionDigits(currency)) }.orEmpty(),
+    )
+
     fun draftOf(goal: Goal): GoalDraft = GoalDraft(
         name = goal.name,
         kind = goal.kind?.takeIf { it != GoalKind.UNKNOWN },

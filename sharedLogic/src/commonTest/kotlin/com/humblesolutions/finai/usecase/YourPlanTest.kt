@@ -12,6 +12,7 @@ import com.humblesolutions.finai.model.PlanTotals
 import com.humblesolutions.finai.util.Money
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -142,10 +143,11 @@ class YourPlanTest {
     fun `a choice that differs from the suggestion says the suggestion`() {
         val rows = YourPlan.choiceRows(preferences.copy(goalSharePercent = "30.00"), words)
 
-        assertNull(rows[0].suggestion)
-        assertEquals("30%", rows[1].value)
-        assertEquals("Suggested: 20%", rows[1].suggestion)
-        assertEquals("Highest rate first", rows[3].value)
+        assertEquals(3, rows.size, "goal share, rate line and strategy: no buffer")
+        assertEquals("30%", rows[0].value)
+        assertEquals("Suggested: 20%", rows[0].suggestion)
+        assertNull(rows[1].suggestion)
+        assertEquals("Highest rate first", rows[2].value)
     }
 
     @Test
@@ -160,11 +162,10 @@ class YourPlanTest {
     fun `each choice is checked`() {
         val draft = YourPlan.draftOf(preferences)
 
-        assertEquals(PlanChoiceBlock.NO_BUFFER_AMOUNT, YourPlan.blockingReason(preferences, draft.copy(buffer = ""), "CAD"))
-        assertEquals(PlanChoiceBlock.BUFFER_ZERO, YourPlan.blockingReason(preferences, draft.copy(buffer = "0"), "CAD"))
+        assertFalse(draft.hasBuffer, "no buffer step to choose")
         assertEquals(PlanChoiceBlock.GOAL_SHARE_INVALID, YourPlan.blockingReason(preferences, draft.copy(goalSharePercent = "101"), "CAD"))
         assertEquals(PlanChoiceBlock.RATE_LINE_INVALID, YourPlan.blockingReason(preferences, draft.copy(rateLinePercent = ""), "CAD"))
-        assertNull(YourPlan.blockingReason(preferences, draft.copy(hasBuffer = false, buffer = ""), "CAD"))
+        assertNull(YourPlan.blockingReason(preferences, draft.copy(goalSharePercent = "25"), "CAD"))
     }
 
     @Test
@@ -187,11 +188,10 @@ class YourPlanTest {
     }
 
     @Test
-    fun `the editor says when saving keeps the buffer as a goal`() {
+    fun `saving never makes a buffer goal any more`() {
         val fresh = preferences.copy(bufferGoalId = null)
 
-        assertNotNull(YourPlan.bufferGoalNote(fresh, YourPlan.draftOf(fresh)))
-        assertNull(YourPlan.bufferGoalNote(preferences, YourPlan.draftOf(preferences)))
-        assertNull(YourPlan.bufferGoalNote(fresh, YourPlan.draftOf(fresh).copy(hasBuffer = false)))
+        assertNull(YourPlan.bufferGoalNote(fresh, YourPlan.draftOf(fresh)))
+        assertNull(YourPlan.toSave(YourPlan.draftOf(fresh), "CAD").buffer)
     }
 }
