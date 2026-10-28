@@ -51,6 +51,8 @@ data class DashboardUiState(
     /** First paint. A month change uses [refreshing], so the figures stay up. */
     val loading: Boolean = true,
     val refreshing: Boolean = false,
+    /** A new month was picked: the coin covers the wait for its figures. */
+    val switchingMonth: Boolean = false,
     /** Only when there is nothing to show: a failed refresh keeps the month it had. */
     val loadFailed: Boolean = false,
     val errorKey: String? = null,

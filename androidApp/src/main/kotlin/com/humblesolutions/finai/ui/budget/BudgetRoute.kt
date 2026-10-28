@@ -26,6 +26,8 @@ internal fun BudgetRoute(
     onRequestedMonthShown: () -> Unit = {},
     /** Your plan (#76); null when it is off. */
     onOpenPlan: (() -> Unit)? = null,
+    /** The Income screen, from "Add any expected income". */
+    onOpenIncome: () -> Unit = {},
 ) {
     val model: BudgetViewModel = viewModel()
     val state by model.uiState.collectAsStateWithLifecycle()
@@ -66,6 +68,23 @@ internal fun BudgetRoute(
         onRetry = { model.load() },
         onImport = onImport,
         onOpenPlan = onOpenPlan,
+        onOpenIncome = onOpenIncome,
+        tick = TickActions(
+            onOpen = model::openTick,
+            onClose = model::closeTick,
+            onMatch = model::tickWith,
+            onAmount = model::onPayAmount,
+            onDate = model::onPayDate,
+            onAccount = model::onPayAccount,
+            onAdd = { model.addPayment() },
+            onUseDuplicate = model::useDuplicate,
+            onUntick = model::untick,
+        ),
+        spending = SpendingActions(
+            onAsk = model::askSpending,
+            onConsentTicked = model::onSpendingConsentTicked,
+            onAgree = model::agreeSpending,
+        ),
     )
 
     if (state.editing != null) {
@@ -73,9 +92,10 @@ internal fun BudgetRoute(
             state = state,
             actions = BudgetEditorActions(
                 onAmountChange = model::onAmountChange,
-                onSave = model::save,
+                onSave = { model.save() },
                 onUseSuggestion = model::useSuggestion,
                 onCancel = model::cancelEdit,
+                onSaveThisMonth = { model.save(thisMonthOnly = true) },
             ),
         )
     }

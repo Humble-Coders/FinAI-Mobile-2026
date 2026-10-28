@@ -183,6 +183,7 @@ class DashboardViewModel : ViewModel() {
                         capabilities = capabilities ?: it.capabilities,
                         loading = false,
                         refreshing = false,
+                        switchingMonth = false,
                         loadFailed = false,
                         errorKey = null,
                     )
@@ -197,6 +198,7 @@ class DashboardViewModel : ViewModel() {
                     it.copy(
                         loading = false,
                         refreshing = false,
+                        switchingMonth = false,
                         // A refresh that fails keeps what it had; a first load
                         // has nothing to keep and must say so.
                         loadFailed = !refresh,
@@ -434,7 +436,7 @@ class DashboardViewModel : ViewModel() {
 
     private fun show(month: LocalDate) {
         if (month == _uiState.value.month) return
-        _uiState.update { it.copy(month = month) }
+        _uiState.update { it.copy(month = month, switchingMonth = repositories != null) }
         // A refresh, not a load: the month label changes at once and the old
         // figures stay until the new ones arrive, rather than the screen
         // emptying on every step.

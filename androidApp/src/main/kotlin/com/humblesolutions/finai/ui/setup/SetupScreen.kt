@@ -213,6 +213,7 @@ fun SetupScreen(
                         onContinue()
                     },
                     enabled = state.canContinue,
+                    busy = state.busy,
                 )
                 Spacer(Modifier.height(16.dp))
             }
@@ -419,7 +420,7 @@ private fun SetupRequiredScreen(onResume: () -> Unit) {
 }
 
 @Composable
-private fun StepTitle(step: SetupStep, titleKey: String, bodyKey: String) {
+private fun StepTitle(step: SetupStep, titleKey: String, bodyKey: String?) {
     Text(
         text = strings(Strings.setup_step_label, step.number.toString()).uppercase(),
         style = MaterialTheme.typography.labelMedium,
@@ -428,6 +429,7 @@ private fun StepTitle(step: SetupStep, titleKey: String, bodyKey: String) {
     )
     Spacer(Modifier.height(4.dp))
     Text(strings(titleKey), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+    if (bodyKey == null) return
     Spacer(Modifier.height(8.dp))
     Text(
         text = strings(bodyKey),
@@ -448,11 +450,6 @@ private fun IncomeStep(onIncomeChange: (String) -> Unit, state: SetupUiState) {
         suffix = strings(Strings.setup_per_month),
         isError = state.step == SetupStep.INCOME && state.notice?.step == SetupStep.INCOME,
         imeAction = ImeAction.Done,
-    )
-    Text(
-        text = strings(Strings.setup_income_hint),
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
 }
 
@@ -486,7 +483,7 @@ private fun ExpensesStep(
 
 @Composable
 private fun PortfolioStep(state: SetupUiState, onOpenList: (ItemList) -> Unit) {
-    StepTitle(SetupStep.PORTFOLIO, Strings.setup_portfolio_title, Strings.setup_portfolio_body)
+    StepTitle(SetupStep.PORTFOLIO, Strings.setup_portfolio_title, null)
     ListRow(
         label = strings(Strings.setup_debts_label),
         total = state.totalOf(ItemList.DEBTS),

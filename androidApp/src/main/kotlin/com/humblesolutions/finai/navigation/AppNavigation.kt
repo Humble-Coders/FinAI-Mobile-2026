@@ -54,6 +54,7 @@ import com.humblesolutions.finai.i18n.Strings
 import com.humblesolutions.finai.model.Capabilities
 import com.humblesolutions.finai.model.OnboardingStep
 import com.humblesolutions.finai.model.ResetStage
+import com.humblesolutions.finai.model.SessionState
 import com.humblesolutions.finai.model.SocialProvider
 import com.humblesolutions.finai.ui.aibudget.AiBudgetRoute
 import com.humblesolutions.finai.ui.budget.BudgetRoute
@@ -89,6 +90,7 @@ import com.humblesolutions.finai.ui.transactions.TransactionsRoute
 import com.humblesolutions.finai.usecase.Destination
 import com.humblesolutions.finai.usecase.MoneyKind
 import com.humblesolutions.finai.usecase.YourPlan
+import com.humblesolutions.finai.util.LoaderTiming
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
@@ -105,11 +107,11 @@ fun AppNavigation(viewModel: OnboardingViewModel) {
     val loader = remember { AppLoader() }
 
     // One coin loader for the whole app, mounted here so it survives every step
-    // change: centred, with everything behind it blurred, for at least two
-    // seconds. Signing in or up, the hand-over between steps, and the wizard's
-    // first load all use it.
+    // change: centred, with everything behind it blurred. Signing in or up holds
+    // it for two seconds; everything after shows it only as long as it takes.
     LoaderHost(
         active = state.busy || state.showLoadingCard || loader.requested,
+        minimumMs = LoaderTiming.minimumMs(signedIn = state.session == SessionState.SIGNED_IN),
         loader = loader,
     ) {
         Box(Modifier.fillMaxSize()) { AppContent(viewModel) }
@@ -422,6 +424,9 @@ private fun HomeOrEntry(userId: String, onSignOut: () -> Unit) {
     // is saveable with the route, as Review's is.
     val planOn = capabilities?.isEnabled(YourPlan.FEATURE) == true
     var planFrom by rememberSaveable { mutableStateOf(HomeRoute.HOME) }
+
+    /** Where Income's back arrow goes: Home, or the Budget tab's next step. */
+    var incomeFrom by rememberSaveable { mutableStateOf(HomeRoute.HOME) }
     val openPlan = { to: HomeRoute ->
         planFrom = route
         route = to
@@ -457,7 +462,7 @@ private fun HomeOrEntry(userId: String, onSignOut: () -> Unit) {
                         onSignOut = onSignOut,
                         onOpenMoney = { kind ->
                             route = when (kind) {
-                                MoneyKind.INCOME -> HomeRoute.INCOME
+                                MoneyKind.INCOME -> HomeRoute.INCOME.also { incomeFrom = HomeRoute.HOME }
                                 MoneyKind.EXPENSES -> HomeRoute.EXPENSES
                                 MoneyKind.INVESTMENTS -> HomeRoute.INVESTMENTS
                                 MoneyKind.DEBTS -> HomeRoute.DEBTS
@@ -516,13 +521,17 @@ private fun HomeOrEntry(userId: String, onSignOut: () -> Unit) {
                         } else {
                             null
                         },
+                        onOpenIncome = {
+                            incomeFrom = HomeRoute.BUDGET
+                            route = HomeRoute.INCOME
+                        },
                     )
 
                     HomeRoute.GOALS -> GoalsRoute(userId = userId, onClose = { route = HomeRoute.HOME })
 
                     // The four money screens open over the bar, like a flow,
                     // and back returns home.
-                    HomeRoute.INCOME -> MoneyDetailRoute(userId, MoneyKind.INCOME, onBack = { route = HomeRoute.HOME })
+                    HomeRoute.INCOME -> MoneyDetailRoute(userId, MoneyKind.INCOME, onBack = { route = incomeFrom })
 
                     HomeRoute.EXPENSES -> MoneyDetailRoute(userId, MoneyKind.EXPENSES, onBack = { route = HomeRoute.HOME })
 

@@ -158,7 +158,7 @@ struct StatementImportView: View {
     /// design has them. Continue waits for a real choice.
     private var accountStep: some View {
         VStack(alignment: .leading, spacing: 20) {
-            MintTitle(title: L.t(Strings.shared.import_account_title), subtitle: L.t(Strings.shared.import_account_hint))
+            MintTitle(title: L.t(Strings.shared.import_account_title), subtitle: nil)
             MintPanel {
                 if let key = model.accountsErrorKey {
                     ErrorText(messageKey: key)
@@ -214,7 +214,7 @@ struct StatementImportView: View {
                     ChoiceCardLabel(
                         symbol: "doc.text.fill", accent: Brand.green,
                         title: L.t(Strings.shared.import_pick_file_title),
-                        detail: L.t(Strings.shared.import_pick_file_detail)
+                        detail: nil
                     )
                 }
                 .buttonStyle(.plain)
@@ -222,7 +222,7 @@ struct StatementImportView: View {
                     ChoiceCardLabel(
                         symbol: "photo.fill", accent: Brand.blue,
                         title: L.t(Strings.shared.import_pick_photo),
-                        detail: L.t(Strings.shared.import_pick_photo_detail)
+                        detail: nil
                     )
                 }
                 .buttonStyle(.plain)
@@ -241,9 +241,6 @@ struct StatementImportView: View {
                 HStack(alignment: .center, spacing: 14) {
                     IconTile(symbol: "lock.fill", accent: Brand.green, size: 40, iconSize: 18)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(L.t(Strings.shared.import_private_title))
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundColor(Mint.greenText(dark))
                         Text(L.t(Strings.shared.import_on_device))
                             .font(.footnote)
                             .foregroundColor(Brand.textMuted)
@@ -640,9 +637,6 @@ struct StatementImportView: View {
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(L.t(Strings.shared.import_check_between)).font(.subheadline)
-                        Text(L.t(Strings.shared.import_check_between_hint))
-                            .font(.caption)
-                            .foregroundColor(Brand.textMuted)
                     }
                     Spacer()
                     Text(model.checkMoneyLabel(between)).font(.subheadline)

@@ -44,9 +44,35 @@ final class BudgetViewModel: ObservableObject {
     @Published private(set) var editErrorKey: String?
     @Published var picking = false
 
+    /// How you're spending: the month's spending against income, and its last
+    /// AI check. Nil until read, or without an income from setup.
+    @Published private(set) var spendingCheck: SpendingCheck?
+    @Published private(set) var checkingSpending = false
+    @Published private(set) var spendingErrorKey: String?
+    /// The AI may not be asked yet: the policy is shown first.
+    @Published private(set) var spendingPolicy: AiPolicy?
+    @Published var spendingConsentTicked = false
+    @Published private(set) var spendingConsentBusy = false
+
+    /// The commitment being ticked off by hand, by its setup id; nil when the sheet is closed.
+    @Published private(set) var tickingId: String?
+    /// The month's payments out, for matching; nil while they load.
+    @Published private(set) var tickRows: [SharedLogic.Transaction]?
+    @Published private(set) var accounts: [Account] = []
+    @Published var payAmount = ""
+    @Published var payDate = Date()
+    @Published var payAccountId: String?
+    @Published private(set) var tickBusy = false
+    @Published private(set) var tickErrorKey: String?
+    /// A typed-in payment the server already has: offered to tick off with instead.
+    @Published private(set) var tickDuplicate: DuplicateMatch?
+
     private var budgets: BudgetRepository?
     private var categoriesRepository: CategoriesRepository?
     private var capabilities: CapabilitiesRepository?
+    private var consent: AiConsentRepository?
+    private var transactionsRepository: TransactionsRepository?
+    private var accountsRepository: AccountsRepository?
     private var owner: String?
     private var generation = 0
     private var listener: Task<Void, Never>?
@@ -71,6 +97,9 @@ final class BudgetViewModel: ObservableObject {
         budgets = KtorBudgetRepository(baseUrl: base, tokens: tokens, logging: logging)
         categoriesRepository = KtorCategoriesRepository(baseUrl: base, tokens: tokens, logging: logging)
         capabilities = KtorCapabilitiesRepository(baseUrl: base, tokens: tokens, logging: logging)
+        consent = KtorAiConsentRepository(baseUrl: base, tokens: tokens, logging: logging)
+        transactionsRepository = KtorTransactionsRepository(baseUrl: base, tokens: tokens, logging: logging)
+        accountsRepository = KtorAccountsRepository(baseUrl: base, tokens: tokens, logging: logging)
         listenForChanges()
         Task { await load() }
     }
@@ -81,9 +110,15 @@ final class BudgetViewModel: ObservableObject {
         budgets?.close()
         categoriesRepository?.close()
         capabilities?.close()
+        consent?.close()
+        transactionsRepository?.close()
+        accountsRepository?.close()
+        transactionsRepository = nil
+        accountsRepository = nil
         budgets = nil
         categoriesRepository = nil
         capabilities = nil
+        consent = nil
     }
 
     private func reset() {
@@ -99,6 +134,9 @@ final class BudgetViewModel: ObservableObject {
         errorKey = nil
         cancelEdit()
         picking = false
+        spendingCheck = nil
+        spendingErrorKey = nil
+        spendingPolicy = nil
     }
 
     /**
@@ -129,6 +167,8 @@ final class BudgetViewModel: ObservableObject {
         switchingMonth = true
         errorKey = nil
         loadFailed = false
+        spendingCheck = nil
+        spendingErrorKey = nil
         Task { await load(refresh: true) }
     }
 
@@ -184,6 +224,244 @@ final class BudgetViewModel: ObservableObject {
         loadFailed = false
         errorKey = nil
         reviewIfDue(answer)
+        loadSpending()
+    }
+
+    // MARK: Ticking a commitment off
+
+    var ticking: BudgetCommitment? {
+        guard let id = tickingId else { return nil }
+        return budget?.commitments.first { $0.id == id }
+    }
+
+    var tickCandidates: [TickCandidate] {
+        guard let commitment = ticking, let budget else { return [] }
+        return CommitmentTick.shared.candidates(rows: tickRows ?? [], commitment: commitment, budget: budget, locale: locale)
+    }
+
+    private var payLocalDate: Kotlinx_datetimeLocalDate? {
+        let parts = Calendar.current.dateComponents([.year, .month, .day], from: payDate)
+        let iso = String(format: "%04d-%02d-%02d", parts.year ?? 1970, parts.month ?? 1, parts.day ?? 1)
+        return Dates.shared.parse(iso: iso)
+    }
+
+    var payBlock: TickBlock? {
+        guard let budget else { return nil }
+        return CommitmentTick.shared.blockingReason(amount: payAmount, date: payLocalDate, accountId: payAccountId, budget: budget)
+    }
+
+    var canPay: Bool { !tickBusy && payBlock == nil }
+
+    /// The days a payment may fall on: the budget's month, never after today.
+    var payDateRange: ClosedRange<Date> {
+        let calendar = Calendar.current
+        let start = calendar.date(from: monthComponents) ?? Date()
+        let end = calendar.date(byAdding: DateComponents(month: 1, day: -1), to: start) ?? start
+        return start...max(start, min(end, Date()))
+    }
+
+    private var monthComponents: DateComponents {
+        let parts = month.split(separator: "-").compactMap { Int($0) }
+        return DateComponents(year: parts.first, month: parts.count > 1 ? parts[1] : 1, day: 1)
+    }
+
+    /// The sheet for one commitment: the month's payments out to match it
+    /// with, and a form to type the payment in. Android's `openTick`.
+    func openTick(_ commitmentId: String) {
+        guard let budget, let commitment = budget.commitments.first(where: { $0.id == commitmentId }) else { return }
+        tickingId = commitmentId
+        tickRows = nil
+        payAmount = Money.shared.normalize(raw: commitment.expected, fractionDigits: Money.shared.fractionDigits(currency: budget.currency)) ?? ""
+        let start = CommitmentTick.shared.defaultDate(commitment: commitment, budget: budget, today: DashboardMonths.shared.today(timeZone: Kotlinx_datetimeTimeZone.companion.currentSystemDefault()))
+        let parts = start.description.split(separator: "-").compactMap { Int($0) }
+        payDate = parts.count == 3
+            ? Calendar.current.date(from: DateComponents(year: parts[0], month: parts[1], day: parts[2])) ?? Date()
+            : Date()
+        payAccountId = accounts.count == 1 ? accounts.first?.id : nil
+        tickBusy = false
+        tickErrorKey = nil
+        tickDuplicate = nil
+        let asked = month
+        Task {
+            var rows: [SharedLogic.Transaction] = []
+            var cursor: String?
+            var pages = 0
+            repeat {
+                guard let page = try? await transactionsRepository?.list(statementImportId: nil, month: asked, needsReview: nil, cursor: cursor) else { break }
+                rows += page.rows
+                cursor = page.nextCursor
+                pages += 1
+            } while cursor != nil && pages < 4
+            let found = (try? await accountsRepository?.list()) ?? []
+            guard tickingId == commitmentId else { return }
+            tickRows = rows
+            if !found.isEmpty { accounts = found }
+            if payAccountId == nil, found.count == 1 { payAccountId = found.first?.id }
+        }
+    }
+
+    func closeTick() {
+        guard !tickBusy else { return }
+        tickingId = nil
+        tickErrorKey = nil
+        tickDuplicate = nil
+    }
+
+    /// Tick off with a payment already recorded: nothing new is counted.
+    func tickWith(_ transactionId: String) {
+        tick(newPayment: false) { budgets, month, id in
+            try await budgets.tickOff(month: month, commitmentId: id, transactionId: transactionId)
+        }
+    }
+
+    /// Tick off with the payment typed in: recorded once, then named as what paid it.
+    func addPayment() {
+        guard let budget,
+              let payment = CommitmentTick.shared.payment(amount: payAmount, date: payLocalDate, accountId: payAccountId, budget: budget, allowDuplicate: false)
+        else { return }
+        tick(newPayment: true) { budgets, month, id in
+            try await budgets.tickOffWithNew(month: month, commitmentId: id, payment: payment)
+        }
+    }
+
+    /// "Use that payment": the one the server said was already there.
+    func useDuplicate() {
+        guard let id = tickDuplicate?.id else { return }
+        tickWith(id)
+    }
+
+    func untick() {
+        tick(newPayment: false) { budgets, month, id in
+            try await budgets.untick(month: month, commitmentId: id)
+        }
+    }
+
+    private func tick(newPayment: Bool, call: @escaping (BudgetRepository, String, String) async throws -> Budget) {
+        guard let budgets, let id = tickingId, !tickBusy else { return }
+        let asked = month
+        tickBusy = true
+        tickErrorKey = nil
+        tickDuplicate = nil
+        Task {
+            do {
+                let answer = try await call(budgets, asked, id)
+                budget = answer
+                tickBusy = false
+                tickingId = nil
+                // A payment typed in is a new transaction: Home's figures move.
+                if newPayment { LedgerChanged.announce() } else { BudgetChanged.announce() }
+            } catch {
+                tickBusy = false
+                if let duplicate = Self.kotlin(error) as? ApiException.DuplicateTransaction {
+                    tickDuplicate = duplicate.match
+                }
+                tickErrorKey = Self.messageKey(error)
+            }
+        }
+    }
+
+    // MARK: How you're spending
+
+    /// Quietly: a household with no income from setup has nothing to check,
+    /// and the card is simply not drawn. Android's `loadSpending`.
+    private func loadSpending() {
+        guard let budgets else { return }
+        let started = generation
+        let asked = month
+        Task {
+            let check = try? await budgets.spendingCheck(month: asked)
+            guard started == generation else { return }
+            spendingCheck = check
+        }
+    }
+
+    var spendingRows: [SpendingShareRow] {
+        spendingCheck.map { SpendingCheckWords.shared.rows(c: $0, locale: locale) } ?? []
+    }
+
+    func tip(for categoryId: String) -> String? {
+        SpendingCheckWords.shared.tipFor(c: spendingCheck, categoryId: categoryId, locale: locale)
+    }
+
+    func oneOff(_ line: BudgetLine) -> String? {
+        SpendingCheckWords.shared.oneOff(amount: line.oneOff, currency: budget?.currency ?? "", locale: locale)
+    }
+
+    func oneOff(_ spend: UnbudgetedSpend) -> String? {
+        SpendingCheckWords.shared.oneOff(amount: spend.oneOff, currency: budget?.currency ?? "", locale: locale)
+    }
+
+    func thisMonthOnly(_ line: BudgetLine) -> String? {
+        SpendingCheckWords.shared.thisMonthOnly(line: line, locale: locale)
+    }
+
+    /// Whether the editor asks "this month only, or every month".
+    var asksHowLong: Bool { SpendingCheckWords.shared.asksHowLong(line: editing) }
+
+    /// "Ask AI how to spend" / "Check again".
+    func askSpending() {
+        guard let budgets, let check = spendingCheck, !checkingSpending,
+              SpendingCheckWords.shared.canAsk(c: check) else { return }
+        let started = generation
+        let asked = month
+        checkingSpending = true
+        spendingErrorKey = nil
+        Task {
+            do {
+                let answer = try await budgets.runSpendingCheck(month: asked)
+                guard started == generation else { return }
+                checkingSpending = false
+                spendingCheck = answer
+            } catch {
+                checkingSpending = false
+                if Self.kotlin(error) is ApiException.ConsentRequired {
+                    await askForConsent()
+                } else {
+                    spendingErrorKey = Self.messageKey(error)
+                }
+            }
+        }
+    }
+
+    private func askForConsent() async {
+        guard let consent else { return }
+        do {
+            spendingPolicy = try await consent.policy()
+            spendingConsentTicked = false
+        } catch {
+            spendingErrorKey = Self.messageKey(error)
+        }
+    }
+
+    /// Records consent to the policy shown, then asks.
+    func agreeSpending() {
+        guard let consent, let shown = spendingPolicy, spendingConsentTicked else { return }
+        spendingConsentBusy = true
+        spendingErrorKey = nil
+        Task {
+            do {
+                try await consent.consent(version: shown.version)
+                spendingConsentBusy = false
+                spendingPolicy = nil
+                spendingConsentTicked = false
+                askSpending()
+            } catch {
+                spendingConsentBusy = false
+                if Self.kotlin(error) is ApiException.AiPolicyChanged {
+                    await askForConsent()
+                } else {
+                    spendingErrorKey = Self.messageKey(error)
+                }
+            }
+        }
+    }
+
+    private static func kotlin(_ error: Error) -> KotlinThrowable? {
+        (error as NSError).userInfo["KotlinException"] as? KotlinThrowable
+    }
+
+    private static func messageKey(_ error: Error) -> String {
+        (kotlin(error) as? ApiException)?.messageKey ?? Strings.shared.error_unexpected
     }
 
     private func failed(_ error: Error, categories fetched: [SharedLogic.Category], payload: Capabilities?) {
@@ -232,7 +510,9 @@ final class BudgetViewModel: ObservableObject {
             spent: "0",
             aiSuggested: nil,
             aiReason: nil,
-            over: nil
+            over: nil,
+            oneOff: nil,
+            thisMonthOnly: false
         )
         editingIsNew = true
         draftAmount = ""
@@ -282,7 +562,7 @@ final class BudgetViewModel: ObservableObject {
         let asked = month
         Task {
             do {
-                let answer = try await budgets.setLine(month: asked, categoryId: categoryId, amount: amount)
+                let answer = try await budgets.setLine(month: asked, categoryId: categoryId, amount: amount, thisMonthOnly: false)
                 saving = false
                 budget = answer
                 BudgetChanged.announce()
@@ -307,7 +587,9 @@ final class BudgetViewModel: ObservableObject {
             spent: "0",
             aiSuggested: nil,
             aiReason: nil,
-            over: nil
+            over: nil,
+            oneOff: nil,
+            thisMonthOnly: false
         )
         editingIsNew = true
         draftAmount = extra.amount
@@ -364,14 +646,16 @@ final class BudgetViewModel: ObservableObject {
      failure keeps the sheet open with what was typed: the person's input is
      the thing hardest to get back.
      */
-    func save() {
+    func save(thisMonthOnly: Bool = false) {
         guard let budgets, let line = editing, canSave else { return }
         let amount = draftAmount
         saving = true
         editErrorKey = nil
         Task {
             do {
-                let answer = try await budgets.setLine(month: month, categoryId: line.categoryId, amount: amount)
+                let answer = try await budgets.setLine(
+                    month: month, categoryId: line.categoryId, amount: amount, thisMonthOnly: thisMonthOnly
+                )
                 budget = answer
                 saving = false
                 cancelEdit()
@@ -494,7 +778,9 @@ final class BudgetViewModel: ObservableObject {
             spent: parts[8],
             aiSuggested: nil,
             aiReason: nil,
-            over: nil
+            over: nil,
+            oneOff: nil,
+            thisMonthOnly: false
         )
         editingIsNew = parts[9] == "1"
         draftAmount = parts[10]

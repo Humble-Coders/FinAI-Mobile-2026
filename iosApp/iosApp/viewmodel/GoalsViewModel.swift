@@ -191,6 +191,17 @@ final class GoalsViewModel: ObservableObject {
 
     var atLimit: Bool { Int(page?.openCount ?? 0) >= Int(GoalEdit.shared.OPEN_LIMIT) }
 
+    /// "Add an emergency fund", while there is none and room for another goal.
+    var emergencyTitle: String? {
+        guard let page, !atLimit else { return nil }
+        return GoalEdit.shared.emergencyTitle(page: page, locale: locale)
+    }
+
+    var emergencyBody: String {
+        guard let page else { return "" }
+        return GoalEdit.shared.emergencyBody(page: page, currency: currency, locale: locale)
+    }
+
     func amounts(of goal: Goal) -> String { GoalEdit.shared.amountsLine(goal: goal, words: words) }
 
     func status(of goal: Goal) -> String { GoalEdit.shared.statusLine(goal: goal, words: words) }
@@ -255,6 +266,19 @@ final class GoalsViewModel: ObservableObject {
 
     func startNew() {
         clearEditor()
+        today = ManualEntry.shared.today()
+        creating = true
+    }
+
+    /// The suggestion's "Add goal": a new goal, started as an emergency fund at the suggested amount.
+    func startEmergency() {
+        guard let page else { return }
+        let start = GoalEdit.shared.emergencyDraft(page: page, currency: currency, locale: locale)
+        clearEditor()
+        name = start.name
+        kind = start.kind
+        horizon = start.horizon
+        target = start.target
         today = ManualEntry.shared.today()
         creating = true
     }

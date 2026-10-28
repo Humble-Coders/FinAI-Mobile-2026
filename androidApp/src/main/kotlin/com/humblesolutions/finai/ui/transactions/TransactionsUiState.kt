@@ -41,12 +41,16 @@ data class TransactionsUiState(
 
     val loading: Boolean = true,
     val refreshing: Boolean = false,
+    /** A new month was picked: the coin covers the wait for its figures. */
+    val switchingMonth: Boolean = false,
     val loadingMore: Boolean = false,
     val loadFailed: Boolean = false,
     val errorKey: String? = null,
 
     // ── Editing one row ─────────────────────────────────────────────────
     val editing: Transaction? = null,
+    /** "One-off purchase" is being saved for the row being edited. */
+    val oneOffSaving: Boolean = false,
     val draft: CorrectionDraft = CorrectionDraft(),
     val saving: Boolean = false,
     val deleting: Boolean = false,
@@ -208,6 +212,7 @@ data class TransactionsUiState(
                 titleKey = Strings.transactions_edit_title,
                 deleting = deleting,
                 deleteSummary = ImportedRows.summary(row, locale),
+                oneOffSaving = oneOffSaving,
             )
         }
 }

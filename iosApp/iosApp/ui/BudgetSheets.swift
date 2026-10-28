@@ -16,6 +16,8 @@ struct BudgetEditorSheet: View {
 
     @ObservedObject var model: BudgetViewModel
     @FocusState private var amountFocused: Bool
+    /// Which of the two saves is in flight, for its spinner.
+    @State private var savingThisMonth = false
 
     var body: some View {
         NavigationStack {
@@ -60,6 +62,15 @@ struct BudgetEditorSheet: View {
                             .disabled(model.busy)
                     }
                 }
+
+                // Asked, never assumed: a laptop month raised by hand must not
+                // become every month's budget without the person saying so.
+                if model.asksHowLong {
+                    Section {
+                        saveButton(Strings.shared.budget_save_every_month, thisMonthOnly: false)
+                        saveButton(Strings.shared.budget_save_this_month, thisMonthOnly: true)
+                    }
+                }
             }
             .navigationTitle(model.editing?.name ?? "")
             .navigationBarTitleDisplayMode(.inline)
@@ -69,7 +80,9 @@ struct BudgetEditorSheet: View {
                         .disabled(model.busy)
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    if model.saving {
+                    if model.asksHowLong {
+                        EmptyView()
+                    } else if model.saving {
                         ProgressView()
                     } else {
                         Button(L.t(Strings.shared.action_save)) { model.save() }
@@ -84,8 +97,23 @@ struct BudgetEditorSheet: View {
                 }
             }
         }
-        .presentationDetents([.medium])
+        .presentationDetents([.medium, .large])
         .onAppear { amountFocused = true }
+    }
+
+    private func saveButton(_ key: String, thisMonthOnly: Bool) -> some View {
+        Button {
+            savingThisMonth = thisMonthOnly
+            model.save(thisMonthOnly: thisMonthOnly)
+        } label: {
+            HStack {
+                Text(L.t(key)).fontWeight(thisMonthOnly ? .regular : .semibold)
+                Spacer()
+                if model.saving && savingThisMonth == thisMonthOnly { ProgressView() }
+            }
+            .frame(minHeight: 44)
+        }
+        .disabled(!model.canSave)
     }
 
     /// "Use suggestion ($440)", shown only for a line the person overrode — or

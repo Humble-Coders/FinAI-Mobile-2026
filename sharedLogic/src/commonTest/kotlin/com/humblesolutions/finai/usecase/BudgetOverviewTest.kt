@@ -84,7 +84,7 @@ class BudgetOverviewTest {
             BudgetOverview.stillExpected(october),
         )
         assertEquals(
-            "If the month goes to plan, you'll have $1,280.63 left after spending and saving. Put it toward your goals or add it to your savings.",
+            "You'll have $1,280.63 left this month. Put it toward goals or savings.",
             BudgetOverview.suggestion(october),
         )
     }
@@ -100,7 +100,7 @@ class BudgetOverviewTest {
         assertEquals("You spent $216.79 more than came in this month.", BudgetOverview.suggestion(august))
         val kept = august.copy(monthLeft = "83.21")
         assertEquals(
-            "After spending and saving, you had $83.21 left this month. Put it toward your goals or add it to your savings.",
+            "You had $83.21 left this month. Put it toward goals or savings.",
             BudgetOverview.suggestion(kept),
         )
     }
@@ -155,7 +155,7 @@ class BudgetOverviewTest {
     @Test
     fun until_a_target_is_set_the_room_for_one_is_offered() {
         val room = october.copy(savingsRoom = "1562.00", savingsCategoryId = "cat-savings")
-        assertEquals("Up to $1,562.00 is left after your other lines.", BudgetOverview.savingsRoom(room))
+        assertEquals("Up to $1,562.00 available", BudgetOverview.savingsRoom(room))
         val line = BudgetOverview.savingsTargetToSet(room)
         assertEquals("cat-savings", line?.categoryId)
         assertEquals("savings", line?.slug)

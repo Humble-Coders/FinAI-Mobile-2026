@@ -646,6 +646,7 @@ class ManualEntryViewModelTest {
 
         override suspend fun delete(id: String) = error("not manual entry")
 
+        override suspend fun setOneOff(id: String, oneOff: Boolean): Transaction = error("not called")
         override fun close() = Unit
     }
 

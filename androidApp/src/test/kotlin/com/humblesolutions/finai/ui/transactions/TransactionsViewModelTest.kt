@@ -86,6 +86,13 @@ class TransactionsViewModelTest {
             page = page.copy(rows = page.rows.filterNot { it.id == id })
             return DeleteOutcome()
         }
+        val oneOffs = mutableListOf<Pair<String, Boolean>>()
+        override suspend fun setOneOff(id: String, oneOff: Boolean): Transaction {
+            oneOffs += id to oneOff
+            // As the server does: the next read carries it.
+            page = page.copy(rows = page.rows.map { if (it.id == id) it.copy(oneOff = oneOff) else it })
+            return page.rows.first { it.id == id }
+        }
         override fun close() = Unit
     }
 
@@ -296,6 +303,20 @@ class TransactionsViewModelTest {
         assertEquals("86.40", editor.draft.amount)
         assertFalse(editor.canSave, "nothing has changed yet")
         assertNull(editor.notice, "and that is not worth saying before a touch")
+    }
+
+    @Test
+    fun a_one_off_is_saved_at_once_and_shown_on_the_row() = runTest {
+        val (model, repo) = editable()
+        model.edit("r1")
+
+        model.setOneOff(true)
+
+        assertEquals(listOf("r1" to true), repo.oneOffs)
+        assertTrue(model.uiState.value.editor!!.row.oneOff)
+        assertTrue(model.uiState.value.rows.first { it.id == "r1" }.oneOff)
+        model.setOneOff(true)
+        assertEquals(1, repo.oneOffs.size, "already one-off: nothing to send")
     }
 
     @Test

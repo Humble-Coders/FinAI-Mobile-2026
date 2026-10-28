@@ -24,10 +24,15 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -49,9 +54,12 @@ import com.humblesolutions.finai.util.Money
 /** What the editor sheet can do, passed down rather than reached for. */
 internal data class BudgetEditorActions(
     val onAmountChange: (String) -> Unit,
+    /** Save for every month: the months after start from this amount. */
     val onSave: () -> Unit,
     val onUseSuggestion: () -> Unit,
     val onCancel: () -> Unit,
+    /** Save for this month only: the months after keep what they would have had. */
+    val onSaveThisMonth: () -> Unit = {},
 )
 
 /**
@@ -127,20 +135,50 @@ internal fun BudgetEditorSheet(state: BudgetUiState, actions: BudgetEditorAction
                 TextButton(onClick = actions.onUseSuggestion, enabled = !busy) { Text(label) }
             }
 
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
-                TextButton(onClick = actions.onCancel, enabled = !busy) { Text(strings(Strings.action_cancel)) }
-                Spacer(Modifier.weight(1f))
-                Button(onClick = actions.onSave, enabled = state.canSave) {
-                    if (state.saving) {
-                        CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
-                        Spacer(Modifier.size(8.dp))
-                        Text(strings(Strings.budget_edit_saving))
-                    } else {
-                        Text(strings(Strings.action_save))
+            if (state.asksHowLong) {
+                // Asked, never assumed: a laptop month raised by hand must not
+                // become every month's budget without the person saying so.
+                var savingThisMonth by remember { mutableStateOf(false) }
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    Button(
+                        onClick = {
+                            savingThisMonth = false
+                            actions.onSave()
+                        },
+                        enabled = state.canSave,
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                    ) { SaveLabel(state.saving && !savingThisMonth, Strings.budget_save_every_month) }
+                    OutlinedButton(
+                        onClick = {
+                            savingThisMonth = true
+                            actions.onSaveThisMonth()
+                        },
+                        enabled = state.canSave,
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                    ) { SaveLabel(state.saving && savingThisMonth, Strings.budget_save_this_month) }
+                    TextButton(onClick = actions.onCancel, enabled = !busy, modifier = Modifier.align(Alignment.CenterHorizontally)) {
+                        Text(strings(Strings.action_cancel))
                     }
+                }
+            } else {
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+                    TextButton(onClick = actions.onCancel, enabled = !busy) { Text(strings(Strings.action_cancel)) }
+                    Spacer(Modifier.weight(1f))
+                    Button(onClick = actions.onSave, enabled = state.canSave) { SaveLabel(state.saving, Strings.action_save) }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun SaveLabel(saving: Boolean, labelKey: String) {
+    if (saving) {
+        CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+        Spacer(Modifier.size(8.dp))
+        Text(strings(Strings.budget_edit_saving))
+    } else {
+        Text(strings(labelKey))
     }
 }
 

@@ -108,5 +108,13 @@ interface TransactionsRepository {
     @Throws(ApiException::class, CancellationException::class)
     suspend fun delete(id: String): DeleteOutcome
 
+    /**
+     * Mark a purchase one-off, or not. It still counts in its month; it is
+     * only left out of what the months after are budgeted from. Leaves the
+     * row's review state alone.
+     */
+    @Throws(ApiException::class, CancellationException::class)
+    suspend fun setOneOff(id: String, oneOff: Boolean): Transaction
+
     fun close()
 }

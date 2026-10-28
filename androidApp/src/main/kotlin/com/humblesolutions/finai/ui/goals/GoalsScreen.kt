@@ -25,6 +25,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.WarningAmber
+import androidx.compose.material.icons.outlined.Shield
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -72,6 +73,8 @@ internal data class GoalsActions(
     val onMoveUp: (Int) -> Unit,
     val onMoveDown: (Int) -> Unit,
     val onRetry: () -> Unit,
+    /** The emergency fund suggestion's "Add goal". */
+    val onAddEmergency: () -> Unit = {},
 )
 
 /**
@@ -173,6 +176,30 @@ private fun Header(state: GoalsUiState, actions: GoalsActions, collapsed: () -> 
 
 // ── The sheet ───────────────────────────────────────────────────────────
 
+/** "Add an emergency fund": a month of spending set aside, offered until there is one. */
+@Composable
+private fun EmergencySuggestion(title: String, body: String, onAdd: () -> Unit) {
+    val shape = RoundedCornerShape(18.dp)
+    val green = Mint.greenText()
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(Mint.tile(green))
+            .border(1.dp, green.copy(alpha = 0.35f), shape)
+            .padding(14.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Outlined.Shield, contentDescription = null, tint = green, modifier = Modifier.size(24.dp))
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+            Text(body, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        TextButton(onClick = onAdd) { Text(strings(Strings.goals_emergency_add), color = green, fontWeight = FontWeight.SemiBold) }
+    }
+}
+
 @Composable
 private fun Sheet(state: GoalsUiState, actions: GoalsActions) {
     Column(
@@ -183,6 +210,8 @@ private fun Sheet(state: GoalsUiState, actions: GoalsActions) {
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
+        state.emergencyTitle?.let { EmergencySuggestion(it, state.emergencyBody, actions.onAddEmergency) }
+
         if (state.showsEmpty) {
             Text(strings(Strings.goals_empty_title), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             Text(strings(Strings.goals_empty_body), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)

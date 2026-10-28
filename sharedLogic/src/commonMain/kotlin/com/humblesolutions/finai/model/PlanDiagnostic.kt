@@ -54,6 +54,19 @@ data class PlanDiagnostic(
     val debtPer100: String? = null,
     @SerialName("invest_per_100")
     val investPer100: String? = null,
+    /** The plan's goal share now, and the other order: goals wait until no debt is above the rate line. */
+    @SerialName("goal_share_percent")
+    val goalSharePercent: String? = null,
+    @SerialName("alt_available")
+    val altAvailable: Boolean = false,
+    @SerialName("alt_to_debt")
+    val altToDebt: String? = null,
+    @SerialName("alt_interest_saved")
+    val altInterestSaved: String? = null,
+    @SerialName("alt_debt_free")
+    val altDebtFree: String? = null,
+    @SerialName("goals_waiting")
+    val goalsWaiting: List<String> = emptyList(),
     @SerialName("buffer_full")
     val bufferFull: Boolean? = null,
     @SerialName("expensive_debts")
@@ -69,8 +82,19 @@ data class PlanDiagnostic(
     val why: String? = null,
     val where: String? = null,
     val next: String? = null,
+    /** "plan" or "debt_first" — the order the AI recommends — and why; null with no choice. */
+    val recommend: String? = null,
+    @SerialName("recommend_why")
+    val recommendWhy: String? = null,
 ) {
+    val recommendsDebtFirst: Boolean get() = altAvailable && recommend == DEBT_FIRST
+
     val isAllocation: Boolean get() = kind == PlanDiagnostics.ALLOCATION
+
+    companion object {
+        const val DEBT_FIRST = "debt_first"
+        const val PLAN_ORDER = "plan"
+    }
 }
 
 @Serializable

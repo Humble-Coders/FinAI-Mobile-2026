@@ -95,4 +95,12 @@ class AiBudgetEditTest {
         assertFalse(AiBudgetEdit.shouldReview(Budget(aiReviewDue = true, monthEnded = true)))
         assertFalse(AiBudgetEdit.shouldReview(Budget()))
     }
+
+    @Test
+    fun a_line_says_what_is_usually_spent_when_there_is_history() {
+        val groceries = proposal.lines[1].copy(usual = "450.00")
+        assertEquals("You usually spend $450.00 a month", AiBudgetEdit.usualLabel(groceries, "CAD"))
+        assertNull(AiBudgetEdit.usualLabel(proposal.lines[1], "CAD"), "a new account has none")
+        assertNull(AiBudgetEdit.usualLabel(proposal.lines[3].copy(usual = "500.00"), "CAD"), "not on the Debt line")
+    }
 }

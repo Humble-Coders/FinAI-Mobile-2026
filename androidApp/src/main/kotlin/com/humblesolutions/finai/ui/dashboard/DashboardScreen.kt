@@ -272,11 +272,6 @@ private fun Header(state: DashboardUiState, onReview: () -> Unit, modifier: Modi
                 fontWeight = FontWeight.Bold,
                 color = Field.ink(),
             )
-            Text(
-                text = strings(Strings.dashboard_subtitle),
-                style = MaterialTheme.typography.bodyMedium,
-                color = Field.ink(0.82f),
-            )
         }
         Bell(state, onReview, 48.dp)
     }
@@ -978,18 +973,10 @@ private fun Sheet(
                 .padding(horizontal = 20.dp)
                 .padding(top = 24.dp, bottom = 16.dp),
         ) {
-            // Above the recent rows: how the month sits against its budget,
-            // then where the money went.
-            sections.budget?.let {
-                BudgetSection(it, insights.onOpenBudget?.let { open -> { open(DashboardMonths.wire(state.month)) } })
-                Spacer(Modifier.height(28.dp))
-            }
+            // Above the recent rows: where the money left over goes, then where
+            // the money went. The budget and goals have their own tabs.
             state.planCard?.let {
                 PlanSection(it, insights.onOpenPlan)
-                Spacer(Modifier.height(28.dp))
-            }
-            state.goalsCard?.let {
-                GoalsSection(it, insights.onOpenGoals)
                 Spacer(Modifier.height(28.dp))
             }
             sections.spending?.let {

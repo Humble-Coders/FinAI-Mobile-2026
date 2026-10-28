@@ -51,8 +51,11 @@ struct RootView: View {
     @SceneStorage("home.reviewFrom") private var reviewFrom = HomeRoute.home.rawValue
     /// Where the plan's back arrow goes: the screen it was opened from (#76).
     @SceneStorage("home.planFrom") private var planFrom = HomeRoute.home.rawValue
-    /// One coin loader for the whole app: centred, everything behind it blurred,
-    /// for at least two seconds.
+    /// Where the money screens' back arrow goes: Home, or the Budget tab's
+    /// "Add any expected income".
+    @SceneStorage("home.moneyFrom") private var moneyFrom = HomeRoute.home.rawValue
+    /// One coin loader for the whole app: centred, everything behind it blurred.
+    /// Signing in or up holds it for two seconds; after that, as long as it takes.
     @StateObject private var loader = AppLoader()
     @State private var changingRegion = false
     /// Setup's step 4: the AI's suggested budget, once steps 1–3 are saved.
@@ -61,7 +64,7 @@ struct RootView: View {
     @MainActor private static var launched = false
 
     var body: some View {
-        LoaderHost(active: loaderActive, caption: showingImport ? importModel.loaderCaption : nil, loader: loader) {
+        LoaderHost(active: loaderActive, minimumMs: LoaderTiming.shared.minimumMs(signedIn: model.session == .signedIn), caption: showingImport ? importModel.loaderCaption : nil, loader: loader) {
         Group {
             if let problemKey = model.configurationProblemKey {
                 NotConfiguredView(messageKey: problemKey)
@@ -108,11 +111,16 @@ struct RootView: View {
             || (showingImport && (importModel.working || importModel.accountsLoading))
             || (showingReview && reviewModel.loading)
             // Home's first read: figures, not a screen of zeroes, until they arrive.
-            || (showingHome && dashboardModel.loading)
+            || (showingHome && (dashboardModel.loading || dashboardModel.switchingMonth))
             // The Budget tab's first read, and each change of month, as Android.
             || (showingBudget && (budgetModel.loading || budgetModel.switchingMonth))
             // The plan's first read (#76); a return refreshes under what is shown.
             || (showingPlan && planModel.loading && planModel.plan == nil)
+            // The other tabs and Home's money screens, as Android: a first load, and
+            // each change of month.
+            || (showingGoals && goalsModel.loading && goalsModel.page == nil)
+            || (showingTransactions && (transactionsModel.loading || transactionsModel.switchingMonth))
+            || (showingMoney && (moneyModel.loading || moneyModel.switchingMonth))
     }
 
     private var showingPlan: Bool {
@@ -122,6 +130,14 @@ struct RootView: View {
     private var showingHome: Bool { atHome && homeRoute == HomeRoute.home.rawValue }
 
     private var showingBudget: Bool { atHome && homeRoute == HomeRoute.budget.rawValue }
+
+    private var showingGoals: Bool { atHome && homeRoute == HomeRoute.goals.rawValue }
+
+    private var showingTransactions: Bool { atHome && homeRoute == HomeRoute.transactions.rawValue }
+
+    private var showingMoney: Bool {
+        atHome && [HomeRoute.income, .expenses, .investments, .debts].map(\.rawValue).contains(homeRoute)
+    }
 
     private var atHome: Bool {
         model.configurationProblemKey == nil
@@ -232,7 +248,7 @@ struct RootView: View {
                     entry: moneyEntryModel,
                     userId: model.me?.user.id ?? "",
                     kind: moneyKind(homeRoute),
-                    onBack: { withAnimation(.easeOut(duration: 0.25)) { homeRoute = HomeRoute.home.rawValue } },
+                    onBack: { withAnimation(.easeOut(duration: 0.25)) { homeRoute = moneyFrom } },
                     onOpenPlan: homeRoute == HomeRoute.debts.rawValue && features.gate(FeaturesViewModel.planFeature) == .on
                         ? { openPlan(.planDebts) }
                         : nil
@@ -301,6 +317,7 @@ struct RootView: View {
                 onViewAll: { homeRoute = HomeRoute.transactions.rawValue },
                 onSignOut: { model.signOut() },
                 onOpenMoney: { kind in
+                    moneyFrom = HomeRoute.home.rawValue
                     withAnimation(.easeOut(duration: 0.3)) { homeRoute = HomeRoute.route(for: kind).rawValue }
                 },
                 // "See budget" only where the bar has a Budget tab to go to,
@@ -335,7 +352,11 @@ struct RootView: View {
                     onImport: { homeRoute = HomeRoute.importStatement.rawValue },
                     onOpenPlan: features.gate(FeaturesViewModel.planFeature) == .on
                         ? { openPlan(.plan) }
-                        : nil
+                        : nil,
+                    onOpenIncome: {
+                        moneyFrom = HomeRoute.budget.rawValue
+                        withAnimation(.easeOut(duration: 0.3)) { homeRoute = HomeRoute.income.rawValue }
+                    }
                 )
                 .tabItem { Label(L.t(Strings.shared.tab_budget), systemImage: "chart.pie.fill") }
                 .tag(HomeRoute.budget.rawValue)

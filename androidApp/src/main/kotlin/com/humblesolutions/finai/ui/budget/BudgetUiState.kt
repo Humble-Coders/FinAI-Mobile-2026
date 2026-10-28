@@ -2,24 +2,41 @@ package com.humblesolutions.finai.ui.budget
 
 import com.humblesolutions.finai.i18n.LocalizationRegistry
 import com.humblesolutions.finai.i18n.Strings
+import com.humblesolutions.finai.model.Account
 import com.humblesolutions.finai.model.AiLine
+import com.humblesolutions.finai.model.AiPolicy
 import com.humblesolutions.finai.model.Budget
+import com.humblesolutions.finai.model.BudgetCommitment
 import com.humblesolutions.finai.model.BudgetLine
 import com.humblesolutions.finai.model.Category
+import com.humblesolutions.finai.model.DuplicateMatch
+import com.humblesolutions.finai.model.SpendingCheck
+import com.humblesolutions.finai.model.Transaction
 import com.humblesolutions.finai.model.UnbudgetedSpend
 import com.humblesolutions.finai.usecase.AiBudgetEdit
+import com.humblesolutions.finai.usecase.BoardDonut
+import com.humblesolutions.finai.usecase.BoardForecast
+import com.humblesolutions.finai.usecase.BoardSoFar
 import com.humblesolutions.finai.usecase.BudgetBlock
+import com.humblesolutions.finai.usecase.BudgetBoard
 import com.humblesolutions.finai.usecase.BudgetDraft
 import com.humblesolutions.finai.usecase.BudgetEdit
 import com.humblesolutions.finai.usecase.BudgetOverview
 import com.humblesolutions.finai.usecase.CategoryIcon
 import com.humblesolutions.finai.usecase.CategoryIcons
+import com.humblesolutions.finai.usecase.CommitmentTick
 import com.humblesolutions.finai.usecase.DashboardMonths
+import com.humblesolutions.finai.usecase.NextStep
 import com.humblesolutions.finai.usecase.OverviewCommitment
 import com.humblesolutions.finai.usecase.OverviewRow
 import com.humblesolutions.finai.usecase.OverviewSpend
+import com.humblesolutions.finai.usecase.SpendingCheckWords
+import com.humblesolutions.finai.usecase.SpendingShareRow
+import com.humblesolutions.finai.usecase.TickBlock
+import com.humblesolutions.finai.usecase.TickCandidate
 import com.humblesolutions.finai.util.Dates
 import com.humblesolutions.finai.util.Money
+import kotlinx.datetime.LocalDate
 
 /**
  * A month's budget as the screen reads it (#47, PRD F4).
@@ -43,6 +60,26 @@ data class BudgetUiState(
      * mislabel them.
      */
     val switchingMonth: Boolean = false,
+    /** The month's spending against income, and its last AI check; null until read, or without an income. */
+    val spendingCheck: SpendingCheck? = null,
+    val checkingSpending: Boolean = false,
+    val spendingErrorKey: String? = null,
+    /** The AI may not be asked yet: the policy is shown first. */
+    val spendingPolicy: AiPolicy? = null,
+    val spendingConsentTicked: Boolean = false,
+    val spendingConsentBusy: Boolean = false,
+    /** The commitment being ticked off by hand, by its setup id; null when the sheet is closed. */
+    val tickingId: String? = null,
+    /** The month's payments out, for matching; null while they load. */
+    val tickRows: List<Transaction>? = null,
+    val accounts: List<Account> = emptyList(),
+    val payAmount: String = "",
+    val payDate: LocalDate? = null,
+    val payAccountId: String? = null,
+    val tickBusy: Boolean = false,
+    val tickErrorKey: String? = null,
+    /** A typed-in payment the server already has: offered to tick off with instead. */
+    val tickDuplicate: DuplicateMatch? = null,
     val loadFailed: Boolean = false,
     val errorKey: String? = null,
 
@@ -166,6 +203,68 @@ data class BudgetUiState(
     /** "AI suggests $60.00" for a category spent in with no line. */
     fun aiLabel(spend: UnbudgetedSpend): String? = spend.aiSuggested?.let { text(Strings.ai_budget_suggests, money(it)) }
 
+    // ── How you're spending, one-offs, this month only ──────────────────
+
+    // ── The board ───────────────────────────────────────────────────────
+
+    val boardSoFar: BoardSoFar? get() = budget?.let { BudgetBoard.soFar(it, locale) }
+
+    val boardForecast: BoardForecast? get() = budget?.let { BudgetBoard.forecast(it, locale) }
+
+    val boardDonut: BoardDonut? get() = budget?.let { BudgetBoard.donut(it, locale) }
+
+    fun nextSteps(planAvailable: Boolean): List<NextStep> = budget?.let { BudgetBoard.nextSteps(it, planAvailable, locale) }.orEmpty()
+
+    fun allottedOf(line: BudgetLine): String = budget?.let { BudgetBoard.allotted(line, it, locale) }.orEmpty()
+
+    fun colorIndexOf(line: BudgetLine): Int = budget?.let { BudgetBoard.colorIndexOf(line, it) } ?: (BudgetBoard.PALETTE_SIZE - 1)
+
+    fun shareOfSpending(index: Int): String = budget?.let { BudgetBoard.shareOfSpending(index, it, locale) }.orEmpty()
+
+    // ── Ticking a commitment off ────────────────────────────────────────
+
+    val ticking: BudgetCommitment? get() = tickingId?.let { id -> budget?.commitments?.firstOrNull { it.id == id } }
+
+    val tickTitle: String get() = ticking?.let { CommitmentTick.title(it, locale) }.orEmpty()
+
+    val tickSubtitle: String get() = ticking?.let { c -> budget?.let { CommitmentTick.subtitle(c, it, locale) } }.orEmpty()
+
+    val tickCandidates: List<TickCandidate>
+        get() {
+            val commitment = ticking ?: return emptyList()
+            val budget = budget ?: return emptyList()
+            return CommitmentTick.candidates(tickRows.orEmpty(), commitment, budget, locale)
+        }
+
+    val payBlock: TickBlock? get() = budget?.let { CommitmentTick.blockingReason(payAmount, payDate, payAccountId, it) }
+
+    val canPay: Boolean get() = !tickBusy && payBlock == null
+
+    /** Whether a date may be picked: only days in the budget's month. */
+    fun payDateAllowed(date: LocalDate): Boolean = budget?.let { CommitmentTick.inMonth(date, it) } ?: false
+
+    /** The AI card's words: the spending check's headline, else the monthly review's. */
+    val insightHeadline: String? get() = spendingCheck?.headline ?: aiAdvice
+
+    val insightDetail: String? get() = spendingCheck?.tips?.firstOrNull()?.takeIf { spendingCheck?.headline != null }
+
+    /** Whether the AI card is drawn: there is a check to open, or a review to read. */
+    val showsInsight: Boolean get() = spendingCheck != null || aiAdvice != null
+
+    val spendingRows: List<SpendingShareRow> get() = spendingCheck?.let { SpendingCheckWords.rows(it, locale) }.orEmpty()
+
+    /** The AI's tip for a category spent in this month, shown under its line. */
+    fun tipFor(categoryId: String): String? = SpendingCheckWords.tipFor(spendingCheck, categoryId, locale)
+
+    fun oneOffOf(line: BudgetLine): String? = SpendingCheckWords.oneOff(line.oneOff, currency, locale)
+
+    fun oneOffOf(spend: UnbudgetedSpend): String? = SpendingCheckWords.oneOff(spend.oneOff, currency, locale)
+
+    fun thisMonthOnlyOf(line: BudgetLine): String? = SpendingCheckWords.thisMonthOnly(line, locale)
+
+    /** Whether the editor asks "this month only, or every month". */
+    val asksHowLong: Boolean get() = SpendingCheckWords.asksHowLong(editing)
+
     /** "Ask AI for a budget", until this month has a review. */
     val canAskAi: Boolean get() = budget != null && showsPlan && budget.aiKind != "review"
 
@@ -211,6 +310,11 @@ data class BudgetUiState(
     fun amountsOf(line: BudgetLine): String = text(Strings.budget_line_amounts, money(line.spent), money(line.allocated))
 
     fun fractionOf(line: BudgetLine): Float = line.fraction(digits).toFloat()
+
+    fun allocatedOf(line: BudgetLine): String = money(line.allocated)
+
+    /** Rows waiting in the review queue: the bell's dot. */
+    val unfiledCount: Int get() = budget?.uncategorisedCount ?: 0
 
     fun isOver(line: BudgetLine): Boolean = line.isOver(digits)
 

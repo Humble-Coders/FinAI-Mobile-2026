@@ -16,8 +16,8 @@ internal fun TransactionsRoute(userId: String, onClose: () -> Unit, showsBack: B
     val model: TransactionsViewModel = viewModel()
     val state by model.uiState.collectAsStateWithLifecycle()
     LaunchedEffect(userId) { model.bind(userId, logging = BuildConfig.DEBUG) }
-    // Only a first load earns the coin; changing slice refreshes underneath.
-    LoaderSignal(key = "transactions", active = state.loading)
+    // A first load and a new month earn the coin; a new statement refreshes underneath.
+    LoaderSignal(key = "transactions", active = state.loading || state.switchingMonth)
     BackHandler { onClose() }
 
     TransactionsScreen(
@@ -43,6 +43,7 @@ internal fun TransactionsRoute(userId: String, onClose: () -> Unit, showsBack: B
             onCreateCategory = model::createCategory,
             onCancelNewCategory = model::cancelNewCategory,
             onDelete = model::deleteEditing,
+            onOneOffChange = model::setOneOff,
         ),
     )
 }

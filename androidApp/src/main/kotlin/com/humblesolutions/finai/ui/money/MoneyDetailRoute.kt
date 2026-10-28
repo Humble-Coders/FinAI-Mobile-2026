@@ -28,7 +28,7 @@ internal fun MoneyDetailRoute(userId: String, kind: MoneyKind, onBack: () -> Uni
     val model: MoneyDetailViewModel = viewModel(key = "money-$kind")
     val state by model.uiState.collectAsStateWithLifecycle()
     LaunchedEffect(userId, kind) { model.bind(userId, kind, logging = BuildConfig.DEBUG) }
-    LoaderSignal(key = "money_$kind", active = state.loading)
+    LoaderSignal(key = "money_$kind", active = state.loading || state.switchingMonth)
 
     var adding by rememberSaveable { mutableStateOf(false) }
     var markObligation by rememberSaveable { mutableStateOf(false) }

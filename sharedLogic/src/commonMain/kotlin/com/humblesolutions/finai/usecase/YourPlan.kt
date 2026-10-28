@@ -159,7 +159,7 @@ object YourPlan {
             rows += row(SplitKind.BUFFER, words.text(Strings.plan_split_buffer), split.buffer, detail, words)
         }
         split.goals.forEach { share ->
-            rows += row(SplitKind.GOAL, share.name, share.amount, words.text(Strings.plan_split_goal_detail), words)
+            rows += row(SplitKind.GOAL, share.name, share.amount, null, words)
         }
         val focus = focus(plan)
         rows += row(
@@ -173,7 +173,7 @@ object YourPlan {
             SplitKind.SAVE_OR_INVEST,
             words.text(Strings.plan_split_save_or_invest),
             split.saveOrInvest,
-            words.text(Strings.plan_split_save_or_invest_detail),
+            null,
             words,
         )
         return rows
@@ -229,22 +229,16 @@ object YourPlan {
         locale,
     )
 
-    /** The four choices as the plan screen lists them. */
+    /**
+     * The three choices as the plan screen lists them. There is no buffer
+     * choice since 2026-10-28: an Emergency fund is a goal, and the Goals
+     * screen suggests one.
+     */
     fun choiceRows(preferences: PlanPreferences, words: Words): List<ChoiceRow> {
         val suggested = preferences.suggested
         fun suggestion(differs: Boolean, value: String): String? = if (differs) words.text(Strings.plan_choice_suggested, value) else null
 
-        val bufferValue = preferences.buffer?.let { words.money(it) } ?: words.text(Strings.plan_choice_no_buffer)
-        val bufferSuggested = suggested.buffer?.let { words.money(it) } ?: words.text(Strings.plan_choice_no_buffer)
-        val digits = Money.fractionDigits(words.currency)
-        val bufferDiffers = Money.normalize(preferences.buffer.orEmpty(), digits) != Money.normalize(suggested.buffer.orEmpty(), digits)
         return listOf(
-            ChoiceRow(
-                label = words.text(Strings.plan_choice_buffer),
-                value = bufferValue,
-                explanation = words.text(Strings.plan_choice_buffer_why),
-                suggestion = suggestion(bufferDiffers && suggested.buffer != null, bufferSuggested),
-            ),
             ChoiceRow(
                 label = words.text(Strings.plan_choice_goal_share),
                 value = Percent.display(preferences.goalSharePercent),
@@ -268,8 +262,9 @@ object YourPlan {
 
     /** The editor opens on what the plan runs on now. */
     fun draftOf(preferences: PlanPreferences): PlanChoicesDraft = PlanChoicesDraft(
-        hasBuffer = preferences.buffer != null,
-        buffer = preferences.buffer.orEmpty(),
+        // No buffer step any more: nothing to choose, and nothing sent.
+        hasBuffer = false,
+        buffer = "",
         goalSharePercent = Percent.normalize(preferences.goalSharePercent)?.removeSuffix(".00") ?: preferences.goalSharePercent,
         rateLinePercent = Percent.normalize(preferences.rateLinePercent)?.removeSuffix(".00") ?: preferences.rateLinePercent,
         strategy = preferences.strategy,
@@ -297,14 +292,9 @@ object YourPlan {
         return null
     }
 
-    private fun unchanged(preferences: PlanPreferences, draft: PlanChoicesDraft, currency: String): Boolean {
-        val digits = Money.fractionDigits(currency)
-        val buffer = if (draft.hasBuffer) Money.normalize(draft.buffer, digits) else null
-        return buffer == preferences.buffer?.let { Money.normalize(it, digits) } &&
-            Percent.same(draft.goalSharePercent, preferences.goalSharePercent) &&
-            Percent.same(draft.rateLinePercent, preferences.rateLinePercent) &&
-            draft.strategy == preferences.strategy
-    }
+    private fun unchanged(preferences: PlanPreferences, draft: PlanChoicesDraft, currency: String): Boolean = Percent.same(draft.goalSharePercent, preferences.goalSharePercent) &&
+        Percent.same(draft.rateLinePercent, preferences.rateLinePercent) &&
+        draft.strategy == preferences.strategy
 
     /** The choices as they are sent. Call after [blockingReason] said yes. */
     fun toSave(draft: PlanChoicesDraft, currency: String): PlanPreferencesToSave = PlanPreferencesToSave(

@@ -140,7 +140,6 @@ struct AiBudgetView: View {
                 large: false,
                 text: Binding(get: { model.draft.savings }, set: { model.setSavings($0) })
             )
-            Text(L.t(Strings.shared.ai_budget_savings_hint)).font(.caption).foregroundColor(.secondary)
         }
         .padding(14)
         .background(RoundedRectangle(cornerRadius: 18).fill(Color(.secondarySystemBackground)))
@@ -151,7 +150,6 @@ struct AiBudgetView: View {
                 .foregroundColor(model.block == .overIncome ? .red : .primary)
         }
         ErrorText(messageKey: model.errorKey ?? (model.block == .belowCommitment ? nil : model.block?.messageKey))
-        Text(L.t(Strings.shared.ai_budget_privacy)).font(.caption).foregroundColor(.secondary)
         GradientButton(title: L.t(Strings.shared.ai_budget_start), enabled: model.canStart, busy: model.starting) {
             Task { await model.start(onDone: onDone) }
         }
@@ -190,6 +188,9 @@ struct AiBudgetView: View {
                         set: { model.setAmount(index, $0) }
                     )
                 )
+            }
+            if let usual = AiBudgetEdit.shared.usualLabel(line: item.line, currency: model.currency, locale: model.locale) {
+                Text(usual).font(.caption.weight(.semibold)).foregroundColor(Mint.greenText(scheme == .dark))
             }
             if let committed = AiBudgetEdit.shared.committedLabel(line: item.line, currency: model.currency, locale: model.locale) {
                 Text(committed).font(.caption).foregroundColor(.secondary)

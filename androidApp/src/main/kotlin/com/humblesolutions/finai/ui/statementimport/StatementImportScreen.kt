@@ -262,7 +262,7 @@ private fun Body(text: String, muted: Boolean = false) {
 @Composable
 private fun AccountStep(state: StatementImportUiState, actions: StatementImportActions) {
     Spacer(Modifier.height(8.dp))
-    MintTitle(strings(Strings.import_account_title), strings(Strings.import_account_hint))
+    MintTitle(strings(Strings.import_account_title), null)
     Spacer(Modifier.height(4.dp))
     MintPanel {
         when {
@@ -325,14 +325,14 @@ private fun FileStep(state: StatementImportUiState, actions: StatementImportActi
             icon = Icons.Filled.UploadFile,
             accent = FinAiPalette.Green,
             title = strings(Strings.import_pick_file_title),
-            detail = strings(Strings.import_pick_file_detail),
+            detail = null,
             onClick = actions.onPickFile,
         )
         ChoiceCard(
             icon = Icons.Filled.Image,
             accent = FinAiPalette.Blue,
             title = strings(Strings.import_pick_photo),
-            detail = strings(Strings.import_pick_photo_detail),
+            detail = null,
             onClick = actions.onPickPhoto,
         )
         ChoiceCard(
@@ -383,12 +383,6 @@ private fun PrivacyNote() {
         IconTile(Icons.Filled.Lock, FinAiPalette.Green, size = 40.dp, iconSize = 20.dp)
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
-            Text(
-                strings(Strings.import_private_title),
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.SemiBold,
-                color = Mint.greenText(),
-            )
             Text(
                 strings(Strings.import_on_device),
                 style = MaterialTheme.typography.bodySmall,
@@ -714,11 +708,6 @@ private fun BreakdownCard(state: StatementImportUiState, breakdown: Breakdown) {
                 ) {
                     Column(Modifier.weight(1f)) {
                         Text(strings(Strings.import_check_between), style = MaterialTheme.typography.bodyMedium)
-                        Text(
-                            strings(Strings.import_check_between_hint),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
                     }
                     Spacer(Modifier.width(10.dp))
                     Text(state.checkMoney(amount), style = MaterialTheme.typography.bodyMedium)

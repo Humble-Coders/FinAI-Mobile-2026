@@ -14,6 +14,8 @@ import com.humblesolutions.finai.repository.SessionTokenSource
 import com.humblesolutions.finai.repository.TransactionsRepository
 import io.ktor.client.HttpClient
 import io.ktor.client.request.parameter
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
 import kotlin.coroutines.cancellation.CancellationException
 
 /** The transaction endpoints over Ktor: typed-in entries (#38) and the review queue (#32). */
@@ -81,5 +83,12 @@ class KtorTransactionsRepository internal constructor(
     @Throws(ApiException::class, CancellationException::class)
     override suspend fun delete(id: String): DeleteOutcome = http.deleteJson("transactions/$id")
 
+    @Throws(ApiException::class, CancellationException::class)
+    override suspend fun setOneOff(id: String, oneOff: Boolean): Transaction = http.putJson("transactions/$id/one-off", OneOffBody(oneOff))
+
     override fun close() = http.close()
 }
+
+/** The body of `PUT /transactions/{id}/one-off`. */
+@Serializable
+internal data class OneOffBody(@SerialName("one_off") val oneOff: Boolean)

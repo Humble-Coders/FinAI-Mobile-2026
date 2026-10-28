@@ -8,6 +8,7 @@ import com.humblesolutions.finai.model.AiProposalLine
 import com.humblesolutions.finai.model.ApiException
 import com.humblesolutions.finai.model.Budget
 import com.humblesolutions.finai.model.FeatureReason
+import com.humblesolutions.finai.model.SpendingCheck
 import com.humblesolutions.finai.repository.AiConsentRepository
 import com.humblesolutions.finai.repository.BudgetRepository
 import com.humblesolutions.finai.usecase.AiBudgetBlock
@@ -68,7 +69,12 @@ class AiBudgetViewModelTest {
         }
 
         override suspend fun get(month: String): Budget = Budget()
-        override suspend fun setLine(month: String, categoryId: String, amount: String): Budget = Budget()
+        override suspend fun setLine(month: String, categoryId: String, amount: String, thisMonthOnly: Boolean): Budget = Budget()
+        override suspend fun spendingCheck(month: String): SpendingCheck = SpendingCheck()
+        override suspend fun tickOff(month: String, commitmentId: String, transactionId: String): Budget = Budget()
+        override suspend fun tickOffWithNew(month: String, commitmentId: String, payment: com.humblesolutions.finai.model.CommitmentPayment): Budget = Budget()
+        override suspend fun untick(month: String, commitmentId: String): Budget = Budget()
+        override suspend fun runSpendingCheck(month: String): SpendingCheck = SpendingCheck()
         override suspend fun resetLine(month: String, categoryId: String): Budget = Budget()
         override suspend fun review(month: String): Budget = Budget()
         override fun close() = Unit

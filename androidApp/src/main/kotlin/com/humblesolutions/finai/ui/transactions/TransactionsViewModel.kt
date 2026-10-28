@@ -180,7 +180,7 @@ class TransactionsViewModel : ViewModel() {
 
     fun showMonth(month: LocalDate) {
         if (month == _uiState.value.month) return
-        _uiState.update { it.copy(month = month) }
+        _uiState.update { it.copy(month = month, switchingMonth = repositories != null) }
         load(refresh = true)
     }
 
@@ -223,6 +223,7 @@ class TransactionsViewModel : ViewModel() {
                         nextCursor = page.nextCursor,
                         loading = false,
                         refreshing = false,
+                        switchingMonth = false,
                         loadFailed = false,
                         errorKey = null,
                     )
@@ -235,6 +236,7 @@ class TransactionsViewModel : ViewModel() {
                     it.copy(
                         loading = false,
                         refreshing = false,
+                        switchingMonth = false,
                         // A failed refresh keeps the rows it had; a first load
                         // has nothing to keep and must say so.
                         loadFailed = !refresh,
@@ -339,6 +341,35 @@ class TransactionsViewModel : ViewModel() {
                 // A duplicate is said in the sheet, with the row still open:
                 // the person's draft is the thing they need to fix.
                 _uiState.update { it.copy(saving = false, editErrorKey = e.messageKey) }
+            }
+        }
+    }
+
+    /**
+     * "One-off purchase", saved at once and apart from any correction in the
+     * sheet. The ledger's figures for the month do not move, but the months
+     * after are budgeted differently, so it is announced like any change.
+     */
+    fun setOneOff(oneOff: Boolean) {
+        val repos = repositories ?: return
+        val row = _uiState.value.editing ?: return
+        if (_uiState.value.oneOffSaving || row.oneOff == oneOff) return
+        _uiState.update { it.copy(oneOffSaving = true, editErrorKey = null) }
+        viewModelScope.launch {
+            try {
+                val saved = repos.transactions.setOneOff(row.id, oneOff)
+                _uiState.update { state ->
+                    state.copy(
+                        oneOffSaving = false,
+                        editing = state.editing?.takeIf { it.id == row.id }?.copy(oneOff = saved.oneOff) ?: state.editing,
+                        rows = state.rows.map { if (it.id == row.id) it.copy(oneOff = saved.oneOff) else it },
+                    )
+                }
+                LedgerChanged.announce()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: ApiException) {
+                _uiState.update { it.copy(oneOffSaving = false, editErrorKey = e.messageKey) }
             }
         }
     }

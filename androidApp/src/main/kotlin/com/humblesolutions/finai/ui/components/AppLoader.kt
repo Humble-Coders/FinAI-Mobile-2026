@@ -53,8 +53,8 @@ import kotlinx.coroutines.launch
  * The app's one coin loader, for every signed-out screen and the wizard.
  *
  * Whenever it is up, it is in the middle of the screen with everything behind it
- * blurred, and it stays for at least [LoaderTiming.MIN_VISIBLE_MS] — or as long
- * as the work really takes. A card with a coin resting on its edge tells the
+ * blurred. Signing in or up holds it for [LoaderTiming.MIN_VISIBLE_MS]; after
+ * that it stays exactly as long as the work takes. A card with a coin resting on its edge tells the
  * loader where that coin is, so the loader's coin sets off from there and goes
  * back there: one coin moving, rather than one vanishing while another appears.
  */
@@ -115,11 +115,11 @@ fun LoaderSignal(key: String, active: Boolean, caption: String? = null) {
 
 /**
  * Wraps the whole app: blurs it and puts the coin over it while [active], held
- * for the minimum however quickly the work finishes.
+ * for at least [minimumMs] — taken as it shows — however quickly the work finishes.
  */
 @Composable
-fun LoaderHost(active: Boolean, loader: AppLoader, content: @Composable () -> Unit) {
-    val shown = rememberHeldVisible(active)
+fun LoaderHost(active: Boolean, minimumMs: Long, loader: AppLoader, content: @Composable () -> Unit) {
+    val shown = rememberHeldVisible(active, minimumMs)
     val blur by animateDpAsState(if (shown) BlurRadius else 0.dp, tween(TRAVEL_MS), label = "loaderBlur")
     val veil by animateFloatAsState(if (shown) 1f else 0f, tween(TRAVEL_MS), label = "loaderVeil")
     var host by remember { mutableStateOf(IntSize.Zero) }
@@ -176,21 +176,23 @@ fun LoaderHost(active: Boolean, loader: AppLoader, content: @Composable () -> Un
 }
 
 /**
- * [active], but once it turns true it stays true for at least the minimum,
- * measured from the moment it first showed.
+ * [active], but once it turns true it stays true for at least [minimumMs] as it
+ * was when it first showed, measured from that moment.
  */
 @Composable
-fun rememberHeldVisible(active: Boolean): Boolean {
+fun rememberHeldVisible(active: Boolean, minimumMs: Long): Boolean {
     var shown by remember { mutableStateOf(active) }
     var shownAt by remember { mutableLongStateOf(SystemClock.uptimeMillis()) }
+    var heldFor by remember { mutableLongStateOf(minimumMs) }
     LaunchedEffect(active) {
         if (active) {
             if (!shown) {
                 shownAt = SystemClock.uptimeMillis()
+                heldFor = minimumMs
                 shown = true
             }
         } else if (shown) {
-            delay(LoaderTiming.remainingMs(shownAt, SystemClock.uptimeMillis()))
+            delay(LoaderTiming.remainingMs(shownAt, SystemClock.uptimeMillis(), heldFor))
             shown = false
         }
     }

@@ -788,7 +788,6 @@ private fun InvestmentsBody(state: MoneyDetailUiState, actions: MoneyDetailActio
                 description = "${share.name}, $amount, $percent",
             )
         }
-        Text(strings(Strings.money_holdings_later), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
     Row(
         Modifier

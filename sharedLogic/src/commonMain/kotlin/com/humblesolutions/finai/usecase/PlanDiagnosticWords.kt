@@ -67,7 +67,7 @@ object PlanDiagnosticWords {
         if (d.goals.isEmpty()) {
             rows += DiagnosticRow(text(Strings.diagnostic_to_goals, locale), money(d.toGoals), null, zero(d.toGoals))
         } else {
-            d.goals.forEach { rows += DiagnosticRow(it.name, money(it.amount), text(Strings.diagnostic_goal_detail, locale), zero(it.amount)) }
+            d.goals.forEach { rows += DiagnosticRow(it.name, money(it.amount), null, zero(it.amount)) }
         }
         val debtLabel = d.debtFirst?.let { format(Strings.diagnostic_to_debt_named, locale, it) } ?: text(Strings.diagnostic_to_debt, locale)
         val debtDetail = d.debtFirstRatePercent?.let { format(Strings.diagnostic_debt_detail, locale, it) }
@@ -99,6 +99,51 @@ object PlanDiagnosticWords {
         if (!Money.isPositive(saved, Money.fractionDigits(d.currency))) return null
         fun month(date: kotlinx.datetime.LocalDate) = format(Strings.dashboard_month_display, locale, Dates.monthShort(date, locale), date.year.toString())
         return format(Strings.diagnostic_payoff, locale, month(free), month(minimums), Money.format(saved, d.currency, locale))
+    }
+
+    // ── Debt before goals? ───────────────────────────────────────────────
+
+    /** "AI suggests: pay debt before your goals", or to keep the plan's order; null with no choice. */
+    fun recommendation(d: PlanDiagnostic, locale: String = "en"): String? {
+        if (!d.altAvailable) return null
+        return when (d.recommend) {
+            PlanDiagnostic.DEBT_FIRST -> text(Strings.diagnostic_recommend_debt_first, locale)
+            PlanDiagnostic.PLAN_ORDER -> text(Strings.diagnostic_recommend_plan, locale)
+            else -> null
+        }
+    }
+
+    /** The two orders side by side: what goes to the debt, when it is cleared, and the interest it saves. */
+    fun orders(d: PlanDiagnostic, locale: String = "en"): List<DiagnosticRow> {
+        if (!d.altAvailable) return emptyList()
+        fun money(amount: String) = Money.format(amount, d.currency, locale)
+        fun month(iso: String?) = Dates.parse(iso)?.let { format(Strings.dashboard_month_display, locale, Dates.monthShort(it, locale), it.year.toString()) }
+        fun detail(free: String?, saved: String?) = listOfNotNull(
+            month(free)?.let { format(Strings.diagnostic_order_free, locale, it) },
+            saved?.let { format(Strings.diagnostic_order_saved, locale, money(it)) },
+        ).joinToString(" · ").ifBlank { null }
+        return listOf(
+            DiagnosticRow(
+                format(Strings.diagnostic_order_plan, locale, d.goalSharePercent.orEmpty()),
+                format(Strings.diagnostic_order_to_debt, locale, money(d.toDebt)),
+                detail(d.debtFree, d.interestSaved),
+            ),
+            DiagnosticRow(
+                text(Strings.diagnostic_order_debt_first, locale),
+                format(Strings.diagnostic_order_to_debt, locale, money(d.altToDebt ?: "0")),
+                detail(d.altDebtFree, d.altInterestSaved),
+            ),
+        )
+    }
+
+    /** "Trip to Lisbon would wait", for the goals the other order holds back. */
+    fun waiting(d: PlanDiagnostic, locale: String = "en"): String? = d.goalsWaiting.takeIf { d.altAvailable && it.isNotEmpty() }?.let { format(Strings.diagnostic_goals_waiting, locale, it.joinToString(", ")) }
+
+    /** Whether "Pay debt before goals" can be offered: the AI recommends it and goals still get a share. */
+    fun canApplyDebtFirst(d: PlanDiagnostic): Boolean {
+        if (!d.recommendsDebtFirst) return false
+        val share = d.goalSharePercent ?: return false
+        return Money.isPositive(share, 2)
     }
 
     fun stepLabel(key: String, locale: String = "en"): String = text(

@@ -54,6 +54,9 @@ object DashboardMonths {
     /** Today's month in the device's own zone, which is where "this month" means something. */
     fun current(timeZone: TimeZone = TimeZone.currentSystemDefault()): LocalDate = first(Clock.System.todayIn(timeZone))
 
+    /** Today, where the person is. */
+    fun today(timeZone: TimeZone = TimeZone.currentSystemDefault()): LocalDate = Clock.System.todayIn(timeZone)
+
     /**
      * Whether [month] is the one running now.
      *

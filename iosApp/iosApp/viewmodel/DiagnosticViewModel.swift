@@ -24,6 +24,9 @@ final class DiagnosticViewModel: ObservableObject {
     @Published private(set) var policy: AiPolicy?
     @Published var consentTicked = false
     @Published private(set) var consentBusy = false
+    /// "Pay debt before goals" is being saved, or was.
+    @Published private(set) var applying = false
+    @Published private(set) var applied = false
 
     let locale = "en"
 
@@ -103,6 +106,48 @@ final class DiagnosticViewModel: ObservableObject {
         return PlanDiagnosticWords.shared.payoff(d: result, locale: locale)
     }
     func stepLabel(_ key: String) -> String { PlanDiagnosticWords.shared.stepLabel(key: key, locale: locale) }
+
+    var recommendation: String? {
+        guard let result, result.isAllocation else { return nil }
+        return PlanDiagnosticWords.shared.recommendation(d: result, locale: locale)
+    }
+    var orders: [DiagnosticRow] {
+        guard let result, result.isAllocation else { return [] }
+        return PlanDiagnosticWords.shared.orders(d: result, locale: locale)
+    }
+    var waiting: String? {
+        guard let result, result.isAllocation else { return nil }
+        return PlanDiagnosticWords.shared.waiting(d: result, locale: locale)
+    }
+    var canApplyDebtFirst: Bool {
+        guard !applied, let result else { return false }
+        return PlanDiagnosticWords.shared.canApplyDebtFirst(d: result)
+    }
+
+    /**
+     "Pay debt before goals": the plan's goal share set to 0%, every other
+     choice kept as it is now — the same save as Your choices, one figure changed.
+     */
+    func applyDebtFirst() async {
+        guard let plan, canApplyDebtFirst, !applying else { return }
+        applying = true
+        errorKey = nil
+        do {
+            let now = try await plan.plan(month: nil).preferences
+            _ = try await plan.savePreferences(choices: PlanPreferencesToSave(
+                buffer: now.buffer,
+                goalSharePercent: "0",
+                rateLinePercent: now.rateLinePercent,
+                strategy: now.strategy
+            ))
+            applying = false
+            applied = true
+            PlanChanged.announce()
+        } catch {
+            applying = false
+            errorKey = Self.messageKey(error)
+        }
+    }
 
     // MARK: Running
 

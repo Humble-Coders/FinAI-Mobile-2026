@@ -4,6 +4,8 @@ import com.humblesolutions.finai.model.AiAccept
 import com.humblesolutions.finai.model.AiProposal
 import com.humblesolutions.finai.model.ApiException
 import com.humblesolutions.finai.model.Budget
+import com.humblesolutions.finai.model.CommitmentPayment
+import com.humblesolutions.finai.model.SpendingCheck
 import kotlin.coroutines.cancellation.CancellationException
 
 /**
@@ -35,7 +37,7 @@ interface BudgetRepository {
      * [amount] is a decimal string.
      */
     @Throws(ApiException::class, CancellationException::class)
-    suspend fun setLine(month: String, categoryId: String, amount: String): Budget
+    suspend fun setLine(month: String, categoryId: String, amount: String, thisMonthOnly: Boolean = false): Budget
 
     /**
      * Put one line back to its suggestion.
@@ -61,6 +63,32 @@ interface BudgetRepository {
     /** This month's AI review — made once a month, then returned as stored. */
     @Throws(ApiException::class, CancellationException::class)
     suspend fun review(month: String): Budget
+
+    /** Tick a commitment off with a transaction already recorded in [month]. Adds no spending. */
+    @Throws(ApiException::class, CancellationException::class)
+    suspend fun tickOff(month: String, commitmentId: String, transactionId: String): Budget
+
+    /**
+     * Tick a commitment off with a payment typed in now: recorded once, as a
+     * transaction in the commitment's line, and named as what paid it.
+     */
+    @Throws(ApiException::class, CancellationException::class)
+    suspend fun tickOffWithNew(month: String, commitmentId: String, payment: CommitmentPayment): Budget
+
+    /** Undo a tick made by hand; the transaction stays. */
+    @Throws(ApiException::class, CancellationException::class)
+    suspend fun untick(month: String, commitmentId: String): Budget
+
+    /** The month's spending against income, and its last AI check. No AI call. */
+    @Throws(ApiException::class, CancellationException::class)
+    suspend fun spendingCheck(month: String): SpendingCheck
+
+    /**
+     * Ask the AI about the month's spending. The same figures as its last
+     * check return that check; otherwise a fresh one, a few a month.
+     */
+    @Throws(ApiException::class, CancellationException::class)
+    suspend fun runSpendingCheck(month: String): SpendingCheck
 
     fun close()
 }

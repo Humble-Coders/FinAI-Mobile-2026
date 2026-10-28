@@ -114,6 +114,11 @@ data class GoalsUiState(
     /** Opening a new goal at the limit says so up front rather than after five fields. */
     val atLimit: Boolean get() = (page?.openCount ?: 0) >= GoalEdit.OPEN_LIMIT
 
+    /** "Add an emergency fund", while there is none and room for another goal. */
+    val emergencyTitle: String? get() = page?.takeUnless { atLimit }?.let { GoalEdit.emergencyTitle(it, locale) }
+
+    val emergencyBody: String get() = page?.let { GoalEdit.emergencyBody(it, currency, locale) }.orEmpty()
+
     val currencySymbol: String get() = Money.symbol(currency)
 
     // ── Add money ───────────────────────────────────────────────────────

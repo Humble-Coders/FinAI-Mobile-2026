@@ -39,6 +39,8 @@ data class MoneyDetailUiState(
     val locale: String = "en",
     val loading: Boolean = true,
     val refreshing: Boolean = false,
+    /** A new month was picked: the coin covers the wait for its figures. */
+    val switchingMonth: Boolean = false,
     val loadFailed: Boolean = false,
     val errorKey: String? = null,
     val data: Dashboard = Dashboard(),

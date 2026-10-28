@@ -108,6 +108,12 @@ data class Transaction(
     /** What a suspected duplicate matched — shown beside it, never guessed at. */
     @SerialName("duplicate_of")
     val duplicateOf: DuplicateMatch? = null,
+    /**
+     * A purchase that will not happen again: counted in its month, left out
+     * of what future budgets are suggested from.
+     */
+    @SerialName("one_off")
+    val oneOff: Boolean = false,
 )
 
 /**

@@ -9,9 +9,11 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DatePicker
@@ -26,6 +28,7 @@ import androidx.compose.material3.SelectableDates
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDatePickerState
@@ -105,6 +108,8 @@ data class TransactionEditorState(
     val deleteConfirmTitleKey: String = Strings.transaction_delete_confirm_title,
     val deleteConfirmBodyKey: String = Strings.transaction_delete_confirm_body,
     val deleteConfirmKey: String = Strings.transaction_delete_confirm,
+    /** "One-off purchase" is being saved. */
+    val oneOffSaving: Boolean = false,
 )
 
 /** What the editor sheet can ask of the screen that opened it. */
@@ -122,6 +127,11 @@ class TransactionEditorActions(
     val onCancelNewCategory: () -> Unit,
     /** Null where the screen offers no delete; the button is then not drawn. */
     val onDelete: (() -> Unit)? = null,
+    /**
+     * "One-off purchase", saved as soon as it is switched — apart from the
+     * correction, which it never is. Null where the screen does not offer it.
+     */
+    val onOneOffChange: ((Boolean) -> Unit)? = null,
 )
 
 /** The editor: date, amount, direction, description and category. */
@@ -149,6 +159,10 @@ fun TransactionEditorSheet(state: TransactionEditorState, actions: TransactionEd
                 modifier = Modifier.semantics { heading() },
             )
             CorrectionFields(state, actions) { choosingCategory = true }
+            val onOneOff = actions.onOneOffChange
+            if (onOneOff != null && state.row.direction == TransactionDirection.DEBIT) {
+                OneOffRow(state.row.oneOff, enabled = !busy && !state.oneOffSaving, onOneOff)
+            }
             ErrorText(state.errorKey)
             if (state.errorKey == null) ErrorText(state.notice?.messageKey)
             GradientButton(
@@ -215,6 +229,26 @@ fun TransactionEditorSheet(state: TransactionEditorState, actions: TransactionEd
         )
     }
     if (state.newCategoryName != null) NewCategorySheet(state, actions)
+}
+
+/** "One-off purchase": counts this month, never raises the months after. */
+@Composable
+private fun OneOffRow(checked: Boolean, enabled: Boolean, onChange: (Boolean) -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .heightIn(min = 48.dp)
+            .toggleable(value = checked, enabled = enabled, role = Role.Switch, onValueChange = onChange),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(strings(Strings.transaction_one_off), style = MaterialTheme.typography.bodyLarge)
+            Text(strings(Strings.transaction_one_off_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Spacer(Modifier.width(12.dp))
+        // The row toggles; the switch only shows it.
+        Switch(checked = checked, onCheckedChange = null, enabled = enabled)
+    }
 }
 
 /** The fields of a correction: date, amount, direction, description, category. */

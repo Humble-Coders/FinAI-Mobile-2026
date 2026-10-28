@@ -98,30 +98,6 @@ internal fun ChoicesSheet(state: PlanUiState, actions: ChoicesActions) {
         SheetColumn {
             Title(strings(Strings.plan_choices_sheet_title))
 
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = 48.dp)
-                    .toggleable(value = draft.hasBuffer, enabled = !busy, role = Role.Switch) { actions.onDraftChange(draft.copy(hasBuffer = it)) },
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(strings(Strings.plan_field_keep_buffer), style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
-                Switch(checked = draft.hasBuffer, onCheckedChange = null, enabled = !busy)
-            }
-            if (draft.hasBuffer) {
-                AmountField(
-                    value = draft.buffer,
-                    onValueChange = { actions.onDraftChange(draft.copy(buffer = it)) },
-                    label = strings(Strings.plan_field_buffer),
-                    symbol = state.currencySymbol,
-                    placeholder = state.amountPlaceholder,
-                    isError = notice in BufferBlocks,
-                    large = false,
-                    enabled = !busy,
-                )
-            }
-            Why(strings(Strings.plan_choice_buffer_why))
-
             WizardField(
                 value = draft.goalSharePercent,
                 onValueChange = { actions.onDraftChange(draft.copy(goalSharePercent = it)) },
@@ -292,7 +268,6 @@ internal fun DebtEditorSheet(state: PlanUiState, actions: DebtEditorActions) {
                     }
                 }
             }
-            Why(strings(Strings.debts_field_account_hint))
 
             notice?.let { Problem(DebtEdit.blockText(it, state.moneyCurrency, state.locale)) }
             state.debtErrorKey?.let { Problem(strings(it)) }

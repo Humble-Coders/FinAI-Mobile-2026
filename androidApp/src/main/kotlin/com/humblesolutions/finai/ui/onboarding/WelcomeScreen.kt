@@ -145,13 +145,6 @@ fun WelcomeScreen(
                     color = MaterialTheme.colorScheme.onBackground,
                     textAlign = TextAlign.Center,
                 )
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    text = strings(Strings.app_tagline),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.Center,
-                )
 
                 Spacer(Modifier.height(12.dp))
                 LandingAnimation(
@@ -274,14 +267,6 @@ private fun AuthSheet(
         Text(
             text = strings(if (creating) Strings.welcome_create_title else Strings.welcome_sign_in_title),
             style = MaterialTheme.typography.headlineSmall,
-        )
-        Text(
-            text = strings(
-                if (creating) Strings.welcome_create_subtitle else Strings.welcome_sign_in_subtitle,
-            ),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.Center,
         )
 
         SheetField(

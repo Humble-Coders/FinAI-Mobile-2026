@@ -5,30 +5,41 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.humblesolutions.finai.config.ApiConfig
 import com.humblesolutions.finai.config.Supabase
+import com.humblesolutions.finai.data.KtorAccountsRepository
+import com.humblesolutions.finai.data.KtorAiConsentRepository
 import com.humblesolutions.finai.data.KtorBudgetRepository
 import com.humblesolutions.finai.data.KtorCapabilitiesRepository
 import com.humblesolutions.finai.data.KtorCategoriesRepository
+import com.humblesolutions.finai.data.KtorTransactionsRepository
 import com.humblesolutions.finai.data.SupabaseTokenSource
 import com.humblesolutions.finai.model.ApiException
 import com.humblesolutions.finai.model.Budget
 import com.humblesolutions.finai.model.BudgetLine
 import com.humblesolutions.finai.model.Capabilities
 import com.humblesolutions.finai.model.Category
+import com.humblesolutions.finai.model.Transaction
+import com.humblesolutions.finai.repository.AccountsRepository
+import com.humblesolutions.finai.repository.AiConsentRepository
 import com.humblesolutions.finai.repository.BudgetRepository
 import com.humblesolutions.finai.repository.CapabilitiesRepository
 import com.humblesolutions.finai.repository.CategoriesRepository
+import com.humblesolutions.finai.repository.TransactionsRepository
 import com.humblesolutions.finai.usecase.AiBudgetEdit
 import com.humblesolutions.finai.usecase.BudgetDraft
 import com.humblesolutions.finai.usecase.BudgetEdit
 import com.humblesolutions.finai.usecase.BudgetOverview
+import com.humblesolutions.finai.usecase.CommitmentTick
 import com.humblesolutions.finai.usecase.DashboardMonths
+import com.humblesolutions.finai.usecase.SpendingCheckWords
 import com.humblesolutions.finai.util.BudgetChanged
 import com.humblesolutions.finai.util.LedgerChanged
+import com.humblesolutions.finai.util.Money
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.datetime.LocalDate
 import kotlin.coroutines.cancellation.CancellationException
 
 /**
@@ -76,6 +87,9 @@ class BudgetViewModel(
                 budgets = KtorBudgetRepository(ApiConfig.BASE_URL, tokens, logging),
                 categories = KtorCategoriesRepository(ApiConfig.BASE_URL, tokens, logging),
                 capabilities = KtorCapabilitiesRepository(ApiConfig.BASE_URL, tokens, logging),
+                consent = KtorAiConsentRepository(ApiConfig.BASE_URL, tokens, logging),
+                transactions = KtorTransactionsRepository(ApiConfig.BASE_URL, tokens, logging),
+                accounts = KtorAccountsRepository(ApiConfig.BASE_URL, tokens, logging),
             )
         }
     }
@@ -124,7 +138,9 @@ class BudgetViewModel(
     fun showMonth(month: String) {
         if (month == _uiState.value.month) return
         generation++
-        update { it.copy(month = month, refreshing = true, switchingMonth = true, errorKey = null, loadFailed = false) }
+        update {
+            it.copy(month = month, refreshing = true, switchingMonth = true, errorKey = null, loadFailed = false, spendingCheck = null, spendingErrorKey = null)
+        }
         load(refresh = true)
     }
 
@@ -242,6 +258,91 @@ class BudgetViewModel(
             )
         }
         reviewIfDue(budget)
+        loadSpending()
+    }
+
+    // ── How you're spending ─────────────────────────────────────────────
+
+    /**
+     * The month's spending against income, and its last AI check. Quietly: a
+     * household with no income from setup has nothing to check, and the card
+     * simply is not drawn.
+     */
+    private fun loadSpending() {
+        val repos = repositories ?: return
+        val started = generation
+        val month = _uiState.value.month
+        viewModelScope.launch {
+            val check = try {
+                repos.budgets.spendingCheck(month)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: ApiException) {
+                null
+            }
+            if (started != generation) return@launch
+            update { it.copy(spendingCheck = check) }
+        }
+    }
+
+    /** "Ask AI how to spend" / "Check again". */
+    fun askSpending() {
+        val repos = repositories ?: return
+        val state = _uiState.value
+        val check = state.spendingCheck ?: return
+        if (state.checkingSpending || !SpendingCheckWords.canAsk(check)) return
+        val started = generation
+        update { it.copy(checkingSpending = true, spendingErrorKey = null) }
+        viewModelScope.launch {
+            try {
+                val answer = repos.budgets.runSpendingCheck(state.month)
+                if (started != generation) return@launch
+                update { it.copy(checkingSpending = false, spendingCheck = answer) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: ApiException.ConsentRequired) {
+                update { it.copy(checkingSpending = false) }
+                askForConsent()
+            } catch (e: ApiException) {
+                update { it.copy(checkingSpending = false, spendingErrorKey = e.messageKey) }
+            }
+        }
+    }
+
+    private suspend fun askForConsent() {
+        val consent = repositories?.consent ?: return
+        try {
+            val policy = consent.policy()
+            update { it.copy(spendingPolicy = policy, spendingConsentTicked = false) }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: ApiException) {
+            update { it.copy(spendingErrorKey = e.messageKey) }
+        }
+    }
+
+    fun onSpendingConsentTicked(ticked: Boolean) = update { it.copy(spendingConsentTicked = ticked) }
+
+    /** Records consent to the policy shown, then asks. */
+    fun agreeSpending() {
+        val consent = repositories?.consent ?: return
+        val policy = _uiState.value.spendingPolicy ?: return
+        if (!_uiState.value.spendingConsentTicked) return
+        update { it.copy(spendingConsentBusy = true, spendingErrorKey = null) }
+        viewModelScope.launch {
+            try {
+                consent.consent(policy.version)
+                update { it.copy(spendingConsentBusy = false, spendingPolicy = null, spendingConsentTicked = false) }
+                askSpending()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: ApiException.AiPolicyChanged) {
+                update { it.copy(spendingConsentBusy = false) }
+                askForConsent()
+            } catch (e: ApiException) {
+                update { it.copy(spendingConsentBusy = false, spendingErrorKey = e.messageKey) }
+            }
+        }
     }
 
     /**
@@ -277,6 +378,113 @@ class BudgetViewModel(
                 loadFailed = it.budget == null,
                 errorKey = api?.messageKey,
             )
+        }
+    }
+
+    // ── Ticking a commitment off ────────────────────────────────────────
+
+    /**
+     * The sheet for one commitment: the month's payments out to match it
+     * with, and a form to type the payment in. Both read once, as it opens.
+     */
+    fun openTick(commitmentId: String) {
+        val repos = repositories ?: return
+        val state = _uiState.value
+        val budget = state.budget ?: return
+        val commitment = budget.commitments.firstOrNull { it.id == commitmentId } ?: return
+        update {
+            it.copy(
+                tickingId = commitmentId,
+                tickRows = null,
+                payAmount = Money.normalize(commitment.expected, budget.fractionDigits).orEmpty(),
+                payDate = CommitmentTick.defaultDate(commitment, budget, DashboardMonths.today()),
+                payAccountId = it.accounts.singleOrNull()?.id,
+                tickBusy = false,
+                tickErrorKey = null,
+                tickDuplicate = null,
+            )
+        }
+        val month = state.month
+        viewModelScope.launch {
+            val rows = mutableListOf<Transaction>()
+            try {
+                var cursor: String? = null
+                var pages = 0
+                do {
+                    val page = repos.transactions?.list(month = month, cursor = cursor) ?: break
+                    rows += page.rows
+                    cursor = page.nextCursor
+                    pages++
+                } while (cursor != null && pages < TICK_PAGES)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: ApiException) {
+                update { it.copy(tickErrorKey = e.messageKey) }
+            }
+            val accounts = try {
+                repos.accounts?.list().orEmpty()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: ApiException) {
+                emptyList()
+            }
+            update {
+                if (it.tickingId != commitmentId) return@update it
+                it.copy(
+                    tickRows = rows,
+                    accounts = accounts.ifEmpty { it.accounts },
+                    payAccountId = it.payAccountId ?: accounts.singleOrNull()?.id,
+                )
+            }
+        }
+    }
+
+    fun closeTick() = update { if (it.tickBusy) it else it.copy(tickingId = null, tickErrorKey = null, tickDuplicate = null) }
+
+    fun onPayAmount(amount: String) = update { it.copy(payAmount = amount, tickErrorKey = null, tickDuplicate = null) }
+
+    fun onPayDate(date: LocalDate) = update { it.copy(payDate = date, tickErrorKey = null, tickDuplicate = null) }
+
+    fun onPayAccount(id: String) = update { it.copy(payAccountId = id, tickErrorKey = null, tickDuplicate = null) }
+
+    /** Tick off with a payment already recorded: nothing new is counted. */
+    fun tickWith(transactionId: String) = tick { repos, month, id -> repos.budgets.tickOff(month, id, transactionId) }
+
+    /** Tick off with the payment typed in: recorded once, then named as what paid it. */
+    fun addPayment(allowDuplicate: Boolean = false) {
+        val state = _uiState.value
+        val budget = state.budget ?: return
+        val payment = CommitmentTick.payment(state.payAmount, state.payDate, state.payAccountId, budget, allowDuplicate) ?: return
+        tick(newPayment = true) { repos, month, id -> repos.budgets.tickOffWithNew(month, id, payment) }
+    }
+
+    /** "Use that payment": the one the server said was already there. */
+    fun useDuplicate() {
+        val id = _uiState.value.tickDuplicate?.id ?: return
+        tickWith(id)
+    }
+
+    fun untick() = tick { repos, month, id -> repos.budgets.untick(month, id) }
+
+    private fun tick(newPayment: Boolean = false, call: suspend (BudgetRepositories, String, String) -> Budget) {
+        val repos = repositories ?: return
+        val state = _uiState.value
+        val id = state.tickingId ?: return
+        if (state.tickBusy) return
+        update { it.copy(tickBusy = true, tickErrorKey = null, tickDuplicate = null) }
+        viewModelScope.launch {
+            try {
+                val budget = call(repos, state.month, id)
+                update { it.copy(budget = budget, tickBusy = false, tickingId = null) }
+                // A payment typed in is a new transaction: Home's figures move.
+                if (newPayment) LedgerChanged.announce() else BudgetChanged.announce()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: ApiException.DuplicateTransaction) {
+                update { it.copy(tickBusy = false, tickDuplicate = e.match, tickErrorKey = e.messageKey) }
+            } catch (e: ApiException) {
+                update { it.copy(tickBusy = false, tickErrorKey = e.messageKey) }
+            }
         }
     }
 
@@ -357,7 +565,7 @@ class BudgetViewModel(
      * path. A failure keeps the sheet open with what was typed: the person's
      * input is the thing hardest to get back.
      */
-    fun save() {
+    fun save(thisMonthOnly: Boolean = false) {
         val repos = repositories ?: return
         val state = _uiState.value
         val line = state.editing ?: return
@@ -366,7 +574,7 @@ class BudgetViewModel(
         update { it.copy(saving = true, editErrorKey = null) }
         viewModelScope.launch {
             try {
-                val budget = repos.budgets.setLine(state.month, line.categoryId, amount)
+                val budget = repos.budgets.setLine(state.month, line.categoryId, amount, thisMonthOnly)
                 update {
                     it.copy(budget = budget, saving = false, editing = null, editingIsNew = false, draft = BudgetDraft())
                 }
@@ -458,6 +666,8 @@ class BudgetViewModel(
     }
 
     internal companion object {
+        /** Pages of the month's payments read for matching: enough for any month's bills. */
+        private const val TICK_PAGES = 4
         private const val KEY_OWNER = "budget.owner"
         private const val KEY_MONTH = "budget.month"
         private const val KEY_DRAFT_AMOUNT = "budget.draft.amount"
@@ -477,10 +687,18 @@ internal class BudgetRepositories(
     val budgets: BudgetRepository,
     val categories: CategoriesRepository,
     val capabilities: CapabilitiesRepository,
+    /** For the spending check's consent; null where a test does not need it. */
+    val consent: AiConsentRepository? = null,
+    /** The month's payments, to tick a commitment off with; null where a test does not need it. */
+    val transactions: TransactionsRepository? = null,
+    val accounts: AccountsRepository? = null,
 ) {
     fun close() {
         budgets.close()
         categories.close()
         capabilities.close()
+        consent?.close()
+        transactions?.close()
+        accounts?.close()
     }
 }

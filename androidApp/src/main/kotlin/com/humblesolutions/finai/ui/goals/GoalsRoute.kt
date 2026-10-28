@@ -29,6 +29,7 @@ internal fun GoalsRoute(userId: String, onClose: () -> Unit) {
             onMoveUp = model::moveUp,
             onMoveDown = model::moveDown,
             onRetry = { model.load() },
+            onAddEmergency = model::startEmergency,
         ),
     )
 

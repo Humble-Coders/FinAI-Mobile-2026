@@ -31,8 +31,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -113,6 +115,7 @@ internal fun AmountField(
             ),
             cursorBrush = SolidColor(FinAiPalette.Green),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = imeAction),
+            keyboardActions = closingKeyboardActions(),
             modifier = Modifier
                 .fillMaxWidth()
                 .height(if (large) 68.dp else 56.dp)
@@ -187,7 +190,7 @@ internal fun WizardField(
                 keyboardType = keyboardType,
                 imeAction = imeAction,
             ),
-            keyboardActions = KeyboardActions(onDone = onDone?.let { done -> { done() } }),
+            keyboardActions = closingKeyboardActions(onDone),
             modifier = Modifier
                 .fillMaxWidth()
                 .height(56.dp)
@@ -280,4 +283,22 @@ internal fun PickerField(
             }
         }
     }
+}
+
+/**
+ * The keyboard's own key always gets the person out of it: Next moves to the
+ * field below, or closes the keyboard when there is none — the last field on
+ * a screen must not leave a keyboard nothing can close — and Done closes it
+ * (after [onDone], when the field has one).
+ */
+@Composable
+internal fun closingKeyboardActions(onDone: (() -> Unit)? = null): KeyboardActions {
+    val focus = LocalFocusManager.current
+    return KeyboardActions(
+        onNext = { if (!focus.moveFocus(FocusDirection.Down)) focus.clearFocus() },
+        onDone = {
+            onDone?.invoke()
+            focus.clearFocus()
+        },
+    )
 }

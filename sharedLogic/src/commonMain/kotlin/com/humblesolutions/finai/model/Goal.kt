@@ -49,6 +49,14 @@ data class GoalsPage(
      */
     @SerialName("assumes_growth")
     val assumesGrowth: Boolean = false,
+
+    /** True while the household has no Emergency fund goal: the screen offers one. */
+    @SerialName("suggests_emergency_fund")
+    val suggestsEmergencyFund: Boolean = false,
+
+    /** What the suggestion starts the goal at — about a month of their spending — or null without one. */
+    @SerialName("emergency_fund_target")
+    val emergencyFundTarget: String? = null,
 ) {
     /** Goals still being saved for — the ones the server's limit counts. */
     val openCount: Int get() = goals.count { it.status != GoalStatus.ACHIEVED }

@@ -232,15 +232,6 @@ fun ManualEntryScreen(state: ManualEntryUiState, fromUnreadable: Boolean, action
                         leading = Icons.AutoMirrored.Filled.Label,
                         trailing = Icons.AutoMirrored.Filled.KeyboardArrowRight,
                     )
-                    // Said out loud, so an empty category reads as a choice
-                    // made, not a field forgotten.
-                    if (state.draft.categoryId == null) {
-                        Text(
-                            text = strings(Strings.manual_entry_category_auto),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
                 }
             }
             Spacer(Modifier.height(8.dp))
