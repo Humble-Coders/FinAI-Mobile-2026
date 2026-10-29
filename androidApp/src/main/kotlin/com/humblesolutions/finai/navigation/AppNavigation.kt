@@ -22,9 +22,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ReceiptLong
 import androidx.compose.material.icons.automirrored.outlined.ReceiptLong
 import androidx.compose.material.icons.filled.Flag
+import androidx.compose.material.icons.filled.Forum
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.PieChart
 import androidx.compose.material.icons.outlined.Flag
+import androidx.compose.material.icons.outlined.Forum
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.PieChart
 import androidx.compose.material3.Icon
@@ -58,6 +60,7 @@ import com.humblesolutions.finai.model.SessionState
 import com.humblesolutions.finai.model.SocialProvider
 import com.humblesolutions.finai.ui.aibudget.AiBudgetRoute
 import com.humblesolutions.finai.ui.budget.BudgetRoute
+import com.humblesolutions.finai.ui.chat.ChatRoute
 import com.humblesolutions.finai.ui.components.AppLoader
 import com.humblesolutions.finai.ui.components.LoaderHost
 import com.humblesolutions.finai.ui.components.LoaderSignal
@@ -302,7 +305,7 @@ private fun SetupRoute(userId: String, onFinished: () -> Unit) {
 }
 
 /** Where the signed-in, set-up person is: home, or one of the two ways money gets in. */
-internal enum class HomeRoute { HOME, ADD, IMPORT, ADD_AFTER_IMPORT, REVIEW, TRANSACTIONS, BUDGET, GOALS, INCOME, EXPENSES, INVESTMENTS, DEBTS, PLAN, PLAN_DEBTS }
+internal enum class HomeRoute { HOME, ADD, IMPORT, ADD_AFTER_IMPORT, REVIEW, TRANSACTIONS, BUDGET, GOALS, COACH, INCOME, EXPENSES, INVESTMENTS, DEBTS, PLAN, PLAN_DEBTS }
 
 /**
  * The places the bar always offers; everything else is a flow over them.
@@ -316,10 +319,11 @@ private val BASE_TABS = listOf(HomeRoute.HOME, HomeRoute.TRANSACTIONS)
 /** A tab the bar offers only when capabilities enable its feature. */
 private class GatedTab(val route: HomeRoute, val feature: String)
 
-/** In bar order, after [BASE_TABS]: Budget (#47), then Goals (#52). */
+/** In bar order, after [BASE_TABS]: Budget (#47), Goals (#52), then the Coach (#54). */
 private val GATED_TABS = listOf(
     GatedTab(HomeRoute.BUDGET, "auto_budget"),
     GatedTab(HomeRoute.GOALS, "goals"),
+    GatedTab(HomeRoute.COACH, "ai_chat"),
 )
 
 /** Every route the bar can hold, gated or not — what counts as a tab switch. */
@@ -439,6 +443,8 @@ private fun HomeOrEntry(userId: String, onSignOut: () -> Unit) {
         route = HomeRoute.REVIEW
     }
     val tabbed = route in tabs
+    // A conversation open in the Coach tab has its own input bar at the bottom.
+    var chatOpen by rememberSaveable { mutableStateOf(false) }
     Column(Modifier.fillMaxSize()) {
         Box(
             Modifier
@@ -529,6 +535,12 @@ private fun HomeOrEntry(userId: String, onSignOut: () -> Unit) {
 
                     HomeRoute.GOALS -> GoalsRoute(userId = userId, onClose = { route = HomeRoute.HOME })
 
+                    HomeRoute.COACH -> ChatRoute(
+                        userId = userId,
+                        onClose = { route = HomeRoute.HOME },
+                        onConversationOpen = { chatOpen = it },
+                    )
+
                     // The four money screens open over the bar, like a flow,
                     // and back returns home.
                     HomeRoute.INCOME -> MoneyDetailRoute(userId, MoneyKind.INCOME, onBack = { route = incomeFrom })
@@ -556,7 +568,7 @@ private fun HomeOrEntry(userId: String, onSignOut: () -> Unit) {
                 }
             }
         }
-        if (tabbed) HomeBar(tabs, route) { route = it }
+        if (tabbed && !(route == HomeRoute.COACH && chatOpen)) HomeBar(tabs, route) { route = it }
     }
 }
 
@@ -576,6 +588,8 @@ private fun HomeBar(tabs: List<HomeRoute>, current: HomeRoute, onSelect: (HomeRo
                 )
 
                 HomeRoute.BUDGET -> Triple(Icons.Filled.PieChart, Icons.Outlined.PieChart, Strings.tab_budget)
+
+                HomeRoute.COACH -> Triple(Icons.Filled.Forum, Icons.Outlined.Forum, Strings.chat_tab)
 
                 else -> Triple(Icons.Filled.Flag, Icons.Outlined.Flag, Strings.tab_goals)
             }

@@ -71,6 +71,7 @@ import com.humblesolutions.finai.model.Transaction
 import com.humblesolutions.finai.model.TransactionDirection
 import com.humblesolutions.finai.ui.components.AccountSheet
 import com.humblesolutions.finai.ui.components.AccountTints
+import com.humblesolutions.finai.ui.components.AiConsentPanel
 import com.humblesolutions.finai.ui.components.ChoiceCard
 import com.humblesolutions.finai.ui.components.ErrorText
 import com.humblesolutions.finai.ui.components.GradientButton
@@ -84,6 +85,7 @@ import com.humblesolutions.finai.ui.components.NewAccountSheet
 import com.humblesolutions.finai.ui.components.PasswordField
 import com.humblesolutions.finai.ui.components.PickerField
 import com.humblesolutions.finai.ui.components.ProviderButton
+import com.humblesolutions.finai.ui.components.TickRow
 import com.humblesolutions.finai.ui.edit.TransactionEditorActions
 import com.humblesolutions.finai.ui.edit.TransactionEditorSheet
 import com.humblesolutions.finai.ui.strings
@@ -394,49 +396,17 @@ private fun PrivacyNote() {
 
 @Composable
 private fun ConsentStep(state: StatementImportUiState, actions: StatementImportActions) {
-    Title(strings(Strings.import_consent_title))
-    ErrorText(state.consentErrorKey)
-    // The words are the server's, so they can change without an app release,
-    // and it records which version was shown.
-    state.policy?.let { policy ->
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(16.dp),
-            color = MaterialTheme.colorScheme.surface,
-            tonalElevation = 2.dp,
-        ) {
-            Text(text = policy.body, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(16.dp))
-        }
-        TickRow(
-            text = strings(Strings.import_consent_agree),
-            ticked = state.consentTicked,
-            onTicked = actions.onConsentTicked,
-        )
-    }
-    GradientButton(
-        text = strings(Strings.import_consent_continue),
-        onClick = actions.onAgree,
-        enabled = state.canAgree,
+    // Shared with the coach (#54), so both ask the same way.
+    AiConsentPanel(
+        title = strings(Strings.import_consent_title),
+        policy = state.policy,
+        ticked = state.consentTicked,
         busy = state.consentBusy,
+        errorKey = state.consentErrorKey,
+        onTicked = actions.onConsentTicked,
+        onAgree = actions.onAgree,
+        onNotNow = actions.onDeclineConsent,
     )
-    TextButton(onClick = actions.onDeclineConsent, modifier = Modifier.fillMaxWidth()) {
-        Text(strings(Strings.import_consent_not_now))
-    }
-}
-
-/** A box nothing pre-ticks, with its label as the tap target. */
-@Composable
-private fun TickRow(text: String, ticked: Boolean, onTicked: (Boolean) -> Unit) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .heightIn(min = 48.dp)
-            .toggleable(value = ticked, role = Role.Checkbox, onValueChange = onTicked),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Checkbox(checked = ticked, onCheckedChange = null)
-        Text(text = text, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(start = 12.dp))
-    }
 }
 
 @Composable

@@ -40,6 +40,8 @@ final class FeaturesViewModel: ObservableObject {
     /// The capabilities that earn the gated tabs a place on the bar.
     static let budgetFeature = "auto_budget"
     static let goalsFeature = "goals"
+    /// The Coach tab (#54).
+    static let chatFeature = "ai_chat"
     /// Your plan (#76) — not a tab, but its links and screens follow the same gate.
     static let planFeature = YourPlan.shared.FEATURE
 
@@ -48,18 +50,19 @@ final class FeaturesViewModel: ObservableObject {
         return capabilities.isEnabled(featureKey: feature) ? .on : .off
     }
 
-    /// Both gates together, for navigation to watch with one `onChange`.
+    /// Every gate together, for navigation to watch with one `onChange`.
     struct Gates: Equatable {
         let budget: Gate
         let goals: Gate
         let plan: Gate
+        let chat: Gate
     }
 
-    var gates: Gates { Gates(budget: gate(Self.budgetFeature), goals: gate(Self.goalsFeature), plan: gate(Self.planFeature)) }
+    var gates: Gates { Gates(budget: gate(Self.budgetFeature), goals: gate(Self.goalsFeature), plan: gate(Self.planFeature), chat: gate(Self.chatFeature)) }
 
     /**
      Whether the bar draws a gated tab. Android's `tabsFor`, one rule for every
-     gated tab — Budget (#47) and Goals (#52).
+     gated tab — Budget (#47), Goals (#52) and Coach (#54).
 
      **Not known is not the same as off.** After iOS reclaims the app, the
      scene-stored route puts the person back on their tab before capabilities

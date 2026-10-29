@@ -271,27 +271,15 @@ struct StatementImportView: View {
     }
 
     private var consentStep: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            title(Strings.shared.import_consent_title)
-            ErrorText(messageKey: model.consentErrorKey)
-            // The server's words, so they can change without an app release.
-            if let policy = model.policy {
-                Text(policy.body)
-                    .font(.subheadline)
-                    .padding(16)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Brand.sheet, in: RoundedRectangle(cornerRadius: 16))
-                Toggle(L.t(Strings.shared.import_consent_agree), isOn: $model.consentTicked)
-                    .toggleStyle(CheckboxStyle())
-            }
-            GradientButton(
-                title: L.t(Strings.shared.import_consent_continue),
-                enabled: model.canAgree,
-                busy: model.consentBusy
-            ) { model.agree() }
-            Button(L.t(Strings.shared.import_consent_not_now)) { model.declineConsent() }
-                .frame(maxWidth: .infinity)
-        }
+        AiConsentPanel(
+            title: L.t(Strings.shared.import_consent_title),
+            policy: model.policy,
+            ticked: $model.consentTicked,
+            busy: model.consentBusy,
+            errorKey: model.consentErrorKey,
+            onAgree: { model.agree() },
+            onNotNow: { model.declineConsent() }
+        )
     }
 
     private var passwordStep: some View {

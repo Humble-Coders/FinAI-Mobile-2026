@@ -32,6 +32,9 @@ struct RootView: View {
     /// The household's goals (#52), on the tab gated by `goals`.
     @StateObject private var goalsModel = GoalsViewModel()
 
+    /// The coach's conversations (#54), on the tab gated by `ai_chat`.
+    @StateObject private var chatModel = ChatViewModel()
+
     /// Your plan and Your debts (#76), gated by `debt_plan`.
     @StateObject private var planModel = PlanViewModel()
 
@@ -119,6 +122,8 @@ struct RootView: View {
             // The other tabs and Home's money screens, as Android: a first load, and
             // each change of month.
             || (showingGoals && goalsModel.loading && goalsModel.page == nil)
+            // Only a first read earns the coin: the list, or a conversation opening.
+            || (showingCoach && ((chatModel.listLoading && !chatModel.listLoaded) || (chatModel.threadLoading && chatModel.thread == nil)))
             || (showingTransactions && (transactionsModel.loading || transactionsModel.switchingMonth))
             || (showingMoney && (moneyModel.loading || moneyModel.switchingMonth))
     }
@@ -132,6 +137,8 @@ struct RootView: View {
     private var showingBudget: Bool { atHome && homeRoute == HomeRoute.budget.rawValue }
 
     private var showingGoals: Bool { atHome && homeRoute == HomeRoute.goals.rawValue }
+
+    private var showingCoach: Bool { atHome && homeRoute == HomeRoute.coach.rawValue }
 
     private var showingTransactions: Bool { atHome && homeRoute == HomeRoute.transactions.rawValue }
 
@@ -232,7 +239,7 @@ struct RootView: View {
             UpdateRequiredView()
         case .home:
             switch HomeRoute(rawValue: homeRoute) ?? .home {
-            case .home, .transactions, .budget, .goals:
+            case .home, .transactions, .budget, .goals, .coach:
                 tabs
             case .review:
                 ReviewView(
@@ -367,6 +374,12 @@ struct RootView: View {
                     .tabItem { Label(L.t(Strings.shared.tab_goals), systemImage: "flag.fill") }
                     .tag(HomeRoute.goals.rawValue)
             }
+
+            if features.shows(FeaturesViewModel.chatFeature, onTab: homeRoute == HomeRoute.coach.rawValue) {
+                CoachView(model: chatModel, userId: userId)
+                    .tabItem { Label(L.t(Strings.shared.chat_tab), systemImage: "bubble.left.and.bubble.right.fill") }
+                    .tag(HomeRoute.coach.rawValue)
+            }
         }
         .task(id: userId) { features.bind(userId: userId) }
         // A tab that goes away under the person — the feature turned off
@@ -377,8 +390,10 @@ struct RootView: View {
         .onChange(of: features.gates) { _, _ in
             let onBudget = homeRoute == HomeRoute.budget.rawValue
             let onGoals = homeRoute == HomeRoute.goals.rawValue
+            let onCoach = homeRoute == HomeRoute.coach.rawValue
             if features.leaves(FeaturesViewModel.budgetFeature, onTab: onBudget)
-                || features.leaves(FeaturesViewModel.goalsFeature, onTab: onGoals) {
+                || features.leaves(FeaturesViewModel.goalsFeature, onTab: onGoals)
+                || features.leaves(FeaturesViewModel.chatFeature, onTab: onCoach) {
                 goHome()
             }
         }
@@ -393,6 +408,7 @@ struct RootView: View {
             reviewModel.unbind()
             budgetModel.unbind()
             goalsModel.unbind()
+            chatModel.unbind()
         }
     }
 
@@ -405,7 +421,7 @@ struct RootView: View {
     /// Open Review, remembering the tab to go back to — Home when it is opened
     /// at the end of an import, which is finished by then. Android's `reviewReturnsTo`.
     private func openReview() {
-        let tabs: [HomeRoute] = [.home, .transactions, .budget, .goals]
+        let tabs: [HomeRoute] = [.home, .transactions, .budget, .goals, .coach]
         let from = HomeRoute(rawValue: homeRoute) ?? .home
         reviewFrom = (tabs.contains(from) ? from : .home).rawValue
         homeRoute = HomeRoute.review.rawValue
@@ -439,6 +455,8 @@ private enum HomeRoute: String {
     case budget
     /// The household's savings goals (#52) — the tab that took Review's place.
     case goals
+    /// The AI coach (#54), the tab after Goals.
+    case coach
     case add
     case importStatement = "import"
     /// Manual entry opened because a statement could not be read (#31).
