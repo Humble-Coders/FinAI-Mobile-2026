@@ -301,6 +301,16 @@ sealed class ApiException(message: String, cause: Throwable? = null) : Exception
         override val messageKey: String = Strings.spending_error_limit
     }
 
+    // ── The AI coach (#54) ──────────────────────────────────────────────
+
+    /**
+     * Today's questions to the coach are used up (backend #89's daily cap).
+     * Suggested questions still work: they cost nothing and are not counted.
+     */
+    class ChatLimitReached(val limit: Int?) : ApiException("chat daily limit reached") {
+        override val messageKey: String = Strings.chat_error_limit
+    }
+
     /** This month's fresh runs of a plan diagnostic are used up (429). The last answer stays. */
     class DiagnosticLimitReached : ApiException("diagnostic limit reached") {
         override val messageKey: String = Strings.diagnostic_error_limit
