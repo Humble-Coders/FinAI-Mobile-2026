@@ -1202,4 +1202,5 @@ object Strings {
     const val chat_retry = "chat_retry" // "Try again"
     const val chat_consent_title = "chat_consent_title" // "Before you ask your own questions"
     const val chat_back = "chat_back" // "Back to your chats"
+    const val chat_too_long = "chat_too_long" // "Keep your question under {0} characters."
 }

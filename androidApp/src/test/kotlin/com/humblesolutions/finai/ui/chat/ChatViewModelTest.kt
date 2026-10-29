@@ -15,6 +15,7 @@ import com.humblesolutions.finai.model.Terms
 import com.humblesolutions.finai.repository.AiConsentRepository
 import com.humblesolutions.finai.repository.ChatRepository
 import com.humblesolutions.finai.usecase.ChipPlacement
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -46,10 +47,18 @@ class ChatViewModelTest {
         var reply = ChatReply(text = "You spent \$840.00 in August.", answeredBy = "model")
         var fail: ApiException? = null
         var failDelete: ApiException? = null
+        var started = 0
+
+        /** When set, `start()` waits for it — a slow server. */
+        var startGate: CompletableDeferred<Unit>? = null
 
         override suspend fun suggestions() = listOf(CHIP)
         override suspend fun conversations() = list.toList()
-        override suspend fun start() = ConversationSummary("c2", null, null, "2026-09-15T12:00:00Z").also { list.add(0, it) }
+        override suspend fun start(): ConversationSummary {
+            started++
+            startGate?.await()
+            return ConversationSummary("c$started-new", null, null, "2026-09-15T12:00:00Z").also { list.add(0, it) }
+        }
         override suspend fun conversation(id: String) = Conversation(id, list.firstOrNull { it.id == id }?.title, messages.toList())
         override suspend fun send(conversationId: String, text: String, suggestionId: String?): ChatReply {
             sent += text to suggestionId
@@ -69,8 +78,10 @@ class ChatViewModelTest {
 
     private class FakeConsent : AiConsentRepository {
         val agreed = mutableListOf<String>()
-        override suspend fun policy() = AiPolicy(version = "ai-v1", body = "We send your question to an AI service.")
+        var current = "ai-v1"
+        override suspend fun policy() = AiPolicy(version = current, body = "We send your question to an AI service.")
         override suspend fun consent(version: String) {
+            if (version != current) throw ApiException.AiPolicyChanged(current)
             agreed += version
         }
         override suspend fun status() = AiConsentStatus()
@@ -96,7 +107,7 @@ class ChatViewModelTest {
         model.newChat()
 
         val thread = model.uiState.value.thread!!
-        assertEquals("c2", model.uiState.value.openId)
+        assertEquals("c1-new", model.uiState.value.openId)
         assertEquals(ChipPlacement.EMPTY_CHAT, thread.chips)
         assertEquals(listOf(CHIP), thread.suggestions)
     }
@@ -166,6 +177,57 @@ class ChatViewModelTest {
         assertEquals(listOf<Pair<String, String?>>("What did I spend?" to null, "What did I spend?" to null), chat.sent, "sent again without retyping")
         assertNull(model.uiState.value.consent)
         assertEquals("You spent \$840.00 in August.", model.uiState.value.thread!!.bubbles.last().text)
+    }
+
+    @Test
+    fun `a policy updated while consent is open is read again and can be agreed to`() {
+        val chat = FakeChat().apply { fail = ApiException.ConsentRequired("ai-v1") }
+        val consent = FakeConsent()
+        val model = model(chat, consent)
+        model.open("c1")
+        model.onDraftChange("What did I spend?")
+        model.send()
+        model.onConsentTicked(true)
+
+        consent.current = "ai-v2"
+        model.agree()
+
+        val ask = model.uiState.value.consent!!
+        assertEquals("ai-v2", ask.policy?.version, "the new policy is shown")
+        assertFalse(ask.ticked, "agreeing again is deliberate")
+        assertNotNull(ask.errorKey)
+
+        model.onConsentTicked(true)
+        model.agree()
+        assertEquals(listOf("ai-v2"), consent.agreed)
+        assertNull(model.uiState.value.consent)
+    }
+
+    @Test
+    fun `the question a failed send put back survives the process`() {
+        val chat = FakeChat().apply { fail = ApiException.Network(RuntimeException("offline")) }
+        val saved = SavedStateHandle()
+        val first = model(chat, saved = saved)
+        first.open("c1")
+        first.onDraftChange("What did I spend?")
+        first.send()
+
+        val restored = model(saved = saved)
+
+        assertEquals("What did I spend?", restored.uiState.value.thread?.draft)
+    }
+
+    @Test
+    fun `new chat tapped twice while the first is starting makes one conversation`() {
+        val chat = FakeChat().apply { startGate = CompletableDeferred() }
+        val model = model(chat)
+
+        model.newChat()
+        model.newChat()
+        chat.startGate!!.complete(Unit)
+
+        assertEquals(1, chat.started)
+        assertEquals("c1-new", model.uiState.value.openId)
     }
 
     @Test

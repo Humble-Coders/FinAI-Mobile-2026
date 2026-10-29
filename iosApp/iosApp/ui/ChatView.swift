@@ -152,6 +152,13 @@ struct ChatView: View {
                 }
                 .onAppear { AccessibilityNotification.Announcement(L.t(failure.messageKey)).post() }
             }
+            if let key = thread.draftNoticeKey {
+                Text(L.t(key, String(ChatThread.shared.MAX_CHARS)))
+                    .font(.footnote)
+                    .foregroundColor(.red)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .onAppear { AccessibilityNotification.Announcement(L.t(key, String(ChatThread.shared.MAX_CHARS))).post() }
+            }
             HStack(alignment: .bottom, spacing: 8) {
                 TextField(L.t(Strings.shared.chat_input_hint), text: draft(thread), axis: .vertical)
                     .lineLimit(1...5)

@@ -128,4 +128,22 @@ class ChatThreadTest {
         assertFalse(failed.failure!!.needsConsent)
         assertEquals("", failed.draft, "a chip's question is not put in the field")
     }
+
+    @Test
+    fun `a question longer than the server takes cannot be sent and says why`() {
+        val long = ChatThread.typed(EMPTY, "a".repeat(ChatThread.MAX_CHARS + 1))
+
+        assertFalse(long.canSend)
+        assertEquals(Strings.chat_too_long, long.draftNoticeKey)
+        assertEquals(long, ChatThread.sendDraft(long), "Send does nothing")
+    }
+
+    @Test
+    fun `a question at the limit goes and spaces around it do not count`() {
+        val atLimit = ChatThread.typed(EMPTY, "  " + "a".repeat(ChatThread.MAX_CHARS) + "\n")
+
+        assertTrue(atLimit.canSend)
+        assertNull(atLimit.draftNoticeKey)
+        assertEquals(ChatThread.MAX_CHARS, ChatThread.sendDraft(atLimit).sending?.text?.length)
+    }
 }

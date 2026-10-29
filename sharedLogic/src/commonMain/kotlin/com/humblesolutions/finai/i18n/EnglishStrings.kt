@@ -1135,4 +1135,5 @@ val EnglishStrings: Map<String, String> = mapOf(
     Strings.chat_retry to "Try again",
     Strings.chat_consent_title to "Before you ask your own questions",
     Strings.chat_back to "Back to your chats",
+    Strings.chat_too_long to "Keep your question under {0} characters.",
 )

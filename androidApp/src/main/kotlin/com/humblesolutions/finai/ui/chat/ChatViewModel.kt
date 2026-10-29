@@ -118,6 +118,8 @@ internal class ChatViewModel(
 
     fun newChat() {
         val repos = repositories ?: return
+        // One conversation per tap, however fast the taps.
+        if (_uiState.value.threadLoading) return
         update { it.copy(threadLoading = true, threadErrorKey = null) }
         viewModelScope.launch {
             try {
@@ -188,7 +190,6 @@ internal class ChatViewModel(
     }
 
     fun onDraftChange(text: String) {
-        saved[KEY_DRAFT] = text
         updateThread { ChatThread.typed(it, text) }
     }
 
@@ -196,7 +197,6 @@ internal class ChatViewModel(
         val thread = _uiState.value.thread ?: return
         val next = ChatThread.sendDraft(thread)
         val outgoing = next.sending ?: return
-        saved.remove<String>(KEY_DRAFT)
         updateThread { next }
         deliver(outgoing)
     }
@@ -214,7 +214,6 @@ internal class ChatViewModel(
         val thread = _uiState.value.thread ?: return
         val next = ChatThread.retry(thread)
         val outgoing = next.sending ?: return
-        saved.remove<String>(KEY_DRAFT)
         updateThread { next }
         deliver(outgoing)
     }
@@ -242,9 +241,10 @@ internal class ChatViewModel(
 
     // ── Consent ─────────────────────────────────────────────────────────
 
-    private fun askForConsent() {
+    /** Reads the policy to show; [errorKey] says why it is being asked again. */
+    private fun askForConsent(errorKey: String? = null) {
         val repos = repositories ?: return
-        update { it.copy(consent = ConsentAsk(busy = true)) }
+        update { it.copy(consent = ConsentAsk(busy = true, errorKey = errorKey)) }
         viewModelScope.launch {
             try {
                 val policy = repos.consent.policy()
@@ -273,6 +273,9 @@ internal class ChatViewModel(
                 retry()
             } catch (e: CancellationException) {
                 throw e
+            } catch (e: ApiException.AiPolicyChanged) {
+                // The policy moved on while it was open: show the new one to agree to.
+                askForConsent(e.messageKey)
             } catch (e: ApiException) {
                 update { it.copy(consent = it.consent?.copy(busy = false, errorKey = e.messageKey)) }
             }
@@ -312,8 +315,14 @@ internal class ChatViewModel(
 
     private fun update(change: (ChatUiState) -> ChatUiState) = _uiState.update(change)
 
-    private fun updateThread(change: (ChatThreadState) -> ChatThreadState) = _uiState.update { state ->
-        state.thread?.let { state.copy(thread = change(it)) } ?: state
+    /**
+     * Every change to the open thread, with its field's text saved beside it —
+     * so what survives the process is what the field shows, including the
+     * question a failed send put back.
+     */
+    private fun updateThread(change: (ChatThreadState) -> ChatThreadState) {
+        _uiState.update { state -> state.thread?.let { state.copy(thread = change(it)) } ?: state }
+        _uiState.value.thread?.let { saved[KEY_DRAFT] = it.draft }
     }
 
     private companion object {

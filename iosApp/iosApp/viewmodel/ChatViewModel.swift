@@ -71,7 +71,11 @@ final class ChatViewModel: ObservableObject {
         consentRepository = KtorAiConsentRepository(baseUrl: base, tokens: tokens, logging: logging)
         loadList()
         loadDisclaimer()
-        if let openId { open(openId) }
+        if let openId {
+            // Reopened after the tabs were torn down: the field keeps its text.
+            if let thread { restoredDraft = thread.draft }
+            open(openId)
+        }
     }
 
     func unbind() {
@@ -129,7 +133,8 @@ final class ChatViewModel: ObservableObject {
     }
 
     func newChat() {
-        guard let chatRepository else { return }
+        // One conversation per tap, however fast the taps.
+        guard let chatRepository, !threadLoading else { return }
         threadLoading = true
         threadErrorKey = nil
         Task {
@@ -262,12 +267,14 @@ final class ChatViewModel: ObservableObject {
 
     // MARK: Consent
 
-    private func askForConsent() {
+    /// Reads the policy to show; `errorKey` says why it is being asked again.
+    private func askForConsent(errorKey: String? = nil) {
         guard let consentRepository else { return }
         consentAsked = true
+        policy = nil
         consentTicked = false
         consentBusy = true
-        consentErrorKey = nil
+        consentErrorKey = errorKey
         Task {
             do {
                 policy = try await consentRepository.policy()
@@ -292,6 +299,11 @@ final class ChatViewModel: ObservableObject {
                 retry()
             } catch {
                 guard !Self.cancelled(error) else { return }
+                if let changed = Self.kotlin(error) as? ApiException.AiPolicyChanged {
+                    // The policy moved on while it was open: show the new one to agree to.
+                    askForConsent(errorKey: changed.messageKey)
+                    return
+                }
                 consentBusy = false
                 consentErrorKey = Self.messageKey(error)
             }

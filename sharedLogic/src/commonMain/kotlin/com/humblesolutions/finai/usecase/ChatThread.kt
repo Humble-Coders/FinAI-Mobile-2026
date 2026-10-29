@@ -37,8 +37,17 @@ data class ChatThreadState(
 ) {
     val isSending: Boolean get() = sending != null
 
-    /** Send is enabled only with something to send and nothing on its way. */
-    val canSend: Boolean get() = !isSending && draft.isNotBlank()
+    /** Longer than the server accepts (backend `MAX_MESSAGE_CHARS`), counted as it is sent. */
+    val tooLong: Boolean get() = draft.trim().length > ChatThread.MAX_CHARS
+
+    /** Send is enabled only with something to send, short enough, and nothing on its way. */
+    val canSend: Boolean get() = !isSending && draft.isNotBlank() && !tooLong
+
+    /**
+     * Why Send is off, to show under the field — or null. Only said when the
+     * person can act on it: an empty field or a reply on its way speak for themselves.
+     */
+    val draftNoticeKey: String? get() = if (tooLong) Strings.chat_too_long else null
 
     /** The messages to draw, newest last: the history, then what is on its way. */
     val bubbles: List<ChatBubble>
@@ -173,6 +182,13 @@ object ChatThread {
         is ApiException.FeatureUnavailable -> Strings.chat_error_off
         else -> Strings.chat_error_generic
     }
+
+    /**
+     * The longest question the server takes (backend `MAX_MESSAGE_CHARS`). It
+     * counts code points and this counts UTF-16 units, so an emoji-heavy
+     * question is held back a little early rather than refused.
+     */
+    const val MAX_CHARS = 1_000
 
     private const val TITLE_CHARS = 60
 }

@@ -70,6 +70,7 @@ import com.humblesolutions.finai.ui.components.LearningCard
 import com.humblesolutions.finai.ui.components.Mint
 import com.humblesolutions.finai.ui.strings
 import com.humblesolutions.finai.usecase.ChatBubble
+import com.humblesolutions.finai.usecase.ChatThread
 import com.humblesolutions.finai.usecase.ChatThreadState
 import com.humblesolutions.finai.usecase.ChipPlacement
 
@@ -276,6 +277,14 @@ private fun InputBar(thread: ChatThreadState, actions: ChatActions) {
                 Text(strings(failure.messageKey), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
                 TextButton(onClick = actions.onRetry) { Text(strings(Strings.chat_retry)) }
             }
+        }
+        thread.draftNoticeKey?.let { key ->
+            Text(
+                strings(key, ChatThread.MAX_CHARS.toString()),
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+            )
         }
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedTextField(

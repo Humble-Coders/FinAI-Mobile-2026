@@ -38,7 +38,7 @@ It talks to the backend's `/chat/*` endpoints (Finance-backend #84, #89 and #90)
 - `model/ApiException.kt` and `data/ApiErrorMapper.kt`: add `ChatLimitReached` for
   `429 chat_limit_reached`.
 - `i18n/Strings.kt` and `i18n/EnglishStrings.kt`: every `chat_*` string.
-- Tests: `ChatThreadTest` (12) and `KtorChatRepositoryTest` (10).
+- Tests: `ChatThreadTest` (14) and `KtorChatRepositoryTest` (10).
 
 **Android**
 - `ui/chat/ChatViewModel.kt` and `ChatUiState.kt`: the list, the open thread, consent and the
@@ -49,7 +49,7 @@ It talks to the backend's `/chat/*` endpoints (Finance-backend #84, #89 and #90)
   `StatementImportScreen.kt` now uses it.
 - `navigation/AppNavigation.kt`: the `COACH` route, gated by `ai_chat`. The bottom bar is hidden
   while a conversation is open.
-- Test: `ChatViewModelTest` (10).
+- Test: `ChatViewModelTest` (13).
 
 **iOS**
 - `viewmodel/ChatViewModel.swift`: Android's view model in Swift. The open conversation and draft
@@ -106,8 +106,8 @@ It talks to the backend's `/chat/*` endpoints (Finance-backend #84, #89 and #90)
 ## Verification
 
 - `./gradlew ktlintCheck`: passed.
-- `:sharedLogic:testAndroidHostTest`: 765 tests, 0 failures.
-- `:androidApp:testDebugUnitTest`: 355 tests, 0 failures.
+- `:sharedLogic:testAndroidHostTest`: 767 tests, 0 failures.
+- `:androidApp:testDebugUnitTest`: 358 tests, 0 failures.
 - `:androidApp:assembleDebug`: BUILD SUCCESSFUL.
 - iOS `xcodebuild` (simulator SDK, Debug): BUILD SUCCEEDED. The only warning in a touched file is
   the existing "default will never be executed" in `RootView.swift`'s destination switch.
@@ -124,6 +124,14 @@ It talks to the backend's `/chat/*` endpoints (Finance-backend #84, #89 and #90)
 - **The consent step is a shared component** on each platform, rather than a second copy.
 - **Swift doesn't edit Kotlin state.** The iOS view model replaces its `ChatThreadState` with
   whatever `ChatThread` returns.
+- **Questions are capped at 1,000 characters,** the backend's `MAX_MESSAGE_CHARS`. Over it, Send is
+  off and the field says "Keep your question under 1000 characters", from shared
+  `ChatThreadState.draftNoticeKey`. Without the cap the server's 422 read as "Something went wrong".
+- **A consent policy updated while the sheet is open is read again,** as the import does, so the
+  person can agree to the new version instead of being refused forever.
+- **Android saves the field's text after every thread change,** including the question a failed
+  send puts back, so it survives the process being killed.
+- **"New chat" ignores a second tap** while the first conversation is being created.
 - **Return in the iOS field sends.** A field that grows to five lines would otherwise put a line
   break into the text. Typing Return at the end sends instead; pasted line breaks are kept.
 
