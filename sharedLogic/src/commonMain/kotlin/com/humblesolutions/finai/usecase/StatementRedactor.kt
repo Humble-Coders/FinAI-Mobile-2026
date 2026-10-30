@@ -40,8 +40,9 @@ object StatementRedactor {
     // Unbounded, `1234567.89` reads as an amount and a seven-digit identifier
     // goes out untouched; un-anchored, `06012-5004321.00` has its tail read as
     // an amount and only the `06012` gets masked.
+    // Rupee statements group in lakhs, `1,00,000.00`, and mark amounts `₹`.
     private val AMOUNT_TOKEN =
-        Regex("""\(?-?\$?(?:\d{1,3}(?:,\d{3})*|\d{1,6})\.\d{2}\)?-?""")
+        Regex("""\(?-?[$₹]?(?:\d{1,2}(?:,\d{2})+,\d{3}|\d{1,3}(?:,\d{3})*|\d{1,6})\.\d{2}\)?-?""")
 
     private val TOKEN = Regex("""\S+""")
 
@@ -57,6 +58,16 @@ object StatementRedactor {
     private val UPI_ID = Regex("""[\w.\-]+@[A-Za-z][A-Za-z0-9]+\b""")
 
     private val POSTAL_CODE = Regex("""\b[A-Za-z]\d[A-Za-z][ -]?\d[A-Za-z]\d\b""")
+
+    // India's tax identifier, five letters, four digits, a letter:
+    // `ABCDE1234F`. Four digits slip under the digit-run rule, and the letters
+    // make it a word to everything else here.
+    private val PAN = Regex("""\b[A-Z]{5}\d{4}[A-Z]\b""")
+
+    // An Indian bank branch code, `HDFC0001234`: four letters, a zero, six
+    // letters or digits. It names the account holder's branch, as a transit
+    // number does, and next to a masked account number it narrows it to one.
+    private val IFSC = Regex("""\b[A-Z]{4}0[A-Z0-9]{6}\b""")
 
     private val AMOUNT = Regex("""\d[\d,]*\.\d{2}""")
 
@@ -186,6 +197,8 @@ object StatementRedactor {
         masked = UPI_ID.replace(masked, MASK)
         masked = PHONE.replace(masked, MASK)
         masked = POSTAL_CODE.replace(masked, MASK)
+        masked = PAN.replace(masked, MASK)
+        masked = IFSC.replace(masked, MASK)
         masked = GROUPED_DIGIT_RUN.replace(masked) { lastFour(it.value) }
 
         // Then token by token, so that an amount is recognised as a whole word

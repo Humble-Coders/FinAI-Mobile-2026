@@ -352,6 +352,32 @@ class StatementRedactorTest {
     }
 
     @Test
+    fun a_pan_and_an_ifsc_in_a_row_are_masked_and_the_row_kept() {
+        val text = StatementRedactor.redact(document(listOf("14 Aug NEFT/ABCDE1234F/HDFC0001234/RENT  25,000.00")))
+
+        assertFalse(text.contains("ABCDE1234F"), text)
+        assertFalse(text.contains("HDFC0001234"), text)
+        assertTrue(text.contains("25,000.00"), text)
+    }
+
+    @Test
+    fun a_lakh_grouped_amount_reaches_the_wire_unchanged() {
+        val text = StatementRedactor.redact(
+            document(listOf("05/10/2026 SALARY NORTHWIND INDIA  1,00,000.00 Cr", "07/10/2026 UPI-SWIGGY  ₹2,450.00 Dr")),
+        )
+
+        assertTrue(text.contains("1,00,000.00"), text)
+        assertTrue(text.contains("₹2,450.00"), text)
+    }
+
+    @Test
+    fun an_ordinary_merchant_word_is_not_taken_for_a_pan() {
+        val text = StatementRedactor.redact(document(listOf("14 Aug AMAZON PAY INDIA  1,299.00")))
+
+        assertTrue(text.contains("AMAZON PAY INDIA"), text)
+    }
+
+    @Test
     fun a_bare_symbol_amount_does_not_start_a_statements_rows() {
         // Only for images: on a statement a "$45" above the rows is as likely
         // a balance in the header as anything else.

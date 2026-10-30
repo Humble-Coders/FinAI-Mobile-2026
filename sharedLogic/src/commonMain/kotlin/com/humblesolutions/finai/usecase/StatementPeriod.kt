@@ -29,10 +29,13 @@ object StatementPeriod {
     )
 
     // `1 Aug 2026 to 31 Aug 2026`, `August 1, 2026 - August 31, 2026`,
-    // `2026-08-01 to 2026-08-31`. Two dates on one line, in that order.
+    // `2026-08-01 to 2026-08-31`, and as Indian banks print them,
+    // `01-Oct-2026 to 31-Oct-2026` and `01/10/2026 to 31/10/2026`. Two dates
+    // on one line, in that order.
     private val ISO = Regex("""(\d{4})-(\d{2})-(\d{2})""")
     private val DAY_MONTH_YEAR =
-        Regex("""(\d{1,2})\s+([A-Za-z]{3,})\.?,?\s+(\d{4})""")
+        Regex("""(\d{1,2})[\s/-]+([A-Za-z]{3,})\.?,?[\s/-]+(\d{4})""")
+    private val NUMERIC = Regex("""\b(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})\b""")
     private val MONTH_DAY_YEAR =
         Regex("""([A-Za-z]{3,})\.?\s+(\d{1,2}),?\s+(\d{4})""")
 
@@ -92,7 +95,33 @@ object StatementPeriod {
             val (month, day, year) = match.destructured
             iso(year, month, day)?.let { found += it }
         }
-        return found
+        if (found.size >= 2) return found
+
+        return found + numericDates(text)
+    }
+
+    /**
+     * `01/10/2026 to 31/10/2026`: dates in figures, read only when the line
+     * itself says which number is the day. A first number above 12 makes the
+     * line day-first, a second above 12 month-first; a line where neither
+     * happens is left unread rather than guessed, because `05/10` is the 5th of
+     * October in India and the 10th of May elsewhere, and a wrong period dates
+     * every row of the statement wrong.
+     */
+    private fun numericDates(text: String): List<String> {
+        val parts = NUMERIC.findAll(text).map { it.destructured.toList().map(String::toInt) }.toList()
+        if (parts.isEmpty()) return emptyList()
+        val dayFirst = parts.any { (first, _, _) -> first > 12 }
+        val monthFirst = parts.any { (_, second, _) -> second > 12 }
+        if (dayFirst == monthFirst) return emptyList()
+        return parts.mapNotNull { (first, second, year) ->
+            val (day, month) = if (dayFirst) first to second else second to first
+            if (isReal(year.toString(), month, day)) {
+                "$year-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}"
+            } else {
+                null
+            }
+        }
     }
 
     private fun iso(year: String, month: String, day: String): String? {
