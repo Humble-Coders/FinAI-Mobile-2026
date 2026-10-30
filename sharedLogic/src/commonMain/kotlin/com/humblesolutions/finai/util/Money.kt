@@ -38,6 +38,15 @@ object Money {
         val separators = cleaned.indices.filter { cleaned[it] == '.' || cleaned[it] == ',' }
         if (separators.isEmpty()) return assemble(cleaned, "", fractionDigits)
 
+        // The Indian grouping — `1,00,000` is a lakh — written with commas and
+        // a point, the only way it is written. Unambiguous: pairs before the
+        // last three digits can only be grouping.
+        INDIAN_GROUPED.matchEntire(cleaned)?.let { match ->
+            val fraction = match.groupValues[1]
+            if (fraction.length > fractionDigits) return null
+            return assemble(cleaned.substringBefore('.').replace(",", ""), fraction, fractionDigits)
+        }
+
         // Every separator but the last has to be grouping three digits, and the
         // run before the first has to be a group too, or this is not a number.
         separators.zipWithNext().forEach { (left, right) -> if (right - left - 1 != 3) return null }
@@ -260,7 +269,7 @@ object Money {
 
         val whole = normalized.substringBefore('.')
         val fraction = normalized.substringAfter('.', "")
-        val grouped = whole.reversed().chunked(3).joinToString(group).reversed()
+        val grouped = grouped(whole, currency, group)
         val body = if (fraction.isEmpty()) grouped else grouped + point + fraction
 
         val symbol = SYMBOLS[currency.uppercase()]
@@ -297,11 +306,27 @@ object Money {
 
         val thousands = size / 1_000
         val millions = size / 1_000_000
+        val lakhs = size / 1_00_000
+        val crores = size / 1_00_00_000
         val body = when {
             kotlin.math.round(size) < 1_000 -> kotlin.math.round(size).toLong().toString()
+
             thousands < 9.95 -> tenths(thousands) + "k"
+
+            // Rupees are counted in lakhs and crores, not hundreds of thousands
+            // and millions: ₹1.5L, never ₹150k.
+            currency.uppercase() in INDIAN_GROUPING -> when {
+                thousands < 99.5 -> kotlin.math.round(thousands).toLong().toString() + "k"
+                lakhs < 9.95 -> tenths(lakhs) + "L"
+                lakhs < 99.5 -> kotlin.math.round(lakhs).toLong().toString() + "L"
+                crores < 9.95 -> tenths(crores) + "Cr"
+                else -> kotlin.math.round(crores).toLong().toString() + "Cr"
+            }
+
             thousands < 999.5 -> kotlin.math.round(thousands).toLong().toString() + "k"
+
             millions < 9.95 -> tenths(millions) + "M"
+
             else -> kotlin.math.round(millions).toLong().toString() + "M"
         }
         val symbol = SYMBOLS[currency.uppercase()]
@@ -318,6 +343,26 @@ object Money {
      * does not know show their code, which is honest and never wrong.
      */
     fun symbol(currency: String): String = SYMBOLS[currency.uppercase()] ?: currency.uppercase()
+
+    /**
+     * [whole]'s digits with their separators: threes, or for a currency written
+     * in the Indian system the last three and then pairs — `1,00,000` is one
+     * lakh. Kept as data beside [SYMBOLS]: how a currency is written, not a
+     * branch on anyone's country.
+     */
+    private fun grouped(whole: String, currency: String, separator: String): String {
+        if (currency.uppercase() !in INDIAN_GROUPING || whole.length <= 3) {
+            return whole.reversed().chunked(3).joinToString(separator).reversed()
+        }
+        val head = whole.dropLast(3)
+        val pairs = head.reversed().chunked(2).joinToString(separator).reversed()
+        return pairs + separator + whole.takeLast(3)
+    }
+
+    private val INDIAN_GROUPING = setOf("INR")
+
+    // `1,00,000` or `12,34,567.50`: one or two digits, comma-separated pairs, the last three.
+    private val INDIAN_GROUPED = Regex("""\d{1,2}(?:,\d{2})+,\d{3}(?:\.(\d+))?""")
 
     private val SYMBOLS = mapOf(
         "CAD" to "$",

@@ -77,4 +77,28 @@ class StatementBalanceTest {
             StatementBalance.question(offer, "CAD"),
         )
     }
+
+    @Test
+    fun `a rupee balance grouped in lakhs is read whole`() {
+        // Read with the threes pattern, only the tail "000.00" matched: a balance of zero.
+        val found = StatementBalance.find(
+            document("HDFC BANK CREDIT CARD", "Statement Date: 05-Nov-2026", "Total Amount Due ₹1,23,456.78"),
+            periodEnd = null,
+            currency = "INR",
+        )
+
+        assertEquals(StatementBalance.Found("123456.78", "2026-11-05"), found)
+    }
+
+    @Test
+    fun `a rupee balance marked Rs is read`() {
+        val found = StatementBalance.find(document("Closing Balance Rs.2,50,000.00"), periodEnd = "2026-10-31", currency = "INR")
+
+        assertEquals(StatementBalance.Found("250000.00", "2026-10-31"), found)
+    }
+
+    @Test
+    fun `a rupee balance in credit is not offered`() {
+        assertEquals(null, StatementBalance.find(document("Total Amount Due 1,500.00 Cr"), periodEnd = "2026-10-31", currency = "INR"))
+    }
 }

@@ -119,4 +119,31 @@ class StatementPeriodTest {
         assertFalse(text.contains("2026"), "the header survived redaction")
         assertFalse(text.contains("MCKENZIE"))
     }
+
+    @Test
+    fun readsAnIndianPeriodWithHyphenatedMonths() {
+        val period = StatementPeriod.find(document("HDFC BANK", "Statement From : 01-Oct-2026 To : 31-Oct-2026"))
+
+        assertEquals(StatementPeriod.Range("2026-10-01", "2026-10-31"), period)
+    }
+
+    @Test
+    fun readsADayFirstNumericPeriodWhenTheLineShowsTheOrder() {
+        val period = StatementPeriod.find(document("Statement period 01/10/2026 to 31/10/2026"))
+
+        assertEquals(StatementPeriod.Range("2026-10-01", "2026-10-31"), period)
+    }
+
+    @Test
+    fun readsAMonthFirstNumericPeriodWhenTheLineShowsTheOrder() {
+        val period = StatementPeriod.find(document("Statement period 08/01/2026 to 08/31/2026"))
+
+        assertEquals(StatementPeriod.Range("2026-08-01", "2026-08-31"), period)
+    }
+
+    @Test
+    fun leavesAnAmbiguousNumericPeriodUnread() {
+        // 05/10 is the 5th of October or the 10th of May: no guess.
+        assertNull(StatementPeriod.find(document("Statement period 05/10/2026 to 10/11/2026")))
+    }
 }

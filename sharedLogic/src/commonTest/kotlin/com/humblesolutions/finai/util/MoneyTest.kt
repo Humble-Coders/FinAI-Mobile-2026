@@ -141,4 +141,35 @@ class MoneyTest {
         assertEquals("1.5k XYZ", Money.compact("1500", "XYZ"))
         assertEquals("", Money.compact("not money", "CAD"))
     }
+
+    @Test
+    fun `rupees are written in lakhs and crores`() {
+        assertEquals("₹1,00,000.00", Money.format("100000", "INR"))
+        assertEquals("₹1,23,45,678.90", Money.format("12345678.9", "INR"))
+        assertEquals("-₹12,34,567.89", Money.format("-1234567.89", "INR"))
+        assertEquals("₹12,345.00", Money.format("12345", "INR"))
+        assertEquals("₹999.00", Money.format("999", "INR", "en-IN"))
+        assertEquals("$100,000.00", Money.format("100000", "CAD"), "other currencies keep threes")
+    }
+
+    @Test
+    fun `a rupee chart label counts lakhs and crores`() {
+        assertEquals("₹850", Money.compact("850", "INR"))
+        assertEquals("₹4.5k", Money.compact("4500", "INR"))
+        assertEquals("₹45k", Money.compact("45000", "INR"))
+        assertEquals("₹1.5L", Money.compact("150000", "INR"))
+        assertEquals("₹25L", Money.compact("2500000", "INR"))
+        assertEquals("₹1.2Cr", Money.compact("12000000", "INR"))
+        assertEquals("$150k", Money.compact("150000", "CAD"))
+    }
+
+    @Test
+    fun `an amount typed with lakh commas is read`() {
+        assertEquals("100000.00", Money.normalize("1,00,000"))
+        assertEquals("1234567.50", Money.normalize("12,34,567.50"))
+        assertEquals("100000.00", Money.normalize("1,00,000.00"))
+        assertNull(Money.normalize("1,00,000."), "a point with nothing after it")
+        assertNull(Money.normalize("1,00,000.505"), "more decimals than the currency has")
+        assertNull(Money.normalize("1,0,000"), "not a grouping")
+    }
 }

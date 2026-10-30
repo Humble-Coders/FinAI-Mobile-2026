@@ -31,13 +31,15 @@ object StatementBalance {
     // What statements call the figure owed at the close. "Previous balance"
     // is deliberately not among them.
     private val LABEL = Regex(
-        """\b(new balance|closing balance|statement balance|total balance due|balance due|new balance total)\b""",
+        """\b(new balance|closing balance|statement balance|total balance due|total amount due|balance due|new balance total)\b""",
         RegexOption.IGNORE_CASE,
     )
 
     // A figure with cents, an optional currency mark, and the marks of a
-    // credit: brackets, a minus, or "CR".
-    private val AMOUNT = Regex("""(\()?(-)?\s?(?:[$€£₹]|CA\$|C\$|US\$)?\s?(\d{1,3}(?:,\d{3})+|\d+)\.(\d{2})(\))?(-)?(\s?CR\b)?""", RegexOption.IGNORE_CASE)
+    // credit: brackets, a minus, or "CR". Grouped in threes or, on a rupee
+    // statement, the Indian way: `1,00,000.00` read as `100,000.00` would
+    // otherwise match only its tail, `000.00`, and offer a balance of zero.
+    private val AMOUNT = Regex("""(\()?(-)?\s?(?:[$€£₹]|CA\$|C\$|US\$|Rs\.?|INR)?\s?(\d{1,2}(?:,\d{2})+,\d{3}|\d{1,3}(?:,\d{3})+|\d+)\.(\d{2})(\))?(-)?(\s?CR\b)?""", RegexOption.IGNORE_CASE)
 
     private val DATE_LABEL = Regex("""\b(statement date|closing date|statement closing date)\b""", RegexOption.IGNORE_CASE)
 
