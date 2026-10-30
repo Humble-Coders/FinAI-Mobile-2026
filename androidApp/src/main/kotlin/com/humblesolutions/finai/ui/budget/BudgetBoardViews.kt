@@ -250,8 +250,12 @@ private fun FigureLine(figure: BoardFigure, icon: ImageVector, accent: Color) {
         Box(Modifier.size(26.dp).clip(CircleShape).background(Mint.tile(accent)), contentAlignment = Alignment.Center) {
             Icon(icon, contentDescription = null, tint = accent, modifier = Modifier.size(15.dp))
         }
-        Text(figure.label, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-        Text(figure.amount, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, maxLines = 1)
+        // Label above amount: beside the panel there is room for one or the
+        // other on a phone, and side by side "Income received" was cut short.
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+            Text(figure.label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(figure.amount, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
     }
 }
 
@@ -349,7 +353,9 @@ internal fun CommitmentRow(item: OverviewCommitment, onTick: (String) -> Unit) {
                         true
                     }
                 }
-            },
+            }
+            // Room between one row's status and the next row's amount.
+            .padding(vertical = 6.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -379,14 +385,19 @@ private fun SignedLine(figure: BoardFigure) {
         Box(Modifier.size(20.dp).clip(CircleShape).background(Mint.tile(accent)), contentAlignment = Alignment.Center) {
             Icon(if (figure.sign > 0) Icons.Filled.Add else Icons.Filled.Remove, contentDescription = null, tint = accent, modifier = Modifier.size(13.dp))
         }
-        Text(figure.label, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
-        Text(
-            "$sign${figure.amount}",
-            style = MaterialTheme.typography.bodySmall,
-            fontWeight = FontWeight.Medium,
-            color = if (figure.sign > 0) Mint.greenText() else MaterialTheme.colorScheme.onSurface,
-            maxLines = 1,
-        )
+        // Label above amount, as on "This month so far": beside the ring there
+        // was no room for both, and labels broke mid-word.
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+            Text(figure.label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(
+                "$sign${figure.amount}",
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = if (figure.sign > 0) Mint.greenText() else MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
     }
 }
 
@@ -406,7 +417,7 @@ private fun LeftAtEnd(forecast: BoardForecast) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(3.dp),
     ) {
-        Text(forecast.leftLabel.uppercase(), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Medium, letterSpacing = 0.6.sp, color = if (forecast.surplus) Mint.greenText() else tone, textAlign = TextAlign.Center, maxLines = 1)
+        Text(forecast.leftLabel.uppercase(), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Medium, letterSpacing = 0.6.sp, color = if (forecast.surplus) Mint.greenText() else tone, textAlign = TextAlign.Center, maxLines = 2)
         Text(forecast.left, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, maxLines = 1)
         Text(
             forecast.statusLabel,
