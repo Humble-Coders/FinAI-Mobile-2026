@@ -44,17 +44,21 @@ struct BoardCard<Content: View>: View {
             .padding(18)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background {
-                ZStack(alignment: .topTrailing) {
-                    RoundedRectangle(cornerRadius: 28, style: .continuous)
-                        .fill(background ?? AnyShapeStyle(Mint.panel(dark)))
-                    // The corner glow: a soft circle, mostly off the card.
-                    Circle()
-                        .fill(RadialGradient(colors: [glow.opacity(dark ? 0.16 : 0.12), .clear], center: .center, startRadius: 0, endRadius: 150))
-                        .frame(width: 300, height: 300)
-                        .offset(x: 126, y: -138)
-                        .allowsHitTesting(false)
-                }
-                .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+                // The panel is exactly the card. The glow is an overlay on it, so
+                // it never takes part in sizing: inside a ZStack its 300pt frame
+                // made every shorter card's background 300pt tall and centred it,
+                // drawing the panel up over whatever sat above the card.
+                RoundedRectangle(cornerRadius: 28, style: .continuous)
+                    .fill(background ?? AnyShapeStyle(Mint.panel(dark)))
+                    .overlay(alignment: .topTrailing) {
+                        // The corner glow: a soft circle, mostly off the card.
+                        Circle()
+                            .fill(RadialGradient(colors: [glow.opacity(dark ? 0.16 : 0.12), .clear], center: .center, startRadius: 0, endRadius: 150))
+                            .frame(width: 300, height: 300)
+                            .offset(x: 126, y: -138)
+                            .allowsHitTesting(false)
+                    }
+                    .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
             }
             .overlay(
                 RoundedRectangle(cornerRadius: 28, style: .continuous)
@@ -170,6 +174,8 @@ struct SoFarCard: View {
         }
     }
 
+    /// The label above its amount: beside the panel there is room for one or
+    /// the other on a phone, and side by side "Income received" was cut short.
     private func figure(_ figure: BoardFigure, symbol: String, accent: Color) -> some View {
         HStack(spacing: 10) {
             Image(systemName: symbol)
@@ -177,9 +183,11 @@ struct SoFarCard: View {
                 .foregroundColor(accent)
                 .frame(width: 26, height: 26)
                 .background(Circle().fill(accent.opacity(0.14)))
-            Text(figure.label).font(.subheadline).lineLimit(1)
-            Spacer(minLength: 4)
-            Text(figure.amount).font(.subheadline.weight(.medium)).lineLimit(1)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(figure.label).font(.caption).foregroundColor(.secondary).lineLimit(2)
+                Text(figure.amount).font(.subheadline.weight(.semibold)).lineLimit(1).minimumScaleFactor(0.7)
+            }
+            Spacer(minLength: 0)
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(figure.label), \(figure.amount)")
@@ -209,13 +217,13 @@ struct SoFarCard: View {
         .frame(width: 132)
         .frame(maxHeight: .infinity)
         .background {
-            ZStack(alignment: .topTrailing) {
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(LinearGradient(colors: [BoardPalette.green.opacity(dark ? 0.18 : 0.10), BoardPalette.green.opacity(dark ? 0.06 : 0.03)], startPoint: .top, endPoint: .bottom))
-                // A faint coin in the corner — decoration, never a figure.
-                Circle().fill(BoardPalette.green.opacity(0.10)).frame(width: 52, height: 52).offset(x: 20, y: -18)
-            }
-            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(LinearGradient(colors: [BoardPalette.green.opacity(dark ? 0.18 : 0.10), BoardPalette.green.opacity(dark ? 0.06 : 0.03)], startPoint: .top, endPoint: .bottom))
+                .overlay(alignment: .topTrailing) {
+                    // A faint coin in the corner — decoration, never a figure.
+                    Circle().fill(BoardPalette.green.opacity(0.10)).frame(width: 52, height: 52).offset(x: 20, y: -18)
+                }
+                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         }
         .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(BoardPalette.green.opacity(0.25), lineWidth: 1))
         .accessibilityElement(children: .ignore)
@@ -284,12 +292,17 @@ struct ForecastCard: View {
                 .foregroundColor(accent)
                 .frame(width: 20, height: 20)
                 .background(Circle().fill(accent.opacity(0.14)))
-            Text(row.label).font(.caption)
-            Spacer(minLength: 4)
-            Text("\(sign)\(row.amount)")
-                .font(.caption.weight(.medium))
-                .foregroundColor(incoming ? Mint.greenText(dark) : .primary)
-                .lineLimit(1)
+            // Label above amount, as on "This month so far": beside the ring
+            // there was no room for both, and labels broke mid-word.
+            VStack(alignment: .leading, spacing: 1) {
+                Text(row.label).font(.caption).foregroundColor(.secondary).lineLimit(2)
+                Text("\(sign)\(row.amount)")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundColor(incoming ? Mint.greenText(dark) : .primary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+            }
+            Spacer(minLength: 0)
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(row.label), \(sign)\(row.amount)")
@@ -303,7 +316,8 @@ struct ForecastCard: View {
                 .font(.caption2.weight(.medium))
                 .tracking(0.6)
                 .foregroundColor(forecast.surplus ? Mint.greenText(dark) : .red)
-                .lineLimit(1)
+                .multilineTextAlignment(.center)
+                .lineLimit(2)
                 .minimumScaleFactor(0.8)
             Text(forecast.left).font(.subheadline.weight(.semibold)).lineLimit(1).minimumScaleFactor(0.7)
             Text(forecast.statusLabel)
@@ -370,6 +384,7 @@ struct CommitmentLine: View {
                     Text(item.status).font(.caption2).foregroundColor(.secondary)
                 }
             }
+            .padding(.vertical, 6)
             .frame(minHeight: 44)
             .contentShape(Rectangle())
         }
