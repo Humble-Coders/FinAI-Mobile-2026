@@ -27,6 +27,12 @@ data class PlanDiagnostic(
     val savingsGap: String = "0",
     @SerialName("to_savings")
     val toSavings: String = "0",
+    /** Allocation: what is saved each month — the Budget's savings target. */
+    @SerialName("monthly_savings")
+    val monthlySavings: String? = null,
+    /** To the Emergency fund goal, when there is one. */
+    @SerialName("to_emergency")
+    val toEmergency: String? = null,
     @SerialName("to_goals")
     val toGoals: String = "0",
     @SerialName("to_debt")
@@ -123,6 +129,9 @@ data class PlanDiagnostics(
     val savingsNow: String = "0",
     @SerialName("runs_left")
     val runsLeft: Map<String, Int> = emptyMap(),
+    /** What the allocation form starts with: the Budget's savings target this month. */
+    @SerialName("monthly_savings")
+    val monthlySavings: String = "0",
 ) {
     fun last(kind: String): PlanDiagnostic? = if (kind == ALLOCATION) allocation else invest
 
@@ -140,4 +149,6 @@ internal data class DiagnosticBody(
     val savingsTarget: String? = null,
     @SerialName("savings_now")
     val savingsNow: String? = null,
+    @SerialName("monthly_savings")
+    val monthlySavings: String? = null,
 )

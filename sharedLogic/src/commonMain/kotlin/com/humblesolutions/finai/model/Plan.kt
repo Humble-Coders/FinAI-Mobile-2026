@@ -64,7 +64,41 @@ data class PlanPreferences(
     val rateLinePercent: String = "0",
     val strategy: PlanStrategy = PlanStrategy.AVALANCHE,
     val suggested: PlanSuggested = PlanSuggested(),
+    /** The categories in the person's order, each with its percentage (redesign, 2026-10-31). */
+    val weights: List<PlanWeight> = emptyList(),
+    /** The household has an Emergency fund goal, so it is one of the categories. */
+    @SerialName("has_emergency_fund")
+    val hasEmergencyFund: Boolean = false,
 )
+
+/** One category of the money left over and its share. */
+@Serializable
+data class PlanWeight(
+    val category: PlanCategory = PlanCategory.UNKNOWN,
+    /** A percentage, `"40.00"`. */
+    val percent: String = "0",
+)
+
+/** Where the money left over can go. */
+@Serializable(with = PlanCategorySerializer::class)
+enum class PlanCategory(val wire: String) {
+    /** The household's Emergency fund goal — a category only when it has one. */
+    EMERGENCY_FUND("emergency_fund"),
+    DEBT("debt"),
+    GOALS("goals"),
+
+    /** One generic bucket. Never a product (PRD §1). */
+    SAVE_OR_INVEST("save_or_invest"),
+    UNKNOWN(""),
+    ;
+
+    companion object {
+        fun fromWire(value: String?): PlanCategory = entries.firstOrNull { it != UNKNOWN && it.wire == value } ?: UNKNOWN
+    }
+}
+
+internal object PlanCategorySerializer :
+    WireEnumSerializer<PlanCategory>("PlanCategory", { PlanCategory.fromWire(it) }, { it.wire })
 
 @Serializable
 data class PlanSuggested(
@@ -75,6 +109,7 @@ data class PlanSuggested(
     @SerialName("rate_line_percent")
     val rateLinePercent: String = "0",
     val strategy: PlanStrategy = PlanStrategy.AVALANCHE,
+    val weights: List<PlanWeight> = emptyList(),
 )
 
 /** Which debt the extra goes to first. */
@@ -112,6 +147,38 @@ data class PlanSplit(
     /** One generic bucket. Never a product (PRD §1). */
     @SerialName("save_or_invest")
     val saveOrInvest: String = "0",
+    /** The Emergency fund goal's row, when the household has one. */
+    @SerialName("emergency_fund")
+    val emergencyFund: PlanEmergencyShare? = null,
+    /** `"ai"` when the AI proposed it (the server checked it), `"rules"` otherwise. */
+    val source: String = "rules",
+    /** The AI's words about the split; never a figure. */
+    val why: String? = null,
+    /** The person set a row by hand. */
+    val edited: Boolean = false,
+    /** The most each row can be set to. */
+    val limits: List<PlanRowLimit> = emptyList(),
+)
+
+@Serializable
+data class PlanEmergencyShare(
+    @SerialName("goal_id")
+    val goalId: String = "",
+    val name: String = "",
+    val amount: String = "0",
+    /** What the goal still needs. */
+    @SerialName("still_needed")
+    val stillNeeded: String = "0",
+)
+
+/** The most one row of the split can be set to; null for no limit but the whole. */
+@Serializable
+data class PlanRowLimit(
+    /** `emergency_fund`, `debt`, `goal` or `save_or_invest`. */
+    val row: String = "",
+    @SerialName("goal_id")
+    val goalId: String? = null,
+    val most: String? = null,
 )
 
 @Serializable
@@ -175,14 +242,27 @@ data class PlanTotals(
 )
 
 /**
- * `PUT /plan/preferences` — built by `PlanChoices` from a draft that passed its
- * blocking reason. Every field is required by the server, [buffer] included:
- * its null means "no buffer", which the shared JSON would drop, so the
- * repository writes this body by hand.
+ * `PUT /plan/preferences` — built by `YourPlan` from a draft that passed its
+ * blocking reason. [weights] null keeps the saved ones: the Debts screen's
+ * strategy switch changes only the strategy.
  */
 data class PlanPreferencesToSave(
-    val buffer: String?,
-    val goalSharePercent: String,
-    val rateLinePercent: String,
     val strategy: PlanStrategy,
+    val weights: List<PlanWeight>?,
+)
+
+/** Which row of the split a person sets by hand. */
+enum class PlanRow(val wire: String) {
+    EMERGENCY_FUND("emergency_fund"),
+    DEBT("debt"),
+    GOAL("goal"),
+    SAVE_OR_INVEST("save_or_invest"),
+}
+
+/** `PUT /plan/split` — one row set by hand; [apply] also puts it where it belongs. */
+data class PlanSplitEdit(
+    val row: PlanRow,
+    val goalId: String?,
+    val amount: String,
+    val apply: Boolean,
 )

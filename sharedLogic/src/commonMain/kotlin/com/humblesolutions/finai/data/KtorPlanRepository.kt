@@ -7,13 +7,14 @@ import com.humblesolutions.finai.model.PlanDiagnostic
 import com.humblesolutions.finai.model.PlanDiagnostics
 import com.humblesolutions.finai.model.PlanPreferences
 import com.humblesolutions.finai.model.PlanPreferencesToSave
+import com.humblesolutions.finai.model.PlanSplitEdit
 import com.humblesolutions.finai.model.Terms
 import com.humblesolutions.finai.repository.PlanRepository
 import com.humblesolutions.finai.repository.SessionTokenSource
 import io.ktor.client.HttpClient
 import io.ktor.client.request.parameter
-import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlin.coroutines.cancellation.CancellationException
@@ -44,15 +45,38 @@ class KtorPlanRepository internal constructor(
     override suspend fun diagnostics(): PlanDiagnostics = http.getJson("plan/diagnostics")
 
     @Throws(ApiException::class, CancellationException::class)
-    override suspend fun runDiagnostic(kind: String, savingsTarget: String, savingsNow: String): PlanDiagnostic = http.postJson("plan/diagnostics/$kind", DiagnosticBody(savingsTarget, savingsNow))
+    override suspend fun runDiagnostic(kind: String, savingsTarget: String?, savingsNow: String?, monthlySavings: String?): PlanDiagnostic = http.postJson("plan/diagnostics/$kind", DiagnosticBody(savingsTarget, savingsNow, monthlySavings))
+
+    @Throws(ApiException::class, CancellationException::class)
+    override suspend fun editSplit(edit: PlanSplitEdit): Plan = http.putJson("plan/split", splitEditBody(edit))
 
     override fun close() = http.close()
 }
 
-/** The `PUT /plan/preferences` body. A null buffer is "no buffer", so it is written, never dropped. */
+/** The `PUT /plan/preferences` body. Without weights the saved ones are kept. */
 internal fun preferencesBody(choices: PlanPreferencesToSave): JsonObject = buildJsonObject {
-    if (choices.buffer == null) put("buffer", JsonNull) else put("buffer", choices.buffer)
-    put("goal_share_percent", choices.goalSharePercent)
-    put("rate_line_percent", choices.rateLinePercent)
     put("strategy", choices.strategy.wire)
+    choices.weights?.let { weights ->
+        put(
+            "weights",
+            buildJsonArray {
+                weights.forEach { weight ->
+                    add(
+                        buildJsonObject {
+                            put("category", weight.category.wire)
+                            put("percent", weight.percent)
+                        },
+                    )
+                }
+            },
+        )
+    }
+}
+
+/** The `PUT /plan/split` body. */
+internal fun splitEditBody(edit: PlanSplitEdit): JsonObject = buildJsonObject {
+    put("row", edit.row.wire)
+    edit.goalId?.let { put("goal_id", it) }
+    put("amount", edit.amount)
+    put("apply", edit.apply)
 }
