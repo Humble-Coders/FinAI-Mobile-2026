@@ -45,6 +45,19 @@ object PlanDiagnosticWords {
         return null
     }
 
+    /** Why the monthly saving cannot be run as typed; blank is fine — the server uses the Budget's savings target. */
+    fun monthlyBlockingReason(monthlySavings: String, currency: String): DiagnosticBlock? {
+        val digits = Money.fractionDigits(currency)
+        if (monthlySavings.isNotBlank() && !Money.isMoney(monthlySavings, digits)) return DiagnosticBlock.AMOUNT_INVALID
+        return null
+    }
+
+    /** The allocation form's field: "How much do you save each month?". */
+    fun monthlyLabel(locale: String = "en"): String = text(Strings.diagnostic_monthly_savings, locale)
+
+    /** "This also becomes your Budget's savings target." */
+    fun monthlyHint(locale: String = "en"): String = text(Strings.diagnostic_monthly_savings_hint, locale)
+
     /** "3 fresh runs left this month", or that none are. */
     fun runsLeft(diagnostics: PlanDiagnostics, kind: String, locale: String = "en"): String {
         val left = diagnostics.runsLeftFor(kind)
@@ -58,12 +71,16 @@ object PlanDiagnosticWords {
         fun money(amount: String) = Money.format(amount, d.currency, locale)
         val digits = Money.fractionDigits(d.currency)
         fun zero(amount: String) = !Money.isPositive(amount, digits)
-        val savingsDetail = if (zero(d.savingsGap)) {
-            format(Strings.diagnostic_savings_reached, locale, money(d.savingsTarget))
-        } else {
-            format(Strings.diagnostic_savings_gap, locale, money(d.savingsGap), money(d.savingsTarget))
+        val savingsDetail = when {
+            // Since the redesign (2026-10-31): what they save each month, taken first.
+            d.monthlySavings != null -> format(Strings.diagnostic_savings_monthly, locale, money(d.monthlySavings))
+
+            zero(d.savingsGap) -> format(Strings.diagnostic_savings_reached, locale, money(d.savingsTarget))
+
+            else -> format(Strings.diagnostic_savings_gap, locale, money(d.savingsGap), money(d.savingsTarget))
         }
         val rows = mutableListOf(DiagnosticRow(text(Strings.diagnostic_to_savings, locale), money(d.toSavings), savingsDetail, zero(d.toSavings)))
+        d.toEmergency?.takeIf { !zero(it) }?.let { rows += DiagnosticRow(text(Strings.diagnostic_to_emergency, locale), money(it), null, false) }
         if (d.goals.isEmpty()) {
             rows += DiagnosticRow(text(Strings.diagnostic_to_goals, locale), money(d.toGoals), null, zero(d.toGoals))
         } else {

@@ -21,10 +21,13 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.Shield
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -39,6 +42,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -51,6 +55,7 @@ import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -67,9 +72,11 @@ import com.humblesolutions.finai.ui.components.tint
 import com.humblesolutions.finai.ui.components.vector
 import com.humblesolutions.finai.ui.strings
 import com.humblesolutions.finai.usecase.CategoryIcon
-import com.humblesolutions.finai.usecase.ChoiceRow
 import com.humblesolutions.finai.usecase.DebtRow
+import com.humblesolutions.finai.usecase.SplitKind
 import com.humblesolutions.finai.usecase.SplitRow
+import com.humblesolutions.finai.usecase.SurplusCard
+import com.humblesolutions.finai.usecase.WeightRow
 import com.humblesolutions.finai.usecase.YourPlan
 
 /** What the plan's screens can ask of their model, passed down rather than reached for. */
@@ -83,32 +90,49 @@ internal data class PlanActions(
     val onUpdateBalance: (String) -> Unit,
     /** Opens a diagnostic: `allocation` or `invest`. */
     val onRunDiagnostic: (String) -> Unit = {},
+    /** Opens the editor on one row of the split. */
+    val onEditRow: (SplitRow) -> Unit = {},
+    /** The emergency fund suggestion's "Go to Goals"; null without a Goals tab. */
+    val onOpenGoals: (() -> Unit)? = null,
 )
 
 /**
- * Where the money left over goes (#76): the figure, its split, the four
- * choices behind it, and the disclaimer.
+ * Where the money left over goes (redesign, 2026-10-31): the monthly surplus
+ * with a bar of its parts, a row each for where it goes — each one editable —
+ * the choices behind it in priority order, the diagnostics and the disclaimer.
  *
- * In the Goals tab's language — the green field with the headline, a white
- * sheet beneath — because no design was supplied (decision 5). Every figure
- * is the server's and every sentence shared `YourPlan`'s. Guidance, not
- * advice: "Save or invest" names no product, and the disclaimer is on the page.
+ * On the green field of the Goals and Budget tabs, white sheets beneath.
+ * Every figure is the server's and every sentence shared `YourPlan`'s.
+ * Guidance, not advice: "Save or invest" names no product, and the
+ * disclaimer is on the page.
  */
 @Composable
 internal fun PlanScreen(state: PlanUiState, actions: PlanActions) {
     PlanFrame(state, actions, title = strings(Strings.plan_title)) {
-        state.headline?.let { Headline(it, null) }
-        Sheet {
-            if (state.showsSplit) {
+        state.surplus?.let { SurplusPanel(it) }
+        if (state.showsSplit) {
+            Sheet {
                 SectionTitle(strings(Strings.plan_split_title))
-                state.splitRows.forEach { SplitLine(it) }
-                HorizontalDivider(Modifier.padding(vertical = 4.dp))
+                state.splitNote?.let { note ->
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(note.text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        note.why?.let {
+                            Text(it, style = MaterialTheme.typography.bodySmall, fontStyle = FontStyle.Italic, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f))
+                        }
+                    }
+                }
+                state.splitRows.forEach { SplitLine(it, actions.onEditRow) }
             }
+        }
+        Sheet {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 SectionTitle(strings(Strings.plan_choices_title), Modifier.weight(1f))
-                TextButton(onClick = actions.onChangeChoices, enabled = state.plan != null) { Text(strings(Strings.plan_choices_change)) }
+                TextButton(onClick = actions.onChangeChoices, enabled = state.plan != null && state.weightRows.isNotEmpty()) {
+                    Text(strings(Strings.plan_choices_change))
+                }
             }
-            state.choiceRows.forEach { ChoiceLine(it) }
+            state.weightRows.forEach { WeightLine(it) }
+            state.emergencySuggestion?.let { (title, body) -> EmergencySuggestion(title, body, actions.onOpenGoals) }
             HorizontalDivider(Modifier.padding(vertical = 4.dp))
             LinkRow(strings(Strings.plan_debts_link), CategoryIcon.CARD, actions.onOpenDebts)
         }
@@ -162,8 +186,17 @@ private fun PlanFrame(state: PlanUiState, actions: PlanActions, title: String, c
         Waves(Modifier.fillMaxSize())
         FieldVectors(Modifier.fillMaxSize())
         Column(Modifier.fillMaxSize().safeDrawingPadding(), horizontalAlignment = Alignment.CenterHorizontally) {
-            Box(Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 8.dp)) {
-                IconButton(onClick = actions.onBack, modifier = Modifier.align(Alignment.CenterStart)) {
+            Box(Modifier.widthIn(max = 560.dp).fillMaxWidth().height(60.dp).padding(horizontal = 12.dp)) {
+                // A glass pill on the field, as the Budget tab's month button.
+                IconButton(
+                    onClick = actions.onBack,
+                    modifier = Modifier
+                        .align(Alignment.CenterStart)
+                        .size(48.dp)
+                        .clip(CircleShape)
+                        .background(Field.Glass)
+                        .border(1.dp, Field.GlassEdge, CircleShape),
+                ) {
                     Icon(painterResource(R.drawable.ic_back), contentDescription = strings(Strings.action_back), tint = Field.ink())
                 }
             }
@@ -180,6 +213,8 @@ private fun PlanFrame(state: PlanUiState, actions: PlanActions, title: String, c
                     style = MaterialTheme.typography.headlineLarge,
                     fontWeight = FontWeight.Bold,
                     color = Field.ink(),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.semantics { heading() },
                 )
                 when {
@@ -244,36 +279,184 @@ private fun Tile(icon: CategoryIcon) {
 
 // ── Your plan ───────────────────────────────────────────────────────────
 
+/** A deeper green than the field, so the surplus card reads as a card on it. */
+private object SurplusColors {
+    fun card(dark: Boolean): Color = if (dark) Color(0xFF0C2A18) else Color(0xFF0B4425)
+
+    /** Bright on the deep green, one per part of the split; never the only way a part is told apart. */
+    fun of(kind: SplitKind): Color = when (kind) {
+        SplitKind.EMERGENCY -> Color(0xFFF472B6)
+        SplitKind.GOAL -> Color(0xFFA78BFA)
+        SplitKind.EXTRA_DEBT -> Color(0xFF60A5FA)
+        SplitKind.SAVE_OR_INVEST -> Color(0xFF4ADE80)
+    }
+}
+
+/**
+ * The month, "Monthly surplus" and the figure, with a bar of where it goes
+ * and a legend under it. With nothing to split, the headline says why.
+ */
 @Composable
-private fun SplitLine(row: SplitRow) {
+private fun SurplusPanel(card: SurplusCard) {
+    val dark = isSystemInDarkTheme()
+    val shape = RoundedCornerShape(24.dp)
+    val spoken = listOfNotNull(card.month, card.title, card.amount ?: card.headline)
+        .plus(card.segments.map { "${it.label}, ${it.amount}" })
+        .joinToString(", ")
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(SurplusColors.card(dark))
+            .border(1.dp, Field.GlassEdge, shape)
+            .padding(18.dp)
+            .clearAndSetSemantics { contentDescription = spoken },
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Text(card.month, style = MaterialTheme.typography.labelLarge, color = Field.ink(0.8f), maxLines = 1)
+        Text(card.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, color = Field.ink())
+        if (card.amount != null) {
+            Text(
+                card.amount.orEmpty(),
+                style = MaterialTheme.typography.displaySmall,
+                fontWeight = FontWeight.Bold,
+                color = Field.ink(),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        } else {
+            Text(card.headline, style = MaterialTheme.typography.bodyLarge, color = Field.ink(0.9f))
+        }
+        if (card.segments.isNotEmpty()) {
+            Row(
+                Modifier.fillMaxWidth().height(10.dp).clip(RoundedCornerShape(5.dp)),
+                horizontalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                card.segments.forEach { segment ->
+                    Box(Modifier.weight(segment.fraction.coerceAtLeast(MIN_SEGMENT)).fillMaxSize().background(SurplusColors.of(segment.kind)))
+                }
+            }
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                card.segments.forEach { segment ->
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Box(Modifier.size(10.dp).clip(CircleShape).background(SurplusColors.of(segment.kind)))
+                        Text(
+                            segment.label,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Field.ink(0.9f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Text(segment.amount, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = Field.ink(), maxLines = 1)
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** A sliver of a part still shows: a weight of zero would also crash the row. */
+private const val MIN_SEGMENT = 0.02f
+
+/** One part of the split: heard as one sentence, with its Edit button beside it. */
+@Composable
+private fun SplitLine(row: SplitRow, onEdit: (SplitRow) -> Unit) {
+    val shape = RoundedCornerShape(16.dp)
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(Mint.card())
+            .border(1.dp, Mint.edge(), shape)
+            .padding(start = 12.dp, top = 8.dp, bottom = 8.dp, end = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Row(
+            Modifier
+                .weight(1f)
+                .heightIn(min = 48.dp)
+                // Nothing here this month: quieter, never hidden.
+                .alpha(if (row.isZero) 0.6f else 1f)
+                .clearAndSetSemantics { contentDescription = row.accessibility },
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Tile(row.icon)
+            Column(Modifier.weight(1f)) {
+                Text(row.label, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                row.detail?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            }
+            Text(row.amount, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, maxLines = 1)
+        }
+        IconButton(onClick = { onEdit(row) }) {
+            Icon(Icons.Outlined.Edit, contentDescription = strings(Strings.plan_edit_named, row.label), tint = Mint.greenText())
+        }
+    }
+}
+
+/** One choice: its place in the order, its share and what it is for. */
+@Composable
+private fun WeightLine(row: WeightRow) {
+    val priority = strings(Strings.plan_choices_priority, row.priority.toString())
+    val spoken = listOf(priority, row.label, row.percent, row.explanation).joinToString(", ")
     Row(
         Modifier
             .fillMaxWidth()
             .heightIn(min = 48.dp)
-            // Nothing here this month: quieter, never hidden.
-            .alpha(if (row.isZero) 0.6f else 1f)
-            .clearAndSetSemantics { contentDescription = row.accessibility },
+            .clearAndSetSemantics { contentDescription = spoken },
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Tile(row.icon)
-        Column(Modifier.weight(1f)) {
+        PriorityBadge(row.priority)
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(row.label, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            row.detail?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            Text(row.explanation, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        Text(row.amount, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, maxLines = 1)
+        Text(row.percent, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, maxLines = 1)
     }
 }
 
+/** The number in a round green tile: first, second, third. */
 @Composable
-private fun ChoiceLine(row: ChoiceRow) {
-    Column(Modifier.fillMaxWidth().semantics(mergeDescendants = true) {}, verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(row.label, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
-            Spacer(Modifier.width(8.dp))
-            Text(row.value, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold, maxLines = 1)
+internal fun PriorityBadge(priority: Int) {
+    val green = Mint.greenText()
+    Box(Modifier.size(32.dp).clip(CircleShape).background(Mint.tile(green)), contentAlignment = Alignment.Center) {
+        Text(priority.toString(), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, color = green)
+    }
+}
+
+/** "Add an emergency fund": it becomes a choice once it is a goal, on the Goals tab. */
+@Composable
+private fun EmergencySuggestion(title: String, body: String, onOpenGoals: (() -> Unit)?) {
+    val shape = RoundedCornerShape(18.dp)
+    val green = Mint.greenText()
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(Mint.tile(green))
+            .border(1.dp, green.copy(alpha = 0.35f), shape)
+            .padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Row(
+            Modifier.semantics(mergeDescendants = true) {},
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(Icons.Outlined.Shield, contentDescription = null, tint = green, modifier = Modifier.size(24.dp))
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                Text(body, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
         }
-        row.suggestion?.let { Text(it, style = MaterialTheme.typography.labelMedium, color = Mint.greenText()) }
+        if (onOpenGoals != null) {
+            TextButton(onClick = onOpenGoals, modifier = Modifier.align(Alignment.End)) {
+                Text(strings(Strings.plan_emergency_suggest_action), color = green, fontWeight = FontWeight.SemiBold)
+            }
+        }
     }
 }
 
@@ -290,7 +473,7 @@ private fun LinkRow(label: String, icon: CategoryIcon, onClick: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Tile(icon)
-        Text(label, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+        Text(label, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
         Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null)
     }
 }

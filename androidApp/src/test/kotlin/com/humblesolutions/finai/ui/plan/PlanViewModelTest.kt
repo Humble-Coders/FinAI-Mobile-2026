@@ -12,15 +12,20 @@ import com.humblesolutions.finai.model.DebtRecord
 import com.humblesolutions.finai.model.DebtsPage
 import com.humblesolutions.finai.model.NewAccount
 import com.humblesolutions.finai.model.Plan
+import com.humblesolutions.finai.model.PlanCategory
 import com.humblesolutions.finai.model.PlanDebt
 import com.humblesolutions.finai.model.PlanDiagnostic
 import com.humblesolutions.finai.model.PlanDiagnostics
+import com.humblesolutions.finai.model.PlanEmergencyShare
 import com.humblesolutions.finai.model.PlanPreferences
 import com.humblesolutions.finai.model.PlanPreferencesToSave
+import com.humblesolutions.finai.model.PlanRow
+import com.humblesolutions.finai.model.PlanRowLimit
 import com.humblesolutions.finai.model.PlanSplit
+import com.humblesolutions.finai.model.PlanSplitEdit
 import com.humblesolutions.finai.model.PlanStatus
 import com.humblesolutions.finai.model.PlanStrategy
-import com.humblesolutions.finai.model.PlanSuggested
+import com.humblesolutions.finai.model.PlanWeight
 import com.humblesolutions.finai.model.Terms
 import com.humblesolutions.finai.repository.AccountsRepository
 import com.humblesolutions.finai.repository.CapabilitiesRepository
@@ -28,6 +33,8 @@ import com.humblesolutions.finai.repository.DebtsRepository
 import com.humblesolutions.finai.repository.PlanRepository
 import com.humblesolutions.finai.usecase.BalanceBlock
 import com.humblesolutions.finai.usecase.PlanChoiceBlock
+import com.humblesolutions.finai.usecase.RowEditBlock
+import com.humblesolutions.finai.util.BudgetChanged
 import com.humblesolutions.finai.util.GoalsChanged
 import com.humblesolutions.finai.util.PlanChanged
 import kotlinx.coroutines.Dispatchers
@@ -42,6 +49,7 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -57,8 +65,12 @@ class PlanViewModelTest {
     private class FakePlan(var plan: Plan = plan()) : PlanRepository {
         var reads = 0
         val saved = mutableListOf<PlanPreferencesToSave>()
+        val edits = mutableListOf<PlanSplitEdit>()
         var failRead: ApiException? = null
         var failSave: ApiException? = null
+
+        /** What `PUT /plan/split` answers with: the whole plan, rebalanced. */
+        var edited: Plan? = null
 
         override suspend fun plan(month: String?): Plan {
             reads++
@@ -69,15 +81,22 @@ class PlanViewModelTest {
         override suspend fun savePreferences(choices: PlanPreferencesToSave): PlanPreferences {
             saved += choices
             failSave?.let { throw it }
-            plan = plan.copy(preferences = plan.preferences.copy(saved = true, strategy = choices.strategy, buffer = choices.buffer))
+            plan = plan.copy(preferences = plan.preferences.copy(saved = true, strategy = choices.strategy, weights = choices.weights ?: plan.preferences.weights))
             return plan.preferences
+        }
+
+        override suspend fun editSplit(edit: PlanSplitEdit): Plan {
+            edits += edit
+            failSave?.let { throw it }
+            plan = edited ?: plan
+            return plan
         }
 
         override suspend fun disclaimer(): Terms? = Terms(version = "ca-v1", body = "Educational guidance, not financial advice.")
 
         override suspend fun diagnostics(): PlanDiagnostics = PlanDiagnostics()
 
-        override suspend fun runDiagnostic(kind: String, savingsTarget: String, savingsNow: String): PlanDiagnostic = throw UnsupportedOperationException()
+        override suspend fun runDiagnostic(kind: String, savingsTarget: String?, savingsNow: String?, monthlySavings: String?): PlanDiagnostic = throw UnsupportedOperationException()
 
         override fun close() = Unit
     }
@@ -145,31 +164,162 @@ class PlanViewModelTest {
         assertTrue(state.plan != null)
     }
 
+    // ── A row of the split ──────────────────────────────────────────────
+
+    @Test
+    fun the_split_reads_as_a_row_each_with_the_surplus_above() = runTest {
+        val state = model().uiState.value
+
+        assertEquals(listOf(PlanRow.EMERGENCY_FUND, PlanRow.DEBT, PlanRow.SAVE_OR_INVEST), state.splitRows.map { it.row })
+        assertNotNull(state.surplus?.amount, "money to split: the figure, not the headline")
+        assertEquals(2, state.surplus?.segments?.size, "a part with nothing in it has no segment")
+        assertEquals(listOf(1, 2, 3, 4), state.weightRows.map { it.priority })
+    }
+
+    @Test
+    fun applying_a_row_edit_sends_apply_and_replaces_the_plan() = runTest {
+        val fakes = Fakes()
+        val rebalanced = plan().copy(split = plan().split.copy(extraDebt = "500.00", emergencyFund = fund("700.00"), edited = true))
+        fakes.plan.edited = rebalanced
+        val model = model(fakes)
+        val plans = mutableListOf<Unit>()
+        val budgets = mutableListOf<Unit>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { PlanChanged.events.collect { plans += it } }
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { BudgetChanged.events.collect { budgets += it } }
+        val reads = fakes.plan.reads
+
+        model.startRowEdit(model.uiState.value.splitRows.first { it.row == PlanRow.DEBT })
+        assertEquals(RowEditBlock.UNCHANGED, model.uiState.value.rowBlock)
+        model.onRowAmount("500")
+        model.requestRowSave()
+        assertTrue(model.uiState.value.askingApply)
+        assertEquals("Update Extra debt payment too?", model.uiState.value.applyQuestion?.title)
+        model.saveRow(apply = true)
+
+        assertEquals(PlanSplitEdit(PlanRow.DEBT, null, "500.00", apply = true), fakes.plan.edits.single())
+        val state = model.uiState.value
+        assertEquals(rebalanced, state.plan)
+        assertNull(state.rowDraft)
+        assertFalse(state.askingApply)
+        assertEquals(reads, fakes.plan.reads, "the answer is the plan: no read after it")
+        assertEquals(1, plans.size)
+        assertEquals(1, budgets.size, "the Budget's Debt line moved")
+    }
+
+    @Test
+    fun only_changing_the_plan_sends_no_apply_and_leaves_goals_alone() = runTest {
+        val fakes = Fakes()
+        val model = model(fakes)
+        val goals = mutableListOf<Unit>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { GoalsChanged.events.collect { goals += it } }
+
+        model.startRowEdit(model.uiState.value.splitRows.first { it.row == PlanRow.EMERGENCY_FUND })
+        model.onRowAmount("700")
+        model.requestRowSave()
+        model.saveRow(apply = false)
+
+        assertEquals(PlanSplitEdit(PlanRow.EMERGENCY_FUND, null, "700.00", apply = false), fakes.plan.edits.single())
+        assertTrue(goals.isEmpty())
+    }
+
+    @Test
+    fun a_row_over_its_limit_is_never_sent() = runTest {
+        val fakes = Fakes()
+        val model = model(fakes)
+
+        model.startRowEdit(model.uiState.value.splitRows.first { it.row == PlanRow.EMERGENCY_FUND })
+        model.onRowAmount("900")
+        model.requestRowSave()
+        model.saveRow(apply = true)
+
+        assertEquals(RowEditBlock.OVER_LIMIT, model.uiState.value.rowBlock)
+        assertFalse(model.uiState.value.askingApply)
+        assertTrue(fakes.plan.edits.isEmpty())
+    }
+
+    @Test
+    fun a_refused_row_keeps_the_editor_open_with_why() = runTest {
+        val fakes = Fakes()
+        fakes.plan.failSave = ApiException.Server(503)
+        val model = model(fakes)
+
+        model.startRowEdit(model.uiState.value.splitRows.first { it.row == PlanRow.DEBT })
+        model.onRowAmount("450")
+        model.requestRowSave()
+        model.saveRow(apply = false)
+
+        val state = model.uiState.value
+        assertTrue(state.rowDraft != null)
+        assertEquals(ApiException.Server(503).messageKey, state.rowErrorKey)
+    }
+
+    @Test
+    fun a_row_being_changed_survives_the_process_being_reclaimed() = runTest {
+        val saved = SavedStateHandle()
+        val first = model(saved = saved)
+        first.startRowEdit(first.uiState.value.splitRows.first { it.row == PlanRow.DEBT })
+        first.onRowAmount("450")
+        first.requestRowSave()
+
+        val restored = model(saved = saved).uiState.value
+
+        assertEquals(PlanRow.DEBT, restored.rowDraft?.row)
+        assertEquals("450", restored.rowDraft?.amount)
+        assertEquals("400.00", restored.rowDraft?.original)
+        assertTrue(restored.askingApply)
+    }
+
     // ── The choices ─────────────────────────────────────────────────────
 
     @Test
-    fun saving_the_choices_tells_home_and_goals() = runTest {
+    fun saving_the_choices_sends_the_weights_in_order_and_reads_the_plan_again() = runTest {
         val fakes = Fakes()
         val model = model(fakes)
         val plans = mutableListOf<Unit>()
-        val goals = mutableListOf<Unit>()
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { PlanChanged.events.collect { plans += it } }
-        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { GoalsChanged.events.collect { goals += it } }
+        val reads = fakes.plan.reads
 
         model.startChoices()
-        model.onChoicesDraft(model.uiState.value.choicesDraft.copy(goalSharePercent = "30"))
+        model.moveChoice(PlanCategory.DEBT, up = true)
+        model.stepChoice(PlanCategory.DEBT, up = true)
+        model.onChoicePercent(PlanCategory.SAVE_OR_INVEST, "5")
         model.saveChoices()
 
-        assertEquals("30.00", fakes.plan.saved.single().goalSharePercent)
+        val sent = fakes.plan.saved.single()
+        assertEquals(PlanStrategy.AVALANCHE, sent.strategy, "the strategy is kept")
+        assertEquals(
+            listOf(
+                PlanWeight(PlanCategory.DEBT, "45.00"),
+                PlanWeight(PlanCategory.EMERGENCY_FUND, "40.00"),
+                PlanWeight(PlanCategory.GOALS, "10.00"),
+                PlanWeight(PlanCategory.SAVE_OR_INVEST, "5.00"),
+            ),
+            sent.weights,
+        )
         assertFalse(model.uiState.value.choosing)
         assertEquals(1, plans.size)
-        assertEquals(1, goals.size, "a buffer is a goal: Goals reads again")
+        assertEquals(reads + 1, fakes.plan.reads, "the server reruns the split: read it again")
+    }
+
+    @Test
+    fun shares_that_do_not_add_up_to_100_never_leave() = runTest {
+        val fakes = Fakes()
+        val model = model(fakes)
+
+        model.startChoices()
+        model.stepChoice(PlanCategory.GOALS, up = true)
+        model.saveChoices()
+
+        assertEquals(PlanChoiceBlock.NOT_100, model.uiState.value.choicesBlock)
+        assertEquals("The shares add up to 105%. They need to add up to 100%.", model.uiState.value.choicesNotice)
+        assertFalse(model.uiState.value.canSaveChoices)
+        assertTrue(fakes.plan.saved.isEmpty())
     }
 
     @Test
     fun a_refused_save_keeps_the_sheet_open_with_why() = runTest {
         val fakes = Fakes()
-        fakes.plan.failSave = ApiException.GoalLimitReached(20)
+        fakes.plan.failSave = ApiException.Server(503)
         val model = model(fakes)
 
         model.startChoices()
@@ -177,45 +327,43 @@ class PlanViewModelTest {
 
         val state = model.uiState.value
         assertTrue(state.choosing)
-        assertEquals(ApiException.GoalLimitReached(20).messageKey, state.choicesErrorKey)
+        assertEquals(ApiException.Server(503).messageKey, state.choicesErrorKey)
     }
 
     @Test
-    fun a_choice_the_server_would_refuse_never_leaves() = runTest {
+    fun the_choices_being_edited_survive_the_process_being_reclaimed() = runTest {
+        val saved = SavedStateHandle()
+        val first = model(saved = saved)
+        first.startChoices()
+        first.moveChoice(PlanCategory.GOALS, up = true)
+        first.onChoicePercent(PlanCategory.GOALS, "12")
+
+        val restored = model(saved = saved).uiState.value
+
+        assertTrue(restored.choosing)
+        assertEquals(listOf(PlanCategory.EMERGENCY_FUND, PlanCategory.GOALS, PlanCategory.DEBT, PlanCategory.SAVE_OR_INVEST), restored.weightsDraft.categories)
+        assertEquals("12", restored.weightsDraft.percents[PlanCategory.GOALS])
+    }
+
+    @Test
+    fun the_emergency_suggestion_shows_only_without_a_fund() = runTest {
+        assertNull(model().uiState.value.emergencySuggestion)
+
+        val without = plan().copy(preferences = preferences().copy(hasEmergencyFund = false))
+        val state = model(Fakes(plan = FakePlan(without))).uiState.value
+        assertEquals("Add an emergency fund", state.emergencySuggestion?.first)
+    }
+
+    @Test
+    fun the_switch_saves_only_the_strategy() = runTest {
         val fakes = Fakes()
-        val model = model(fakes)
-
-        model.startChoices()
-        model.onChoicesDraft(model.uiState.value.choicesDraft.copy(rateLinePercent = "150"))
-        model.saveChoices()
-
-        assertEquals(PlanChoiceBlock.RATE_LINE_INVALID, model.uiState.value.choicesBlock)
-        assertTrue(fakes.plan.saved.isEmpty())
-    }
-
-    @Test
-    fun before_the_first_save_the_switch_opens_the_editor_instead() = runTest {
-        val fakes = Fakes()
-        val model = model(fakes)
-
-        model.chooseStrategy(PlanStrategy.SNOWBALL)
-
-        val state = model.uiState.value
-        assertTrue(state.choosing, "the first save keeps a buffer as a goal: the person confirms it")
-        assertEquals(PlanStrategy.SNOWBALL, state.choicesDraft.strategy)
-        assertTrue(fakes.plan.saved.isEmpty())
-    }
-
-    @Test
-    fun once_saved_the_switch_saves_only_the_strategy() = runTest {
-        val fakes = Fakes(plan = FakePlan(plan().copy(preferences = preferences().copy(saved = true))))
         val model = model(fakes)
 
         model.chooseStrategy(PlanStrategy.SNOWBALL)
 
         val sent = fakes.plan.saved.single()
         assertEquals(PlanStrategy.SNOWBALL, sent.strategy)
-        assertEquals("1000.00", sent.buffer)
+        assertNull(sent.weights, "the choices are kept")
         assertFalse(model.uiState.value.choosing)
     }
 
@@ -283,12 +431,18 @@ class PlanViewModelTest {
 
         fun preferences() = PlanPreferences(
             saved = false,
-            buffer = "1000.00",
-            goalSharePercent = "20.00",
             rateLinePercent = "6.00",
             strategy = PlanStrategy.AVALANCHE,
-            suggested = PlanSuggested(buffer = "1000.00", goalSharePercent = "20.00", rateLinePercent = "6.00"),
+            weights = listOf(
+                PlanWeight(PlanCategory.EMERGENCY_FUND, "40.00"),
+                PlanWeight(PlanCategory.DEBT, "40.00"),
+                PlanWeight(PlanCategory.GOALS, "10.00"),
+                PlanWeight(PlanCategory.SAVE_OR_INVEST, "10.00"),
+            ),
+            hasEmergencyFund = true,
         )
+
+        fun fund(amount: String) = PlanEmergencyShare(goalId = "g-fund", name = "Emergency fund", amount = amount, stillNeeded = "3000.00")
 
         fun plan() = Plan(
             month = "2026-11",
@@ -296,7 +450,12 @@ class PlanViewModelTest {
             status = PlanStatus.READY,
             leftover = "1200.00",
             preferences = preferences(),
-            split = PlanSplit(buffer = "800.00", extraDebt = "400.00", saveOrInvest = "0.00"),
+            split = PlanSplit(
+                extraDebt = "400.00",
+                saveOrInvest = "0.00",
+                emergencyFund = fund("800.00"),
+                limits = listOf(PlanRowLimit(row = "emergency_fund", most = "800.00")),
+            ),
             debts = listOf(PlanDebt(debtId = "d-visa", name = "Visa", ratePercent = "20.99", order = 1, getsExtraNow = true, paidOff = "2027-03", interest = "180.73", balance = "4000.00")),
         )
     }

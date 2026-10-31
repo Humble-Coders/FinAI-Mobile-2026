@@ -3,48 +3,50 @@ package com.humblesolutions.finai.usecase
 import com.humblesolutions.finai.i18n.LocalizationRegistry
 import com.humblesolutions.finai.i18n.Strings
 import com.humblesolutions.finai.model.Plan
+import com.humblesolutions.finai.model.PlanCategory
 import com.humblesolutions.finai.model.PlanDebt
 import com.humblesolutions.finai.model.PlanPreferences
 import com.humblesolutions.finai.model.PlanPreferencesToSave
+import com.humblesolutions.finai.model.PlanRow
+import com.humblesolutions.finai.model.PlanSplitEdit
 import com.humblesolutions.finai.model.PlanStatus
 import com.humblesolutions.finai.model.PlanStrategy
+import com.humblesolutions.finai.model.PlanWeight
 import com.humblesolutions.finai.util.Dates
 import com.humblesolutions.finai.util.Money
 import com.humblesolutions.finai.util.MoneyInput
 import com.humblesolutions.finai.util.Percent
 
 /**
- * The four choices as the person is editing them. Each starts at what the
- * plan runs on — their saved choice, or the suggestion until they save one —
- * so nothing here is a default the person did not see.
+ * The choices as the person is editing them (redesign, 2026-10-31): the
+ * categories in their order, each with a percentage. It starts at what the
+ * plan runs on — their saved choices, or the suggestion until they save — so
+ * nothing here is a default the person did not see.
  */
-data class PlanChoicesDraft(
-    /** False for "no buffer". */
-    val hasBuffer: Boolean = true,
-    val buffer: String = "",
-    val goalSharePercent: String = "",
-    val rateLinePercent: String = "",
-    val strategy: PlanStrategy = PlanStrategy.AVALANCHE,
+data class PlanWeightsDraft(
+    val categories: List<PlanCategory> = emptyList(),
+    /** Each category's percentage as typed. */
+    val percents: Map<PlanCategory, String> = emptyMap(),
 )
 
 /** Why the choices cannot be saved yet. */
 enum class PlanChoiceBlock(val messageKey: String) {
-    NO_BUFFER_AMOUNT(Strings.plan_block_no_buffer),
-    BUFFER_NOT_MONEY(Strings.plan_block_buffer_invalid),
-    BUFFER_NEGATIVE(Strings.plan_block_buffer_negative),
-    BUFFER_TOO_PRECISE(Strings.plan_block_too_precise),
-    BUFFER_ZERO(Strings.plan_block_buffer_zero),
-    GOAL_SHARE_INVALID(Strings.plan_block_goal_share_invalid),
-    RATE_LINE_INVALID(Strings.plan_block_rate_line_invalid),
+    PERCENT_INVALID(Strings.plan_block_percent_invalid),
+    NOT_100(Strings.plan_block_not_100),
     NOTHING_CHANGED(Strings.plan_block_unchanged),
 }
 
 /** One part of the split, already in words. */
 data class SplitRow(
     val kind: SplitKind,
+    /** Which row this is, for editing it. */
+    val row: PlanRow,
+    val goalId: String?,
     val label: String,
     val amount: String,
-    /** A second line — progress, or where the money goes — or null. */
+    /** The amount as the server sent it: what the editor starts from. */
+    val rawAmount: String,
+    /** A second line — what is still needed, or where the money goes — or null. */
     val detail: String?,
     /** Nothing goes here this month: drawn quieter, never hidden. */
     val isZero: Boolean,
@@ -53,15 +55,66 @@ data class SplitRow(
     val accessibility: String,
 )
 
-enum class SplitKind { BUFFER, GOAL, EXTRA_DEBT, SAVE_OR_INVEST }
+enum class SplitKind { EMERGENCY, GOAL, EXTRA_DEBT, SAVE_OR_INVEST }
 
-/** One choice on the plan screen: what it is set to, why it exists, and the suggestion. */
-data class ChoiceRow(
+/** The surplus card at the top of the plan. */
+data class SurplusCard(
+    /** "Oct 2026". */
+    val month: String,
+    val title: String,
+    /** The money left over; null when there is none to split — [headline] says why. */
+    val amount: String?,
+    val headline: String,
+    /** The bar under the amount: each part with money in it, in the split's order. */
+    val segments: List<SurplusSegment>,
+)
+
+/** One part of the surplus bar. [fraction] is a bar's length, 0 to 1 — a ratio, not money. */
+data class SurplusSegment(
+    val kind: SplitKind,
     val label: String,
-    val value: String,
+    val amount: String,
+    val fraction: Float,
+)
+
+/** Under "Where it goes": how it was worked out, and the AI's words about it. */
+data class SplitNote(val text: String, val why: String?)
+
+/** One category on the plan's choices, in the person's order. */
+data class WeightRow(
+    val category: PlanCategory,
+    val priority: Int,
+    val label: String,
+    val percent: String,
     val explanation: String,
-    /** "Suggested: 20%" when the choice differs from the suggestion; null when it matches. */
-    val suggestion: String?,
+)
+
+/** One row of the split as the person is changing it. */
+data class RowEditDraft(
+    val row: PlanRow,
+    val goalId: String?,
+    val label: String,
+    val amount: String,
+    /** What the row held before: an unchanged amount is not a change. */
+    val original: String,
+)
+
+/** Why a row's new amount cannot be saved. */
+enum class RowEditBlock(val messageKey: String) {
+    BLANK(Strings.plan_block_amount_blank),
+    NOT_MONEY(Strings.plan_block_amount_invalid),
+    NEGATIVE(Strings.plan_block_amount_negative),
+    TOO_PRECISE(Strings.plan_block_too_precise),
+    OVER_LIMIT(Strings.plan_block_over_limit),
+    UNCHANGED(Strings.plan_block_amount_unchanged),
+}
+
+/** The alert after a row is changed: whether to put the amount where it belongs as well. */
+data class ApplyQuestion(
+    val title: String,
+    val body: String,
+    val confirm: String,
+    val decline: String,
 )
 
 /** One debt on the Debts screen, in words. */
@@ -91,14 +144,15 @@ data class HomePlan(
 )
 
 /**
- * The plan, folded into what the screens say (backend #76) — and the rules
- * for changing its four choices.
+ * The plan, folded into what the screens say (backend #76, redesign
+ * 2026-10-31) — and the rules for changing its choices and its rows.
  *
- * **Every figure is the server's.** The money left over, the split, payoff
- * months, interest and the comparisons all arrive computed; this decides only
- * which of them a screen shows and in which words, once for both apps
- * (CLAUDE.md → Who computes what). Guidance, not advice: "Save or invest"
- * never names a product (PRD §1).
+ * **Every figure is the server's.** The money left over, the split (the AI's
+ * proposal, checked by the server, or the rules'), payoff months, interest
+ * and the comparisons all arrive computed; this decides only which of them a
+ * screen shows and in which words, once for both apps (CLAUDE.md → Who
+ * computes what). Guidance, not advice: "Save or invest" never names a
+ * product (PRD §1).
  */
 object YourPlan {
 
@@ -107,6 +161,9 @@ object YourPlan {
 
     /** How many parts of the split Home's card shows. */
     const val HOME_ROWS = 3
+
+    /** How far the − and + beside a share move it. */
+    const val PERCENT_STEP = 5
 
     class Words(val currency: String, val locale: String = "en", val amountsHidden: Boolean = false) {
         internal fun text(key: String): String = LocalizationRegistry.get(key, locale)
@@ -125,8 +182,8 @@ object YourPlan {
     // ── The money left over ─────────────────────────────────────────────
 
     /**
-     * The sentence at the top of the plan: what is left over, or why nothing
-     * is — still learning, or a budget whose lines exceed its income.
+     * The sentence for the money left over, or why there is none — still
+     * learning, or a budget whose lines exceed its income.
      */
     fun headline(plan: Plan, words: Words): String = when {
         plan.status == PlanStatus.LEARNING -> words.text(Strings.plan_headline_learning)
@@ -141,50 +198,89 @@ object YourPlan {
     /** The debt this month's extra goes to first, or null. */
     fun focus(plan: Plan): PlanDebt? = plan.debts.firstOrNull { it.getsExtraNow }
 
+    /** The card at the top: the month, the surplus, and a bar of where it goes. */
+    fun surplusCard(plan: Plan, words: Words): SurplusCard {
+        val split = hasSplit(plan, words.currency)
+        val whole = plan.leftover.toDoubleOrNull() ?: 0.0
+        val segments = if (!split || whole <= 0.0) {
+            emptyList()
+        } else {
+            splitParts(plan).mapNotNull { (kind, amount) ->
+                val part = amount.toDoubleOrNull() ?: 0.0
+                if (part <= 0.0) {
+                    null
+                } else {
+                    SurplusSegment(kind, kindLabel(kind, words), words.money(amount), (part / whole).toFloat().coerceIn(0f, 1f))
+                }
+            }
+        }
+        return SurplusCard(
+            month = words.month(plan.month),
+            title = words.text(Strings.plan_surplus_title),
+            amount = if (split) words.money(plan.leftover) else null,
+            headline = headline(plan, words),
+            segments = segments,
+        )
+    }
+
+    /** The split's parts by kind, goals together, in the order it is drawn. */
+    private fun splitParts(plan: Plan): List<Pair<SplitKind, String>> {
+        val split = plan.split
+        val goals = split.goals.fold("0") { sum, share -> Money.add(sum, share.amount) ?: sum }
+        return listOfNotNull(
+            split.emergencyFund?.let { SplitKind.EMERGENCY to it.amount },
+            SplitKind.GOAL to goals,
+            SplitKind.EXTRA_DEBT to split.extraDebt,
+            SplitKind.SAVE_OR_INVEST to split.saveOrInvest,
+        )
+    }
+
+    private fun kindLabel(kind: SplitKind, words: Words): String = words.text(
+        when (kind) {
+            SplitKind.EMERGENCY -> Strings.plan_category_emergency
+            SplitKind.GOAL -> Strings.plan_category_goals
+            SplitKind.EXTRA_DEBT -> Strings.plan_split_extra_debt
+            SplitKind.SAVE_OR_INVEST -> Strings.plan_split_save_or_invest
+        },
+    )
+
     /**
-     * The split, in the order the money is divided: buffer, goals, extra debt,
-     * save or invest. The buffer's row shows only with a buffer; the goals
-     * only those given something. Extra debt and save-or-invest always show,
-     * so a zero there still says where money would go.
+     * The split, a row each: the Emergency fund (when there is one), each goal
+     * given something, extra debt, save or invest. Extra debt and save or
+     * invest always show, so a zero there still says where money would go.
      */
     fun splitRows(plan: Plan, words: Words): List<SplitRow> {
         val split = plan.split
         val rows = mutableListOf<SplitRow>()
-        if (plan.preferences.buffer != null) {
-            val detail = if (split.bufferSaved != null && split.bufferTarget != null) {
-                words.text(Strings.plan_split_buffer_progress, words.money(split.bufferSaved), words.money(split.bufferTarget))
-            } else {
-                null
-            }
-            rows += row(SplitKind.BUFFER, words.text(Strings.plan_split_buffer), split.buffer, detail, words)
+        split.emergencyFund?.let { fund ->
+            val detail = if (isZero(fund.stillNeeded, words.currency)) null else words.text(Strings.plan_split_emergency_detail, words.money(fund.stillNeeded))
+            rows += row(SplitKind.EMERGENCY, PlanRow.EMERGENCY_FUND, fund.goalId, fund.name, fund.amount, detail, words)
         }
         split.goals.forEach { share ->
-            rows += row(SplitKind.GOAL, share.name, share.amount, null, words)
+            rows += row(SplitKind.GOAL, PlanRow.GOAL, share.goalId, share.name, share.amount, null, words)
         }
-        val focus = focus(plan)
         rows += row(
             SplitKind.EXTRA_DEBT,
+            PlanRow.DEBT,
+            null,
             words.text(Strings.plan_split_extra_debt),
             split.extraDebt,
-            focus?.let { words.text(Strings.plan_split_extra_debt_to, it.name) },
+            focus(plan)?.let { words.text(Strings.plan_split_extra_debt_to, it.name) },
             words,
         )
-        rows += row(
-            SplitKind.SAVE_OR_INVEST,
-            words.text(Strings.plan_split_save_or_invest),
-            split.saveOrInvest,
-            null,
-            words,
-        )
+        rows += row(SplitKind.SAVE_OR_INVEST, PlanRow.SAVE_OR_INVEST, null, words.text(Strings.plan_split_save_or_invest), split.saveOrInvest, null, words)
         return rows
     }
 
-    private fun row(kind: SplitKind, label: String, amount: String, detail: String?, words: Words): SplitRow {
+    private fun row(kind: SplitKind, planRow: PlanRow, goalId: String?, label: String, amount: String, detail: String?, words: Words): SplitRow {
         val money = words.money(amount)
         return SplitRow(
             kind = kind,
+            row = planRow,
+            goalId = goalId,
             label = label,
             amount = money,
+            rawAmount = amount,
             detail = detail,
             isZero = isZero(amount, words.currency),
             icon = iconOf(kind),
@@ -192,9 +288,20 @@ object YourPlan {
         )
     }
 
+    /** How the split was worked out — by the AI from the choices, or by the rules — and the AI's words. */
+    fun splitNote(plan: Plan, words: Words): SplitNote? {
+        if (!hasSplit(plan, words.currency)) return null
+        val text = when {
+            plan.split.edited -> words.text(Strings.plan_split_edited)
+            plan.split.source == "ai" -> words.text(Strings.plan_split_by_ai)
+            else -> words.text(Strings.plan_split_by_rules)
+        }
+        return SplitNote(text, plan.split.why?.takeIf { it.isNotBlank() && plan.split.source == "ai" })
+    }
+
     /** The picture beside a part of the split, from the category art both apps draw. */
     fun iconOf(kind: SplitKind): CategoryIcon = when (kind) {
-        SplitKind.BUFFER -> CategoryIcon.SHIELD
+        SplitKind.EMERGENCY -> CategoryIcon.SHIELD
         SplitKind.GOAL -> CategoryIcon.TAG
         SplitKind.EXTRA_DEBT -> CategoryIcon.CARD
         SplitKind.SAVE_OR_INVEST -> CategoryIcon.PIGGY
@@ -204,8 +311,9 @@ object YourPlan {
     fun suggestedFor(goalId: String, plan: Plan?, words: Words): String? {
         val plan = plan ?: return null
         if (!hasSplit(plan, words.currency)) return null
-        val amount = if (goalId == plan.preferences.bufferGoalId) {
-            plan.split.buffer
+        val fund = plan.split.emergencyFund
+        val amount = if (fund != null && fund.goalId == goalId) {
+            fund.amount
         } else {
             plan.split.goals.firstOrNull { it.goalId == goalId }?.amount ?: return null
         }
@@ -219,6 +327,70 @@ object YourPlan {
         rows = if (hasSplit(plan, words.currency)) splitRows(plan, words).filterNot { it.isZero }.take(HOME_ROWS) else emptyList(),
     )
 
+    // ── A row set by hand ───────────────────────────────────────────────
+
+    /** The editor opens on what the row holds now. */
+    fun editDraftOf(row: SplitRow): RowEditDraft = RowEditDraft(row.row, row.goalId, row.label, row.rawAmount, row.rawAmount)
+
+    /** The most [draft]'s row can be set to this month, as the server said; null for no limit but the whole. */
+    fun limitFor(plan: Plan, draft: RowEditDraft): String? {
+        val limit = plan.split.limits.firstOrNull { it.row == draft.row.wire && (draft.row != PlanRow.GOAL || it.goalId == draft.goalId) }
+        return limit?.most ?: plan.leftover
+    }
+
+    /** Why [draft] cannot be saved, or null when it can. */
+    fun editBlockingReason(plan: Plan, draft: RowEditDraft, currency: String): RowEditBlock? {
+        when (MoneyInput.problem(draft.amount, currency)) {
+            MoneyInput.Problem.BLANK -> return RowEditBlock.BLANK
+            MoneyInput.Problem.NEGATIVE -> return RowEditBlock.NEGATIVE
+            MoneyInput.Problem.NOT_MONEY -> return RowEditBlock.NOT_MONEY
+            MoneyInput.Problem.TOO_PRECISE -> return RowEditBlock.TOO_PRECISE
+            null -> Unit
+        }
+        val digits = Money.fractionDigits(currency)
+        val amount = Money.normalize(draft.amount, digits) ?: return RowEditBlock.NOT_MONEY
+        limitFor(plan, draft)?.let { most -> if (Money.compare(amount, most, digits) > 0) return RowEditBlock.OVER_LIMIT }
+        if (Money.compare(amount, draft.original, digits) == 0) return RowEditBlock.UNCHANGED
+        return null
+    }
+
+    fun editBlockText(block: RowEditBlock, plan: Plan, draft: RowEditDraft, words: Words): String = when (block) {
+        RowEditBlock.TOO_PRECISE -> words.text(block.messageKey, words.currency)
+        RowEditBlock.OVER_LIMIT -> words.text(block.messageKey, words.money(limitFor(plan, draft) ?: plan.leftover))
+        else -> words.text(block.messageKey)
+    }
+
+    /** "At most $1,035.00 this month", under the field. */
+    fun editLimitLine(plan: Plan, draft: RowEditDraft, words: Words): String? = limitFor(plan, draft)?.let { words.text(Strings.plan_edit_most, words.money(it)) }
+
+    /** "The other amounts adjust so the total stays $1,565.00." */
+    fun editRebalanceLine(plan: Plan, words: Words): String = words.text(Strings.plan_edit_rebalance, words.money(plan.leftover))
+
+    /** The alert after Save: whether the amount should also go where it belongs. */
+    fun applyQuestion(draft: RowEditDraft, words: Words): ApplyQuestion {
+        val digits = Money.fractionDigits(words.currency)
+        val amount = words.money(Money.normalize(draft.amount, digits) ?: draft.amount)
+        val body = when (draft.row) {
+            PlanRow.EMERGENCY_FUND, PlanRow.GOAL -> words.text(Strings.plan_apply_goal, draft.label, amount)
+            PlanRow.DEBT -> words.text(Strings.plan_apply_debt, amount)
+            PlanRow.SAVE_OR_INVEST -> words.text(Strings.plan_apply_save, amount)
+        }
+        return ApplyQuestion(
+            title = words.text(Strings.plan_apply_title, draft.label),
+            body = body,
+            confirm = words.text(Strings.plan_apply_yes),
+            decline = words.text(Strings.plan_apply_no),
+        )
+    }
+
+    /** The row as it is sent. Call after [editBlockingReason] said yes. */
+    fun toEdit(draft: RowEditDraft, apply: Boolean, currency: String): PlanSplitEdit = PlanSplitEdit(
+        row = draft.row,
+        goalId = draft.goalId.takeIf { draft.row == PlanRow.GOAL },
+        amount = Money.normalize(draft.amount, Money.fractionDigits(currency)) ?: draft.amount,
+        apply = apply,
+    )
+
     // ── The choices ─────────────────────────────────────────────────────
 
     fun strategyLabel(strategy: PlanStrategy, locale: String = "en"): String = LocalizationRegistry.get(
@@ -229,107 +401,146 @@ object YourPlan {
         locale,
     )
 
-    /**
-     * The three choices as the plan screen lists them. There is no buffer
-     * choice since 2026-10-28: an Emergency fund is a goal, and the Goals
-     * screen suggests one.
-     */
-    fun choiceRows(preferences: PlanPreferences, words: Words): List<ChoiceRow> {
-        val suggested = preferences.suggested
-        fun suggestion(differs: Boolean, value: String): String? = if (differs) words.text(Strings.plan_choice_suggested, value) else null
+    fun categoryLabel(category: PlanCategory, locale: String = "en"): String = LocalizationRegistry.get(
+        when (category) {
+            PlanCategory.EMERGENCY_FUND -> Strings.plan_category_emergency
+            PlanCategory.DEBT -> Strings.plan_category_debt
+            PlanCategory.GOALS -> Strings.plan_category_goals
+            PlanCategory.SAVE_OR_INVEST, PlanCategory.UNKNOWN -> Strings.plan_category_save
+        },
+        locale,
+    )
 
-        return listOf(
-            ChoiceRow(
-                label = words.text(Strings.plan_choice_goal_share),
-                value = Percent.display(preferences.goalSharePercent),
-                explanation = words.text(Strings.plan_choice_goal_share_why),
-                suggestion = suggestion(!Percent.same(preferences.goalSharePercent, suggested.goalSharePercent), Percent.display(suggested.goalSharePercent)),
-            ),
-            ChoiceRow(
-                label = words.text(Strings.plan_choice_rate_line),
-                value = Percent.display(preferences.rateLinePercent),
-                explanation = words.text(Strings.plan_choice_rate_line_why),
-                suggestion = suggestion(!Percent.same(preferences.rateLinePercent, suggested.rateLinePercent), Percent.display(suggested.rateLinePercent)),
-            ),
-            ChoiceRow(
-                label = words.text(Strings.plan_choice_strategy),
-                value = strategyLabel(preferences.strategy, words.locale),
-                explanation = words.text(Strings.plan_choice_strategy_why),
-                suggestion = suggestion(preferences.strategy != suggested.strategy, strategyLabel(suggested.strategy, words.locale)),
-            ),
-        )
+    private fun categoryWhy(category: PlanCategory, locale: String): String = LocalizationRegistry.get(
+        when (category) {
+            PlanCategory.EMERGENCY_FUND -> Strings.plan_category_emergency_why
+            PlanCategory.DEBT -> Strings.plan_category_debt_why
+            PlanCategory.GOALS -> Strings.plan_category_goals_why
+            PlanCategory.SAVE_OR_INVEST, PlanCategory.UNKNOWN -> Strings.plan_category_save_why
+        },
+        locale,
+    )
+
+    fun categoryIcon(category: PlanCategory): CategoryIcon = when (category) {
+        PlanCategory.EMERGENCY_FUND -> CategoryIcon.SHIELD
+        PlanCategory.DEBT -> CategoryIcon.CARD
+        PlanCategory.GOALS -> CategoryIcon.TAG
+        PlanCategory.SAVE_OR_INVEST, PlanCategory.UNKNOWN -> CategoryIcon.PIGGY
+    }
+
+    /** The choices as the plan screen lists them: in the person's order, each with its share. */
+    fun weightRows(preferences: PlanPreferences, words: Words): List<WeightRow> = preferences.weights
+        .filter { it.category != PlanCategory.UNKNOWN }
+        .mapIndexed { index, weight ->
+            WeightRow(
+                category = weight.category,
+                priority = index + 1,
+                label = categoryLabel(weight.category, words.locale),
+                percent = Percent.display(weight.percent),
+                explanation = categoryWhy(weight.category, words.locale),
+            )
+        }
+
+    /**
+     * The suggestion to add an Emergency fund, while the household has none:
+     * it becomes a choice only once it is a goal (product decision,
+     * 2026-10-31). Null when it has one.
+     */
+    fun emergencySuggestion(preferences: PlanPreferences, words: Words): Pair<String, String>? = if (preferences.hasEmergencyFund) {
+        null
+    } else {
+        words.text(Strings.plan_emergency_suggest_title) to words.text(Strings.plan_emergency_suggest_body)
     }
 
     /** The editor opens on what the plan runs on now. */
-    fun draftOf(preferences: PlanPreferences): PlanChoicesDraft = PlanChoicesDraft(
-        // No buffer step any more: nothing to choose, and nothing sent.
-        hasBuffer = false,
-        buffer = "",
-        goalSharePercent = Percent.normalize(preferences.goalSharePercent)?.removeSuffix(".00") ?: preferences.goalSharePercent,
-        rateLinePercent = Percent.normalize(preferences.rateLinePercent)?.removeSuffix(".00") ?: preferences.rateLinePercent,
-        strategy = preferences.strategy,
-    )
-
-    /**
-     * Why [draft] cannot be saved, or null when it can. Until the person has
-     * saved once, saving the suggestions unchanged is a real answer — it
-     * keeps the buffer as a goal — so "nothing changed" only applies after.
-     */
-    fun blockingReason(preferences: PlanPreferences, draft: PlanChoicesDraft, currency: String): PlanChoiceBlock? {
-        if (draft.hasBuffer) {
-            when (MoneyInput.problem(draft.buffer, currency)) {
-                MoneyInput.Problem.BLANK -> return PlanChoiceBlock.NO_BUFFER_AMOUNT
-                MoneyInput.Problem.NEGATIVE -> return PlanChoiceBlock.BUFFER_NEGATIVE
-                MoneyInput.Problem.NOT_MONEY -> return PlanChoiceBlock.BUFFER_NOT_MONEY
-                MoneyInput.Problem.TOO_PRECISE -> return PlanChoiceBlock.BUFFER_TOO_PRECISE
-                null -> Unit
-            }
-            if (!Money.isPositive(Money.normalize(draft.buffer, Money.fractionDigits(currency)).orEmpty(), Money.fractionDigits(currency))) return PlanChoiceBlock.BUFFER_ZERO
-        }
-        if (Percent.problem(draft.goalSharePercent) != null) return PlanChoiceBlock.GOAL_SHARE_INVALID
-        if (Percent.problem(draft.rateLinePercent) != null) return PlanChoiceBlock.RATE_LINE_INVALID
-        if (preferences.saved && unchanged(preferences, draft, currency)) return PlanChoiceBlock.NOTHING_CHANGED
-        return null
-    }
-
-    private fun unchanged(preferences: PlanPreferences, draft: PlanChoicesDraft, currency: String): Boolean = Percent.same(draft.goalSharePercent, preferences.goalSharePercent) &&
-        Percent.same(draft.rateLinePercent, preferences.rateLinePercent) &&
-        draft.strategy == preferences.strategy
-
-    /** The choices as they are sent. Call after [blockingReason] said yes. */
-    fun toSave(draft: PlanChoicesDraft, currency: String): PlanPreferencesToSave = PlanPreferencesToSave(
-        buffer = if (draft.hasBuffer) Money.normalize(draft.buffer, Money.fractionDigits(currency)) else null,
-        goalSharePercent = Percent.normalize(draft.goalSharePercent) ?: draft.goalSharePercent,
-        rateLinePercent = Percent.normalize(draft.rateLinePercent) ?: draft.rateLinePercent,
-        strategy = draft.strategy,
-    )
-
-    /**
-     * Only the strategy changed, the rest as saved — the Debts screen's switch.
-     * Null until the person has saved their choices once: the first save keeps
-     * a buffer as a goal, and that is theirs to confirm in the editor, not a
-     * side effect of a switch (the screen opens the editor instead).
-     */
-    fun strategyOnly(preferences: PlanPreferences, strategy: PlanStrategy): PlanPreferencesToSave? {
-        if (!preferences.saved) return null
-        return PlanPreferencesToSave(
-            buffer = preferences.buffer,
-            goalSharePercent = Percent.normalize(preferences.goalSharePercent) ?: preferences.goalSharePercent,
-            rateLinePercent = Percent.normalize(preferences.rateLinePercent) ?: preferences.rateLinePercent,
-            strategy = strategy,
+    fun weightsDraftOf(preferences: PlanPreferences): PlanWeightsDraft {
+        val weights = preferences.weights.filter { it.category != PlanCategory.UNKNOWN }
+        return PlanWeightsDraft(
+            categories = weights.map { it.category },
+            percents = weights.associate { it.category to plainPercent(it.percent) },
         )
     }
 
-    /** Said under the editor's Save when saving will keep the buffer as an Emergency fund goal. */
-    fun bufferGoalNote(preferences: PlanPreferences, draft: PlanChoicesDraft, locale: String = "en"): String? = if (draft.hasBuffer && preferences.bufferGoalId == null) {
-        LocalizationRegistry.get(Strings.plan_choices_goal_note, locale)
-    } else {
-        null
+    /** `"40.00"` as a person types it: `"40"`. */
+    private fun plainPercent(percent: String): String = Percent.display(percent).removeSuffix("%")
+
+    /** [category] one place earlier ([up]) or later in the order. */
+    fun moved(draft: PlanWeightsDraft, category: PlanCategory, up: Boolean): PlanWeightsDraft {
+        val order = draft.categories.toMutableList()
+        val at = order.indexOf(category)
+        val to = if (up) at - 1 else at + 1
+        if (at < 0 || to !in order.indices) return draft
+        order[at] = order[to]
+        order[to] = category
+        return draft.copy(categories = order)
     }
 
-    fun blockText(block: PlanChoiceBlock, currency: String, locale: String = "en"): String = when (block) {
-        PlanChoiceBlock.BUFFER_TOO_PRECISE -> LocalizationRegistry.format(block.messageKey, listOf(currency), locale)
+    fun withPercent(draft: PlanWeightsDraft, category: PlanCategory, text: String): PlanWeightsDraft = draft.copy(percents = draft.percents + (category to text))
+
+    /** [category]'s share moved by [PERCENT_STEP] whole points, kept between 0 and 100. */
+    fun stepped(draft: PlanWeightsDraft, category: PlanCategory, up: Boolean): PlanWeightsDraft {
+        val now = Percent.normalize(draft.percents[category].orEmpty())?.substringBefore('.')?.toIntOrNull() ?: 0
+        val next = (now + if (up) PERCENT_STEP else -PERCENT_STEP).coerceIn(0, 100)
+        return withPercent(draft, category, next.toString())
+    }
+
+    /** The shares added up, `"95.00"`; null while one is not a percentage. */
+    fun total(draft: PlanWeightsDraft): String? = draft.categories.fold<PlanCategory, String?>("0.00") { sum, category ->
+        val percent = Percent.normalize(draft.percents[category].orEmpty())
+        if (sum == null || percent == null) null else Money.add(sum, percent)
+    }
+
+    /** "Total: 95%". */
+    fun totalLine(draft: PlanWeightsDraft, words: Words): String? = total(draft)?.let { words.text(Strings.plan_choices_total, totalText(it)) }
+
+    /**
+     * A total as a person says it, `"105%"`. Not `Percent.display`: a total can
+     * be over 100 while the person is still typing, and that refuses it.
+     */
+    private fun totalText(total: String): String = total.removeSuffix(".00").let { if ('.' in it) it.trimEnd('0') else it } + "%"
+
+    /** Why [draft] cannot be saved, or null when it can. Until the person has saved once, the suggestions unchanged are a real answer. */
+    fun blockingReason(preferences: PlanPreferences, draft: PlanWeightsDraft): PlanChoiceBlock? {
+        val sum = total(draft) ?: return PlanChoiceBlock.PERCENT_INVALID
+        if (Money.compare(sum, "100") != 0) return PlanChoiceBlock.NOT_100
+        if (preferences.saved && unchanged(preferences, draft)) return PlanChoiceBlock.NOTHING_CHANGED
+        return null
+    }
+
+    private fun unchanged(preferences: PlanPreferences, draft: PlanWeightsDraft): Boolean {
+        val saved = preferences.weights.filter { it.category != PlanCategory.UNKNOWN }
+        return saved.map { it.category } == draft.categories &&
+            saved.all { Percent.same(it.percent, draft.percents[it.category]) }
+    }
+
+    fun blockText(block: PlanChoiceBlock, draft: PlanWeightsDraft, locale: String = "en"): String = when (block) {
+        PlanChoiceBlock.NOT_100 -> LocalizationRegistry.format(block.messageKey, listOf(totalText(total(draft) ?: "0")), locale)
         else -> LocalizationRegistry.get(block.messageKey, locale)
+    }
+
+    /** The choices as they are sent, with the strategy unchanged. Call after [blockingReason] said yes. */
+    fun toSave(draft: PlanWeightsDraft, strategy: PlanStrategy): PlanPreferencesToSave = PlanPreferencesToSave(
+        strategy = strategy,
+        weights = draft.categories.map { PlanWeight(it, Percent.normalize(draft.percents[it].orEmpty()) ?: "0.00") },
+    )
+
+    /** Only the strategy changed — the Debts screen's switch. The saved choices are kept. */
+    fun strategyOnly(strategy: PlanStrategy): PlanPreferencesToSave = PlanPreferencesToSave(strategy = strategy, weights = null)
+
+    /**
+     * "Pay debt before goals", from a diagnostic: debt to the top with the
+     * goals' share added to it, the goals given none. Null without a debt choice.
+     */
+    fun debtFirstChoices(preferences: PlanPreferences): PlanPreferencesToSave? {
+        val weights = preferences.weights.filter { it.category != PlanCategory.UNKNOWN }
+        val debt = weights.firstOrNull { it.category == PlanCategory.DEBT } ?: return null
+        val goals = weights.firstOrNull { it.category == PlanCategory.GOALS }?.percent ?: "0"
+        val together = Money.add(Percent.normalize(debt.percent) ?: "0", Percent.normalize(goals) ?: "0") ?: return null
+        val rest = weights.filter { it.category != PlanCategory.DEBT && it.category != PlanCategory.GOALS }
+        return PlanPreferencesToSave(
+            strategy = preferences.strategy,
+            weights = listOf(PlanWeight(PlanCategory.DEBT, together)) + rest + PlanWeight(PlanCategory.GOALS, "0.00"),
+        )
     }
 
     // ── The debts ───────────────────────────────────────────────────────

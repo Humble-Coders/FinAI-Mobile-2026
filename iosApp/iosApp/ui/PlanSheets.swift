@@ -2,54 +2,59 @@ import SwiftUI
 import SharedLogic
 
 /**
- The plan's four choices (#76), each opening on what the plan runs on now,
- with its one line of why. Android's `ChoicesSheet`. Saving with a buffer
- keeps it as an Emergency fund goal, and the sheet says so first.
+ The plan's choices (redesign 2026-10-31): the categories in the order they
+ are filled, each with a share. Android's `ChoicesSheet`. Up and down move a
+ category; − and + step its share by `YourPlan.PERCENT_STEP`; the field takes
+ any percentage. Recalculate keeps them and the server works the split out
+ again — so it stays off until the shares add up to 100%.
  */
 struct ChoicesSheet: View {
 
     @ObservedObject var model: PlanViewModel
-    @FocusState private var focused: Input?
-
-    private enum Input { case buffer, goalShare, rateLine }
+    @FocusState private var focused: PlanCategory?
+    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
+        let dark = scheme == .dark
+        let categories = model.weightsDraft?.categories ?? []
         NavigationStack {
-            Form {
-                Section {
-                    percentField(L.t(Strings.shared.plan_field_goal_share), text: $model.goalShare, field: .goalShare)
-                } header: {
-                    Text(L.t(Strings.shared.plan_choice_goal_share))
-                } footer: {
-                    Text(L.t(Strings.shared.plan_choice_goal_share_why))
-                }
-
-                Section {
-                    percentField(L.t(Strings.shared.plan_field_rate_line), text: $model.rateLine, field: .rateLine)
-                } header: {
-                    Text(L.t(Strings.shared.plan_choice_rate_line))
-                } footer: {
-                    Text(L.t(Strings.shared.plan_choice_rate_line_why))
-                }
-
-                Section {
-                    Picker(L.t(Strings.shared.plan_choice_strategy), selection: $model.strategy) {
-                        ForEach([PlanStrategy.avalanche, PlanStrategy.snowball], id: \.self) { strategy in
-                            Text(YourPlan.shared.strategyLabel(strategy: strategy, locale: model.locale)).tag(strategy)
+            ScrollViewReader { proxy in
+                Form {
+                    Section {
+                        ForEach(Array(categories.enumerated()), id: \.element) { index, category in
+                            row(category, index: index, count: categories.count, dark: dark)
+                                .id(category)
+                        }
+                    } header: {
+                        Text(L.t(Strings.shared.plan_choices_hint)).textCase(nil)
+                    } footer: {
+                        VStack(alignment: .leading, spacing: 6) {
+                            if let total = model.totalLine {
+                                Text(total).font(.subheadline.weight(.semibold)).foregroundColor(.primary)
+                            }
+                            if let notice = model.choicesNotice { Text(notice).foregroundColor(.red) }
+                            if let errorKey = model.choicesErrorKey { Text(L.t(errorKey)).foregroundColor(.red) }
                         }
                     }
-                    .pickerStyle(.segmented)
-                } header: {
-                    Text(L.t(Strings.shared.plan_choice_strategy))
-                } footer: {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(L.t(Strings.shared.plan_choice_strategy_why))
-                        if let note = model.goalNote { Text(note).foregroundColor(.primary) }
-                        if let notice = model.choicesNotice {
-                            Text(YourPlan.shared.blockText(block: notice, currency: model.moneyCurrency, locale: model.locale)).foregroundColor(.red)
+
+                    Section {
+                        GradientButton(
+                            title: L.t(Strings.shared.plan_choices_recalculate),
+                            enabled: model.canSaveChoices,
+                            busy: model.savingChoices
+                        ) {
+                            focused = nil
+                            model.saveChoices()
                         }
-                        if let errorKey = model.choicesErrorKey { Text(L.t(errorKey)).foregroundColor(.red) }
+                        .listRowInsets(EdgeInsets())
+                        .listRowBackground(Color.clear)
                     }
+                }
+                .scrollDismissesKeyboard(.interactively)
+                // The field being typed in stays above the keyboard.
+                .onChange(of: focused) { _, category in
+                    guard let category else { return }
+                    withAnimation { proxy.scrollTo(category, anchor: .center) }
                 }
             }
             .disabled(model.savingChoices)
@@ -59,13 +64,6 @@ struct ChoicesSheet: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button(L.t(Strings.shared.action_cancel)) { model.cancelChoices() }.disabled(model.savingChoices)
                 }
-                ToolbarItem(placement: .confirmationAction) {
-                    if model.savingChoices {
-                        ProgressView()
-                    } else {
-                        Button(L.t(Strings.shared.action_save)) { model.saveChoices() }.disabled(!model.canSaveChoices)
-                    }
-                }
                 // A decimal pad has no return key; this is the way off it.
                 ToolbarItemGroup(placement: .keyboard) {
                     Spacer()
@@ -74,17 +72,141 @@ struct ChoicesSheet: View {
             }
         }
         .presentationDetents([.large])
+        .interactiveDismissDisabled(model.savingChoices)
     }
 
-    private func percentField(_ label: String, text: Binding<String>, field: Input) -> some View {
-        HStack(spacing: 6) {
-            Text(label).foregroundColor(.secondary)
-            Spacer(minLength: 8)
-            TextField("0", text: text)
-                .keyboardType(.decimalPad)
-                .multilineTextAlignment(.trailing)
-                .focused($focused, equals: field)
+    /// Two lines: the place and name with up and down, then − share +.
+    private func row(_ category: PlanCategory, index: Int, count: Int, dark: Bool) -> some View {
+        let label = YourPlan.shared.categoryLabel(category: category, locale: model.locale)
+        let icon = YourPlan.shared.categoryIcon(category: category)
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 10) {
+                Text(String(index + 1))
+                    .font(.subheadline.weight(.bold))
+                    .foregroundColor(Mint.greenText(dark))
+                    .frame(width: 28, height: 28)
+                    .background(Circle().fill(Mint.tile(Mint.greenText(dark), dark)))
+                    .accessibilityLabel(L.t(Strings.shared.plan_choices_priority, String(index + 1)))
+                IconTile(symbol: icon.systemName, accent: icon.tint(dark), size: 32, iconSize: 15)
+                Text(label).font(.body.weight(.medium)).lineLimit(1).truncationMode(.tail)
+                Spacer(minLength: 4)
+                iconButton("chevron.up", label: L.t(Strings.shared.plan_choices_move_up, label), enabled: index > 0) {
+                    model.move(category, up: true)
+                }
+                iconButton("chevron.down", label: L.t(Strings.shared.plan_choices_move_down, label), enabled: index < count - 1) {
+                    model.move(category, up: false)
+                }
+            }
+            HStack(spacing: 10) {
+                iconButton("minus", label: L.t(Strings.shared.plan_choices_decrease, label), enabled: true) {
+                    model.step(category, up: false)
+                }
+                HStack(spacing: 4) {
+                    TextField("0", text: percentBinding(category))
+                        .keyboardType(.decimalPad)
+                        .multilineTextAlignment(.trailing)
+                        .font(.body.weight(.semibold))
+                        .focused($focused, equals: category)
+                        .accessibilityLabel(label)
+                    Image(systemName: "percent").font(.footnote.weight(.semibold)).foregroundColor(.secondary).accessibilityHidden(true)
+                }
+                .padding(.horizontal, 10)
+                .frame(minHeight: 44)
+                .background(RoundedRectangle(cornerRadius: 10).fill(Mint.card(dark)))
+                .overlay(RoundedRectangle(cornerRadius: 10).stroke(Mint.edge(dark), lineWidth: 1))
+                iconButton("plus", label: L.t(Strings.shared.plan_choices_increase, label), enabled: true) {
+                    model.step(category, up: true)
+                }
+            }
         }
+        .padding(.vertical, 4)
+    }
+
+    private func iconButton(_ symbol: String, label: String, enabled: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol).font(.body.weight(.semibold)).tappableArea()
+        }
+        .buttonStyle(.borderless)
+        .disabled(!enabled)
+        .accessibilityLabel(label)
+    }
+
+    private func percentBinding(_ category: PlanCategory) -> Binding<String> {
+        Binding(get: { model.percent(of: category) }, set: { model.setPercent($0, of: category) })
+    }
+}
+
+/**
+ One row of the split set by hand (redesign 2026-10-31). Android's
+ `RowEditSheet`. The others rebalance so the total stays the same; Save asks
+ whether the amount should go where it belongs too — a goal's monthly amount,
+ the Budget's Debt line or its savings target.
+ */
+struct RowEditSheet: View {
+
+    @ObservedObject var model: PlanViewModel
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    HStack(spacing: 6) {
+                        Text(model.currencySymbol).foregroundColor(.secondary)
+                        TextField(model.amountPlaceholder, text: $model.rowAmount)
+                            .keyboardType(.decimalPad)
+                            .focused($focused)
+                            .accessibilityLabel(L.t(Strings.shared.plan_edit_amount))
+                    }
+                } header: {
+                    Text(L.t(Strings.shared.plan_edit_amount))
+                } footer: {
+                    VStack(alignment: .leading, spacing: 4) {
+                        if let limit = model.rowLimitLine { Text(limit) }
+                        if let rebalance = model.rowRebalanceLine { Text(rebalance) }
+                        if let notice = model.rowNotice { Text(notice).foregroundColor(.red) }
+                        if let errorKey = model.rowErrorKey { Text(L.t(errorKey)).foregroundColor(.red) }
+                    }
+                }
+            }
+            .disabled(model.savingRow)
+            .navigationTitle(L.t(Strings.shared.plan_edit_title, model.rowEditBase?.label ?? ""))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(L.t(Strings.shared.action_cancel)) { model.cancelRowEdit() }.disabled(model.savingRow)
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    if model.savingRow {
+                        ProgressView()
+                    } else {
+                        Button(L.t(Strings.shared.plan_edit_save)) {
+                            focused = false
+                            model.askApply()
+                        }
+                        .disabled(!model.canSaveRow)
+                    }
+                }
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button(L.t(Strings.shared.action_done)) { focused = false }
+                }
+            }
+            .alert(
+                model.applyQuestion?.title ?? "",
+                isPresented: $model.askingApply,
+                presenting: model.applyQuestion
+            ) { question in
+                Button(question.confirm) { model.saveRow(apply: true) }
+                Button(question.decline) { model.saveRow(apply: false) }
+                Button(L.t(Strings.shared.action_cancel), role: .cancel) {}
+            } message: { question in
+                Text(question.body)
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .interactiveDismissDisabled(model.savingRow)
+        .onAppear { focused = true }
     }
 }
 

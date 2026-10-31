@@ -6,6 +6,7 @@ import com.humblesolutions.finai.model.PlanDiagnostic
 import com.humblesolutions.finai.model.PlanDiagnostics
 import com.humblesolutions.finai.model.PlanPreferences
 import com.humblesolutions.finai.model.PlanPreferencesToSave
+import com.humblesolutions.finai.model.PlanSplitEdit
 import com.humblesolutions.finai.model.Terms
 import kotlin.coroutines.cancellation.CancellationException
 
@@ -19,11 +20,7 @@ interface PlanRepository {
     @Throws(ApiException::class, CancellationException::class)
     suspend fun plan(month: String?): Plan
 
-    /**
-     * Keep the person's choices. A buffer makes or updates their
-     * emergency-fund goal, so a new one can meet the goal limit:
-     * [ApiException.GoalLimitReached].
-     */
+    /** Keep the person's choices: their order and percentages, and the strategy. */
     @Throws(ApiException::class, CancellationException::class)
     suspend fun savePreferences(choices: PlanPreferencesToSave): PlanPreferences
 
@@ -41,7 +38,16 @@ interface PlanRepository {
      * runs a month, [ApiException.DiagnosticLimitReached].
      */
     @Throws(ApiException::class, CancellationException::class)
-    suspend fun runDiagnostic(kind: String, savingsTarget: String, savingsNow: String): PlanDiagnostic
+    suspend fun runDiagnostic(kind: String, savingsTarget: String?, savingsNow: String?, monthlySavings: String?): PlanDiagnostic
+
+    /**
+     * Set one row of this month's split by hand; the others rebalance. With
+     * `apply` it is also put where it belongs — a goal's monthly amount, the
+     * Budget's Debt line or its savings target. More than the row can take:
+     * [ApiException.Rejected] with `over_limit`.
+     */
+    @Throws(ApiException::class, CancellationException::class)
+    suspend fun editSplit(edit: PlanSplitEdit): Plan
 
     fun close()
 }

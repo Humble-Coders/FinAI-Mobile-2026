@@ -5,7 +5,9 @@ import SharedLogic
  Your plan's diagnostics: "Debt, goals or savings?" and "Should I invest?". The
  Android `DiagnosticViewModel` is the same model.
 
- The form starts from the savings figures the person last ran with. Running
+ The allocation form is one figure — what they save each month, starting at
+ the Budget's savings target, which a run also sets. The invest form starts
+ from the savings figures the person last ran with. Running
  with the same figures returns the stored answer at no cost; the server allows
  four fresh runs of each a month.
  */
@@ -19,6 +21,8 @@ final class DiagnosticViewModel: ObservableObject {
     @Published private(set) var result: PlanDiagnostic?
     @Published var savingsTarget = ""
     @Published var savingsNow = ""
+    /// The allocation form's one figure: what they save each month.
+    @Published var monthlySavings = ""
     @Published private(set) var running = false
     @Published private(set) var errorKey: String?
     @Published private(set) var policy: AiPolicy?
@@ -27,6 +31,8 @@ final class DiagnosticViewModel: ObservableObject {
     /// "Pay debt before goals" is being saved, or was.
     @Published private(set) var applying = false
     @Published private(set) var applied = false
+    /// The plan's choices, for "Pay debt before goals"; nil until read or with no debt choice.
+    @Published private(set) var preferences: PlanPreferences?
 
     let locale = "en"
 
@@ -67,7 +73,10 @@ final class DiagnosticViewModel: ObservableObject {
             result = found.last(kind: kind)
             savingsTarget = found.savingsTarget
             savingsNow = found.savingsNow
+            monthlySavings = found.monthlySavings
             loading = false
+            // Quiet on failure: only "Pay debt before goals" needs it.
+            if isAllocation, let answer = try? await plan.plan(month: nil) { preferences = answer.preferences }
         } catch {
             loading = false
             errorKey = Self.messageKey(error)
@@ -80,8 +89,13 @@ final class DiagnosticViewModel: ObservableObject {
     var symbol: String { Money.shared.symbol(currency: currency) }
     var title: String { PlanDiagnosticWords.shared.title(kind: kind, locale: locale) }
     var question: String { PlanDiagnosticWords.shared.question(kind: kind, locale: locale) }
+    var isAllocation: Bool { kind == PlanDiagnostics.companion.ALLOCATION }
+    var monthlyLabel: String { PlanDiagnosticWords.shared.monthlyLabel(locale: locale) }
+    var monthlyHint: String { PlanDiagnosticWords.shared.monthlyHint(locale: locale) }
     var block: DiagnosticBlock? {
-        PlanDiagnosticWords.shared.blockingReason(savingsTarget: savingsTarget, savingsNow: savingsNow, currency: currency)
+        isAllocation
+            ? PlanDiagnosticWords.shared.monthlyBlockingReason(monthlySavings: monthlySavings, currency: currency)
+            : PlanDiagnosticWords.shared.blockingReason(savingsTarget: savingsTarget, savingsNow: savingsNow, currency: currency)
     }
     var canRun: Bool { diagnostics != nil && block == nil && !running && !consentBusy }
     var runsLeftLabel: String? {
@@ -120,13 +134,14 @@ final class DiagnosticViewModel: ObservableObject {
         return PlanDiagnosticWords.shared.waiting(d: result, locale: locale)
     }
     var canApplyDebtFirst: Bool {
-        guard !applied, let result else { return false }
+        guard !applied, let result, let preferences, YourPlan.shared.debtFirstChoices(preferences: preferences) != nil else { return false }
         return PlanDiagnosticWords.shared.canApplyDebtFirst(d: result)
     }
 
     /**
-     "Pay debt before goals": the plan's goal share set to 0%, every other
-     choice kept as it is now — the same save as Your choices, one figure changed.
+     "Pay debt before goals": debt to the top with the goals' share added to
+     it, the goals given none — shared `YourPlan.debtFirstChoices`, on the
+     choices as they are now. Nothing is saved without a debt choice.
      */
     func applyDebtFirst() async {
         guard let plan, canApplyDebtFirst, !applying else { return }
@@ -134,12 +149,12 @@ final class DiagnosticViewModel: ObservableObject {
         errorKey = nil
         do {
             let now = try await plan.plan(month: nil).preferences
-            _ = try await plan.savePreferences(choices: PlanPreferencesToSave(
-                buffer: now.buffer,
-                goalSharePercent: "0",
-                rateLinePercent: now.rateLinePercent,
-                strategy: now.strategy
-            ))
+            preferences = now
+            guard let choices = YourPlan.shared.debtFirstChoices(preferences: now) else {
+                applying = false
+                return
+            }
+            _ = try await plan.savePreferences(choices: choices)
             applying = false
             applied = true
             PlanChanged.announce()
@@ -151,20 +166,38 @@ final class DiagnosticViewModel: ObservableObject {
 
     // MARK: Running
 
-    /// Run on what is in the form.
+    /// Run on what is in the form. The allocation takes one figure — blank
+    /// runs on the Budget's savings target; the invest check takes two.
     func run() async {
         guard let plan, canRun else { return }
         let digits = Money.shared.fractionDigits(currency: currency)
-        guard let target = Money.shared.normalize(raw: savingsTarget.isEmpty ? "0" : savingsTarget, fractionDigits: digits),
-              let now = Money.shared.normalize(raw: savingsNow.isEmpty ? "0" : savingsNow, fractionDigits: digits) else { return }
+        var target: String?
+        var now: String?
+        var monthly: String?
+        if isAllocation {
+            if !monthlySavings.isEmpty {
+                guard let value = Money.shared.normalize(raw: monthlySavings, fractionDigits: digits) else { return }
+                monthly = value
+            }
+        } else {
+            guard let t = Money.shared.normalize(raw: savingsTarget.isEmpty ? "0" : savingsTarget, fractionDigits: digits),
+                  let n = Money.shared.normalize(raw: savingsNow.isEmpty ? "0" : savingsNow, fractionDigits: digits) else { return }
+            target = t
+            now = n
+        }
         running = true
         errorKey = nil
         do {
-            let answer = try await plan.runDiagnostic(kind: kind, savingsTarget: target, savingsNow: now)
+            let answer = try await plan.runDiagnostic(kind: kind, savingsTarget: target, savingsNow: now, monthlySavings: monthly)
             result = answer
             // Re-read the counts: a fresh run used one up, a stored one did not.
             if let counts = try? await plan.diagnostics() { diagnostics = counts }
             running = false
+            if isAllocation {
+                // The monthly figure is now the Budget's savings target: the
+                // Budget tab, Home and Goals re-read on this.
+                PlanChanged.announce()
+            }
         } catch {
             running = false
             if Self.kotlin(error) is ApiException.ConsentRequired {

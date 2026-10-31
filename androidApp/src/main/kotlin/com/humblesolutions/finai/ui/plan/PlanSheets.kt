@@ -7,14 +7,21 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.Remove
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DatePicker
@@ -23,12 +30,12 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
-import androidx.compose.material3.Switch
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDatePickerState
@@ -40,17 +47,21 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.humblesolutions.finai.i18n.Strings
 import com.humblesolutions.finai.model.DebtKind
-import com.humblesolutions.finai.model.PlanStrategy
+import com.humblesolutions.finai.model.PlanCategory
 import com.humblesolutions.finai.ui.components.AmountField
 import com.humblesolutions.finai.ui.components.PickerField
 import com.humblesolutions.finai.ui.components.WizardField
@@ -58,89 +69,164 @@ import com.humblesolutions.finai.ui.strings
 import com.humblesolutions.finai.usecase.DebtBlock
 import com.humblesolutions.finai.usecase.DebtDraft
 import com.humblesolutions.finai.usecase.DebtEdit
-import com.humblesolutions.finai.usecase.PlanChoiceBlock
-import com.humblesolutions.finai.usecase.PlanChoicesDraft
 import com.humblesolutions.finai.usecase.YourPlan
 import com.humblesolutions.finai.util.Dates
+import com.humblesolutions.finai.util.Percent
 import kotlinx.datetime.LocalDate
+
+// ── A row of the split, set by hand ─────────────────────────────────────
+
+internal data class RowEditActions(
+    val onAmountChange: (String) -> Unit,
+    /** Save: asks first whether to put the amount where it belongs too. */
+    val onSave: () -> Unit,
+    val onCancel: () -> Unit,
+    /** The alert's answer: true also updates the goal or the Budget. */
+    val onApply: (Boolean) -> Unit,
+    val onDismissApply: () -> Unit,
+)
+
+/**
+ * One row's amount this month, at most what the server allows, the others
+ * adjusting to keep the total. Save asks whether the amount should also go
+ * where it belongs — a goal's monthly amount, the Budget's Debt line or its
+ * savings target — and either answer saves.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun RowEditSheet(state: PlanUiState, actions: RowEditActions) {
+    val draft = state.rowDraft ?: return
+    val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val busy = state.savingRow
+    val notice = state.rowNotice
+
+    ModalBottomSheet(onDismissRequest = { if (!busy) actions.onCancel() }, sheetState = sheet) {
+        SheetColumn {
+            Title(strings(Strings.plan_edit_title, draft.label))
+            AmountField(
+                value = draft.amount,
+                onValueChange = actions.onAmountChange,
+                label = strings(Strings.plan_edit_amount),
+                symbol = state.currencySymbol,
+                placeholder = state.amountPlaceholder,
+                isError = notice != null,
+                large = false,
+                imeAction = ImeAction.Done,
+                enabled = !busy,
+            )
+            state.rowLimitLine?.let { Why(it) }
+            state.rowRebalanceLine?.let { Why(it) }
+            notice?.let { Problem(it) }
+            state.rowErrorKey?.let { Problem(strings(it)) }
+            Buttons(busy = busy, canSave = state.canSaveRow, savingLabel = strings(Strings.plan_saving), onCancel = actions.onCancel, onSave = actions.onSave)
+        }
+    }
+
+    state.applyQuestion?.let { question ->
+        AlertDialog(
+            onDismissRequest = actions.onDismissApply,
+            title = { Text(question.title) },
+            text = { Text(question.body) },
+            confirmButton = { TextButton(onClick = { actions.onApply(true) }) { Text(question.confirm) } },
+            dismissButton = { TextButton(onClick = { actions.onApply(false) }) { Text(question.decline) } },
+        )
+    }
+}
 
 // ── The choices ─────────────────────────────────────────────────────────
 
 internal data class ChoicesActions(
-    val onDraftChange: (PlanChoicesDraft) -> Unit,
+    val onMove: (PlanCategory, Boolean) -> Unit,
+    val onStep: (PlanCategory, Boolean) -> Unit,
+    val onPercent: (PlanCategory, String) -> Unit,
     val onSave: () -> Unit,
     val onCancel: () -> Unit,
 )
 
-private val BufferBlocks = setOf(
-    PlanChoiceBlock.NO_BUFFER_AMOUNT,
-    PlanChoiceBlock.BUFFER_NOT_MONEY,
-    PlanChoiceBlock.BUFFER_NEGATIVE,
-    PlanChoiceBlock.BUFFER_TOO_PRECISE,
-    PlanChoiceBlock.BUFFER_ZERO,
-)
-
 /**
- * The plan's four choices, each opening on what the plan runs on now — the
- * person's own, or the suggestion — with its one line of why. Saving with a
- * buffer keeps it as an Emergency fund goal, and the sheet says so first.
+ * The choices in the order they are filled, each with its share: up and down
+ * to reorder, − and + to move a share by five points, or a share typed. The
+ * shares add up to 100; then "Recalculate allocation" saves, and the server
+ * works the split out again.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun ChoicesSheet(state: PlanUiState, actions: ChoicesActions) {
     if (!state.choosing) return
     val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    val draft = state.choicesDraft
+    val draft = state.weightsDraft
     val busy = state.savingChoices
-    val notice = state.choicesNotice
+    val focus = LocalFocusManager.current
 
     ModalBottomSheet(onDismissRequest = { if (!busy) actions.onCancel() }, sheetState = sheet) {
         SheetColumn {
             Title(strings(Strings.plan_choices_sheet_title))
+            Why(strings(Strings.plan_choices_hint))
 
-            WizardField(
-                value = draft.goalSharePercent,
-                onValueChange = { actions.onDraftChange(draft.copy(goalSharePercent = it)) },
-                label = strings(Strings.plan_field_goal_share),
-                keyboardType = KeyboardType.Decimal,
-                capitalization = KeyboardCapitalization.None,
-                isError = notice == PlanChoiceBlock.GOAL_SHARE_INVALID,
-                enabled = !busy,
-            )
-            Why(strings(Strings.plan_choice_goal_share_why))
-
-            WizardField(
-                value = draft.rateLinePercent,
-                onValueChange = { actions.onDraftChange(draft.copy(rateLinePercent = it)) },
-                label = strings(Strings.plan_field_rate_line),
-                keyboardType = KeyboardType.Decimal,
-                capitalization = KeyboardCapitalization.None,
-                imeAction = ImeAction.Done,
-                isError = notice == PlanChoiceBlock.RATE_LINE_INVALID,
-                enabled = !busy,
-            )
-            Why(strings(Strings.plan_choice_rate_line_why))
-
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(strings(Strings.plan_choice_strategy), style = MaterialTheme.typography.labelLarge)
-                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                    PlanStrategy.entries.forEachIndexed { index, strategy ->
-                        SegmentedButton(
-                            selected = draft.strategy == strategy,
-                            onClick = { actions.onDraftChange(draft.copy(strategy = strategy)) },
-                            shape = SegmentedButtonDefaults.itemShape(index = index, count = PlanStrategy.entries.size),
+            draft.categories.forEachIndexed { index, category ->
+                val label = YourPlan.categoryLabel(category, state.locale)
+                val last = index == draft.categories.lastIndex
+                if (index > 0) HorizontalDivider()
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        PriorityBadge(index + 1)
+                        Text(
+                            label,
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = FontWeight.Medium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f),
+                        )
+                        IconButton(onClick = { actions.onMove(category, true) }, enabled = !busy && index > 0) {
+                            Icon(Icons.Filled.KeyboardArrowUp, contentDescription = strings(Strings.plan_choices_move_up, label))
+                        }
+                        IconButton(onClick = { actions.onMove(category, false) }, enabled = !busy && !last) {
+                            Icon(Icons.Filled.KeyboardArrowDown, contentDescription = strings(Strings.plan_choices_move_down, label))
+                        }
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Spacer(Modifier.width(32.dp))
+                        IconButton(onClick = { actions.onStep(category, false) }, enabled = !busy) {
+                            Icon(Icons.Filled.Remove, contentDescription = strings(Strings.plan_choices_decrease, label))
+                        }
+                        OutlinedTextField(
+                            value = draft.percents[category].orEmpty(),
+                            onValueChange = { actions.onPercent(category, it) },
+                            singleLine = true,
                             enabled = !busy,
-                        ) { Text(YourPlan.strategyLabel(strategy, state.locale), maxLines = 1) }
+                            isError = state.choicesNotice != null,
+                            suffix = { Text(strings(Strings.plan_percent_sign)) },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = if (last) ImeAction.Done else ImeAction.Next),
+                            keyboardActions = KeyboardActions(onDone = { focus.clearFocus() }),
+                            modifier = Modifier.width(112.dp).semantics { contentDescription = label },
+                        )
+                        IconButton(onClick = { actions.onStep(category, true) }, enabled = !busy) {
+                            Icon(Icons.Filled.Add, contentDescription = strings(Strings.plan_choices_increase, label))
+                        }
                     }
                 }
-                Why(strings(Strings.plan_choice_strategy_why))
             }
 
-            state.goalNote?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
-            notice?.let { Problem(YourPlan.blockText(it, state.moneyCurrency, state.locale)) }
+            state.choicesTotalLine?.let {
+                Text(
+                    it,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+                )
+            }
+            state.choicesNotice?.let { Problem(it) }
             state.choicesErrorKey?.let { Problem(strings(it)) }
 
-            Buttons(busy = busy, canSave = state.canSaveChoices, savingLabel = strings(Strings.plan_saving), onCancel = actions.onCancel, onSave = actions.onSave)
+            Buttons(
+                busy = busy,
+                canSave = state.canSaveChoices,
+                savingLabel = strings(Strings.plan_saving),
+                onCancel = actions.onCancel,
+                onSave = actions.onSave,
+                saveLabel = strings(Strings.plan_choices_recalculate),
+            )
         }
     }
 }
@@ -379,7 +465,7 @@ private fun Problem(text: String) {
 }
 
 @Composable
-private fun Buttons(busy: Boolean, canSave: Boolean, savingLabel: String, onCancel: () -> Unit, onSave: () -> Unit) {
+private fun Buttons(busy: Boolean, canSave: Boolean, savingLabel: String, onCancel: () -> Unit, onSave: () -> Unit, saveLabel: String? = null) {
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         TextButton(onClick = onCancel, enabled = !busy) { Text(strings(Strings.action_cancel)) }
         Spacer(Modifier.weight(1f))
@@ -389,7 +475,7 @@ private fun Buttons(busy: Boolean, canSave: Boolean, savingLabel: String, onCanc
                 Spacer(Modifier.size(8.dp))
                 Text(savingLabel)
             } else {
-                Text(strings(Strings.action_save))
+                Text(saveLabel ?: strings(Strings.action_save), maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
     }

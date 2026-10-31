@@ -5,16 +5,21 @@ import com.humblesolutions.finai.model.DebtRecord
 import com.humblesolutions.finai.model.DebtsPage
 import com.humblesolutions.finai.model.Plan
 import com.humblesolutions.finai.model.Terms
+import com.humblesolutions.finai.usecase.ApplyQuestion
 import com.humblesolutions.finai.usecase.BalanceBlock
-import com.humblesolutions.finai.usecase.ChoiceRow
 import com.humblesolutions.finai.usecase.DebtBlock
 import com.humblesolutions.finai.usecase.DebtDraft
 import com.humblesolutions.finai.usecase.DebtEdit
 import com.humblesolutions.finai.usecase.DebtRow
 import com.humblesolutions.finai.usecase.ManualEntry
 import com.humblesolutions.finai.usecase.PlanChoiceBlock
-import com.humblesolutions.finai.usecase.PlanChoicesDraft
+import com.humblesolutions.finai.usecase.PlanWeightsDraft
+import com.humblesolutions.finai.usecase.RowEditBlock
+import com.humblesolutions.finai.usecase.RowEditDraft
+import com.humblesolutions.finai.usecase.SplitNote
 import com.humblesolutions.finai.usecase.SplitRow
+import com.humblesolutions.finai.usecase.SurplusCard
+import com.humblesolutions.finai.usecase.WeightRow
 import com.humblesolutions.finai.usecase.YourPlan
 import com.humblesolutions.finai.util.Money
 import kotlinx.datetime.LocalDate
@@ -48,9 +53,17 @@ data class PlanUiState(
     /** Why an action that is not a sheet's was refused — the strategy switch. */
     val noticeKey: String? = null,
 
+    // ── A row of the split, set by hand ─────────────────────────────────
+    /** The row being changed; null while the editor is closed. */
+    val rowDraft: RowEditDraft? = null,
+    /** Save was tapped: the alert asks whether to put the amount where it belongs too. */
+    val askingApply: Boolean = false,
+    val savingRow: Boolean = false,
+    val rowErrorKey: String? = null,
+
     // ── The choices ─────────────────────────────────────────────────────
     val choosing: Boolean = false,
-    val choicesDraft: PlanChoicesDraft = PlanChoicesDraft(),
+    val weightsDraft: PlanWeightsDraft = PlanWeightsDraft(),
     val savingChoices: Boolean = false,
     val choicesErrorKey: String? = null,
     val switchingStrategy: Boolean = false,
@@ -78,13 +91,18 @@ data class PlanUiState(
 
     // ── Your plan ───────────────────────────────────────────────────────
 
-    val headline: String? get() = plan?.let { YourPlan.headline(it, words) }
+    val surplus: SurplusCard? get() = plan?.let { YourPlan.surplusCard(it, words) }
 
     val showsSplit: Boolean get() = plan?.let { YourPlan.hasSplit(it, moneyCurrency) } == true
 
     val splitRows: List<SplitRow> get() = plan?.let { YourPlan.splitRows(it, words) }.orEmpty()
 
-    val choiceRows: List<ChoiceRow> get() = plan?.let { YourPlan.choiceRows(it.preferences, words) }.orEmpty()
+    val splitNote: SplitNote? get() = plan?.let { YourPlan.splitNote(it, words) }
+
+    val weightRows: List<WeightRow> get() = plan?.let { YourPlan.weightRows(it.preferences, words) }.orEmpty()
+
+    /** "Add an emergency fund" (title, body), while the household has none. */
+    val emergencySuggestion: Pair<String, String>? get() = plan?.let { YourPlan.emergencySuggestion(it.preferences, words) }
 
     /** The region's disclaimer under the plan, when it has one. */
     val disclaimerText: String? get() = disclaimer?.body?.takeIf { it.isNotBlank() }
@@ -115,17 +133,37 @@ data class PlanUiState(
 
     val linkableAccounts: List<Account> get() = DebtEdit.linkable(accounts)
 
+    // ── A row of the split, set by hand ─────────────────────────────────
+
+    val rowBlock: RowEditBlock? get() = plan?.let { p -> rowDraft?.let { YourPlan.editBlockingReason(p, it, moneyCurrency) } }
+
+    /** "That's the amount already there" is not worth saying before anything is typed. */
+    val rowNotice: String?
+        get() = rowBlock?.takeIf { it != RowEditBlock.UNCHANGED }?.let { block ->
+            plan?.let { p -> rowDraft?.let { YourPlan.editBlockText(block, p, it, words) } }
+        }
+
+    val rowLimitLine: String? get() = plan?.let { p -> rowDraft?.let { YourPlan.editLimitLine(p, it, words) } }
+
+    val rowRebalanceLine: String? get() = plan?.let { YourPlan.editRebalanceLine(it, words) }
+
+    val canSaveRow: Boolean get() = !savingRow && rowDraft != null && rowBlock == null
+
+    val applyQuestion: ApplyQuestion? get() = rowDraft?.takeIf { askingApply }?.let { YourPlan.applyQuestion(it, words) }
+
     // ── The choices ─────────────────────────────────────────────────────
 
     val choicesBlock: PlanChoiceBlock?
-        get() = plan?.let { YourPlan.blockingReason(it.preferences, choicesDraft, moneyCurrency) }
+        get() = plan?.let { YourPlan.blockingReason(it.preferences, weightsDraft) }
 
     /** "Nothing has changed" is not worth saying before anything is touched. */
-    val choicesNotice: PlanChoiceBlock? get() = choicesBlock?.takeIf { it != PlanChoiceBlock.NOTHING_CHANGED }
+    val choicesNotice: String?
+        get() = choicesBlock?.takeIf { it != PlanChoiceBlock.NOTHING_CHANGED }?.let { YourPlan.blockText(it, weightsDraft, locale) }
+
+    /** "Total: 95%", or null while a share is not a percentage. */
+    val choicesTotalLine: String? get() = YourPlan.totalLine(weightsDraft, words)
 
     val canSaveChoices: Boolean get() = !savingChoices && plan != null && choicesBlock == null
-
-    val goalNote: String? get() = plan?.let { YourPlan.bufferGoalNote(it.preferences, choicesDraft, locale) }
 
     // ── A debt's details ────────────────────────────────────────────────
 

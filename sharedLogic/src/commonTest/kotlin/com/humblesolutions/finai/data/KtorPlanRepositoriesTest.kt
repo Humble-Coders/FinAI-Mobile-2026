@@ -4,9 +4,13 @@ import com.humblesolutions.finai.model.ApiException
 import com.humblesolutions.finai.model.BalanceSource
 import com.humblesolutions.finai.model.DebtChanges
 import com.humblesolutions.finai.model.DebtKind
+import com.humblesolutions.finai.model.PlanCategory
 import com.humblesolutions.finai.model.PlanPreferencesToSave
+import com.humblesolutions.finai.model.PlanRow
+import com.humblesolutions.finai.model.PlanSplitEdit
 import com.humblesolutions.finai.model.PlanStatus
 import com.humblesolutions.finai.model.PlanStrategy
+import com.humblesolutions.finai.model.PlanWeight
 import com.humblesolutions.finai.repository.SessionTokenSource
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.MockRequestHandler
@@ -18,6 +22,7 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlin.coroutines.cancellation.CancellationException
@@ -167,31 +172,44 @@ class KtorPlanRepositoriesTest {
     }
 
     @Test
-    fun `no buffer is sent as an explicit null`() = runTest {
+    fun `the choices are sent in their order`() = runTest {
         val seen = Seen()
         val saved = KtorPlanRepository(client(seen, PREFERENCES)).savePreferences(
-            PlanPreferencesToSave(buffer = null, goalSharePercent = "25.00", rateLinePercent = "7.00", strategy = PlanStrategy.SNOWBALL),
+            PlanPreferencesToSave(
+                strategy = PlanStrategy.SNOWBALL,
+                weights = listOf(PlanWeight(PlanCategory.DEBT, "60.00"), PlanWeight(PlanCategory.SAVE_OR_INVEST, "40.00")),
+            ),
         )
 
         assertEquals(HttpMethod.Put, seen.method)
         assertEquals("/plan/preferences", seen.path)
         val body = FinAiJson.parseToJsonElement(seen.body.orEmpty()).jsonObject
-        assertEquals(JsonNull, body["buffer"])
         assertEquals("snowball", body["strategy"]?.jsonPrimitive?.content)
+        val sent = body["weights"]?.jsonArray.orEmpty().map { it.jsonObject["category"]?.jsonPrimitive?.content }
+        assertEquals(listOf("debt", "save_or_invest"), sent)
         assertTrue(saved.saved)
-        assertNull(saved.buffer)
     }
 
     @Test
-    fun `a buffer goal past the limit is the goal limit`() = runTest {
-        val refused = """{"detail": {"code": "goal_limit_reached", "message": "x", "limit": 20}}"""
+    fun `the strategy alone sends no weights`() = runTest {
+        val seen = Seen()
+        KtorPlanRepository(client(seen, PREFERENCES)).savePreferences(PlanPreferencesToSave(PlanStrategy.AVALANCHE, null))
 
-        val error = assertFailsWith<ApiException.GoalLimitReached> {
-            KtorPlanRepository(client(Seen(), refused, HttpStatusCode.Conflict)).savePreferences(
-                PlanPreferencesToSave(buffer = "1000.00", goalSharePercent = "20.00", rateLinePercent = "6.00", strategy = PlanStrategy.AVALANCHE),
-            )
-        }
-        assertEquals(20, error.limit)
+        val body = FinAiJson.parseToJsonElement(seen.body.orEmpty()).jsonObject
+        assertNull(body["weights"])
+    }
+
+    @Test
+    fun `a row set by hand is sent with whether to apply it`() = runTest {
+        val seen = Seen()
+        KtorPlanRepository(client(seen, PLAN)).editSplit(PlanSplitEdit(PlanRow.GOAL, "g-1", "25.00", apply = true))
+
+        assertEquals(HttpMethod.Put, seen.method)
+        assertEquals("/plan/split", seen.path)
+        val body = FinAiJson.parseToJsonElement(seen.body.orEmpty()).jsonObject
+        assertEquals("goal", body["row"]?.jsonPrimitive?.content)
+        assertEquals("g-1", body["goal_id"]?.jsonPrimitive?.content)
+        assertEquals("true", body["apply"]?.jsonPrimitive?.content)
     }
 
     @Test

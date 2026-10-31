@@ -58,6 +58,7 @@ import com.humblesolutions.finai.ui.components.GradientButton
 import com.humblesolutions.finai.ui.components.Mint
 import com.humblesolutions.finai.ui.strings
 import com.humblesolutions.finai.usecase.DiagnosticRow
+import com.humblesolutions.finai.util.Money
 
 /** A diagnostic over Your plan, with its own view model; [onClose] on back. */
 @Composable
@@ -71,6 +72,7 @@ internal fun DiagnosticRoute(userId: String, kind: String, onClose: () -> Unit) 
         onClose = onClose,
         onSavingsTarget = model::onSavingsTarget,
         onSavingsNow = model::onSavingsNow,
+        onMonthlySavings = model::onMonthlySavings,
         onRun = model::run,
         onApplyDebtFirst = model::applyDebtFirst,
         onConsentTicked = model::onConsentTicked,
@@ -88,6 +90,7 @@ internal fun DiagnosticScreen(
     onConsentTicked: (Boolean) -> Unit,
     onAgree: () -> Unit,
     onApplyDebtFirst: () -> Unit = {},
+    onMonthlySavings: (String) -> Unit = {},
 ) {
     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         Column(Modifier.fillMaxSize().safeDrawingPadding().imePadding(), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -107,7 +110,7 @@ internal fun DiagnosticScreen(
                 if (state.policy != null) {
                     Consent(state, onConsentTicked, onAgree)
                 } else if (state.diagnostics != null) {
-                    Form(state, onSavingsTarget, onSavingsNow, onRun)
+                    Form(state, FormActions(onSavingsTarget, onSavingsNow, onMonthlySavings, onRun))
                     state.result?.let { Result(state) }
                     state.recommendation?.let { Recommendation(state, it, onApplyDebtFirst) }
                 } else if (state.loading) {
@@ -125,33 +128,60 @@ internal fun DiagnosticScreen(
     }
 }
 
+private class FormActions(
+    val onSavingsTarget: (String) -> Unit,
+    val onSavingsNow: (String) -> Unit,
+    val onMonthlySavings: (String) -> Unit,
+    val onRun: () -> Unit,
+)
+
+/**
+ * The allocation's one figure — what is saved each month, which also becomes
+ * the Budget's savings target — or the invest diagnostic's two.
+ */
 @Composable
-private fun Form(state: DiagnosticUiState, onSavingsTarget: (String) -> Unit, onSavingsNow: (String) -> Unit, onRun: () -> Unit) {
-    AmountField(
-        value = state.savingsTarget,
-        onValueChange = onSavingsTarget,
-        label = strings(Strings.diagnostic_savings_target),
-        symbol = state.symbol,
-        placeholder = "0",
-        isError = state.block != null,
-        large = false,
-        enabled = !state.running,
-    )
-    AmountField(
-        value = state.savingsNow,
-        onValueChange = onSavingsNow,
-        label = strings(Strings.diagnostic_savings_now),
-        symbol = state.symbol,
-        placeholder = "0",
-        isError = state.block != null,
-        large = false,
-        imeAction = ImeAction.Done,
-        enabled = !state.running,
-    )
+private fun Form(state: DiagnosticUiState, actions: FormActions) {
+    val placeholder = Money.normalize("0", Money.fractionDigits(state.currency)).orEmpty()
+    if (state.isAllocation) {
+        AmountField(
+            value = state.monthlySavings,
+            onValueChange = actions.onMonthlySavings,
+            label = state.monthlyLabel,
+            symbol = state.symbol,
+            placeholder = placeholder,
+            isError = state.block != null,
+            large = false,
+            imeAction = ImeAction.Done,
+            enabled = !state.running,
+        )
+        Text(state.monthlyHint, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    } else {
+        AmountField(
+            value = state.savingsTarget,
+            onValueChange = actions.onSavingsTarget,
+            label = strings(Strings.diagnostic_savings_target),
+            symbol = state.symbol,
+            placeholder = placeholder,
+            isError = state.block != null,
+            large = false,
+            enabled = !state.running,
+        )
+        AmountField(
+            value = state.savingsNow,
+            onValueChange = actions.onSavingsNow,
+            label = strings(Strings.diagnostic_savings_now),
+            symbol = state.symbol,
+            placeholder = placeholder,
+            isError = state.block != null,
+            large = false,
+            imeAction = ImeAction.Done,
+            enabled = !state.running,
+        )
+    }
     ErrorText(state.errorKey ?: state.block?.messageKey)
     GradientButton(
         text = strings(if (state.result == null) Strings.diagnostic_run else Strings.diagnostic_run_again),
-        onClick = onRun,
+        onClick = actions.onRun,
         enabled = state.canRun,
         busy = state.running,
     )
