@@ -1251,4 +1251,5 @@ object Strings {
     const val diagnostic_monthly_savings_hint = "diagnostic_monthly_savings_hint" // "This also becomes your Budget's savings target."
     const val diagnostic_savings_monthly = "diagnostic_savings_monthly" // "{0} a month, set aside first"
     const val diagnostic_to_emergency = "diagnostic_to_emergency" // "Emergency fund"
+    const val plan_percent_sign = "plan_percent_sign" // "%"
 }

@@ -34,6 +34,7 @@ import com.humblesolutions.finai.usecase.SpendingCheckWords
 import com.humblesolutions.finai.util.BudgetChanged
 import com.humblesolutions.finai.util.LedgerChanged
 import com.humblesolutions.finai.util.Money
+import com.humblesolutions.finai.util.PlanChanged
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -125,12 +126,19 @@ class BudgetViewModel(
      * [BudgetChanged] is deliberately **not** collected here. This screen is
      * the only thing that emits it, and it already has the budget that write
      * returned.
+     *
+     * [PlanChanged] is: since the plan redesign (2026-10-31) the plan writes
+     * this budget — a split row applied to the Debt line or the savings
+     * target, and the allocation diagnostic's monthly saving.
      */
     private fun listenForChanges() {
         if (listening) return
         listening = true
         viewModelScope.launch {
             LedgerChanged.events.collect { load(refresh = true) }
+        }
+        viewModelScope.launch {
+            PlanChanged.events.collect { load(refresh = true) }
         }
     }
 

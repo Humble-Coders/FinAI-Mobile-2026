@@ -76,6 +76,7 @@ final class BudgetViewModel: ObservableObject {
     private var owner: String?
     private var generation = 0
     private var listener: Task<Void, Never>?
+    private var planListener: Task<Void, Never>?
 
     #if DEBUG
     private let logging = true
@@ -107,6 +108,8 @@ final class BudgetViewModel: ObservableObject {
     func unbind() {
         listener?.cancel()
         listener = nil
+        planListener?.cancel()
+        planListener = nil
         budgets?.close()
         categoriesRepository?.close()
         capabilities?.close()
@@ -146,11 +149,22 @@ final class BudgetViewModel: ObservableObject {
      `BudgetChanged` is deliberately not observed here. This screen is the
      only thing that posts it, and it already has the budget that write
      returned.
+
+     `PlanChanged` is: since the plan redesign (2026-10-31) the plan writes
+     this budget — a split row applied to the Debt line or the savings
+     target, and the allocation diagnostic's monthly saving. Android's
+     `BudgetViewModel` does the same.
      */
     private func listenForChanges() {
         guard listener == nil else { return }
         listener = Task { [weak self] in
             for await _ in LedgerChanged.events {
+                guard !Task.isCancelled else { return }
+                await self?.load(refresh: true)
+            }
+        }
+        planListener = Task { [weak self] in
+            for await _ in PlanChanged.events {
                 guard !Task.isCancelled else { return }
                 await self?.load(refresh: true)
             }

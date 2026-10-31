@@ -269,6 +269,10 @@ struct RootView: View {
                     onClose: {
                         planModel.unbind()
                         withAnimation(.easeOut(duration: 0.25)) { homeRoute = planFrom }
+                    },
+                    onOpenGoals: {
+                        planModel.unbind()
+                        withAnimation(.easeOut(duration: 0.25)) { homeRoute = HomeRoute.goals.rawValue }
                     }
                 )
                 .transition(.opacity.combined(with: .offset(y: 30)))

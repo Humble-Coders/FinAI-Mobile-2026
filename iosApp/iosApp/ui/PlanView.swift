@@ -2,13 +2,14 @@ import SwiftUI
 import SharedLogic
 
 /**
- Your plan, and Your debts behind it (#76). Android's `PlanRoute`,
- `PlanScreen` and `DebtsScreen`.
+ Your plan, and Your debts behind it (#76, redesign 2026-10-31). Android's
+ `PlanRoute`, `PlanScreen` and `DebtsScreen`.
 
- In the Goals tab's language — the field with the headline, a white sheet
- beneath — because no design was supplied. Every figure is the server's and
- every sentence shared `YourPlan`'s or `DebtEdit`'s. Guidance, not advice:
- "Save or invest" names no product, and the disclaimer is on the page.
+ In the Goals tab's language: the field with the monthly surplus on a dark
+ card, white sheets beneath — where it goes, each row editable, then the
+ choices it was worked out from. Every figure is the server's and every
+ sentence shared `YourPlan`'s or `DebtEdit`'s. Guidance, not advice: "Save or
+ invest" names no product, and the disclaimer is on the page.
 
  `startOnDebts` opens Your debts first — from Home's Debts screen — and Back
  from there closes rather than showing a plan the person did not come for.
@@ -19,6 +20,8 @@ struct PlanView: View {
     let userId: String
     let startOnDebts: Bool
     let onClose: () -> Void
+    /// "Go to Goals", from the emergency-fund suggestion.
+    let onOpenGoals: () -> Void
 
     @SceneStorage("plan.draft") private var stored = ""
     /// A diagnostic open over the plan: `allocation` or `invest`.
@@ -81,6 +84,7 @@ struct PlanView: View {
         }
         .onChange(of: model.snapshot) { _, snapshot in stored = snapshot }
         .sheet(isPresented: choicesShown) { ChoicesSheet(model: model) }
+        .sheet(isPresented: rowEditShown) { RowEditSheet(model: model) }
         .sheet(isPresented: debtShown) { DebtEditorSheet(model: model) }
         .sheet(isPresented: balanceShown) { BalanceSheet(model: model) }
         .fullScreenCover(isPresented: diagnosticShown) {
@@ -103,6 +107,15 @@ struct PlanView: View {
         }
     }
 
+    private func openGoals() {
+        stored = ""
+        onOpenGoals()
+    }
+
+    private var rowEditShown: Binding<Bool> {
+        Binding(get: { model.rowEditBase != nil }, set: { if !$0 { model.cancelRowEdit() } })
+    }
+
     private var choicesShown: Binding<Bool> {
         Binding(get: { model.choosing }, set: { if !$0 { model.cancelChoices() } })
     }
@@ -119,27 +132,39 @@ struct PlanView: View {
 
     @ViewBuilder
     private func planContent(_ dark: Bool) -> some View {
-        if let headline = model.headline {
-            Headline(text: headline, detail: nil)
+        if let card = model.surplusCard {
+            SurplusCardView(card: card, dark: dark)
+        }
+        if model.showsSplit {
+            PlanSheet(dark: dark) {
+                SheetTitle(text: L.t(Strings.shared.plan_split_title))
+                if let note = model.splitNote {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(note.text).font(.caption.weight(.medium)).foregroundColor(Mint.greenText(dark))
+                        if let why = note.why { Text(why).font(.caption).foregroundColor(.secondary) }
+                    }
+                    .accessibilityElement(children: .combine)
+                }
+                ForEach(Array(model.splitRows.enumerated()), id: \.offset) { _, row in
+                    SplitLine(row: row, dark: dark) { model.startRowEdit(row) }
+                }
+            }
         }
         PlanSheet(dark: dark) {
-            if model.showsSplit {
-                SheetTitle(text: L.t(Strings.shared.plan_split_title))
-                ForEach(Array(model.splitRows.enumerated()), id: \.offset) { _, row in
-                    SplitLine(row: row, dark: dark)
-                }
-                Divider().padding(.vertical, 4)
-            }
             HStack {
                 SheetTitle(text: L.t(Strings.shared.plan_choices_title))
                 Spacer()
                 Button(L.t(Strings.shared.plan_choices_change)) { model.startChoices() }
                     .font(.subheadline.weight(.semibold))
-                    .disabled(model.plan == nil)
-                    .frame(minHeight: 44)
+                    .foregroundColor(Mint.greenText(dark))
+                    .disabled(model.plan == nil || model.weightRows.isEmpty)
+                    .tappableArea()
             }
-            ForEach(Array(model.choiceRows.enumerated()), id: \.offset) { _, row in
-                ChoiceLine(row: row, dark: dark)
+            if let suggestion = model.emergencySuggestion {
+                EmergencySuggestion(title: suggestion.title, text: suggestion.body, dark: dark, action: openGoals)
+            }
+            ForEach(model.weightRows, id: \.priority) { row in
+                WeightLine(row: row, dark: dark)
             }
             Divider().padding(.vertical, 4)
             Button { model.page = .debts } label: {
@@ -151,6 +176,7 @@ struct PlanView: View {
                     Image(systemName: "chevron.right").foregroundColor(.secondary)
                 }
                 .frame(minHeight: 44)
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
         }
@@ -289,44 +315,189 @@ private struct SheetTitle: View {
     }
 }
 
-private struct SplitLine: View {
-    let row: SplitRow
+/**
+ The money left over, the month it is for, and a bar of where it goes with a
+ legend beside it — on a dark green card in the field. With nothing to split,
+ the headline says why instead of an amount.
+ */
+private struct SurplusCardView: View {
+    let card: SurplusCard
     let dark: Bool
 
     var body: some View {
-        HStack(spacing: 12) {
-            IconTile(symbol: row.icon.systemName, accent: row.icon.tint(dark), size: 40, iconSize: 18)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(row.label).font(.body.weight(.medium)).lineLimit(1).truncationMode(.tail)
-                if let detail = row.detail { Text(detail).font(.caption).foregroundColor(.secondary) }
+        VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(card.month).font(.caption.weight(.semibold)).foregroundColor(Field.ink(0.8))
+                Text(card.title).font(.subheadline.weight(.medium)).foregroundColor(Field.ink(0.9))
+                if let amount = card.amount {
+                    Text(amount)
+                        .font(.system(.largeTitle, design: .rounded).weight(.bold))
+                        .foregroundColor(Field.ink())
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.6)
+                } else {
+                    Text(card.headline).font(.title3.weight(.semibold)).foregroundColor(Field.ink())
+                }
             }
-            Spacer(minLength: 8)
-            Text(row.amount).font(.subheadline.weight(.bold)).lineLimit(1)
+            if !card.segments.isEmpty {
+                bar
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(Array(card.segments.enumerated()), id: \.offset) { _, segment in
+                        HStack(spacing: 8) {
+                            Circle().fill(segmentColor(segment.kind)).frame(width: 10, height: 10)
+                            Text(segment.label).font(.subheadline).foregroundColor(Field.ink(0.9)).lineLimit(1).truncationMode(.tail)
+                            Spacer(minLength: 8)
+                            Text(segment.amount).font(.subheadline.weight(.semibold)).foregroundColor(Field.ink()).lineLimit(1)
+                        }
+                    }
+                }
+            }
         }
-        .frame(minHeight: 44)
-        // Nothing here this month: quieter, never hidden.
-        .opacity(row.isZero ? 0.6 : 1)
+        .padding(18)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(cardFill))
+        .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(Field.glassEdge, lineWidth: 1))
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(row.accessibility)
+        .accessibilityLabel(spoken)
+    }
+
+    /// Each part's length is its share of the whole; a sliver stays visible.
+    private var bar: some View {
+        GeometryReader { geometry in
+            let gaps = CGFloat(max(card.segments.count - 1, 0)) * 3
+            let room = max(geometry.size.width - gaps, 0)
+            HStack(spacing: 3) {
+                ForEach(Array(card.segments.enumerated()), id: \.offset) { _, segment in
+                    Capsule()
+                        .fill(segmentColor(segment.kind))
+                        .frame(width: max(room * CGFloat(segment.fraction), 4))
+                }
+            }
+        }
+        .frame(height: 10)
+        .accessibilityHidden(true)
+    }
+
+    private var cardFill: Color {
+        dark
+            ? Color(red: 0x06 / 255, green: 0x24 / 255, blue: 0x14 / 255)
+            : Color(red: 0x0A / 255, green: 0x3F / 255, blue: 0x22 / 255)
+    }
+
+    private var spoken: String {
+        let lead = [card.month, card.title, card.amount ?? card.headline]
+        let parts = card.segments.map { "\($0.label), \($0.amount)" }
+        return (lead + parts).joined(separator: ", ")
+    }
+
+    /// Bright enough on the dark card in both modes; the legend names each one, so colour is never the only cue.
+    private func segmentColor(_ kind: SplitKind) -> Color {
+        switch kind {
+        case .emergency: Color(red: 0xF4 / 255, green: 0x72 / 255, blue: 0xB6 / 255)
+        case .goal: Color(red: 0xA7 / 255, green: 0x8B / 255, blue: 0xFA / 255)
+        case .extraDebt: Color(red: 0xFB / 255, green: 0xBF / 255, blue: 0x24 / 255)
+        case .saveOrInvest: Color(red: 0x4A / 255, green: 0xDE / 255, blue: 0x80 / 255)
+        }
     }
 }
 
-private struct ChoiceLine: View {
-    let row: SharedLogic.ChoiceRow
+/// One part of the split, and the Edit that sets it by hand.
+private struct SplitLine: View {
+    let row: SplitRow
+    let dark: Bool
+    let onEdit: () -> Void
+
+    var body: some View {
+        HStack(spacing: 12) {
+            HStack(spacing: 12) {
+                IconTile(symbol: row.icon.systemName, accent: row.icon.tint(dark), size: 40, iconSize: 18)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(row.label).font(.body.weight(.medium)).lineLimit(1).truncationMode(.tail)
+                    if let detail = row.detail {
+                        Text(detail).font(.caption).foregroundColor(.secondary).lineLimit(1).truncationMode(.tail)
+                    }
+                }
+                Spacer(minLength: 8)
+                Text(row.amount).font(.subheadline.weight(.bold)).lineLimit(1)
+            }
+            // Nothing here this month: quieter, never hidden.
+            .opacity(row.isZero ? 0.6 : 1)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(row.accessibility)
+            Button(action: onEdit) {
+                Text(L.t(Strings.shared.plan_edit))
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundColor(Mint.greenText(dark))
+                    .tappableArea()
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(L.t(Strings.shared.plan_edit_named, row.label))
+        }
+        .frame(minHeight: 44)
+    }
+}
+
+/// One of the choices: its place in the order, its share, and why it is there.
+private struct WeightLine: View {
+    let row: WeightRow
     let dark: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            HStack {
-                Text(row.label).font(.body.weight(.medium))
-                Spacer(minLength: 8)
-                Text(row.value).font(.body.weight(.semibold)).lineLimit(1)
-            }
-            if let suggestion = row.suggestion {
-                Text(suggestion).font(.caption.weight(.medium)).foregroundColor(Mint.greenText(dark))
+        HStack(alignment: .top, spacing: 12) {
+            Text(String(row.priority))
+                .font(.subheadline.weight(.bold))
+                .foregroundColor(Mint.greenText(dark))
+                .frame(width: 28, height: 28)
+                .background(Circle().fill(Mint.tile(Mint.greenText(dark), dark)))
+            VStack(alignment: .leading, spacing: 2) {
+                HStack {
+                    Text(row.label).font(.body.weight(.medium)).lineLimit(1).truncationMode(.tail)
+                    Spacer(minLength: 8)
+                    Text(row.percent).font(.body.weight(.semibold)).lineLimit(1)
+                }
+                Text(row.explanation).font(.caption).foregroundColor(.secondary)
             }
         }
-        .accessibilityElement(children: .combine)
+        .frame(minHeight: 44)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel([L.t(Strings.shared.plan_choices_priority, String(row.priority)), row.label, row.percent, row.explanation].joined(separator: ", "))
+    }
+}
+
+/// "Add an emergency fund": it becomes a choice once it is a goal, so the button goes to Goals.
+private struct EmergencySuggestion: View {
+    let title: String
+    let text: String
+    let dark: Bool
+    let action: () -> Void
+
+    var body: some View {
+        let green = Mint.greenText(dark)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: CategoryIcon.shield.systemName)
+                    .font(.title3)
+                    .foregroundColor(green)
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title).font(.subheadline.weight(.semibold))
+                    Text(text).font(.caption).foregroundColor(.secondary)
+                }
+                .accessibilityElement(children: .combine)
+            }
+            Button(action: action) {
+                Text(L.t(Strings.shared.plan_emergency_suggest_action))
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundColor(green)
+                    .tappableArea()
+            }
+            .buttonStyle(.plain)
+            .padding(.leading, 36)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 18).fill(green.opacity(dark ? 0.2 : 0.1)))
+        .overlay(RoundedRectangle(cornerRadius: 18).stroke(green.opacity(0.35), lineWidth: 1))
     }
 }
 

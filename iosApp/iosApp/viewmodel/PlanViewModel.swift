@@ -2,14 +2,14 @@ import Foundation
 import SharedLogic
 
 /**
- Your plan and Your debts, and every change to them (#76). Android's
- `PlanViewModel`.
+ Your plan and Your debts, and every change to them (#76, redesign
+ 2026-10-31). Android's `PlanViewModel`.
 
- One model for both screens: the strategy switch on Your debts may need the
- choices editor of Your plan (see `chooseStrategy`), and both read the same
- plan. After every write the plan is read again — one change moves every
- figure, and those are the server's. Every sentence comes from shared
- `YourPlan` and `DebtEdit`, so this screen and Android's cannot disagree.
+ One model for both screens: both read the same plan. After a choice or a
+ debt is saved the plan is read again — one change moves every figure, and
+ those are the server's; a row set by hand returns the whole plan, which
+ replaces the one on screen. Every sentence comes from shared `YourPlan` and
+ `DebtEdit`, so this screen and Android's cannot disagree.
 
  What is being typed survives the scene going away, with the owner in the
  snapshot so the bind that follows a restore keeps it.
@@ -35,17 +35,21 @@ final class PlanViewModel: ObservableObject {
     /// Why the strategy switch was refused.
     @Published private(set) var noticeKey: String?
 
-    // MARK: The choices — Swift cannot `copy()` a Kotlin draft, so its fields live here
-    @Published private(set) var choosing = false
-    /// No buffer step since 2026-10-28: always false, kept for the shared draft's shape.
-    @Published var hasBuffer = false { didSet { choicesErrorKey = nil } }
-    @Published var buffer = "" { didSet { choicesErrorKey = nil } }
-    @Published var goalShare = "" { didSet { choicesErrorKey = nil } }
-    @Published var rateLine = "" { didSet { choicesErrorKey = nil } }
-    @Published var strategy: PlanStrategy = .avalanche { didSet { choicesErrorKey = nil } }
+    // MARK: The choices — a Kotlin draft, replaced by what the shared functions return
+    /// The order and shares being edited; nil while the editor is closed.
+    @Published private(set) var weightsDraft: PlanWeightsDraft? { didSet { choicesErrorKey = nil } }
     @Published private(set) var savingChoices = false
     @Published private(set) var choicesErrorKey: String?
     @Published private(set) var switchingStrategy = false
+
+    // MARK: A row of the split set by hand — Swift cannot `copy()` the draft, so the amount lives here
+    /// The row as the editor opened on it; nil while the editor is closed.
+    @Published private(set) var rowEditBase: RowEditDraft?
+    @Published var rowAmount = "" { didSet { rowErrorKey = nil } }
+    /// Save was tapped: the alert asks whether the amount goes where it belongs too.
+    @Published var askingApply = false
+    @Published private(set) var savingRow = false
+    @Published private(set) var rowErrorKey: String?
 
     // MARK: A debt's details
     @Published private(set) var editingDebtId: String?
@@ -119,6 +123,7 @@ final class PlanViewModel: ObservableObject {
         errorKey = nil
         noticeKey = nil
         cancelChoices()
+        cancelRowEdit()
         cancelDebt()
         cancelBalance()
     }
@@ -155,7 +160,7 @@ final class PlanViewModel: ObservableObject {
             refreshing = false
             // A refresh that fails keeps what it had (CLAUDE.md → Data & caching).
             loadFailed = plan == nil
-            errorKey = (error as? ApiException)?.messageKey ?? Strings.shared.error_unexpected
+            errorKey = Self.messageKey(error)
         }
     }
 
@@ -181,13 +186,22 @@ final class PlanViewModel: ObservableObject {
         Money.shared.normalize(raw: "0", fractionDigits: Money.shared.fractionDigits(currency: moneyCurrency)) ?? "0"
     }
 
-    var headline: String? { plan.map { YourPlan.shared.headline(plan: $0, words: words) } }
-
     var showsSplit: Bool { plan.map { YourPlan.shared.hasSplit(plan: $0, currency: moneyCurrency) } ?? false }
 
     var splitRows: [SplitRow] { plan.map { YourPlan.shared.splitRows(plan: $0, words: words) } ?? [] }
 
-    var choiceRows: [SharedLogic.ChoiceRow] { plan.map { YourPlan.shared.choiceRows(preferences: $0.preferences, words: words) } ?? [] }
+    var surplusCard: SurplusCard? { plan.map { YourPlan.shared.surplusCard(plan: $0, words: words) } }
+
+    var splitNote: SplitNote? { plan.flatMap { YourPlan.shared.splitNote(plan: $0, words: words) } }
+
+    var weightRows: [WeightRow] { plan.map { YourPlan.shared.weightRows(preferences: $0.preferences, words: words) } ?? [] }
+
+    /// "Add an emergency fund" while the household has none: title and body.
+    var emergencySuggestion: (title: String, body: String)? {
+        guard let plan, let pair = YourPlan.shared.emergencySuggestion(preferences: plan.preferences, words: words),
+              let title = pair.first as String?, let body = pair.second as String? else { return nil }
+        return (title, body)
+    }
 
     var disclaimerText: String? {
         guard let body = disclaimer?.body, !body.isEmpty else { return nil }
@@ -228,79 +242,75 @@ final class PlanViewModel: ObservableObject {
 
     // MARK: The choices
 
-    var choicesDraft: PlanChoicesDraft {
-        PlanChoicesDraft(hasBuffer: hasBuffer, buffer: buffer, goalSharePercent: goalShare, rateLinePercent: rateLine, strategy: strategy)
-    }
+    var choosing: Bool { weightsDraft != nil }
 
-    /// Why Save is off, or nil — the one shared rule (CLAUDE.md → Blocking reasons).
+    /// Why Recalculate is off, or nil — the one shared rule (CLAUDE.md → Blocking reasons).
     var choicesBlock: PlanChoiceBlock? {
-        guard let plan else { return nil }
-        return YourPlan.shared.blockingReason(preferences: plan.preferences, draft: choicesDraft, currency: moneyCurrency)
+        guard let plan, let weightsDraft else { return nil }
+        return YourPlan.shared.blockingReason(preferences: plan.preferences, draft: weightsDraft)
     }
 
-    var choicesNotice: PlanChoiceBlock? {
-        guard let block = choicesBlock, block != .nothingChanged else { return nil }
-        return block
+    /// The block worth saying out loud: "nothing changed" only keeps the button off.
+    var choicesNotice: String? {
+        guard let block = choicesBlock, block != .nothingChanged, let weightsDraft else { return nil }
+        return YourPlan.shared.blockText(block: block, draft: weightsDraft, locale: locale)
     }
 
-    var canSaveChoices: Bool { !savingChoices && plan != nil && choicesBlock == nil }
+    var canSaveChoices: Bool { !savingChoices && plan != nil && weightsDraft != nil && choicesBlock == nil }
 
-    var goalNote: String? {
-        guard let plan else { return nil }
-        return YourPlan.shared.bufferGoalNote(preferences: plan.preferences, draft: choicesDraft, locale: locale)
-    }
+    var totalLine: String? { weightsDraft.flatMap { YourPlan.shared.totalLine(draft: $0, words: words) } }
 
     func startChoices() {
         guard let plan else { return }
-        fill(YourPlan.shared.draftOf(preferences: plan.preferences))
-        choosing = true
+        weightsDraft = YourPlan.shared.weightsDraftOf(preferences: plan.preferences)
     }
 
-    private func fill(_ draft: PlanChoicesDraft) {
-        hasBuffer = draft.hasBuffer
-        buffer = draft.buffer
-        goalShare = draft.goalSharePercent
-        rateLine = draft.rateLinePercent
-        strategy = draft.strategy
-        choicesErrorKey = nil
+    func percent(of category: PlanCategory) -> String { weightsDraft?.percents[category] ?? "" }
+
+    func setPercent(_ text: String, of category: PlanCategory) {
+        guard let draft = weightsDraft else { return }
+        weightsDraft = YourPlan.shared.withPercent(draft: draft, category: category, text: text)
+    }
+
+    func step(_ category: PlanCategory, up: Bool) {
+        guard let draft = weightsDraft else { return }
+        weightsDraft = YourPlan.shared.stepped(draft: draft, category: category, up: up)
+    }
+
+    func move(_ category: PlanCategory, up: Bool) {
+        guard let draft = weightsDraft else { return }
+        weightsDraft = YourPlan.shared.moved(draft: draft, category: category, up: up)
     }
 
     func cancelChoices() {
-        choosing = false
+        weightsDraft = nil
         savingChoices = false
         choicesErrorKey = nil
     }
 
+    /// Keep the order and shares; the server works the split out again from them.
     func saveChoices() {
-        guard let planRepository, canSaveChoices else { return }
-        let choices = YourPlan.shared.toSave(draft: choicesDraft, currency: moneyCurrency)
+        guard let planRepository, let plan, let draft = weightsDraft, canSaveChoices else { return }
+        let choices = YourPlan.shared.toSave(draft: draft, strategy: plan.preferences.strategy)
         savingChoices = true
         choicesErrorKey = nil
         Task {
             do {
                 _ = try await planRepository.savePreferences(choices: choices)
                 savingChoices = false
-                choosing = false
-                // A buffer is a goal: it may have just been made or changed.
-                await settled(goalsMoved: true)
+                weightsDraft = nil
+                await settled(goalsMoved: false)
             } catch {
                 savingChoices = false
-                choicesErrorKey = (error as? ApiException)?.messageKey ?? Strings.shared.error_unexpected
+                choicesErrorKey = Self.messageKey(error)
             }
         }
     }
 
-    /// The Debts screen's switch. Once saved, only the strategy changes; before
-    /// that the first save would keep the buffer as a goal, so the editor opens
-    /// with the strategy chosen and the person confirms the rest.
+    /// The Debts screen's switch: only the strategy changes, the choices are kept.
     func chooseStrategy(_ chosen: PlanStrategy) {
         guard let planRepository, let plan, !switchingStrategy, plan.preferences.strategy != chosen else { return }
-        guard let choices = YourPlan.shared.strategyOnly(preferences: plan.preferences, strategy: chosen) else {
-            fill(YourPlan.shared.draftOf(preferences: plan.preferences))
-            strategy = chosen
-            choosing = true
-            return
-        }
+        let choices = YourPlan.shared.strategyOnly(strategy: chosen)
         switchingStrategy = true
         noticeKey = nil
         Task {
@@ -310,7 +320,86 @@ final class PlanViewModel: ObservableObject {
                 await settled(goalsMoved: false)
             } catch {
                 switchingStrategy = false
-                noticeKey = (error as? ApiException)?.messageKey ?? Strings.shared.error_unexpected
+                noticeKey = Self.messageKey(error)
+            }
+        }
+    }
+
+    // MARK: A row of the split set by hand
+
+    /// The draft as typed: the row it opened on, with the amount in the field.
+    var rowDraft: RowEditDraft? {
+        guard let base = rowEditBase else { return nil }
+        return RowEditDraft(row: base.row, goalId: base.goalId, label: base.label, amount: rowAmount, original: base.original)
+    }
+
+    var rowBlock: RowEditBlock? {
+        guard let plan, let rowDraft else { return nil }
+        return YourPlan.shared.editBlockingReason(plan: plan, draft: rowDraft, currency: moneyCurrency)
+    }
+
+    /// "That's the amount already there" only keeps Save off.
+    var rowNotice: String? {
+        guard let plan, let rowDraft, let block = rowBlock, block != .unchanged else { return nil }
+        return YourPlan.shared.editBlockText(block: block, plan: plan, draft: rowDraft, words: words)
+    }
+
+    var canSaveRow: Bool { !savingRow && rowDraft != nil && rowBlock == nil }
+
+    var rowLimitLine: String? {
+        guard let plan, let rowDraft else { return nil }
+        return YourPlan.shared.editLimitLine(plan: plan, draft: rowDraft, words: words)
+    }
+
+    var rowRebalanceLine: String? { plan.map { YourPlan.shared.editRebalanceLine(plan: $0, words: words) } }
+
+    var applyQuestion: ApplyQuestion? { rowDraft.map { YourPlan.shared.applyQuestion(draft: $0, words: words) } }
+
+    func startRowEdit(_ row: SplitRow) {
+        let draft = YourPlan.shared.editDraftOf(row: row)
+        rowEditBase = draft
+        rowAmount = draft.amount
+        rowErrorKey = nil
+        askingApply = false
+    }
+
+    func cancelRowEdit() {
+        rowEditBase = nil
+        rowAmount = ""
+        askingApply = false
+        savingRow = false
+        rowErrorKey = nil
+    }
+
+    /// Save tapped: ask whether the amount should go where it belongs as well.
+    func askApply() {
+        guard canSaveRow else { return }
+        askingApply = true
+    }
+
+    /// Set the row; the server rebalances the others and returns the whole plan.
+    func saveRow(apply: Bool) {
+        askingApply = false
+        guard let planRepository, let draft = rowDraft, canSaveRow else { return }
+        let edit = YourPlan.shared.toEdit(draft: draft, apply: apply, currency: moneyCurrency)
+        savingRow = true
+        rowErrorKey = nil
+        Task {
+            do {
+                let answer = try await planRepository.editSplit(edit: edit)
+                // Newer than any read still in flight.
+                generation += 1
+                plan = answer
+                savingRow = false
+                rowEditBase = nil
+                rowAmount = ""
+                // Home, Goals and Budget re-read on this — a row applied moves a
+                // goal's monthly amount, the Debt line or the savings target.
+                PlanChanged.announce()
+                if apply, draft.row == .emergencyFund || draft.row == .goal { GoalsChanged.announce() }
+            } catch {
+                savingRow = false
+                rowErrorKey = Self.messageKey(error)
             }
         }
     }
@@ -376,7 +465,7 @@ final class PlanViewModel: ObservableObject {
                 await settled(goalsMoved: false)
             } catch {
                 savingDebt = false
-                debtErrorKey = (error as? ApiException)?.messageKey ?? Strings.shared.error_unexpected
+                debtErrorKey = Self.messageKey(error)
             }
         }
     }
@@ -424,7 +513,7 @@ final class PlanViewModel: ObservableObject {
                 await settled(goalsMoved: false)
             } catch {
                 savingBalance = false
-                balanceErrorKey = (error as? ApiException)?.messageKey ?? Strings.shared.error_unexpected
+                balanceErrorKey = Self.messageKey(error)
             }
         }
     }
@@ -434,12 +523,15 @@ final class PlanViewModel: ObservableObject {
     private struct Snapshot: Codable {
         var owner: String
         var page: String
-        var choosing: Bool
-        var hasBuffer: Bool
-        var buffer: String
-        var goalShare: String
-        var rateLine: String
-        var strategy: String
+        /// The choices editor: categories in order, and each one's share as typed.
+        var categories: [String]?
+        var percents: [String: String]?
+        /// A row of the split being set.
+        var row: String?
+        var rowGoalId: String?
+        var rowLabel: String?
+        var rowOriginal: String?
+        var rowAmount: String?
         var editingDebtId: String?
         var debtName: String
         var debtKind: String?
@@ -455,10 +547,18 @@ final class PlanViewModel: ObservableObject {
     /// The page and what was being typed, as one string the scene can keep —
     /// only while a sheet is open, and never the plan, which is re-read on bind.
     var snapshot: String {
-        guard let owner, choosing || editingDebtId != nil || balanceDebtId != nil else { return "" }
+        guard let owner, weightsDraft != nil || rowEditBase != nil || editingDebtId != nil || balanceDebtId != nil else { return "" }
+        var percents: [String: String]?
+        if let weightsDraft {
+            var byWire: [String: String] = [:]
+            for category in weightsDraft.categories { byWire[category.wire] = weightsDraft.percents[category] ?? "" }
+            percents = byWire
+        }
         let value = Snapshot(
-            owner: owner, page: page.rawValue, choosing: choosing,
-            hasBuffer: hasBuffer, buffer: buffer, goalShare: goalShare, rateLine: rateLine, strategy: strategy.wire,
+            owner: owner, page: page.rawValue,
+            categories: weightsDraft?.categories.map(\.wire), percents: percents,
+            row: rowEditBase?.row.wire, rowGoalId: rowEditBase?.goalId, rowLabel: rowEditBase?.label,
+            rowOriginal: rowEditBase?.original, rowAmount: rowEditBase == nil ? nil : rowAmount,
             editingDebtId: editingDebtId, debtName: debtName, debtKind: debtKind?.wire,
             minimum: minimum, rate: rate, promoRate: promoRate, promoEndsOn: promoEndsOn, accountId: accountId,
             balanceDebtId: balanceDebtId, balanceAmount: balanceAmount
@@ -473,12 +573,18 @@ final class PlanViewModel: ObservableObject {
               let value = try? JSONDecoder().decode(Snapshot.self, from: data) else { return }
         owner = value.owner
         page = Page(rawValue: value.page) ?? .plan
-        choosing = value.choosing
-        hasBuffer = false
-        buffer = value.buffer
-        goalShare = value.goalShare
-        rateLine = value.rateLine
-        strategy = PlanStrategy.companion.fromWire(value: value.strategy)
+        if let wires = value.categories {
+            let categories = wires.map { PlanCategory.companion.fromWire(value: $0) }.filter { $0 != .unknown }
+            var percents: [PlanCategory: String] = [:]
+            for category in categories { percents[category] = value.percents?[category.wire] ?? "" }
+            weightsDraft = PlanWeightsDraft(categories: categories, percents: percents)
+        }
+        let rows: [PlanRow] = [.emergencyFund, .debt, .goal, .saveOrInvest]
+        if let wire = value.row, let row = rows.first(where: { $0.wire == wire }) {
+            let original = value.rowOriginal ?? ""
+            rowEditBase = RowEditDraft(row: row, goalId: value.rowGoalId, label: value.rowLabel ?? "", amount: original, original: original)
+            rowAmount = value.rowAmount ?? original
+        }
         editingDebtId = value.editingDebtId
         debtName = value.debtName
         debtKind = value.debtKind.map { DebtKind.companion.fromWire(value: $0) }.flatMap { $0 == .unknown ? nil : $0 }
@@ -489,5 +595,11 @@ final class PlanViewModel: ObservableObject {
         accountId = value.accountId
         balanceDebtId = value.balanceDebtId
         balanceAmount = value.balanceAmount
+    }
+
+    /// The message for a refusal: Kotlin's exception rides inside the Swift error.
+    private static func messageKey(_ error: Error) -> String {
+        let kotlin = (error as NSError).userInfo["KotlinException"] as? KotlinThrowable
+        return (kotlin as? ApiException)?.messageKey ?? Strings.shared.error_unexpected
     }
 }

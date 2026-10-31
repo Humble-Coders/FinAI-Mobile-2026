@@ -11,13 +11,14 @@ import com.humblesolutions.finai.model.AiPolicy
 import com.humblesolutions.finai.model.ApiException
 import com.humblesolutions.finai.model.PlanDiagnostic
 import com.humblesolutions.finai.model.PlanDiagnostics
-import com.humblesolutions.finai.model.PlanPreferencesToSave
 import com.humblesolutions.finai.repository.AiConsentRepository
 import com.humblesolutions.finai.repository.PlanRepository
 import com.humblesolutions.finai.usecase.DiagnosticBlock
 import com.humblesolutions.finai.usecase.DiagnosticCheck
 import com.humblesolutions.finai.usecase.DiagnosticRow
 import com.humblesolutions.finai.usecase.PlanDiagnosticWords
+import com.humblesolutions.finai.usecase.YourPlan
+import com.humblesolutions.finai.util.BudgetChanged
 import com.humblesolutions.finai.util.Money
 import com.humblesolutions.finai.util.PlanChanged
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -34,8 +35,11 @@ data class DiagnosticUiState(
     val diagnostics: PlanDiagnostics? = null,
     /** The answer on screen: this visit's run, else the last one. */
     val result: PlanDiagnostic? = null,
+    /** The invest diagnostic's two figures. */
     val savingsTarget: String = "",
     val savingsNow: String = "",
+    /** The allocation diagnostic's one figure: what is saved each month. Blank uses the Budget's savings target. */
+    val monthlySavings: String = "",
     val running: Boolean = false,
     val errorKey: String? = null,
     /** The AI may not be asked yet: the person is shown the policy first. */
@@ -55,7 +59,18 @@ data class DiagnosticUiState(
 
     val question: String get() = PlanDiagnosticWords.question(kind, locale)
 
-    val block: DiagnosticBlock? get() = PlanDiagnosticWords.blockingReason(savingsTarget, savingsNow, currency)
+    val isAllocation: Boolean get() = kind == PlanDiagnostics.ALLOCATION
+
+    val block: DiagnosticBlock?
+        get() = if (isAllocation) {
+            PlanDiagnosticWords.monthlyBlockingReason(monthlySavings, currency)
+        } else {
+            PlanDiagnosticWords.blockingReason(savingsTarget, savingsNow, currency)
+        }
+
+    val monthlyLabel: String get() = PlanDiagnosticWords.monthlyLabel(locale)
+
+    val monthlyHint: String get() = PlanDiagnosticWords.monthlyHint(locale)
 
     val runsLeft: Int get() = diagnostics?.runsLeftFor(kind) ?: 0
 
@@ -88,10 +103,11 @@ data class DiagnosticUiState(
 /**
  * Your plan's diagnostics: "Debt, goals or savings?" and "Should I invest?".
  *
- * The form starts from the savings figures the person last ran with (else the
- * Emergency fund goal's, else the plan's suggested buffer). Running with the
- * same figures returns the stored answer at no cost; the server allows four
- * fresh runs of each a month.
+ * "Debt, goals or savings?" asks one figure — what is saved each month —
+ * starting at the Budget's savings target, and running it makes that the
+ * Budget's target (redesign, 2026-10-31). "Should I invest?" keeps its two
+ * savings figures. Running with the same figures returns the stored answer at
+ * no cost; the server allows four fresh runs of each a month.
  */
 class DiagnosticViewModel : ViewModel() {
 
@@ -146,6 +162,7 @@ class DiagnosticViewModel : ViewModel() {
                         result = found.last(it.kind),
                         savingsTarget = found.savingsTarget,
                         savingsNow = found.savingsNow,
+                        monthlySavings = found.monthlySavings,
                     )
                 }
             } catch (e: CancellationException) {
@@ -160,20 +177,45 @@ class DiagnosticViewModel : ViewModel() {
 
     fun onSavingsNow(amount: String) = _uiState.update { it.copy(savingsNow = amount, errorKey = null) }
 
+    fun onMonthlySavings(amount: String) = _uiState.update { it.copy(monthlySavings = amount, errorKey = null) }
+
     /** Run on what is in the form. */
     fun run() {
         val repos = repositories ?: return
         val state = _uiState.value
         if (!state.canRun) return
         val digits = Money.fractionDigits(state.currency)
-        val target = Money.normalize(state.savingsTarget.ifBlank { "0" }, digits) ?: return
-        val now = Money.normalize(state.savingsNow.ifBlank { "0" }, digits) ?: return
+        val target: String?
+        val now: String?
+        val monthly: String?
+        if (state.isAllocation) {
+            target = null
+            now = null
+            // Blank: the server uses the Budget's savings target.
+            monthly = state.monthlySavings.takeIf { it.isNotBlank() }?.let { Money.normalize(it, digits) ?: return }
+        } else {
+            target = Money.normalize(state.savingsTarget.ifBlank { "0" }, digits) ?: return
+            now = Money.normalize(state.savingsNow.ifBlank { "0" }, digits) ?: return
+            monthly = null
+        }
         _uiState.update { it.copy(running = true, errorKey = null) }
         viewModelScope.launch {
             try {
-                val answer = repos.plan.runDiagnostic(state.kind, target, now)
+                val answer = repos.plan.runDiagnostic(state.kind, target, now, monthly)
+                if (state.isAllocation) {
+                    // The monthly saving is now the Budget's savings target, and
+                    // the plan divides what the Budget leaves over.
+                    BudgetChanged.announce()
+                    PlanChanged.announce()
+                }
                 // Re-read the counts: a fresh run used one up, a stored one did not.
-                val counts = runCatching { repos.plan.diagnostics() }.getOrNull()
+                val counts = try {
+                    repos.plan.diagnostics()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: ApiException) {
+                    null
+                }
                 _uiState.update { it.copy(running = false, result = answer, diagnostics = counts ?: it.diagnostics) }
             } catch (e: CancellationException) {
                 throw e
@@ -187,8 +229,9 @@ class DiagnosticViewModel : ViewModel() {
     }
 
     /**
-     * "Pay debt before goals": the plan's goal share set to 0%, every other
-     * choice kept as it is now — the same save as Your choices, one figure changed.
+     * "Pay debt before goals": debt moved to the top of the choices with the
+     * goals' share added to it, the goals given none — the same save as Your
+     * choices. Without a debt choice there is nothing to change.
      */
     fun applyDebtFirst() {
         val repos = repositories ?: return
@@ -196,15 +239,12 @@ class DiagnosticViewModel : ViewModel() {
         _uiState.update { it.copy(applying = true, errorKey = null) }
         viewModelScope.launch {
             try {
-                val now = repos.plan.plan(null).preferences
-                repos.plan.savePreferences(
-                    PlanPreferencesToSave(
-                        buffer = now.buffer,
-                        goalSharePercent = "0",
-                        rateLinePercent = now.rateLinePercent,
-                        strategy = now.strategy,
-                    ),
-                )
+                val choices = YourPlan.debtFirstChoices(repos.plan.plan(null).preferences)
+                if (choices == null) {
+                    _uiState.update { it.copy(applying = false) }
+                    return@launch
+                }
+                repos.plan.savePreferences(choices)
                 _uiState.update { it.copy(applying = false, applied = true) }
                 // Home's plan card and Goals' suggested amounts follow the plan.
                 PlanChanged.announce()

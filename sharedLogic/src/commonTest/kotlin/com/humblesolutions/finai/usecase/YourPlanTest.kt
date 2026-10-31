@@ -210,6 +210,9 @@ class YourPlanTest {
         assertEquals(PlanChoiceBlock.NOT_100, YourPlan.blockingReason(preferences, short))
         assertEquals("The shares add up to 95%. They need to add up to 100%.", YourPlan.blockText(PlanChoiceBlock.NOT_100, short))
         assertEquals(PlanChoiceBlock.PERCENT_INVALID, YourPlan.blockingReason(preferences, YourPlan.withPercent(draft, PlanCategory.DEBT, "abc")))
+        val over = YourPlan.withPercent(draft, PlanCategory.DEBT, "55")
+        assertEquals("The shares add up to 105%. They need to add up to 100%.", YourPlan.blockText(PlanChoiceBlock.NOT_100, over))
+        assertEquals("Total: 105%", YourPlan.totalLine(over, words))
     }
 
     @Test

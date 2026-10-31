@@ -491,7 +491,13 @@ object YourPlan {
     }
 
     /** "Total: 95%". */
-    fun totalLine(draft: PlanWeightsDraft, words: Words): String? = total(draft)?.let { words.text(Strings.plan_choices_total, Percent.display(it)) }
+    fun totalLine(draft: PlanWeightsDraft, words: Words): String? = total(draft)?.let { words.text(Strings.plan_choices_total, totalText(it)) }
+
+    /**
+     * A total as a person says it, `"105%"`. Not `Percent.display`: a total can
+     * be over 100 while the person is still typing, and that refuses it.
+     */
+    private fun totalText(total: String): String = total.removeSuffix(".00").let { if ('.' in it) it.trimEnd('0') else it } + "%"
 
     /** Why [draft] cannot be saved, or null when it can. Until the person has saved once, the suggestions unchanged are a real answer. */
     fun blockingReason(preferences: PlanPreferences, draft: PlanWeightsDraft): PlanChoiceBlock? {
@@ -508,7 +514,7 @@ object YourPlan {
     }
 
     fun blockText(block: PlanChoiceBlock, draft: PlanWeightsDraft, locale: String = "en"): String = when (block) {
-        PlanChoiceBlock.NOT_100 -> LocalizationRegistry.format(block.messageKey, listOf(Percent.display(total(draft) ?: "0")), locale)
+        PlanChoiceBlock.NOT_100 -> LocalizationRegistry.format(block.messageKey, listOf(totalText(total(draft) ?: "0")), locale)
         else -> LocalizationRegistry.get(block.messageKey, locale)
     }
 

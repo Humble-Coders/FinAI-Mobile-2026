@@ -51,27 +51,46 @@ struct DiagnosticView: View {
         }
         .scrollDismissesKeyboard(.interactively)
         .background(Color(.systemBackground).ignoresSafeArea())
+        .toolbar {
+            // A decimal pad has no return key; this is the way off it.
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button(L.t(Strings.shared.action_done)) { dismissKeyboard() }
+            }
+        }
         .onAppear { model.bind() }
     }
 
     private var form: some View {
         VStack(alignment: .leading, spacing: 14) {
-            AmountField(
-                label: L.t(Strings.shared.diagnostic_savings_target),
-                symbol: model.symbol,
-                placeholder: "0",
-                isError: model.block != nil,
-                large: false,
-                text: $model.savingsTarget
-            )
-            AmountField(
-                label: L.t(Strings.shared.diagnostic_savings_now),
-                symbol: model.symbol,
-                placeholder: "0",
-                isError: model.block != nil,
-                large: false,
-                text: $model.savingsNow
-            )
+            if model.isAllocation {
+                AmountField(
+                    label: model.monthlyLabel,
+                    symbol: model.symbol,
+                    placeholder: "0",
+                    isError: model.block != nil,
+                    large: false,
+                    text: $model.monthlySavings
+                )
+                Text(model.monthlyHint).font(.caption).foregroundColor(.secondary)
+            } else {
+                AmountField(
+                    label: L.t(Strings.shared.diagnostic_savings_target),
+                    symbol: model.symbol,
+                    placeholder: "0",
+                    isError: model.block != nil,
+                    large: false,
+                    text: $model.savingsTarget
+                )
+                AmountField(
+                    label: L.t(Strings.shared.diagnostic_savings_now),
+                    symbol: model.symbol,
+                    placeholder: "0",
+                    isError: model.block != nil,
+                    large: false,
+                    text: $model.savingsNow
+                )
+            }
             ErrorText(messageKey: model.errorKey ?? model.block?.messageKey)
             GradientButton(
                 title: L.t(model.result == nil ? Strings.shared.diagnostic_run : Strings.shared.diagnostic_run_again),

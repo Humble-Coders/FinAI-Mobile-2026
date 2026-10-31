@@ -1184,4 +1184,5 @@ val EnglishStrings: Map<String, String> = mapOf(
     Strings.diagnostic_monthly_savings_hint to "This also becomes your Budget's savings target.",
     Strings.diagnostic_savings_monthly to "{0} a month, set aside first",
     Strings.diagnostic_to_emergency to "Emergency fund",
+    Strings.plan_percent_sign to "%",
 )

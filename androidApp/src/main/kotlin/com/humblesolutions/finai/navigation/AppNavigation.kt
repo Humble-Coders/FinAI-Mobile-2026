@@ -435,6 +435,13 @@ private fun HomeOrEntry(userId: String, onSignOut: () -> Unit) {
         planFrom = route
         route = to
     }
+
+    // The plan's "Add an emergency fund" goes to the Goals tab, where there is one.
+    val openGoalsFromPlan: (() -> Unit)? = if (HomeRoute.GOALS in tabs) {
+        { route = HomeRoute.GOALS }
+    } else {
+        null
+    }
     // Where Review goes back to. Saveable with the route, so a restored Review
     // still knows its way out.
     var reviewFrom by rememberSaveable { mutableStateOf(HomeRoute.HOME) }
@@ -562,9 +569,9 @@ private fun HomeOrEntry(userId: String, onSignOut: () -> Unit) {
 
                     // Over the bar, like the money screens; back returns to
                     // wherever the plan was opened from.
-                    HomeRoute.PLAN -> PlanRoute(userId = userId, startOnDebts = false, onClose = { route = planFrom })
+                    HomeRoute.PLAN -> PlanRoute(userId = userId, startOnDebts = false, onClose = { route = planFrom }, onOpenGoals = openGoalsFromPlan)
 
-                    HomeRoute.PLAN_DEBTS -> PlanRoute(userId = userId, startOnDebts = true, onClose = { route = planFrom })
+                    HomeRoute.PLAN_DEBTS -> PlanRoute(userId = userId, startOnDebts = true, onClose = { route = planFrom }, onOpenGoals = openGoalsFromPlan)
                 }
             }
         }

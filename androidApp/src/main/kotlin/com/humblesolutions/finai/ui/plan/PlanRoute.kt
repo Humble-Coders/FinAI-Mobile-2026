@@ -18,9 +18,11 @@ import com.humblesolutions.finai.ui.components.LoaderSignal
  * [startOnDebts] opens Your debts first — from Home's Debts screen — and Back
  * from there closes the route rather than showing a plan the person did not
  * come for. From Your plan, Back on Your debts returns to the plan.
+ * [onOpenGoals] is the emergency fund suggestion's way to the Goals tab; null
+ * where there is no Goals tab, and the suggestion then has no button.
  */
 @Composable
-internal fun PlanRoute(userId: String, startOnDebts: Boolean, onClose: () -> Unit) {
+internal fun PlanRoute(userId: String, startOnDebts: Boolean, onClose: () -> Unit, onOpenGoals: (() -> Unit)? = null) {
     val model: PlanViewModel = viewModel()
     val state by model.uiState.collectAsStateWithLifecycle()
     // The first page once; a restored process keeps the page it was on.
@@ -59,15 +61,33 @@ internal fun PlanRoute(userId: String, startOnDebts: Boolean, onClose: () -> Uni
         onEditDebt = model::editDebt,
         onUpdateBalance = model::startBalance,
         onRunDiagnostic = { diagnostic = it },
+        onEditRow = model::startRowEdit,
+        onOpenGoals = onOpenGoals,
     )
     when (state.page) {
         PlanPage.PLAN -> PlanScreen(state, actions)
         PlanPage.DEBTS -> DebtsScreen(state, actions)
     }
 
+    RowEditSheet(
+        state = state,
+        actions = RowEditActions(
+            onAmountChange = model::onRowAmount,
+            onSave = model::requestRowSave,
+            onCancel = model::cancelRowEdit,
+            onApply = model::saveRow,
+            onDismissApply = model::dismissApply,
+        ),
+    )
     ChoicesSheet(
         state = state,
-        actions = ChoicesActions(onDraftChange = model::onChoicesDraft, onSave = model::saveChoices, onCancel = model::cancelChoices),
+        actions = ChoicesActions(
+            onMove = model::moveChoice,
+            onStep = model::stepChoice,
+            onPercent = model::onChoicePercent,
+            onSave = model::saveChoices,
+            onCancel = model::cancelChoices,
+        ),
     )
     DebtEditorSheet(
         state = state,

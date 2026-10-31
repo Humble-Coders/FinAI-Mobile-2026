@@ -89,7 +89,9 @@ final class GoalsViewModel: ObservableObject {
         planListener = Task { [weak self] in
             for await _ in PlanChanged.events {
                 guard let self, !Task.isCancelled else { return }
-                await self.loadPlan()
+                // A row of the plan set by hand can change a goal's monthly
+                // amount, so the goals are read again, the plan with them.
+                await self.load(refresh: true)
             }
         }
         Task { await load() }
