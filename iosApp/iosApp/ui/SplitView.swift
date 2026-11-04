@@ -417,8 +417,28 @@ struct SplitStartView: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(alignment: .top, spacing: 14) {
                 ForEach(Array(model.people.enumerated()), id: \.offset) { index, person in
+                    let remove = L.t(Strings.shared.split_remove_person, model.label(person))
                     VStack(spacing: 6) {
                         Monogram(initials: model.initials(person), size: 52, tint: Monogram.tint(index))
+                            .overlay(alignment: .topTrailing) {
+                                // The person themselves is on every bill; anyone else can come off it.
+                                if !person.isSelf {
+                                    Button { model.remove(personAt: index) } label: {
+                                        Image(systemName: "xmark")
+                                            .font(.system(size: 10, weight: .bold))
+                                            .foregroundColor(.secondary)
+                                            .frame(width: 22, height: 22)
+                                            .background(Circle().fill(Color(.secondarySystemBackground)))
+                                            .overlay(Circle().stroke(Color(.separator), lineWidth: 1))
+                                            // A small mark, a full-size target.
+                                            .frame(width: 44, height: 44)
+                                            .contentShape(Rectangle())
+                                    }
+                                    .buttonStyle(.plain)
+                                    .offset(x: 14, y: -14)
+                                    .accessibilityHidden(true)
+                                }
+                            }
                         Text(model.label(person))
                             .font(.caption)
                             .lineLimit(1)
@@ -427,6 +447,9 @@ struct SplitStartView: View {
                     .frame(width: 64)
                     .accessibilityElement(children: .ignore)
                     .accessibilityLabel(model.label(person))
+                    .accessibilityAction(named: remove) {
+                        if !person.isSelf { model.remove(personAt: index) }
+                    }
                 }
                 Button { model.openPeople() } label: {
                     VStack(spacing: 6) {

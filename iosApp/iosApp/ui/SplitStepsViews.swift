@@ -98,6 +98,19 @@ struct SplitPeopleStep: View {
             model.pickedFromContacts(name: name, phone: phone)
         }.frame(width: 0, height: 0))
         .sheet(isPresented: $model.addingPerson) { SplitAddPersonSheet(model: model) }
+        .alert(
+            model.confirmingContact?.name ?? "",
+            isPresented: Binding(get: { model.confirmingContact != nil }, set: { if !$0 { model.confirmingContact = nil } }),
+            presenting: model.confirmingContact
+        ) { contact in
+            Button(L.t(Strings.shared.split_person_delete, contact.name), role: .destructive) {
+                model.confirmingContact = nil
+                model.deleteContact(contact)
+            }
+            Button(L.t(Strings.shared.action_cancel), role: .cancel) { model.confirmingContact = nil }
+        } message: { contact in
+            Text(contact.phone + "\n\n" + L.t(Strings.shared.split_person_delete_confirm))
+        }
     }
 
     private var chevron: some View {
@@ -126,6 +139,14 @@ struct SplitPeopleStep: View {
                 }
                 Spacer(minLength: 8)
                 RadioMark(chosen: chosen)
+                Button { model.confirmingContact = contact } label: {
+                    Image(systemName: "trash")
+                        .foregroundColor(Brand.textMuted)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityHidden(true)
             }
             .tappableRow(minHeight: 52)
         }
@@ -134,9 +155,9 @@ struct SplitPeopleStep: View {
         .accessibilityLabel(contact.name)
         .accessibilityValue(contact.phone)
         .accessibilityAddTraits(chosen ? .isSelected : [])
-        .accessibilityAction(named: L.t(Strings.shared.split_person_delete, contact.name)) { model.deleteContact(contact) }
-        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-            Button(role: .destructive) { model.deleteContact(contact) } label: {
+        .accessibilityAction(named: L.t(Strings.shared.split_person_delete, contact.name)) { model.confirmingContact = contact }
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            Button(role: .destructive) { model.confirmingContact = contact } label: {
                 Label(L.t(Strings.shared.split_person_delete, contact.name), systemImage: "trash")
             }
         }

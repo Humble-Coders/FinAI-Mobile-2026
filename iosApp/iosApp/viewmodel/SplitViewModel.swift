@@ -695,6 +695,9 @@ final class SplitViewModel: ObservableObject {
     }
 
     /// Gone at once, from the list and the bill; put back if the server refuses.
+    /// The saved person a delete is waiting on: asked first, whichever way it was started.
+    @Published var confirmingContact: SplitContact?
+
     func deleteContact(_ contact: SplitContact) {
         guard let splitRepository else { return }
         let before = contacts

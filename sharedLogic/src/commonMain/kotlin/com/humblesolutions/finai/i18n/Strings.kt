@@ -1349,4 +1349,6 @@ object Strings {
     const val split_consent_title = "split_consent_title" // "Before we read your receipt"
     const val split_person_selected = "split_person_selected" // "1 person selected"
     const val split_item_remove = "split_item_remove" // "Remove {0}"
+    const val split_remove_person = "split_remove_person" // "Remove {0} from this bill"
+    const val split_person_delete_confirm = "split_person_delete_confirm" // "They're removed from your saved people. Bills already split keep them."
 }

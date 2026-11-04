@@ -411,6 +411,9 @@ internal class SplitViewModel internal constructor(
         if (index > 0) SplitExpense.withoutPerson(draft, index) else SplitExpense.withPerson(draft, contact)
     }
 
+    /** Person [index] off this bill — never the person themselves — and off every item they shared. */
+    fun removePerson(index: Int) = editDraft { SplitExpense.withoutPerson(it, index) }
+
     fun openNewPerson(name: String = "", phone: String = "") = update { it.copy(newPerson = NewPersonDraft(name = name, phone = phone)) }
 
     fun onNewPersonName(name: String) = update { it.copy(newPerson = it.newPerson?.copy(name = name, errorKey = null)) }
