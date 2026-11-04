@@ -100,6 +100,7 @@ internal fun SplitRoute(userId: String, currency: String, locale: String, onClos
             onChooseSource = model::chooseSource,
             onChooseMode = model::chooseMode,
             onAddPeople = model::openPeople,
+            onRemovePerson = model::removePerson,
             onContinueFromStart = model::continueFromStart,
             onTitleChange = model::onTitleChange,
             onDateChosen = model::onDateChosen,

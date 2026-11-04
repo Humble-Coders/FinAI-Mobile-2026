@@ -106,7 +106,7 @@ object SplitExpense {
 
         /** `"2026-10-12"` as `"12 Oct 2026"`. */
         fun date(iso: String): String = Dates.parse(iso)
-            ?.let { text(Strings.split_date, it.dayOfMonth.toString(), Dates.monthShort(it, locale), it.year.toString()) }
+            ?.let { text(Strings.split_date, it.day.toString(), Dates.monthShort(it, locale), it.year.toString()) }
             ?: iso
     }
 

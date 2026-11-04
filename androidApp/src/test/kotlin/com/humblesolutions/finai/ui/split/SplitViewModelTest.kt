@@ -262,6 +262,19 @@ class SplitViewModelTest {
         assertEquals(SplitStep.START, model.state.step)
     }
 
+    @Test
+    fun `someone added can be taken off the bill but never you`() {
+        val model = model()
+        model.toggleContact(PRIYA)
+        assertEquals(2, model.state.draft.people.size)
+
+        model.removePerson(0)
+        assertEquals(2, model.state.draft.people.size, "the person themselves stays")
+
+        model.removePerson(1)
+        assertEquals(listOf(null), model.state.draft.people.map { it.contactId })
+    }
+
     private fun equalSplitWithPriya(model: SplitViewModel) {
         model.chooseSource(SplitSource.MANUAL)
         model.chooseMode(SplitMode.EQUAL)

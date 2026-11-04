@@ -1282,4 +1282,6 @@ val EnglishStrings: Map<String, String> = mapOf(
     Strings.split_consent_title to "Before we read your receipt",
     Strings.split_person_selected to "1 person selected",
     Strings.split_item_remove to "Remove {0}",
+    Strings.split_remove_person to "Remove {0} from this bill",
+    Strings.split_person_delete_confirm to "They're removed from your saved people. Bills already split keep them.",
 )

@@ -31,6 +31,7 @@ import androidx.compose.material.icons.automirrored.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Balance
 import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.PhotoCamera
@@ -60,9 +61,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -112,6 +115,7 @@ internal data class SplitActions(
     val onChooseSource: (SplitSource) -> Unit,
     val onChooseMode: (SplitMode) -> Unit,
     val onAddPeople: () -> Unit,
+    val onRemovePerson: (Int) -> Unit,
     val onContinueFromStart: () -> Unit,
     val onTitleChange: (String) -> Unit,
     val onDateChosen: (LocalDate) -> Unit,
@@ -420,12 +424,40 @@ private fun StartSheet(state: SplitUiState, actions: SplitActions) {
         ) {
             draft.people.forEachIndexed { index, person ->
                 val label = SplitExpense.label(person, state.locale)
+                val remove = strings(Strings.split_remove_person, label)
                 Column(
-                    Modifier.width(64.dp).semantics(mergeDescendants = true) {},
+                    Modifier.width(64.dp).semantics(mergeDescendants = true) {
+                        // The person themselves is on every bill; anyone else can come off it.
+                        if (!person.isSelf) {
+                            customActions = listOf(
+                                CustomAccessibilityAction(remove) {
+                                    actions.onRemovePerson(index)
+                                    true
+                                },
+                            )
+                        }
+                    },
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
-                    Monogram(SplitExpense.initials(person, state.locale), index, size = 48.dp, ringed = person.isSelf)
+                    Box(Modifier.size(56.dp), contentAlignment = Alignment.Center) {
+                        Monogram(SplitExpense.initials(person, state.locale), index, size = 48.dp, ringed = person.isSelf)
+                        if (!person.isSelf) {
+                            Box(
+                                Modifier
+                                    .align(Alignment.TopEnd)
+                                    .size(24.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                                    .border(1.dp, Mint.edge(), CircleShape)
+                                    .clickable(role = Role.Button, onClickLabel = remove) { actions.onRemovePerson(index) }
+                                    .clearAndSetSemantics {},
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Icon(Icons.Filled.Close, contentDescription = null, modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    }
                     Text(label, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }

@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
@@ -25,10 +26,13 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Contacts
 import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
@@ -40,6 +44,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
@@ -120,8 +125,9 @@ internal fun PeopleStep(state: SplitUiState, actions: SplitActions) {
 }
 
 /**
- * A saved person: tapped to put them on the bill or take them off. Held down
- * — or "Delete" from a screen reader's actions — to delete them.
+ * A saved person: tapped to put them on the bill or take them off. The bin
+ * beside them — or holding the row, or "Delete" from a screen reader's
+ * actions — deletes them, after asking.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -157,6 +163,9 @@ private fun ContactRow(contact: SplitContact, tint: Int, chosen: Boolean, enable
         Column(Modifier.weight(1f)) {
             Text(contact.name, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(contact.phone, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+        }
+        IconButton(onClick = onDelete, modifier = Modifier.size(48.dp).clearAndSetSemantics {}) {
+            Icon(Icons.Outlined.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
@@ -219,7 +228,7 @@ internal fun DeleteContactDialog(contact: SplitContact, onConfirm: () -> Unit, o
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(contact.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-        text = { Text(contact.phone) },
+        text = { Text(contact.phone + "\n\n" + strings(Strings.split_person_delete_confirm)) },
         confirmButton = {
             TextButton(onClick = onConfirm) {
                 Text(strings(Strings.split_person_delete, contact.name), color = MaterialTheme.colorScheme.error, maxLines = 1, overflow = TextOverflow.Ellipsis)
