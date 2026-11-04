@@ -1347,4 +1347,6 @@ object Strings {
     const val split_error_contact_limit = "split_error_contact_limit" // "You've saved as many people as you can. Delete someone to add another."
     const val split_error_contact_exists = "split_error_contact_exists" // "Someone you've saved already has that number."
     const val split_consent_title = "split_consent_title" // "Before we read your receipt"
+    const val split_person_selected = "split_person_selected" // "1 person selected"
+    const val split_item_remove = "split_item_remove" // "Remove {0}"
 }

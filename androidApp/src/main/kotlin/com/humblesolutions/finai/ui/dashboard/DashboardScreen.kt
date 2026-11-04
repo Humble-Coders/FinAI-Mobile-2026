@@ -34,6 +34,7 @@ import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.automirrored.filled.CallSplit
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.List
@@ -151,6 +152,8 @@ fun DashboardScreen(
     commitments: CommitmentActions = CommitmentActions(),
     onOpenMoney: (MoneyKind) -> Unit = {},
     insights: InsightActions = InsightActions(),
+    /** Split a bill; null where split expenses are off, which leaves the action out. */
+    onSplitBill: (() -> Unit)? = null,
 ) {
     val dark = isSystemInDarkTheme()
     if (state.showsCommitmentEditor) CommitmentEditor(state, commitments)
@@ -231,7 +234,7 @@ fun DashboardScreen(
                             else -> Figures(state, dark, onOpenMoney)
                         }
                         Spacer(Modifier.height(26.dp))
-                        Actions(state, dark, onImportStatement, onAddTransaction, onReview)
+                        Actions(state, dark, onImportStatement, onAddTransaction, onReview, onSplitBill)
                     }
                 }
 
@@ -829,6 +832,7 @@ private fun Actions(
     onImportStatement: () -> Unit,
     onAddTransaction: () -> Unit,
     onReview: () -> Unit,
+    onSplitBill: (() -> Unit)?,
 ) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Box(
@@ -878,6 +882,17 @@ private fun Actions(
         surface = surface,
         onClick = onAddTransaction,
     )
+    if (onSplitBill != null) {
+        Spacer(Modifier.height(10.dp))
+        ActionRow(
+            tile = FinAiPalette.Blue.copy(alpha = 0.16f),
+            icon = Icons.AutoMirrored.Filled.CallSplit,
+            iconTint = FinAiPalette.Blue,
+            label = strings(Strings.split_entry),
+            surface = surface,
+            onClick = onSplitBill,
+        )
+    }
     Spacer(Modifier.height(10.dp))
     ActionRow(
         tile = Color.Transparent,

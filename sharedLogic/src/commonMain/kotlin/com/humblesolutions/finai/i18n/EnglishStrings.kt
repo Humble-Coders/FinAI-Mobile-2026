@@ -1280,4 +1280,6 @@ val EnglishStrings: Map<String, String> = mapOf(
     Strings.split_error_contact_limit to "You've saved as many people as you can. Delete someone to add another.",
     Strings.split_error_contact_exists to "Someone you've saved already has that number.",
     Strings.split_consent_title to "Before we read your receipt",
+    Strings.split_person_selected to "1 person selected",
+    Strings.split_item_remove to "Remove {0}",
 )

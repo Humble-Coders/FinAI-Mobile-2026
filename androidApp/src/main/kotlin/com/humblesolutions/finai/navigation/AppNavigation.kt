@@ -87,11 +87,13 @@ import com.humblesolutions.finai.ui.plan.PlanRoute
 import com.humblesolutions.finai.ui.review.ReviewRoute
 import com.humblesolutions.finai.ui.setup.SetupScreen
 import com.humblesolutions.finai.ui.setup.SetupViewModel
+import com.humblesolutions.finai.ui.split.SplitRoute
 import com.humblesolutions.finai.ui.statementimport.StatementImportRoute
 import com.humblesolutions.finai.ui.strings
 import com.humblesolutions.finai.ui.transactions.TransactionsRoute
 import com.humblesolutions.finai.usecase.Destination
 import com.humblesolutions.finai.usecase.MoneyKind
+import com.humblesolutions.finai.usecase.SplitExpense
 import com.humblesolutions.finai.usecase.YourPlan
 import com.humblesolutions.finai.util.LoaderTiming
 import kotlinx.coroutines.CoroutineScope
@@ -305,7 +307,7 @@ private fun SetupRoute(userId: String, onFinished: () -> Unit) {
 }
 
 /** Where the signed-in, set-up person is: home, or one of the two ways money gets in. */
-internal enum class HomeRoute { HOME, ADD, IMPORT, ADD_AFTER_IMPORT, REVIEW, TRANSACTIONS, BUDGET, GOALS, COACH, INCOME, EXPENSES, INVESTMENTS, DEBTS, PLAN, PLAN_DEBTS }
+internal enum class HomeRoute { HOME, ADD, IMPORT, ADD_AFTER_IMPORT, REVIEW, TRANSACTIONS, BUDGET, GOALS, COACH, INCOME, EXPENSES, INVESTMENTS, DEBTS, PLAN, PLAN_DEBTS, SPLIT }
 
 /**
  * The places the bar always offers; everything else is a flow over them.
@@ -373,13 +375,14 @@ private object Launch {
 
 /**
  * The route, saved by name. Restored in a new process it becomes Home — except
- * an import under way, whose file or photo would otherwise be lost.
+ * an import under way, whose file or photo would otherwise be lost, and a
+ * split being made, whose bill its view model keeps.
  */
 private val RouteSaver = Saver<HomeRoute, String>(
     save = { it.name },
     restore = { name ->
         val saved = runCatching { HomeRoute.valueOf(name) }.getOrDefault(HomeRoute.HOME)
-        if (!Launch.drawn && saved != HomeRoute.IMPORT) HomeRoute.HOME else saved
+        if (!Launch.drawn && saved != HomeRoute.IMPORT && saved != HomeRoute.SPLIT) HomeRoute.HOME else saved
     },
 )
 
@@ -394,6 +397,12 @@ private val PLAN = listOf(HomeRoute.PLAN, HomeRoute.PLAN_DEBTS)
  * turned off between reads. Never on a payload not yet read.
  */
 internal fun leavesPlan(capabilities: Capabilities?, current: HomeRoute): Boolean = capabilities != null && current in PLAN && !capabilities.isEnabled(YourPlan.FEATURE)
+
+/**
+ * Whether [current] is a split while the payload says split expenses are off —
+ * turned off between reads. Never on a payload not yet read.
+ */
+internal fun leavesSplit(capabilities: Capabilities?, current: HomeRoute): Boolean = capabilities != null && current == HomeRoute.SPLIT && !capabilities.isEnabled(SplitExpense.FEATURE)
 
 /**
  * Home and what opens from it: the statement import (#31), manual entry — from
@@ -423,10 +432,12 @@ private fun HomeOrEntry(userId: String, onSignOut: () -> Unit) {
     // on the payload rather than the tabs, and only once it has been read:
     // the first version keyed on the tabs and sent everyone restored onto
     // Budget home before capabilities arrived.
-    LaunchedEffect(capabilities) { if (leavesGatedTab(capabilities, route) || leavesPlan(capabilities, route)) route = HomeRoute.HOME }
+    LaunchedEffect(capabilities) { if (leavesGatedTab(capabilities, route) || leavesPlan(capabilities, route) || leavesSplit(capabilities, route)) route = HomeRoute.HOME }
     // The plan's links show only where it is on (#76); where it goes back to
     // is saveable with the route, as Review's is.
     val planOn = capabilities?.isEnabled(YourPlan.FEATURE) == true
+    // Split a bill shows on Home only where the payload switches it on.
+    val splitOn = capabilities?.isEnabled(SplitExpense.FEATURE) == true
     var planFrom by rememberSaveable { mutableStateOf(HomeRoute.HOME) }
 
     /** Where Income's back arrow goes: Home, or the Budget tab's next step. */
@@ -501,6 +512,19 @@ private fun HomeOrEntry(userId: String, onSignOut: () -> Unit) {
                         } else {
                             null
                         },
+                        onSplitBill = if (splitOn) {
+                            { route = HomeRoute.SPLIT }
+                        } else {
+                            null
+                        },
+                    )
+
+                    // A flow over the bar, like the import; it closes back to Home.
+                    HomeRoute.SPLIT -> SplitRoute(
+                        userId = userId,
+                        currency = capabilities?.currency.orEmpty(),
+                        locale = capabilities?.locale.orEmpty(),
+                        onClose = { route = HomeRoute.HOME },
                     )
 
                     HomeRoute.ADD -> ManualEntryRoute(userId = userId, fromUnreadable = false, onClose = { route = HomeRoute.HOME })

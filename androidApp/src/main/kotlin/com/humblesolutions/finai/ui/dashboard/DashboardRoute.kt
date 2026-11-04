@@ -30,6 +30,8 @@ internal fun DashboardRoute(
     onOpenGoals: (() -> Unit)? = null,
     /** Your plan (#76); null when it is off. */
     onOpenPlan: (() -> Unit)? = null,
+    /** Split a bill; null when split expenses are off, which hides the action. */
+    onSplitBill: (() -> Unit)? = null,
 ) {
     val model: DashboardViewModel = viewModel()
     val state by model.uiState.collectAsStateWithLifecycle()
@@ -50,6 +52,7 @@ internal fun DashboardRoute(
         onViewAll = onViewAll,
         onSignOut = onSignOut,
         onOpenMoney = onOpenMoney,
+        onSplitBill = onSplitBill,
         commitments = CommitmentActions(
             onEdit = model::editCommitment,
             onAdd = model::addCommitment,

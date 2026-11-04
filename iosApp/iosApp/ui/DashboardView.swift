@@ -35,6 +35,8 @@ struct DashboardView: View {
     var onOpenGoals: (() -> Void)?
     /// Your plan (#76); nil when it is off.
     var onOpenPlan: (() -> Void)?
+    /// Split expense; nil when the household does not have it, which leaves the action out.
+    var onSplit: (() -> Void)?
 
     @Environment(\.colorScheme) private var scheme
     private var dark: Bool { scheme == .dark }
@@ -400,6 +402,16 @@ struct DashboardView: View {
                     surface: cardSurface,
                     action: onReview
                 )
+                if let onSplit {
+                    ActionRow(
+                        symbol: "person.2.fill",
+                        tile: Brand.blue.opacity(0.16),
+                        tint: Brand.blue,
+                        label: L.t(Strings.shared.split_entry),
+                        surface: cardSurface,
+                        action: onSplit
+                    )
+                }
             }
             .padding(.top, 16)
         }

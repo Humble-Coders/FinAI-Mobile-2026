@@ -101,9 +101,11 @@ object SplitExpense {
 
         internal fun text(key: String, vararg args: String): String = LocalizationRegistry.format(key, args.toList(), locale)
 
-        internal fun money(amount: String): String = Money.format(amount, currency, locale)
+        /** An amount as every split screen writes it. */
+        fun money(amount: String): String = Money.format(amount, currency, locale)
 
-        internal fun date(iso: String): String = Dates.parse(iso)
+        /** `"2026-10-12"` as `"12 Oct 2026"`. */
+        fun date(iso: String): String = Dates.parse(iso)
             ?.let { text(Strings.split_date, it.dayOfMonth.toString(), Dates.monthShort(it, locale), it.year.toString()) }
             ?: iso
     }
@@ -127,6 +129,12 @@ object SplitExpense {
     fun withItem(draft: SplitDraft, index: Int, name: String, amount: String): SplitDraft = draft.copy(
         items = draft.items.mapIndexed { i, item -> if (i == index) item.copy(name = name, amount = amount) else item },
     )
+
+    /** Item [index] off the bill — a line misread from a receipt. */
+    fun withoutItem(draft: SplitDraft, index: Int): SplitDraft = draft.copy(items = draft.items.filterIndexed { i, _ -> i != index })
+
+    /** One more, empty item at the end ("Add item"). */
+    fun withItemAdded(draft: SplitDraft): SplitDraft = withItemCount(draft, draft.items.size + 1)
 
     /** [person] on or off item [index]. */
     fun toggled(draft: SplitDraft, index: Int, person: Int): SplitDraft = draft.copy(
@@ -189,8 +197,19 @@ object SplitExpense {
 
     /** Why [draft] cannot be split yet, or null when it can. */
     fun blockingReason(draft: SplitDraft, currency: String): SplitBlock? {
-        val mode = draft.mode ?: return SplitBlock.NO_MODE
+        if (draft.mode == null) return SplitBlock.NO_MODE
         if (draft.people.size < 2) return SplitBlock.NO_PEOPLE
+        billBlockingReason(draft, currency)?.let { return it }
+        if (draft.mode == SplitMode.ITEMS && draft.items.any { it.assignees.isEmpty() }) return SplitBlock.ITEM_UNASSIGNED
+        return null
+    }
+
+    /**
+     * Why the bill itself is not ready — its name, total or items — before
+     * anyone is on it or any item is assigned. The bill step's Continue.
+     */
+    fun billBlockingReason(draft: SplitDraft, currency: String): SplitBlock? {
+        val mode = draft.mode ?: return SplitBlock.NO_MODE
         if (mode == SplitMode.EQUAL) {
             if (draft.total.isBlank()) return SplitBlock.TOTAL_MISSING
             if (!isAmount(draft.total, currency, positive = true)) return SplitBlock.TOTAL_INVALID
@@ -201,7 +220,6 @@ object SplitExpense {
                 if (!isAmount(item.amount, currency, positive = true)) return SplitBlock.ITEM_AMOUNT_INVALID
             }
             if (!extraOk(draft.tax, currency) || !extraOk(draft.tip, currency)) return SplitBlock.EXTRA_INVALID
-            if (draft.items.any { it.assignees.isEmpty() }) return SplitBlock.ITEM_UNASSIGNED
         }
         if (draft.title.isBlank()) return SplitBlock.NO_TITLE
         return null
@@ -247,6 +265,38 @@ object SplitExpense {
         }
 
         null -> null
+    }
+
+    /** What the items assigned so far come to — beside "Unassigned" on the assign step. */
+    fun assigned(draft: SplitDraft, currency: String): String {
+        val sum = draft.items.filter { it.assignees.isNotEmpty() }.sumOf { SplitMath.minor(it.amount, currency) ?: 0 }
+        return SplitMath.decimal(sum, currency)
+    }
+
+    /**
+     * Nothing usable was read for [mode]: by items, no items; equally, no
+     * total. Offer manual entry.
+     */
+    fun isEmpty(read: ReceiptRead, mode: SplitMode?): Boolean = if (mode == SplitMode.ITEMS) {
+        read.items.isEmpty()
+    } else {
+        read.total == null && read.subtotal == null
+    }
+
+    /** Whether [contact] matches the search [query]: by name, or by the digits of the number. */
+    fun matches(contact: SplitContact, query: String): Boolean {
+        val q = query.trim()
+        if (q.isEmpty()) return true
+        if (contact.name.contains(q, ignoreCase = true)) return true
+        val digits = q.filter { it.isDigit() }
+        return digits.isNotEmpty() && contact.phone.filter { it.isDigit() }.contains(digits)
+    }
+
+    /** "1 person selected" / "3 people selected". */
+    fun selectedLine(count: Int, locale: String = "en"): String = if (count == 1) {
+        LocalizationRegistry.get(Strings.split_person_selected, locale)
+    } else {
+        LocalizationRegistry.format(Strings.split_people_selected, listOf(count.toString()), locale)
     }
 
     /** What the unassigned items come to — "₹35.50 unassigned" — or null when everything has someone. */

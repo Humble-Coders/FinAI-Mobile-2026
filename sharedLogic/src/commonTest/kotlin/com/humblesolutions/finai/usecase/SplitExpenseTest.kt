@@ -8,6 +8,7 @@ import com.humblesolutions.finai.model.SplitMode
 import com.humblesolutions.finai.model.SplitParticipant
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -149,5 +150,49 @@ class SplitExpenseTest {
         assertEquals("RS", SplitExpense.initials("Rohan  Sharma"))
         assertEquals("P", SplitExpense.initials("priya"))
         assertEquals("AV", SplitExpense.initials("Aman K Verma"))
+    }
+
+    @Test
+    fun `the bill step checks the bill alone`() {
+        val items = SplitExpense.withItem(SplitExpense.withItemCount(SplitExpense.withMode(SplitExpense.start("2026-10-12"), SplitMode.ITEMS), 1), 0, "Tea", "30").copy(title = "Chai")
+
+        assertNull(SplitExpense.billBlockingReason(items, "INR"), "nobody on it, nothing assigned: the bill is still fine")
+        assertEquals(SplitBlock.NO_PEOPLE, SplitExpense.blockingReason(items, "INR"))
+        assertEquals(SplitBlock.ITEM_NAME_MISSING, SplitExpense.billBlockingReason(SplitExpense.withItemAdded(items), "INR"))
+        assertEquals(SplitBlock.NO_TITLE, SplitExpense.billBlockingReason(items.copy(title = ""), "INR"))
+    }
+
+    @Test
+    fun `an item misread from a receipt can be removed`() {
+        val two = SplitExpense.withItem(SplitExpense.withItemCount(draft(SplitMode.ITEMS), 2), 1, "Mint", "5")
+
+        assertEquals(listOf("Mint"), SplitExpense.withoutItem(two, 0).items.map { it.name })
+    }
+
+    @Test
+    fun `assigned and unassigned add up to the items`() {
+        var items = SplitExpense.withItemCount(draft(SplitMode.ITEMS), 2)
+        items = SplitExpense.withItem(SplitExpense.withItem(items, 0, "Cappuccino", "180"), 1, "Latte", "160")
+        items = SplitExpense.toggled(items, 0, 1)
+
+        assertEquals("180.00", SplitExpense.assigned(items, "INR"))
+        assertEquals("160.00", SplitExpense.unassigned(items, "INR"))
+    }
+
+    @Test
+    fun `people are found by name or by digits`() {
+        assertTrue(SplitExpense.matches(rohan, "roh"))
+        assertTrue(SplitExpense.matches(rohan, "98765"))
+        assertTrue(SplitExpense.matches(rohan, ""))
+        assertFalse(SplitExpense.matches(rohan, "priya"))
+        assertEquals("1 person selected", SplitExpense.selectedLine(1))
+        assertEquals("3 people selected", SplitExpense.selectedLine(3))
+    }
+
+    @Test
+    fun `a read with nothing in it is empty`() {
+        assertTrue(SplitExpense.isEmpty(ReceiptRead(), SplitMode.EQUAL))
+        assertFalse(SplitExpense.isEmpty(ReceiptRead(total = "10.00"), SplitMode.EQUAL))
+        assertTrue(SplitExpense.isEmpty(ReceiptRead(total = "10.00"), SplitMode.ITEMS), "a total is no use by items")
     }
 }
