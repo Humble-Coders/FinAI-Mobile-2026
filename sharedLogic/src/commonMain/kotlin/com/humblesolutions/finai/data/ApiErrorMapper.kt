@@ -46,6 +46,11 @@ internal object ApiErrorMapper {
     private const val ALREADY_PAYS_ANOTHER = "already_pays_another_commitment"
     private const val NOT_IN_MONTH = "not_in_month"
     private const val CHAT_LIMIT_REACHED = "chat_limit_reached"
+    private const val RECEIPT_LIMIT_REACHED = "receipt_limit_reached"
+    private const val RECEIPT_TOO_LONG = "receipt_too_long"
+    private const val INVALID_PHONE = "invalid_phone"
+    private const val CONTACT_LIMIT_REACHED = "contact_limit_reached"
+    private const val CONTACT_EXISTS = "contact_exists"
 
     fun fromResponse(status: Int, body: String): ApiException = when (status) {
         401 -> ApiException.Unauthorized("token rejected")
@@ -60,6 +65,7 @@ internal object ApiErrorMapper {
         // the advice differs: too much text, or too many rows (#31).
         413 -> when (code(body)) {
             TOO_MANY_TRANSACTIONS -> ApiException.TooManyTransactions()
+            RECEIPT_TOO_LONG -> ApiException.ReceiptTooLong()
             else -> ApiException.StatementTooLarge()
         }
 
@@ -90,6 +96,7 @@ internal object ApiErrorMapper {
         if (detail?.string("code") == DIAGNOSTIC_LIMIT) return ApiException.DiagnosticLimitReached()
         if (detail?.string("code") == SPENDING_CHECK_LIMIT) return ApiException.SpendingCheckLimitReached()
         if (detail?.string("code") == CHAT_LIMIT_REACHED) return ApiException.ChatLimitReached(detail.string("limit")?.toIntOrNull())
+        if (detail?.string("code") == RECEIPT_LIMIT_REACHED) return ApiException.ReceiptLimitReached(detail.string("limit")?.toIntOrNull())
         if (detail?.string("code") != IMPORT_QUOTA_EXCEEDED) return ApiException.Unexpected(429)
         return ApiException.ImportQuotaExceeded(
             limit = detail.string("limit")?.toIntOrNull(),
@@ -160,6 +167,12 @@ internal object ApiErrorMapper {
                 SETUP_INCOME_MISSING -> return ApiException.SetupIncomeMissing()
 
                 STILL_LEARNING -> return ApiException.StillLearning()
+
+                INVALID_PHONE -> return ApiException.InvalidPhone()
+
+                CONTACT_LIMIT_REACHED -> return ApiException.ContactLimitReached(detail.string("limit")?.toIntOrNull())
+
+                CONTACT_EXISTS -> return ApiException.ContactExists()
             }
         }
         return ApiException.Validation(status)

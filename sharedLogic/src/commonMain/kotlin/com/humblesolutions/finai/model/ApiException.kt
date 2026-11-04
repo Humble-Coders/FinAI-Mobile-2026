@@ -311,6 +311,26 @@ sealed class ApiException(message: String, cause: Throwable? = null) : Exception
         override val messageKey: String = Strings.chat_error_limit
     }
 
+    // ── Split expense ───────────────────────────────────────────────────
+
+    /** This month's receipts read by the AI are used up; a bill can still be typed in. */
+    class ReceiptLimitReached(val limit: Int?) : ApiException("receipt limit reached") {
+        override val messageKey: String = Strings.split_error_receipt_limit
+    }
+
+    class ReceiptTooLong : ApiException("receipt too long") {
+        override val messageKey: String = Strings.split_error_receipt_long
+    }
+
+    class ContactLimitReached(val limit: Int?) : ApiException("contact limit reached") {
+        override val messageKey: String = Strings.split_error_contact_limit
+    }
+
+    /** Another saved person has that number. */
+    class ContactExists : ApiException("contact exists") {
+        override val messageKey: String = Strings.split_error_contact_exists
+    }
+
     /** This month's fresh runs of a plan diagnostic are used up (429). The last answer stays. */
     class DiagnosticLimitReached : ApiException("diagnostic limit reached") {
         override val messageKey: String = Strings.diagnostic_error_limit
