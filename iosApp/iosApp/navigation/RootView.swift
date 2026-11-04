@@ -38,6 +38,9 @@ struct RootView: View {
     /// Your plan and Your debts (#76), gated by `debt_plan`.
     @StateObject private var planModel = PlanViewModel()
 
+    /// Split expense, from Home's "Split a bill", gated by `split_expenses`.
+    @StateObject private var splitModel = SplitViewModel()
+
     /// What the tab bar may offer. Read once per signed-in user.
     @StateObject private var features = FeaturesViewModel()
     /// Income, Expenses, Investments and Debts, opened from Home's cards.
@@ -67,7 +70,7 @@ struct RootView: View {
     @MainActor private static var launched = false
 
     var body: some View {
-        LoaderHost(active: loaderActive, minimumMs: LoaderTiming.shared.minimumMs(signedIn: model.session == .signedIn), caption: showingImport ? importModel.loaderCaption : nil, loader: loader) {
+        LoaderHost(active: loaderActive, minimumMs: LoaderTiming.shared.minimumMs(signedIn: model.session == .signedIn), caption: loaderCaption, loader: loader) {
         Group {
             if let problemKey = model.configurationProblemKey {
                 NotConfiguredView(messageKey: problemKey)
@@ -106,6 +109,13 @@ struct RootView: View {
         }
     }
 
+    /// What the coin's wait is for, where a screen says: an import's pages, a receipt being read.
+    private var loaderCaption: String? {
+        if showingImport { return importModel.loaderCaption }
+        if showingSplit { return splitModel.loaderCaption }
+        return nil
+    }
+
     /// Signing in or up, the hand-over between steps, and the wizard's first
     /// load. Continue inside the wizard is not here: it never waits on the coin.
     private var loaderActive: Bool {
@@ -126,7 +136,11 @@ struct RootView: View {
             || (showingCoach && ((chatModel.listLoading && !chatModel.listLoaded) || (chatModel.threadLoading && chatModel.thread == nil)))
             || (showingTransactions && (transactionsModel.loading || transactionsModel.switchingMonth))
             || (showingMoney && (moneyModel.loading || moneyModel.switchingMonth))
+            // Reading a receipt, opening a saved split, the history's first read.
+            || (showingSplit && splitModel.working)
     }
+
+    private var showingSplit: Bool { atHome && homeRoute == HomeRoute.split.rawValue }
 
     private var showingPlan: Bool {
         atHome && (homeRoute == HomeRoute.plan.rawValue || homeRoute == HomeRoute.planDebts.rawValue)
@@ -288,6 +302,20 @@ struct RootView: View {
                 ) {
                     homeRoute = HomeRoute.home.rawValue
                 }
+            case .split:
+                SplitView(
+                    model: splitModel,
+                    userId: model.me?.user.id ?? "",
+                    onClose: { withAnimation(.easeOut(duration: 0.25)) { homeRoute = HomeRoute.home.rawValue } }
+                )
+                .transition(.opacity.combined(with: .offset(y: 30)))
+                // Turned off between reads: nowhere to be, so home.
+                .onChange(of: features.gates) { _, gates in
+                    if gates.split == .off {
+                        splitModel.close()
+                        homeRoute = HomeRoute.home.rawValue
+                    }
+                }
             case .importStatement:
                 StatementImportView(
                     model: importModel,
@@ -346,6 +374,9 @@ struct RootView: View {
                     : nil,
                 onOpenPlan: features.gate(FeaturesViewModel.planFeature) == .on
                     ? { openPlan(.plan) }
+                    : nil,
+                onSplit: features.gate(FeaturesViewModel.splitFeature) == .on
+                    ? { withAnimation(.easeOut(duration: 0.3)) { homeRoute = HomeRoute.split.rawValue } }
                     : nil
             )
             .tabItem { Label(L.t(Strings.shared.tab_home), systemImage: "house.fill") }
@@ -478,6 +509,8 @@ private enum HomeRoute: String {
     /// Your plan and Your debts (#76), from Home, Budget and Debts.
     case plan
     case planDebts = "plan_debts"
+    /// Split expense, from Home's "Split a bill".
+    case split
 
     static func route(for kind: MoneyKind) -> HomeRoute {
         switch kind {

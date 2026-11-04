@@ -44,6 +44,8 @@ final class FeaturesViewModel: ObservableObject {
     static let chatFeature = "ai_chat"
     /// Your plan (#76) — not a tab, but its links and screens follow the same gate.
     static let planFeature = YourPlan.shared.FEATURE
+    /// Split expense — not a tab: Home's "Split a bill" and its screens follow it.
+    static let splitFeature = SplitExpense.shared.FEATURE
 
     func gate(_ feature: String) -> Gate {
         guard let capabilities else { return .unknown }
@@ -56,9 +58,18 @@ final class FeaturesViewModel: ObservableObject {
         let goals: Gate
         let plan: Gate
         let chat: Gate
+        let split: Gate
     }
 
-    var gates: Gates { Gates(budget: gate(Self.budgetFeature), goals: gate(Self.goalsFeature), plan: gate(Self.planFeature), chat: gate(Self.chatFeature)) }
+    var gates: Gates {
+        Gates(
+            budget: gate(Self.budgetFeature),
+            goals: gate(Self.goalsFeature),
+            plan: gate(Self.planFeature),
+            chat: gate(Self.chatFeature),
+            split: gate(Self.splitFeature)
+        )
+    }
 
     /**
      Whether the bar draws a gated tab. Android's `tabsFor`, one rule for every

@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Only the folder statement photos go to, inside the app's own cache. -->
+<!-- Only the folders statement and receipt photos go to, inside the app's own cache. -->
 <paths>
     <cache-path name="statement_captures" path="statement-captures/" />
+    <cache-path name="receipt_captures" path="receipt-captures/" />
 </paths>

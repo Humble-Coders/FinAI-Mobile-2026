@@ -188,6 +188,9 @@ object StatementRedactor {
         PHONE.containsMatchIn(line) ||
         POSTAL_CODE.containsMatchIn(line)
 
+    /** One line with its identifiers masked and its amounts kept — also how a receipt is sent (`ReceiptText`). */
+    internal fun maskLine(line: String): String = mask(line)
+
     /** `06012-5004321` becomes `••••4321`: enough to recognise, not to use. */
     private fun mask(line: String): String {
         // Anything spanning spaces goes first, while the spaces are still
