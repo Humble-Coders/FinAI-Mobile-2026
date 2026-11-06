@@ -3,7 +3,6 @@ package com.humblesolutions.finai.ui.statementimport
 import com.humblesolutions.finai.i18n.LocalizationRegistry
 import com.humblesolutions.finai.i18n.Strings
 import com.humblesolutions.finai.model.Account
-import com.humblesolutions.finai.model.AiPolicy
 import com.humblesolutions.finai.model.Category
 import com.humblesolutions.finai.model.Transaction
 import com.humblesolutions.finai.ui.edit.TransactionEditorState
@@ -50,11 +49,6 @@ data class StatementImportUiState(
     val passwordWrong: Boolean = false,
     val page: Int = 0,
     val pages: Int = 0,
-    val policy: AiPolicy? = null,
-    /** Unticked until the person ticks it — express consent, nothing pre-ticked. */
-    val consentTicked: Boolean = false,
-    val consentBusy: Boolean = false,
-    val consentErrorKey: String? = null,
     val problem: ImportProblem? = null,
     /**
      * The redacted document is still in memory, so it can be sent again —
@@ -289,8 +283,6 @@ data class StatementImportUiState(
         get() = problem?.failure?.offersDiagnostics == true && canResend && !diagnosticsSent
 
     val canSendDiagnostics: Boolean get() = offersDiagnostics && diagnosticsTicked
-
-    val canAgree: Boolean get() = policy != null && consentTicked && !consentBusy
 
     val newAccountNotice: NewAccountBlock?
         get() = newAccount?.let { NewAccountForm.notice(it, newAccountTouched) }

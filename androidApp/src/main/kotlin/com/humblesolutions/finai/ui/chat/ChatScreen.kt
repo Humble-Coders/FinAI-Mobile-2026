@@ -66,6 +66,7 @@ import androidx.compose.ui.unit.dp
 import com.humblesolutions.finai.i18n.Strings
 import com.humblesolutions.finai.model.ChatRole
 import com.humblesolutions.finai.model.ChatSuggestion
+import com.humblesolutions.finai.ui.components.AiOffNotice
 import com.humblesolutions.finai.ui.components.LearningCard
 import com.humblesolutions.finai.ui.components.Mint
 import com.humblesolutions.finai.ui.strings
@@ -83,6 +84,8 @@ internal data class ChatActions(
     val onDismissFailure: () -> Unit,
     val onDisclaimer: () -> Unit,
     val onReload: () -> Unit,
+    /** Profile, where AI is turned on, from the notice a refusal for want of it shows. */
+    val onOpenProfile: () -> Unit = {},
 )
 
 /**
@@ -269,6 +272,7 @@ private fun InputBar(thread: ChatThreadState, actions: ChatActions) {
                 items(thread.suggestions, key = { it.id }) { chip -> Chip(chip, actions.onSuggestion) }
             }
         }
+        if (thread.failure?.needsConsent == true) AiOffNotice(actions.onOpenProfile)
         thread.failure?.takeIf { !it.needsConsent }?.let { failure ->
             Row(
                 Modifier.fillMaxWidth().semantics { liveRegion = LiveRegionMode.Polite },

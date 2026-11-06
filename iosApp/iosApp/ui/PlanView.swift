@@ -9,7 +9,8 @@ import SharedLogic
  card, white sheets beneath — where it goes, each row editable, then the
  choices it was worked out from. Every figure is the server's and every
  sentence shared `YourPlan`'s or `DebtEdit`'s. Guidance, not advice: "Save or
- invest" names no product, and the disclaimer is on the page.
+ invest" names no product, and a line on the page opens the disclaimer in
+ Profile.
 
  `startOnDebts` opens Your debts first — from Home's Debts screen — and Back
  from there closes rather than showing a plan the person did not come for.
@@ -251,16 +252,12 @@ struct PlanView: View {
 
     // MARK: - Both
 
-    /// The plan's guidance line, always, and the region's disclaimer under it.
+    /// One line that opens Profile, where the guidance and the region's
+    /// disclaimer are read in full (PM decision, 2026-11-06).
     @ViewBuilder
     private var disclaimer: some View {
         if model.plan != nil {
-            VStack(alignment: .leading, spacing: 6) {
-                Text(L.t(Strings.shared.plan_guidance)).font(.caption).foregroundColor(Field.ink(0.85))
-                if let text = model.disclaimerText {
-                    Text(text).font(.caption2).foregroundColor(Field.ink(0.75))
-                }
-            }
+            DisclaimerLink(tint: Field.ink(0.85))
         }
     }
 
@@ -529,9 +526,14 @@ private struct DebtLine: View {
                 if let source { Text(source).font(.caption2).foregroundColor(.secondary) }
                 if let linked { Text(linked).font(.caption2).foregroundColor(.secondary) }
                 if let stale { Text(stale).font(.caption2).foregroundColor(.red) }
-                Button(L.t(Strings.shared.debts_update_balance)) { model.startBalance(row.debtId) }
-                    .font(.caption.weight(.semibold))
-                    .frame(minHeight: 44)
+                // Both said out loud: the row opens the editor too, but nothing
+                // on it said so, and its type and linked account went unfound.
+                HStack(spacing: 20) {
+                    Button(L.t(Strings.shared.debts_update_balance)) { model.startBalance(row.debtId) }
+                    Button(L.t(Strings.shared.debts_edit)) { model.editDebt(row.debtId) }
+                }
+                .font(.caption.weight(.semibold))
+                .frame(minHeight: 44)
             }
         }
         .padding(.vertical, 4)

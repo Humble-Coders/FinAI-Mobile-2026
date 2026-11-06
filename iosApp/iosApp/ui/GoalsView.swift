@@ -7,8 +7,8 @@ import SharedLogic
 
  In Home's language — the field with the budget comparison, a white sheet with
  the goals — because no design was supplied. Where a goal stands is always said
- in words; a long-term goal says it counts no investment growth, beside the
- region's disclaimer.
+ in words; a long-term goal says it counts no investment growth, and one line
+ under the goals opens the region's disclaimer in Profile.
  */
 struct GoalsView: View {
 
@@ -179,6 +179,12 @@ struct GoalsView: View {
             if let notice = model.noticeKey {
                 Text(L.t(notice)).font(.caption).foregroundColor(.red)
             }
+
+            // Once for the page, not under each long-term goal: the
+            // disclaimer itself is read in Profile (2026-11-06).
+            if model.goals.contains(where: { model.disclaimer(of: $0) != nil }) {
+                DisclaimerLink()
+            }
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -226,7 +232,6 @@ private struct GoalRow: View {
                             Text(suggested).font(.caption.weight(.medium)).foregroundColor(Mint.greenText(dark))
                         }
                         if let growth = model.growthLine(of: goal) { Text(growth).font(.caption2).foregroundColor(.secondary) }
-                        if let disclaimer = model.disclaimer(of: goal) { Text(disclaimer).font(.caption2).foregroundColor(.secondary) }
                     }
                     Spacer(minLength: 0)
                 }

@@ -45,21 +45,6 @@ struct SplitView: View {
         // Not while the camera is up: its full-screen cover makes this view
         // disappear, and the photo it comes back with needs the clients.
         .onDisappear { if !takingPhoto { model.unbind() } }
-        .sheet(isPresented: consentShown) {
-            ScrollView {
-                AiConsentPanel(
-                    title: L.t(Strings.shared.split_consent_title),
-                    policy: model.policy,
-                    ticked: $model.consentTicked,
-                    busy: model.consentBusy,
-                    errorKey: model.consentErrorKey,
-                    onAgree: { model.agree() },
-                    onNotNow: { model.declineConsent() }
-                )
-                .padding(20)
-            }
-            .presentationDetents([.medium, .large])
-        }
         .fileImporter(isPresented: $pickingFile, allowedContentTypes: [.pdf, .image]) { result in
             if case .success(let url) = result, let copy = try? ReceiptFiles.adopt(url) {
                 model.receiptPicked(copy)
@@ -86,10 +71,6 @@ struct SplitView: View {
             )
             .ignoresSafeArea()
         }
-    }
-
-    private var consentShown: Binding<Bool> {
-        Binding(get: { model.consentAsked }, set: { if !$0 { model.declineConsent() } })
     }
 
     private func back() {
@@ -572,12 +553,17 @@ struct SplitBillStep: View {
             Text(L.t(Strings.shared.split_receipt_review))
                 .font(.title3.weight(.semibold))
                 .accessibilityAddTraits(.isHeader)
-            Text(L.t(key))
-                .font(.subheadline)
-                .foregroundColor(.primary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            if retryable {
-                GradientButton(title: L.t(Strings.shared.action_retry)) { model.retryReceipt() }
+            if model.aiOff {
+                // AI is off: the way to Profile, and Try again on coming back.
+                AiOffNotice(onRetry: { model.retryReceipt() })
+            } else {
+                Text(L.t(key))
+                    .font(.subheadline)
+                    .foregroundColor(.primary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                if retryable {
+                    GradientButton(title: L.t(Strings.shared.action_retry)) { model.retryReceipt() }
+                }
             }
             Button { model.retake() } label: {
                 Text(L.t(Strings.shared.split_retake)).font(.headline).tappableRow(minHeight: 52)
@@ -726,7 +712,7 @@ struct SplitItemFields: View {
                     .accessibilityLabel(label)
                 HStack(spacing: 4) {
                     Text(symbol).foregroundColor(Brand.textMuted).accessibilityHidden(true)
-                    TextField("", text: $amount, prompt: Text(placeholder).foregroundColor(Brand.textMuted.opacity(0.4)))
+                    TextField("", text: $amount.groupedAmount(symbol), prompt: Text(placeholder).foregroundColor(Brand.textMuted.opacity(0.4)))
                         .keyboardType(.decimalPad)
                         .multilineTextAlignment(.trailing)
                         .focused($focus, equals: .amount)

@@ -31,7 +31,7 @@ struct BudgetEditorSheet: View {
                                 raw: "0",
                                 fractionDigits: Money.shared.fractionDigits(currency: model.currency)
                             ) ?? "0",
-                            text: $model.draftAmount
+                            text: $model.draftAmount.groupedAmount(model.currency)
                         )
                         .keyboardType(.decimalPad)
                         .focused($amountFocused)

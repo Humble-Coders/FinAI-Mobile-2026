@@ -68,6 +68,16 @@ class SetupViewModel : ViewModel() {
     /** The save loop, while one is running. */
     private var saver: Job? = null
 
+    /** The read of what is saved, while one is running; a newer one replaces it. */
+    private var loader: Job? = null
+
+    /**
+     * What the server held when Profile opened the wizard to edit it, or null
+     * outside an edit. Leaving compares against it to say whether anything
+     * changed — Continue saves each step as it goes, so even Cancel can.
+     */
+    private var editingFrom: FinancialSetup? = null
+
     /**
      * Binds to [userId], and stays bound while that user is the one signed in.
      *
@@ -110,7 +120,10 @@ class SetupViewModel : ViewModel() {
         closeClients()
         saver?.cancel()
         saver = null
+        loader?.cancel()
+        loader = null
         lastSaved = null
+        editingFrom = null
         boundTo = userId
         generation++
         _uiState.value = SetupUiState()
@@ -135,15 +148,33 @@ class SetupViewModel : ViewModel() {
     }
 
     /** What is already saved decides where the wizard opens. */
-    fun load() {
+    fun load() = load(fromStart = false)
+
+    /**
+     * Opens the wizard again over answers already given — Profile's "Edit your
+     * setup answers": read fresh, from the first step, whatever was left on
+     * screen last time.
+     */
+    fun startEditing() {
+        if (repository == null) return
+        editingFrom = null
+        _uiState.value = SetupUiState()
+        load(fromStart = true)
+    }
+
+    /** Whether an edit opened by [startEditing] has changed what the server holds. */
+    val changedWhileEditing: Boolean get() = editingFrom != null && lastSaved != null && lastSaved != editingFrom
+
+    private fun load(fromStart: Boolean) {
         val repository = repository ?: return
         val capabilities = capabilities
         val started = generation
         _uiState.update { it.copy(loading = true, errorKey = null) }
-        viewModelScope.launch {
+        loader?.cancel()
+        loader = viewModelScope.launch {
             try {
                 val saved = repository.get()
-                val resume = SetupWizard.resumeAt(saved)
+                val resume = if (fromStart) SetupStep.INCOME else SetupWizard.resumeAt(saved)
                 // The currency and the language figures are written in come
                 // from capabilities (ticket #17). The setup response names a
                 // currency too, which stands in when capabilities cannot be
@@ -163,6 +194,7 @@ class SetupViewModel : ViewModel() {
                 // What was just loaded is what the server holds, so walking
                 // through the steps without changing anything sends nothing.
                 lastSaved = payloadOf(_uiState.value)
+                if (fromStart) editingFrom = lastSaved
             } catch (e: CancellationException) {
                 throw e
             } catch (e: ApiException) {

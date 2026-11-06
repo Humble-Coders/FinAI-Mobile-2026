@@ -419,4 +419,12 @@ class SetupWizardTest {
 
         assertNull(SetupWizard.debtEdited(changed, loan, ItemDraft(name = "Car loan", amount = "9000")))
     }
+
+    @Test
+    fun a_fresh_row_in_the_list_editor_says_nothing_until_typed_into() {
+        assertEquals(null, SetupWizard.editorItemBlock(ItemDraft(), debt = true))
+        assertEquals(SetupBlock.ITEM_NAME_MISSING, SetupWizard.editorItemBlock(ItemDraft(amount = "500"), debt = true))
+        assertEquals(SetupBlock.ITEM_NAME_MISSING, SetupWizard.editorItemBlock(ItemDraft(interestRatePercent = "9.5"), debt = true))
+        assertEquals(SetupBlock.ITEM_NAME_MISSING, SetupWizard.itemBlock(ItemDraft()), "the saved draft's own rule is unchanged")
+    }
 }

@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -214,7 +215,8 @@ fun WelcomeScreen(
 
         AnimatedVisibility(
             visible = sheetOpen,
-            modifier = Modifier.align(Alignment.BottomCenter),
+            // Never under the status bar, as the code and phone steps' card.
+            modifier = Modifier.align(Alignment.BottomCenter).statusBarsPadding(),
             enter = slideInVertically(spring(stiffness = 220f, dampingRatio = 0.9f)) { it } + fadeIn(),
             exit = slideOutVertically { it } + fadeOut(),
         ) {

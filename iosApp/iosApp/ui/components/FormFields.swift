@@ -1,4 +1,5 @@
 import SwiftUI
+import SharedLogic
 
 // The form fields the setup wizard introduced, shared with every screen that
 // takes figures or text the same way (manual entry, #30), so the boxes look and
@@ -30,7 +31,8 @@ extension View {
 /// An amount, the way finance apps take one: a label above, the figure large and
 /// bold beside the currency the server named — never a hardcoded symbol — a faint
 /// zero while it is empty, and what the figure is per, when it is per anything.
-/// Tapping anywhere on the box starts typing.
+/// Tapping anywhere on the box starts typing. The figure shows grouped as it is
+/// typed — `1,00,000` in rupees — and is stored without the commas.
 struct AmountField: View {
     let label: String
     let symbol: String
@@ -48,7 +50,7 @@ struct AmountField: View {
             FieldLabel(text: label)
             HStack(spacing: 8) {
                 Text(symbol).font(figure).foregroundColor(Brand.textMuted)
-                TextField("", text: $text, prompt: Text(placeholder).foregroundColor(Brand.textMuted.opacity(0.4)))
+                TextField("", text: $text.groupedAmount(symbol), prompt: Text(placeholder).foregroundColor(Brand.textMuted.opacity(0.4)))
                     .font(figure)
                     .keyboardType(.decimalPad)
                     .autocorrectionDisabled()
@@ -167,5 +169,18 @@ struct PickerField: View {
             .accessibilityLabel(label)
             .accessibilityValue(value ?? placeholder)
         }
+    }
+}
+
+extension Binding where Value == String {
+    /// An amount field's text grouped as the app writes amounts while it is
+    /// typed (`Money.groupInput`: `1,00,000` in rupees), with the commas taken
+    /// out again before it is stored, so nothing that reads the field sees
+    /// one. [symbol] is what the field draws beside it, or the currency code.
+    func groupedAmount(_ symbol: String) -> Binding<String> {
+        Binding(
+            get: { Money.shared.groupInput(raw: wrappedValue, symbolOrCurrency: symbol) },
+            set: { wrappedValue = Money.shared.ungroupInput(raw: $0) }
+        )
     }
 }

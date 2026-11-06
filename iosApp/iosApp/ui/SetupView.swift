@@ -8,8 +8,12 @@ import SharedLogic
 /// mandatory figures. Continue slides straight to the next step and saves behind
 /// the move, with a small loader only while a request is in flight — the coin
 /// loader is for the first load alone, and lives at the app's root.
+///
+/// Opened from Profile the model is `amending`: Cancel calls `onCancel` — back
+/// to Profile — instead of saying setup is required, and the last step saves.
 struct SetupView: View {
     @ObservedObject var model: SetupViewModel
+    var onCancel: (() -> Void)? = nil
     let onFinished: () -> Void
 
     var body: some View {
@@ -91,7 +95,7 @@ struct SetupView: View {
                 StepHeader(
                     step: model.step,
                     onBack: { withAnimation(Self.slide) { model.back() } },
-                    onCancel: { model.cancel() }
+                    onCancel: { if let onCancel { onCancel() } else { model.cancel() } }
                 )
 
                 SavingIndicator(visible: model.showsSaving)
@@ -124,9 +128,9 @@ struct SetupView: View {
             }
 
             GradientButton(
-                title: L.t(model.step.isLast
-                           ? Strings.shared.setup_complete
-                           : Strings.shared.action_continue),
+                title: L.t(!model.step.isLast
+                           ? Strings.shared.action_continue
+                           : model.amending ? Strings.shared.action_save : Strings.shared.setup_complete),
                 enabled: model.canContinue,
                 busy: model.busy
             ) {

@@ -345,6 +345,41 @@ object Money {
     fun symbol(currency: String): String = SYMBOLS[currency.uppercase()] ?: currency.uppercase()
 
     /**
+     * What an amount field shows for [raw], the text as typed: its whole
+     * digits grouped as [format] would group them (`100000` in rupees reads
+     * `1,00,000`), and the rest — a point, the digits after it — exactly as
+     * typed, so a half-typed `12.` stays `12.`. Commas already in [raw] are
+     * dropped first. Anything that isn't digits and one point is left alone,
+     * so the field's own check can say what is wrong with it.
+     *
+     * [symbolOrCurrency] is what the field draws beside the amount — a code
+     * like `"INR"`, or a symbol like `"₹"` — since that is what fields hold.
+     */
+    fun groupInput(raw: String, symbolOrCurrency: String): String {
+        val plain = ungroupInput(raw)
+        val match = TYPED.matchEntire(plain) ?: return raw
+        val (sign, whole, rest) = match.destructured
+        if (whole.isEmpty()) return plain
+        return sign + grouped(whole, currencyOf(symbolOrCurrency), ",") + rest
+    }
+
+    /** [raw] without the commas [groupInput] puts in: what a field stores. */
+    fun ungroupInput(raw: String): String = raw.replace(",", "")
+
+    /**
+     * The currency behind what a field draws: a code as it is, a symbol from
+     * [SYMBOLS]. `$` could be several dollars, which all group in threes.
+     */
+    private fun currencyOf(symbolOrCurrency: String): String {
+        val upper = symbolOrCurrency.trim().uppercase()
+        if (upper in SYMBOLS) return upper
+        return SYMBOLS.entries.firstOrNull { it.value == symbolOrCurrency.trim() }?.key ?: upper
+    }
+
+    // As typed: an optional minus, whole digits, then nothing, or a point and any digits.
+    private val TYPED = Regex("""(-?)(\d*)(\.\d*)?""")
+
+    /**
      * [whole]'s digits with their separators: threes, or for a currency written
      * in the Indian system the last three and then pairs — `1,00,000` is one
      * lakh. Kept as data beside [SYMBOLS]: how a currency is written, not a

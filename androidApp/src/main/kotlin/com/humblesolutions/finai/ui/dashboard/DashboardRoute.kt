@@ -6,7 +6,10 @@ import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.humblesolutions.finai.BuildConfig
+import com.humblesolutions.finai.i18n.Strings
 import com.humblesolutions.finai.ui.components.LoaderSignal
+import com.humblesolutions.finai.ui.components.TabSkeleton
+import com.humblesolutions.finai.ui.strings
 import com.humblesolutions.finai.usecase.MoneyKind
 
 /**
@@ -22,7 +25,9 @@ internal fun DashboardRoute(
     onAddTransaction: () -> Unit,
     onReview: () -> Unit,
     onViewAll: () -> Unit,
-    onSignOut: () -> Unit,
+    /** The person's initials, for the monogram that opens Profile. */
+    initials: String,
+    onOpenProfile: () -> Unit,
     onOpenMoney: (MoneyKind) -> Unit = {},
     /** The Budget tab on a month (`YYYY-MM`); null when there is none, which hides "See budget". */
     onOpenBudget: ((String) -> Unit)? = null,
@@ -36,9 +41,13 @@ internal fun DashboardRoute(
     val model: DashboardViewModel = viewModel()
     val state by model.uiState.collectAsStateWithLifecycle()
     LaunchedEffect(userId) { model.bind(userId, logging = BuildConfig.DEBUG) }
-    // Only a first load earns the coin. Stepping between months refreshes, and
-    // the figures already on screen stay up while the next ones arrive.
-    LoaderSignal(key = "dashboard", active = state.loading || state.switchingMonth)
+    // A first load draws the page's shape; a new month earns the coin, with
+    // the figures already on screen left up while the next ones arrive.
+    LoaderSignal(key = "dashboard", active = state.switchingMonth)
+    if (state.loading) {
+        TabSkeleton(strings(Strings.tab_home))
+        return
+    }
 
     DashboardScreen(
         state = state,
@@ -50,7 +59,8 @@ internal fun DashboardRoute(
         onAddTransaction = onAddTransaction,
         onReview = onReview,
         onViewAll = onViewAll,
-        onSignOut = onSignOut,
+        initials = initials,
+        onOpenProfile = onOpenProfile,
         onOpenMoney = onOpenMoney,
         onSplitBill = onSplitBill,
         commitments = CommitmentActions(

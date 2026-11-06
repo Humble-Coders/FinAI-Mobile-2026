@@ -25,7 +25,10 @@ struct DashboardView: View {
     /// Everything the household has, as opposed to the queue, which is only
     /// what still needs a person.
     let onViewAll: () -> Void
-    let onSignOut: () -> Void
+    /// The monogram in the header's button: shared `Profile.initials`.
+    let profileInitials: String
+    /// Profile, from that button — where signing out lives now.
+    let onOpenProfile: () -> Void
     /// Income, Expenses, Investments or Debts — opened from its card.
     var onOpenMoney: (MoneyKind) -> Void = { _ in }
     /// The Budget tab (#47) on a month (`YYYY-MM`) — the one Home is showing.
@@ -181,13 +184,13 @@ struct DashboardView: View {
             }
             Spacer(minLength: 0)
 
-            bell(size: 48)
+            profileButton(size: 48)
         }
     }
 
     /**
      The header once the page has scrolled: a slim bar pinned over the top, the
-     greeting centred in it and the bell still in reach. It fades in once the
+     greeting centred in it and the profile button still in reach. It fades in once the
      big header has faded out. Solid rather than see-through, because figures
      pass under it. Mirrors Android's `CompactHeader`.
      */
@@ -201,7 +204,7 @@ struct DashboardView: View {
                 .accessibilityAddTraits(.isHeader)
             HStack {
                 Spacer(minLength: 0)
-                bell(size: 38)
+                profileButton(size: 38)
             }
         }
         .padding(.horizontal, 12)
@@ -209,30 +212,16 @@ struct DashboardView: View {
         .frame(maxWidth: .infinity)
     }
 
-    /// The bell is the review queue, and its dot means something: rows are
-    /// waiting. A badge that never changes teaches people to ignore it.
-    private func bell(size: CGFloat) -> some View {
-        Button(action: onReview) {
-            ZStack(alignment: .topTrailing) {
-                Circle().fill(Field.glass)
-                Circle().stroke(Field.glassEdge, lineWidth: 1)
-                FinAiIcon(symbol: "bell.fill", tint: Field.ink(), size: size * 0.42)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                if model.hasPending {
-                    Circle()
-                        .fill(Brand.red)
-                        .overlay(Circle().stroke(Field.ink(), lineWidth: 1.5))
-                        .frame(width: 9, height: 9)
-                        .offset(x: -size * 0.25, y: size * 0.23)
-                }
-            }
-            .frame(width: size, height: size)
-            // Never under 44pt to touch, however small it is drawn.
-            .frame(minWidth: 44, minHeight: 44)
-            .contentShape(Rectangle())
+    /// The person's monogram on the glass the bell sat on, opening Profile
+    /// (PM decision, 2026-11-06). Review is reached from Home's actions.
+    private func profileButton(size: CGFloat) -> some View {
+        Button(action: onOpenProfile) {
+            ProfileMonogram(initials: profileInitials, size: size, fill: Field.glass, ink: Field.ink(), edge: Field.glassEdge)
+                .frame(minWidth: 44, minHeight: 44)
+                .contentShape(Circle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(model.notificationsLabel)
+        .accessibilityLabel(L.t(Strings.shared.profile_open))
     }
 
     // MARK: - Hero
@@ -457,11 +446,6 @@ struct DashboardView: View {
             if model.showsCommitments {
                 commitments.padding(.top, showsRecent ? 28 : 0)
             }
-            Button(L.t(Strings.shared.action_sign_out), action: onSignOut)
-                .foregroundColor(Brand.textMuted)
-                .tappableArea()
-                .frame(maxWidth: .infinity, alignment: .center)
-                .padding(.top, 12)
         }
         .frame(maxWidth: 560, alignment: .leading)
         .padding(.horizontal, 20)
@@ -658,7 +642,7 @@ enum Field {
     /// White at a strength, for everything written on the field.
     static func ink(_ alpha: Double = 1) -> Color { Color.white.opacity(alpha) }
 
-    /// Frosted glass: the pills and the bell sit on this.
+    /// Frosted glass: the pills and the profile button sit on this.
     static let glass = Color.white.opacity(0.14)
     static let glassEdge = Color.white.opacity(0.22)
 }

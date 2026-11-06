@@ -229,9 +229,20 @@ object SetupWizard {
      */
     fun canSkip(step: SetupStep, draft: SetupDraft, fractionDigits: Int = 2): Boolean = step.isOptional && mandatoryBlock(draft, fractionDigits) == null
 
+    /** Nothing typed into it: the row an empty list opens with, or one just added. */
+    fun isBlank(item: ItemDraft): Boolean = item.name.isBlank() && item.amount.isBlank() &&
+        item.minimumPayment.isBlank() && item.interestRatePercent.isBlank() && item.dueDay.isBlank()
+
     private fun incomeBlock(draft: SetupDraft, fractionDigits: Int): SetupBlock? = amountBlock(draft.income, fractionDigits, SetupBlock.INCOME_MISSING, SetupBlock.INCOME_NOT_MONEY)
 
     private fun expenseBlock(draft: SetupDraft, fractionDigits: Int): SetupBlock? = amountBlock(draft.monthlyExpense, fractionDigits, SetupBlock.EXPENSE_MISSING, SetupBlock.EXPENSE_NOT_MONEY)
+
+    /**
+     * What a row in the list editor says: [itemBlock], except for a row
+     * nothing has been typed into, which is not wrong — keeping the list drops
+     * it — so a fresh row says nothing until the person starts on it.
+     */
+    fun editorItemBlock(item: ItemDraft, fractionDigits: Int = 2, debt: Boolean = false): SetupBlock? = if (isBlank(item)) null else itemBlock(item, fractionDigits, debt)
 
     /** Why a single row cannot be kept, or null. Used by the row's own editor. */
     fun itemBlock(item: ItemDraft, fractionDigits: Int = 2, debt: Boolean = false): SetupBlock? {

@@ -10,6 +10,7 @@ import io.ktor.client.engine.mock.respond
 import io.ktor.client.plugins.logging.Logger
 import io.ktor.client.request.HttpRequestData
 import io.ktor.client.request.get
+import io.ktor.client.request.post
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
@@ -230,5 +231,43 @@ class FinAiHttpClientTest {
         val logger = CapturingLogger()
         repository(FakeTokens("t1"), logging = false, logger = logger) { respond(CAPABILITIES, HttpStatusCode.OK, jsonHeaders) }.fetch()
         assertTrue(logger.lines.isEmpty())
+    }
+
+    @Test
+    fun a_save_on_a_stale_connection_is_sent_once_more() = runTest {
+        var attempts = 0
+        val http = client(FakeTokens("t")) {
+            attempts++
+            if (attempts == 1) throw IOException("The network connection was lost. (NSURLErrorDomain -1005)")
+            respond(CAPABILITIES, HttpStatusCode.Created, jsonHeaders)
+        }
+
+        http.sendMapped { post("goals") }
+
+        assertEquals(2, attempts)
+    }
+
+    @Test
+    fun a_save_failing_any_other_way_is_not_sent_again() = runTest {
+        var attempts = 0
+        val http = client(FakeTokens("t")) {
+            attempts++
+            throw IOException("timed out")
+        }
+
+        assertFailsWith<ApiException.Network> { http.sendMapped { post("goals") } }
+        assertEquals(1, attempts)
+    }
+
+    @Test
+    fun a_read_is_left_to_the_platform_to_retry() = runTest {
+        var attempts = 0
+        val http = client(FakeTokens("t")) {
+            attempts++
+            throw IOException("The network connection was lost.")
+        }
+
+        assertFailsWith<ApiException.Network> { http.sendMapped { get("capabilities") } }
+        assertEquals(1, attempts)
     }
 }

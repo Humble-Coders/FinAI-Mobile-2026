@@ -26,10 +26,11 @@ struct DiagnosticView: View {
                 .accessibilityLabel(L.t(Strings.shared.action_back))
                 Text(model.title).font(.largeTitle.weight(.bold)).accessibilityAddTraits(.isHeader)
 
-                if model.policy != nil {
-                    consentStep
-                } else if model.diagnostics != nil {
+                if model.diagnostics != nil {
                     form
+                    // Consent is given in Profile only (2026-11-06); this is a
+                    // cover over the plan, closed on the way there.
+                    if model.aiOff { AiOffNotice(beforeOpen: onClose) }
                     if model.result != nil { result(dark) }
                     if let title = model.recommendation { recommendationCard(title, dark: dark) }
                 } else if model.loading {
@@ -39,10 +40,8 @@ struct DiagnosticView: View {
                 } else {
                     ErrorText(messageKey: model.errorKey)
                 }
-                Text(L.t(Strings.shared.diagnostic_guidance)).font(.caption).foregroundColor(.secondary)
-                if let disclaimer = model.result?.disclaimer {
-                    Text(disclaimer).font(.caption2).foregroundColor(.secondary)
-                }
+                // The guidance and the region's disclaimer are in Profile (2026-11-06).
+                DisclaimerLink(beforeOpen: onClose)
             }
             .frame(maxWidth: 560)
             .frame(maxWidth: .infinity)
@@ -216,29 +215,5 @@ struct DiagnosticView: View {
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: 20).fill(Color(.secondarySystemBackground)))
-    }
-
-    private var consentStep: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text(L.t(Strings.shared.ai_budget_consent_title)).font(.headline)
-            Text(L.t(Strings.shared.ai_budget_consent_body)).font(.subheadline)
-            ErrorText(messageKey: model.errorKey)
-            if let policy = model.policy {
-                Text(policy.body)
-                    .font(.footnote)
-                    .padding(16)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(RoundedRectangle(cornerRadius: 16).fill(Color(.secondarySystemBackground)))
-            }
-            Toggle(isOn: $model.consentTicked) { Text(L.t(Strings.shared.import_consent_agree)) }
-                .toggleStyle(CheckboxStyle())
-            GradientButton(
-                title: L.t(Strings.shared.ai_budget_consent_allow),
-                enabled: model.consentTicked,
-                busy: model.consentBusy
-            ) {
-                Task { await model.agree() }
-            }
-        }
     }
 }

@@ -172,4 +172,19 @@ class MoneyTest {
         assertNull(Money.normalize("1,00,000.505"), "more decimals than the currency has")
         assertNull(Money.normalize("1,0,000"), "not a grouping")
     }
+
+    @Test
+    fun `an amount field groups what is typed and keeps the rest as typed`() {
+        assertEquals("1,00,000", Money.groupInput("100000", "₹"))
+        assertEquals("12,34,567.5", Money.groupInput("1234567.5", "INR"))
+        assertEquals("1,00,000.", Money.groupInput("1,00000.", "₹"))
+        assertEquals("999", Money.groupInput("999", "₹"))
+        assertEquals("100,000.00", Money.groupInput("100000.00", "$"))
+        assertEquals("1,234", Money.groupInput("1234", "CAD"))
+        assertEquals(".5", Money.groupInput(".5", "₹"))
+        assertEquals("", Money.groupInput("", "₹"))
+        assertEquals("12a", Money.groupInput("12a", "₹"), "left alone for the field's check")
+        assertEquals("100000.5", Money.ungroupInput("1,00,000.5"))
+        assertEquals("1200.50", Money.normalize(Money.ungroupInput(Money.groupInput("1200.5", "₹"))))
+    }
 }

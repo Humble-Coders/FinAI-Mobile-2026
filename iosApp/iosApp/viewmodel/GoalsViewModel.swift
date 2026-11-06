@@ -151,7 +151,7 @@ final class GoalsViewModel: ObservableObject {
             refreshing = false
             // A refresh that fails keeps what it had (CLAUDE.md → Data & caching).
             loadFailed = page == nil
-            errorKey = (error as? ApiException)?.messageKey ?? Strings.shared.error_unexpected
+            errorKey = Self.messageKey(error)
         }
     }
 
@@ -177,6 +177,14 @@ final class GoalsViewModel: ObservableObject {
     private func confirmed() async {
         GoalsChanged.announce()
         await load(refresh: true)
+    }
+
+    /// What to say for a failure from shared code. The Kotlin exception
+    /// arrives wrapped in an NSError, so a plain `as? ApiException` never
+    /// matched, and every failure — a dropped connection too — read as
+    /// "Something unexpected happened".
+    private static func messageKey(_ error: Error) -> String {
+        ((error as NSError).userInfo["KotlinException"] as? ApiException)?.messageKey ?? Strings.shared.error_unexpected
     }
 
     // MARK: What the screen shows
@@ -331,6 +339,13 @@ final class GoalsViewModel: ObservableObject {
                 if isNew {
                     guard let new = GoalEdit.shared.goalToCreate(draft: draft, currency: currency) else { saving = false; return }
                     _ = try await goals.create(goal: new)
+                    // The list is read before the sheet closes, Save still
+                    // spinning, so the new goal is already in place when it
+                    // does — its position and the comparison are the server's.
+                    GoalsChanged.announce()
+                    await load(refresh: true)
+                    clearEditor()
+                    return
                 } else if let original {
                     _ = try await goals.update(id: original.id, changes: GoalEdit.shared.changes(original: original, draft: draft, currency: currency))
                 }
@@ -338,7 +353,7 @@ final class GoalsViewModel: ObservableObject {
                 await confirmed()
             } catch {
                 saving = false
-                editErrorKey = (error as? ApiException)?.messageKey ?? Strings.shared.error_unexpected
+                editErrorKey = Self.messageKey(error)
             }
         }
     }
@@ -383,7 +398,7 @@ final class GoalsViewModel: ObservableObject {
                 await confirmed()
             } catch {
                 adding = false
-                addErrorKey = (error as? ApiException)?.messageKey ?? Strings.shared.error_unexpected
+                addErrorKey = Self.messageKey(error)
             }
         }
     }
@@ -410,7 +425,7 @@ final class GoalsViewModel: ObservableObject {
             } catch {
                 deleting = false
                 confirmingDeleteId = nil
-                noticeKey = (error as? ApiException)?.messageKey ?? Strings.shared.error_unexpected
+                noticeKey = Self.messageKey(error)
             }
         }
     }
@@ -437,7 +452,7 @@ final class GoalsViewModel: ObservableObject {
                 GoalsChanged.announce()
             } catch {
                 reorderBusy = false
-                noticeKey = (error as? ApiException)?.messageKey ?? Strings.shared.error_unexpected
+                noticeKey = Self.messageKey(error)
                 if error is ApiException.OrderMismatch { await load(refresh: true) }
             }
         }

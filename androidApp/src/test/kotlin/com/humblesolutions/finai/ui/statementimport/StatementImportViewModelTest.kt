@@ -3,8 +3,6 @@ package com.humblesolutions.finai.ui.statementimport
 import androidx.lifecycle.SavedStateHandle
 import com.humblesolutions.finai.model.Account
 import com.humblesolutions.finai.model.AccountKind
-import com.humblesolutions.finai.model.AiConsentStatus
-import com.humblesolutions.finai.model.AiPolicy
 import com.humblesolutions.finai.model.ApiException
 import com.humblesolutions.finai.model.Category
 import com.humblesolutions.finai.model.ConfirmOutcome
@@ -31,7 +29,6 @@ import com.humblesolutions.finai.model.Transaction
 import com.humblesolutions.finai.model.TransactionDirection
 import com.humblesolutions.finai.model.TransactionPatch
 import com.humblesolutions.finai.repository.AccountsRepository
-import com.humblesolutions.finai.repository.AiConsentRepository
 import com.humblesolutions.finai.repository.CategoriesRepository
 import com.humblesolutions.finai.repository.DebtsRepository
 import com.humblesolutions.finai.repository.StatementImportRepository
@@ -178,49 +175,39 @@ class StatementImportViewModelTest {
     // ── Consent ─────────────────────────────────────────────────────────
 
     @Test
-    fun `consent is asked before the first import and never ticked for the person`() {
-        val consent = FakeConsent()
-        val imports = FakeImports(parse = { if (consent.agreed == null) throw ApiException.ConsentRequired("ai-v1") else twoRows })
+    fun `without ai consent the import says ai is off and sends nothing`() {
+        val imports = FakeImports(parse = { throw ApiException.ConsentRequired("ai-v1") })
         val model = model()
-        model.bind("alice") { repositories(imports = imports, consent = consent) }
+        model.bind("alice") { repositories(imports = imports) }
         model.upToFile()
 
         model.onFilePicked(file)
 
-        val asking = model.uiState.value
-        assertEquals(ImportStep.CONSENT, asking.step)
-        assertEquals("ai-v1", asking.policy?.version)
-        assertFalse(asking.consentTicked)
-        assertFalse(asking.canAgree)
+        // Consent is given in Profile; this step only says it is missing.
+        assertEquals(ImportStep.CONSENT, model.uiState.value.step)
 
-        model.agree()
-        assertNull(consent.agreed, "agreeing without the box ticked records nothing")
-
-        model.onConsentTicked(true)
-        model.agree()
-
-        assertEquals("ai-v1", consent.agreed)
-        assertEquals(ImportStep.CHECK, model.uiState.value.step)
-        // The statement already read is sent again, not read a second time.
-        assertEquals(1, (model.readerFor()).reads)
+        // Not now: back to choosing a file.
+        model.declineConsent()
+        assertEquals(ImportStep.CHOOSE_FILE, model.uiState.value.step)
+        assertEquals(1, imports.uploads.size)
     }
 
     @Test
-    fun `once consent is recorded it is not asked again`() {
-        val consent = FakeConsent()
-        val imports = FakeImports(parse = { if (consent.agreed == null) throw ApiException.ConsentRequired("ai-v1") else twoRows })
+    fun `coming back from Profile sends the statement already read again`() {
+        var consented = false
+        val imports = FakeImports(parse = { if (!consented) throw ApiException.ConsentRequired("ai-v1") else twoRows })
         val model = model()
-        model.bind("alice") { repositories(imports = imports, consent = consent) }
+        model.bind("alice") { repositories(imports = imports) }
         model.upToFile()
         model.onFilePicked(file)
-        model.onConsentTicked(true)
-        model.agree()
+        assertEquals(ImportStep.CONSENT, model.uiState.value.step)
 
-        model.chooseAnotherFile()
-        model.onFilePicked("content://files/second.pdf")
+        consented = true
+        model.retryAfterAi()
 
         assertEquals(ImportStep.CHECK, model.uiState.value.step)
-        assertEquals(1, consent.consents)
+        // The statement already read is sent again, not read a second time.
+        assertEquals(1, (model.readerFor()).reads)
     }
 
     // ── Every refusal its own words ─────────────────────────────────────
@@ -483,7 +470,6 @@ class StatementImportViewModelTest {
     private fun repositories(
         accounts: FakeAccounts = FakeAccounts(),
         imports: FakeImports = FakeImports(parse = { twoRows }),
-        consent: FakeConsent = FakeConsent(agreed = "ai-v1"),
         reader: FakeReader = FakeReader(),
         files: FakeFiles = FakeFiles(),
         transactions: FakeImportedTransactions = FakeImportedTransactions(),
@@ -491,7 +477,7 @@ class StatementImportViewModelTest {
     ): ImportRepositories {
         lastReader = reader
         lastTransactions = transactions
-        return ImportRepositories(accounts, imports, consent, reader, files, transactions, categories)
+        return ImportRepositories(accounts, imports, reader, files, transactions, categories)
     }
 
     private var lastTransactions: FakeImportedTransactions? = null
@@ -629,21 +615,6 @@ class StatementImportViewModelTest {
         override fun close() = Unit
     }
 
-    private class FakeConsent(var agreed: String? = null) : AiConsentRepository {
-        var consents = 0
-
-        override suspend fun policy() = AiPolicy(version = "ai-v1", body = "To read your statement…")
-
-        override suspend fun consent(version: String) {
-            consents++
-            agreed = version
-        }
-
-        override suspend fun status() = AiConsentStatus(consented = agreed != null, version = "ai-v1")
-
-        override fun close() = Unit
-    }
-
     /** A whole import, carried through to DONE, reading rows from [transactions]. */
     private fun importedThrough(
         transactions: FakeImportedTransactions,
@@ -652,7 +623,7 @@ class StatementImportViewModelTest {
         val model = model()
         model.bind("alice") {
             repositories(transactions = transactions).let {
-                ImportRepositories(it.accounts, it.imports, it.consent, it.reader, it.files, transactions, categories)
+                ImportRepositories(it.accounts, it.imports, it.reader, it.files, transactions, categories)
             }
         }
         model.upToFile()
@@ -728,7 +699,7 @@ class StatementImportViewModelTest {
         val model = model()
         model.bind("alice") {
             repositories(imports = imports, reader = FakeReader(document = cardStatement)).let {
-                ImportRepositories(it.accounts, it.imports, it.consent, it.reader, it.files, it.transactions, it.categories, FakeImportDebts(debts))
+                ImportRepositories(it.accounts, it.imports, it.reader, it.files, it.transactions, it.categories, FakeImportDebts(debts))
             }
         }
         model.upToFile()

@@ -6,7 +6,6 @@ import androidx.lifecycle.viewModelScope
 import com.humblesolutions.finai.config.ApiConfig
 import com.humblesolutions.finai.config.Supabase
 import com.humblesolutions.finai.data.KtorAccountsRepository
-import com.humblesolutions.finai.data.KtorAiConsentRepository
 import com.humblesolutions.finai.data.KtorBudgetRepository
 import com.humblesolutions.finai.data.KtorCapabilitiesRepository
 import com.humblesolutions.finai.data.KtorCategoriesRepository
@@ -19,7 +18,6 @@ import com.humblesolutions.finai.model.Capabilities
 import com.humblesolutions.finai.model.Category
 import com.humblesolutions.finai.model.Transaction
 import com.humblesolutions.finai.repository.AccountsRepository
-import com.humblesolutions.finai.repository.AiConsentRepository
 import com.humblesolutions.finai.repository.BudgetRepository
 import com.humblesolutions.finai.repository.CapabilitiesRepository
 import com.humblesolutions.finai.repository.CategoriesRepository
@@ -88,7 +86,6 @@ class BudgetViewModel(
                 budgets = KtorBudgetRepository(ApiConfig.BASE_URL, tokens, logging),
                 categories = KtorCategoriesRepository(ApiConfig.BASE_URL, tokens, logging),
                 capabilities = KtorCapabilitiesRepository(ApiConfig.BASE_URL, tokens, logging),
-                consent = KtorAiConsentRepository(ApiConfig.BASE_URL, tokens, logging),
                 transactions = KtorTransactionsRepository(ApiConfig.BASE_URL, tokens, logging),
                 accounts = KtorAccountsRepository(ApiConfig.BASE_URL, tokens, logging),
             )
@@ -309,49 +306,20 @@ class BudgetViewModel(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: ApiException.ConsentRequired) {
-                update { it.copy(checkingSpending = false) }
-                askForConsent()
+                // Said in the sheet, with the way to Profile (PM decision, 2026-11-06).
+                update { it.copy(checkingSpending = false, spendingAiOff = true) }
             } catch (e: ApiException) {
                 update { it.copy(checkingSpending = false, spendingErrorKey = e.messageKey) }
             }
         }
     }
 
-    private suspend fun askForConsent() {
-        val consent = repositories?.consent ?: return
-        try {
-            val policy = consent.policy()
-            update { it.copy(spendingPolicy = policy, spendingConsentTicked = false) }
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: ApiException) {
-            update { it.copy(spendingErrorKey = e.messageKey) }
-        }
-    }
-
-    fun onSpendingConsentTicked(ticked: Boolean) = update { it.copy(spendingConsentTicked = ticked) }
-
-    /** Records consent to the policy shown, then asks. */
-    fun agreeSpending() {
-        val consent = repositories?.consent ?: return
-        val policy = _uiState.value.spendingPolicy ?: return
-        if (!_uiState.value.spendingConsentTicked) return
-        update { it.copy(spendingConsentBusy = true, spendingErrorKey = null) }
-        viewModelScope.launch {
-            try {
-                consent.consent(policy.version)
-                update { it.copy(spendingConsentBusy = false, spendingPolicy = null, spendingConsentTicked = false) }
-                askSpending()
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: ApiException.AiPolicyChanged) {
-                update { it.copy(spendingConsentBusy = false) }
-                askForConsent()
-            } catch (e: ApiException) {
-                update { it.copy(spendingConsentBusy = false, spendingErrorKey = e.messageKey) }
-            }
-        }
-    }
+    /**
+     * Back from Profile, where AI may have been turned on: the ask is offered
+     * again rather than run unseen — the sheet it shows in is closed by then,
+     * and each check is one of the month's few.
+     */
+    fun retrySpendingAfterAi() = update { it.copy(spendingAiOff = false) }
 
     /**
      * The line being edited, as the budget just read describes it.
@@ -695,8 +663,6 @@ internal class BudgetRepositories(
     val budgets: BudgetRepository,
     val categories: CategoriesRepository,
     val capabilities: CapabilitiesRepository,
-    /** For the spending check's consent; null where a test does not need it. */
-    val consent: AiConsentRepository? = null,
     /** The month's payments, to tick a commitment off with; null where a test does not need it. */
     val transactions: TransactionsRepository? = null,
     val accounts: AccountsRepository? = null,
@@ -705,7 +671,6 @@ internal class BudgetRepositories(
         budgets.close()
         categories.close()
         capabilities.close()
-        consent?.close()
         transactions?.close()
         accounts?.close()
     }

@@ -53,18 +53,17 @@ final class SplitViewModel: ObservableObject {
     @Published private(set) var reading: Reading = .choosing
     /// Lines the AI offered that are not on the receipt, and were left out.
     @Published private(set) var unreadable = 0
-    /// The masked text last read, so a retry or consent does not read the photo again.
+    /// The masked text last read, so a retry does not read the photo again.
     private var receiptText: String?
     /// What the receipt said, so changing how it is split takes what that way needs from it.
     private var lastRead: ReceiptRead?
 
-    // MARK: Consent, asked for when reading a receipt needs it
-    @Published private(set) var consentAsked = false
-    @Published private(set) var policy: AiPolicy?
-    /// Unticked until the person ticks it — express consent, nothing pre-ticked.
-    @Published var consentTicked = false
-    @Published private(set) var consentBusy = false
-    @Published private(set) var consentErrorKey: String?
+    /// Reading the receipt was refused because AI is off. Consent is given in
+    /// Profile only (2026-11-06), so the failure says so and offers the way.
+    var aiOff: Bool {
+        if case .failed(let key, _) = reading { return key == Strings.shared.ai_off_notice }
+        return false
+    }
 
     // MARK: Saved people
     @Published private(set) var contacts: [SplitContact] = []
@@ -101,7 +100,6 @@ final class SplitViewModel: ObservableObject {
     @Published var confirmingDeleteId: String?
 
     private var splitRepository: SplitRepository?
-    private var consentRepository: AiConsentRepository?
     private var capabilitiesRepository: CapabilitiesRepository?
     private let reader = IOSStatementReader()
     private var work: Task<Void, Never>?
@@ -132,7 +130,6 @@ final class SplitViewModel: ObservableObject {
         let tokens = SupabaseTokenSource(client: client)
         let base = ApiConfig.shared.BASE_URL
         splitRepository = KtorSplitRepository(baseUrl: base, tokens: tokens, logging: logging)
-        consentRepository = KtorAiConsentRepository(baseUrl: base, tokens: tokens, logging: logging)
         capabilitiesRepository = KtorCapabilitiesRepository(baseUrl: base, tokens: tokens, logging: logging)
         loadCapabilities()
         loadContacts()
@@ -143,17 +140,14 @@ final class SplitViewModel: ObservableObject {
         work?.cancel()
         work = nil
         splitRepository?.close()
-        consentRepository?.close()
         capabilitiesRepository?.close()
         splitRepository = nil
-        consentRepository = nil
         capabilitiesRepository = nil
         ReceiptFiles.clear()
     }
 
     deinit {
         splitRepository?.close()
-        consentRepository?.close()
         capabilitiesRepository?.close()
     }
 
@@ -182,7 +176,6 @@ final class SplitViewModel: ObservableObject {
         receiptText = nil
         lastRead = nil
         ReceiptFiles.clear()
-        clearConsent()
         search = ""
         cancelAddPerson()
         pickingSaving = false
@@ -475,8 +468,8 @@ final class SplitViewModel: ObservableObject {
                 guard started == self.generation, !Self.cancelled(error) else { return }
                 let kotlin = Self.kotlin(error)
                 if kotlin is ApiException.ConsentRequired {
-                    self.reading = .failed(messageKey: Strings.shared.import_consent_required, retryable: true)
-                    self.askForConsent()
+                    // The text is kept: Try again, back from Profile, sends it.
+                    self.reading = .failed(messageKey: Strings.shared.ai_off_notice, retryable: true)
                     return
                 }
                 let retryable = kotlin is ApiException.Network || kotlin is ApiException.Server
@@ -504,61 +497,6 @@ final class SplitViewModel: ObservableObject {
         unreadable = 0
         ReceiptFiles.clear()
         reading = .choosing
-    }
-
-    // MARK: Consent
-
-    private func askForConsent(errorKey: String? = nil) {
-        guard let consentRepository else { return }
-        consentAsked = true
-        policy = nil
-        consentTicked = false
-        consentBusy = true
-        consentErrorKey = errorKey
-        Task {
-            do {
-                policy = try await consentRepository.policy()
-                consentBusy = false
-            } catch {
-                guard !Self.cancelled(error) else { return }
-                consentBusy = false
-                consentErrorKey = Self.messageKey(error)
-            }
-        }
-    }
-
-    /// Records consent to the version shown, then reads the receipt it was asked for.
-    func agree() {
-        guard let consentRepository, let policy, consentTicked, !consentBusy else { return }
-        consentBusy = true
-        consentErrorKey = nil
-        Task {
-            do {
-                try await consentRepository.consent(version: policy.version)
-                clearConsent()
-                retryReceipt()
-            } catch {
-                guard !Self.cancelled(error) else { return }
-                if let changed = Self.kotlin(error) as? ApiException.AiPolicyChanged {
-                    // The policy moved on while it was open: show the new one to agree to.
-                    askForConsent(errorKey: changed.messageKey)
-                    return
-                }
-                consentBusy = false
-                consentErrorKey = Self.messageKey(error)
-            }
-        }
-    }
-
-    /// "Not now": the receipt waits, and the bill can still be typed in.
-    func declineConsent() { clearConsent() }
-
-    private func clearConsent() {
-        consentAsked = false
-        policy = nil
-        consentTicked = false
-        consentBusy = false
-        consentErrorKey = nil
     }
 
     // MARK: People

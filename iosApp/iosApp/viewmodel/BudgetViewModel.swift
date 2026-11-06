@@ -49,10 +49,9 @@ final class BudgetViewModel: ObservableObject {
     @Published private(set) var spendingCheck: SpendingCheck?
     @Published private(set) var checkingSpending = false
     @Published private(set) var spendingErrorKey: String?
-    /// The AI may not be asked yet: the policy is shown first.
-    @Published private(set) var spendingPolicy: AiPolicy?
-    @Published var spendingConsentTicked = false
-    @Published private(set) var spendingConsentBusy = false
+    /// The AI was not asked because it is off. Consent is given in Profile
+    /// only (2026-11-06): the check says so instead of asking here.
+    @Published private(set) var spendingAiOff = false
 
     /// The commitment being ticked off by hand, by its setup id; nil when the sheet is closed.
     @Published private(set) var tickingId: String?
@@ -70,7 +69,6 @@ final class BudgetViewModel: ObservableObject {
     private var budgets: BudgetRepository?
     private var categoriesRepository: CategoriesRepository?
     private var capabilities: CapabilitiesRepository?
-    private var consent: AiConsentRepository?
     private var transactionsRepository: TransactionsRepository?
     private var accountsRepository: AccountsRepository?
     private var owner: String?
@@ -98,7 +96,6 @@ final class BudgetViewModel: ObservableObject {
         budgets = KtorBudgetRepository(baseUrl: base, tokens: tokens, logging: logging)
         categoriesRepository = KtorCategoriesRepository(baseUrl: base, tokens: tokens, logging: logging)
         capabilities = KtorCapabilitiesRepository(baseUrl: base, tokens: tokens, logging: logging)
-        consent = KtorAiConsentRepository(baseUrl: base, tokens: tokens, logging: logging)
         transactionsRepository = KtorTransactionsRepository(baseUrl: base, tokens: tokens, logging: logging)
         accountsRepository = KtorAccountsRepository(baseUrl: base, tokens: tokens, logging: logging)
         listenForChanges()
@@ -113,7 +110,6 @@ final class BudgetViewModel: ObservableObject {
         budgets?.close()
         categoriesRepository?.close()
         capabilities?.close()
-        consent?.close()
         transactionsRepository?.close()
         accountsRepository?.close()
         transactionsRepository = nil
@@ -121,7 +117,6 @@ final class BudgetViewModel: ObservableObject {
         budgets = nil
         categoriesRepository = nil
         capabilities = nil
-        consent = nil
     }
 
     private func reset() {
@@ -139,7 +134,7 @@ final class BudgetViewModel: ObservableObject {
         picking = false
         spendingCheck = nil
         spendingErrorKey = nil
-        spendingPolicy = nil
+        spendingAiOff = false
     }
 
     /**
@@ -420,6 +415,7 @@ final class BudgetViewModel: ObservableObject {
         let asked = month
         checkingSpending = true
         spendingErrorKey = nil
+        spendingAiOff = false
         Task {
             do {
                 let answer = try await budgets.runSpendingCheck(month: asked)
@@ -429,40 +425,7 @@ final class BudgetViewModel: ObservableObject {
             } catch {
                 checkingSpending = false
                 if Self.kotlin(error) is ApiException.ConsentRequired {
-                    await askForConsent()
-                } else {
-                    spendingErrorKey = Self.messageKey(error)
-                }
-            }
-        }
-    }
-
-    private func askForConsent() async {
-        guard let consent else { return }
-        do {
-            spendingPolicy = try await consent.policy()
-            spendingConsentTicked = false
-        } catch {
-            spendingErrorKey = Self.messageKey(error)
-        }
-    }
-
-    /// Records consent to the policy shown, then asks.
-    func agreeSpending() {
-        guard let consent, let shown = spendingPolicy, spendingConsentTicked else { return }
-        spendingConsentBusy = true
-        spendingErrorKey = nil
-        Task {
-            do {
-                try await consent.consent(version: shown.version)
-                spendingConsentBusy = false
-                spendingPolicy = nil
-                spendingConsentTicked = false
-                askSpending()
-            } catch {
-                spendingConsentBusy = false
-                if Self.kotlin(error) is ApiException.AiPolicyChanged {
-                    await askForConsent()
+                    spendingAiOff = true
                 } else {
                     spendingErrorKey = Self.messageKey(error)
                 }
@@ -479,7 +442,7 @@ final class BudgetViewModel: ObservableObject {
     }
 
     private func failed(_ error: Error, categories fetched: [SharedLogic.Category], payload: Capabilities?) {
-        let api = error as? ApiException
+        let api = Self.kotlin(error) as? ApiException
         if !fetched.isEmpty { categories = fetched }
         if let found = payload?.locale, !found.isEmpty { locale = found }
         loading = false
@@ -582,7 +545,7 @@ final class BudgetViewModel: ObservableObject {
                 BudgetChanged.announce()
             } catch {
                 saving = false
-                errorKey = (error as? ApiException)?.messageKey ?? Strings.shared.error_unexpected
+                errorKey = Self.messageKey(error)
             }
         }
     }
@@ -676,7 +639,7 @@ final class BudgetViewModel: ObservableObject {
                 BudgetChanged.announce()
             } catch {
                 saving = false
-                editErrorKey = (error as? ApiException)?.messageKey ?? Strings.shared.error_unexpected
+                editErrorKey = Self.messageKey(error)
             }
         }
     }
@@ -701,7 +664,7 @@ final class BudgetViewModel: ObservableObject {
                 BudgetChanged.announce()
             } catch {
                 resetting = false
-                editErrorKey = (error as? ApiException)?.messageKey ?? Strings.shared.error_unexpected
+                editErrorKey = Self.messageKey(error)
             }
         }
     }

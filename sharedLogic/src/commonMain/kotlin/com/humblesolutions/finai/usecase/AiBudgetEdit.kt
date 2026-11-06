@@ -8,7 +8,10 @@ import com.humblesolutions.finai.model.AiProposal
 import com.humblesolutions.finai.model.AiProposalLine
 import com.humblesolutions.finai.model.Budget
 import com.humblesolutions.finai.model.BudgetLine
+import com.humblesolutions.finai.model.Category
 import com.humblesolutions.finai.util.Money
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
 
 /** One line of the suggested budget as the person is editing it. */
 data class AiDraftLine(
@@ -46,6 +49,76 @@ object AiBudgetEdit {
     )
 
     fun withAmount(draft: AiBudgetDraft, index: Int, amount: String): AiBudgetDraft = draft.copy(lines = draft.lines.mapIndexed { i, line -> if (i == index) line.copy(amount = amount) else line })
+
+    /** The `kind` of a line the person added themselves; the AI never sends it. */
+    const val ADDED = "added"
+
+    /**
+     * Categories the person may add a line for: ones a budget can hold, not
+     * already on the draft, and not Debt or Savings, which have rows of their
+     * own. The person's own categories first, then by name, as the Budget
+     * screen's picker.
+     */
+    fun addable(categories: List<Category>, draft: AiBudgetDraft): List<Category> {
+        val taken = draft.lines.map { it.line.categoryId }.toSet()
+        return categories
+            .filter { BudgetEdit.isBudgetable(it.slug) && it.slug !in OWN_ROWS && it.id !in taken }
+            .sortedWith(compareBy<Category> { it.isSystem }.thenBy { it.name.lowercase() })
+    }
+
+    /** [category] as a new line at the end, empty until the person types an amount. */
+    fun withLineAdded(draft: AiBudgetDraft, category: Category): AiBudgetDraft {
+        if (draft.lines.any { it.line.categoryId == category.id }) return draft
+        val line = AiProposalLine(categoryId = category.id, slug = category.slug, name = category.name, kind = ADDED)
+        return draft.copy(lines = draft.lines + AiDraftLine(line, ""))
+    }
+
+    /**
+     * Whether a line may be taken off. Not the Debt line, which holds the
+     * minimum payments, and not one holding commitments: those are owed
+     * whatever the budget says, the same reason a line can't go below them.
+     */
+    fun canRemove(line: AiDraftLine, currency: String): Boolean = !line.line.isDebt && !Money.isPositive(line.line.committed, Money.fractionDigits(currency))
+
+    fun withoutLine(draft: AiBudgetDraft, index: Int, currency: String): AiBudgetDraft {
+        val line = draft.lines.getOrNull(index) ?: return draft
+        if (!canRemove(line, currency)) return draft
+        return draft.copy(lines = draft.lines.filterIndexed { i, _ -> i != index })
+    }
+
+    // ── Kept for later ──────────────────────────────────────────────────
+
+    /**
+     * The draft as text, to keep on the phone until the budget is started, so
+     * coming back shows the person's edits without asking the AI again. Tied
+     * to the suggestion it was made from: [restore] drops it for any other.
+     */
+    fun encode(draft: AiBudgetDraft, proposal: AiProposal): String = SavedJson.encodeToString(
+        SavedDraft.serializer(),
+        SavedDraft(
+            suggestion = fingerprint(proposal),
+            lines = draft.lines.map { SavedLine(it.line, it.amount) },
+            savings = draft.savings,
+        ),
+    )
+
+    /** The kept draft, when it was made from [proposal]; otherwise null. */
+    fun restore(saved: String?, proposal: AiProposal): AiBudgetDraft? {
+        if (saved.isNullOrBlank()) return null
+        val kept = runCatching { SavedJson.decodeFromString(SavedDraft.serializer(), saved) }.getOrNull() ?: return null
+        if (kept.suggestion != fingerprint(proposal)) return null
+        return AiBudgetDraft(lines = kept.lines.map { AiDraftLine(it.line, it.amount) }, savings = kept.savings)
+    }
+
+    /** One suggestion from another: its month, currency and every figure the AI gave. */
+    private fun fingerprint(proposal: AiProposal): String = buildString {
+        append(proposal.month).append('|').append(proposal.currency).append('|').append(proposal.savings)
+        proposal.lines.forEach { append('|').append(it.categoryId).append(':').append(it.amount) }
+    }
+
+    private val OWN_ROWS = setOf("debt_payment", "savings")
+
+    private val SavedJson = Json { ignoreUnknownKeys = true }
 
     /** Why one line cannot be kept, or null. Blank is zero: the person doesn't plan for it. */
     fun lineBlock(line: AiDraftLine, currency: String): AiBudgetBlock? {
@@ -106,6 +179,7 @@ object AiBudgetEdit {
 
     fun kindLabel(line: AiProposalLine, locale: String = "en"): String = LocalizationRegistry.get(
         when (line.kind) {
+            ADDED -> Strings.ai_budget_kind_added
             "want" -> Strings.ai_budget_kind_want
             "debt" -> Strings.ai_budget_kind_debt
             else -> Strings.ai_budget_kind_need
@@ -141,6 +215,49 @@ object AiBudgetEdit {
         return LocalizationRegistry.format(Strings.ai_budget_suggests, listOf(Money.format(suggested, currency, locale)), locale)
     }
 
+    /**
+     * [suggestionLabel] as the Budget screen shows it, with the rest of the
+     * budget in view. The review's numbers fit income as a set — its cuts
+     * beside its raises — but the screen offers them one line at a time, so a
+     * raise is offered only while the budget has room for it. Over income,
+     * the AI suggested more for Dining while the budget was already short.
+     */
+    fun suggestionLabel(line: BudgetLine, budget: Budget, locale: String = "en"): String? {
+        val label = suggestionLabel(line, budget.currency, locale) ?: return null
+        val digits = Money.fractionDigits(budget.currency)
+        val raise = Money.difference(line.aiSuggested ?: return null, line.allocated, digits) ?: return null
+        if (Money.signOf(raise, digits) <= 0) return label
+        val room = roomForRaises(budget) ?: return null
+        return label.takeIf { Money.compare(raise, room, digits) <= 0 }
+    }
+
+    /**
+     * What the budget can still give a line without going over income: the
+     * room for savings, less a savings target the person fixed. Savings that
+     * is only what is left gives way to a raise; a fixed target does not.
+     * Null when there is no room.
+     */
+    fun roomForRaises(budget: Budget): String? {
+        val digits = Money.fractionDigits(budget.currency)
+        if (budget.shortfall != null) return null
+        val target = budget.savings?.takeIf { it.isUserSet }?.allocated ?: "0"
+        val room = Money.difference(budget.savingsRoom, target, digits) ?: return null
+        return room.takeIf { Money.signOf(it, digits) > 0 }
+    }
+
     /** Whether the Budget screen should ask for this month's review on its own. */
     fun shouldReview(budget: Budget): Boolean = budget.aiReviewDue && !budget.monthEnded
 }
+
+@Serializable
+private data class SavedDraft(
+    val suggestion: String = "",
+    val lines: List<SavedLine> = emptyList(),
+    val savings: String = "",
+)
+
+@Serializable
+private data class SavedLine(
+    val line: AiProposalLine = AiProposalLine(),
+    val amount: String = "",
+)

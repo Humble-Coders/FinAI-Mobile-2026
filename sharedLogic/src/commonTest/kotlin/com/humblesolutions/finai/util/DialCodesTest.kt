@@ -102,4 +102,12 @@ class DialCodesTest {
             assertTrue(resolved.region != "CA" || zone.contains("Toronto"), "$zone fell through to the fallback")
         }
     }
+
+    @Test
+    fun the_phone_hint_is_written_as_people_in_that_region_write_numbers() {
+        assertEquals("98765 43210", DialCodes.exampleFor("IN"))
+        assertEquals("416 555 0100", DialCodes.exampleFor("ca"))
+        assertEquals("", DialCodes.exampleFor("FR"))
+        assertEquals("", DialCodes.exampleFor(null))
+    }
 }

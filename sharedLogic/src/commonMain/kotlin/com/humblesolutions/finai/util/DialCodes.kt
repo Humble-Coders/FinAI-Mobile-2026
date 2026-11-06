@@ -67,6 +67,23 @@ object DialCodes {
      */
     val fallback: DialCode = byRegion.getValue("CA")
 
+    /**
+     * A made-up number written the way people in [region] write theirs, for
+     * the phone field's hint — a Canadian one under +91 read as wrong. Blank
+     * for a region without one: no hint beats a foreign-looking one.
+     */
+    fun exampleFor(region: String?): String = EXAMPLES[region?.trim()?.uppercase().orEmpty()].orEmpty()
+
+    // Fictional numbers in each region's own grouping (the 555 range where there is one).
+    private val EXAMPLES = mapOf(
+        "CA" to "416 555 0100",
+        "US" to "212 555 0100",
+        "IN" to "98765 43210",
+        "GB" to "07700 900123",
+        "AU" to "0412 345 678",
+        "NZ" to "021 123 4567",
+    )
+
     fun forRegion(region: String?): DialCode? = region?.takeIf { it.isNotBlank() }?.let { byRegion[it.trim().uppercase()] }
 
     /**

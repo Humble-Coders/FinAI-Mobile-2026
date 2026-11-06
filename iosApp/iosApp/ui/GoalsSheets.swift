@@ -138,7 +138,7 @@ struct GoalEditorSheet: View {
             Text(Money.shared.symbol(currency: model.currency)).foregroundColor(.secondary)
             TextField(
                 Money.shared.normalize(raw: "0", fractionDigits: Money.shared.fractionDigits(currency: model.currency)) ?? "0",
-                text: text
+                text: text.groupedAmount(model.currency)
             )
             .keyboardType(.decimalPad)
             .multilineTextAlignment(.trailing)
@@ -209,7 +209,7 @@ struct AddToGoalSheet: View {
                         Text(Money.shared.symbol(currency: model.currency)).foregroundColor(.secondary)
                         TextField(
                             Money.shared.normalize(raw: "0", fractionDigits: Money.shared.fractionDigits(currency: model.currency)) ?? "0",
-                            text: $model.addAmount
+                            text: $model.addAmount.groupedAmount(model.currency)
                         )
                         .keyboardType(.decimalPad)
                         .focused($focused)

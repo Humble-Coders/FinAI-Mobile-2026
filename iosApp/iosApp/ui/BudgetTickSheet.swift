@@ -41,7 +41,7 @@ struct CommitmentTickSheet: View {
                     Section {
                         HStack(spacing: 6) {
                             Text(Money.shared.symbol(currency: budget.currency)).foregroundColor(.secondary)
-                            TextField(L.t(Strings.shared.tick_amount), text: $model.payAmount)
+                            TextField(L.t(Strings.shared.tick_amount), text: $model.payAmount.groupedAmount(budget.currency))
                                 .keyboardType(.decimalPad)
                         }
                         DatePicker(L.t(Strings.shared.tick_date), selection: $model.payDate, in: model.payDateRange, displayedComponents: .date)

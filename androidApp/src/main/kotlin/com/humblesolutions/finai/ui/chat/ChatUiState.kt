@@ -1,6 +1,5 @@
 package com.humblesolutions.finai.ui.chat
 
-import com.humblesolutions.finai.model.AiPolicy
 import com.humblesolutions.finai.model.ConversationSummary
 import com.humblesolutions.finai.model.Terms
 import com.humblesolutions.finai.usecase.ChatThreadState
@@ -24,15 +23,6 @@ internal data class ChatUiState(
     /** The region's disclaimer, for the header link; null when it has none. */
     val disclaimer: Terms? = null,
     val showingDisclaimer: Boolean = false,
-    /** Shown when a typed question needs AI-processing consent first. */
-    val consent: ConsentAsk? = null,
 ) {
     val listEmpty: Boolean get() = listLoaded && conversations.isEmpty()
 }
-
-internal data class ConsentAsk(
-    val policy: AiPolicy? = null,
-    val ticked: Boolean = false,
-    val busy: Boolean = false,
-    val errorKey: String? = null,
-)

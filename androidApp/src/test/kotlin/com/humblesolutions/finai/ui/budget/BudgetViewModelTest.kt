@@ -3,8 +3,6 @@ package com.humblesolutions.finai.ui.budget
 import androidx.lifecycle.SavedStateHandle
 import com.humblesolutions.finai.model.Account
 import com.humblesolutions.finai.model.AiAccept
-import com.humblesolutions.finai.model.AiConsentStatus
-import com.humblesolutions.finai.model.AiPolicy
 import com.humblesolutions.finai.model.AiProposal
 import com.humblesolutions.finai.model.ApiException
 import com.humblesolutions.finai.model.Budget
@@ -33,7 +31,6 @@ import com.humblesolutions.finai.model.TransactionDirection
 import com.humblesolutions.finai.model.TransactionPatch
 import com.humblesolutions.finai.model.UnbudgetedSpend
 import com.humblesolutions.finai.repository.AccountsRepository
-import com.humblesolutions.finai.repository.AiConsentRepository
 import com.humblesolutions.finai.repository.BudgetRepository
 import com.humblesolutions.finai.repository.CapabilitiesRepository
 import com.humblesolutions.finai.repository.CategoriesRepository
@@ -172,16 +169,6 @@ class BudgetViewModelTest {
         override fun close() = Unit
     }
 
-    private class FakeConsent : AiConsentRepository {
-        var agreed: String? = null
-        override suspend fun policy() = AiPolicy(version = "ai-v2", body = "What is sent, and why.")
-        override suspend fun consent(version: String) {
-            agreed = version
-        }
-        override suspend fun status(): AiConsentStatus = throw UnsupportedOperationException()
-        override fun close() = Unit
-    }
-
     private class FakeMonthRows(val rows: List<Transaction>) : TransactionsRepository {
         override suspend fun list(statementImportId: String?, month: String?, needsReview: Boolean?, cursor: String?) = ReviewPage(rows = rows)
         override suspend fun create(entry: NewTransaction): Transaction = error("not called")
@@ -204,10 +191,9 @@ class BudgetViewModelTest {
         budgets: FakeBudgets = FakeBudgets(),
         categories: FakeCategories = FakeCategories(),
         capabilities: FakeCapabilities = FakeCapabilities(),
-        consent: FakeConsent = FakeConsent(),
         rows: List<Transaction> = emptyList(),
     ): BudgetViewModel = BudgetViewModel(SavedStateHandle()).also {
-        it.bind("user-1") { BudgetRepositories(budgets, categories, capabilities, consent, FakeMonthRows(rows), FakeAccounts()) }
+        it.bind("user-1") { BudgetRepositories(budgets, categories, capabilities, transactions = FakeMonthRows(rows), accounts = FakeAccounts()) }
     }
 
     // ── Ticking a commitment off ────────────────────────────────────────
@@ -469,26 +455,25 @@ class BudgetViewModelTest {
     }
 
     @Test
-    fun asking_without_consent_shows_the_policy_then_asks_once_agreed() = runTest {
+    fun asking_without_consent_says_ai_is_off_and_coming_back_offers_the_ask_again() = runTest {
         val budgets = FakeBudgets().apply {
             spending = this@BudgetViewModelTest.spending
             failRun = ApiException.ConsentRequired(null)
         }
-        val consent = FakeConsent()
-        val model = model(budgets, consent = consent)
+        val model = model(budgets)
 
         model.askSpending()
-        assertEquals("ai-v2", model.uiState.value.spendingPolicy?.version)
+        assertTrue(model.uiState.value.spendingAiOff, "consent is given in Profile, not here")
+        assertFalse(model.uiState.value.checkingSpending)
+
+        model.retrySpendingAfterAi()
+        assertFalse(model.uiState.value.spendingAiOff)
+        assertEquals(1, budgets.runs.size, "nothing is run unseen")
 
         budgets.failRun = null
         budgets.ran = spending.copy(headline = "Fine so far.")
-        model.onSpendingConsentTicked(true)
-        model.agreeSpending()
-
-        assertEquals("ai-v2", consent.agreed)
-        assertNull(model.uiState.value.spendingPolicy)
+        model.askSpending()
         assertEquals("Fine so far.", model.uiState.value.spendingCheck?.headline)
-        assertEquals(2, budgets.runs.size)
     }
 
     @Test

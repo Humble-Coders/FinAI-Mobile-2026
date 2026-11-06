@@ -17,7 +17,6 @@ import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -25,7 +24,6 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.RadioButtonUnchecked
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -52,21 +50,28 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.humblesolutions.finai.BuildConfig
 import com.humblesolutions.finai.i18n.Strings
+import com.humblesolutions.finai.ui.components.AiOffNotice
 import com.humblesolutions.finai.ui.components.AmountField
+import com.humblesolutions.finai.ui.components.DisclaimerLink
 import com.humblesolutions.finai.ui.components.ErrorText
 import com.humblesolutions.finai.ui.components.GradientButton
 import com.humblesolutions.finai.ui.components.Mint
+import com.humblesolutions.finai.ui.components.RetryWhenBack
 import com.humblesolutions.finai.ui.strings
 import com.humblesolutions.finai.usecase.DiagnosticRow
 import com.humblesolutions.finai.util.Money
 
-/** A diagnostic over Your plan, with its own view model; [onClose] on back. */
+/**
+ * A diagnostic over Your plan, with its own view model; [onClose] on back.
+ * [onOpenProfile] is where AI is turned on and the disclaimer is read.
+ */
 @Composable
-internal fun DiagnosticRoute(userId: String, kind: String, onClose: () -> Unit) {
+internal fun DiagnosticRoute(userId: String, kind: String, onOpenProfile: () -> Unit, onClose: () -> Unit) {
     val model: DiagnosticViewModel = viewModel()
     val state by model.uiState.collectAsStateWithLifecycle()
     LaunchedEffect(userId, kind) { model.bind(userId, kind, logging = BuildConfig.DEBUG) }
     BackHandler(onBack = onClose)
+    RetryWhenBack(state.aiOff, model::retryAfterAi)
     DiagnosticScreen(
         state = state,
         onClose = onClose,
@@ -75,8 +80,7 @@ internal fun DiagnosticRoute(userId: String, kind: String, onClose: () -> Unit) 
         onMonthlySavings = model::onMonthlySavings,
         onRun = model::run,
         onApplyDebtFirst = model::applyDebtFirst,
-        onConsentTicked = model::onConsentTicked,
-        onAgree = model::agree,
+        onOpenProfile = onOpenProfile,
     )
 }
 
@@ -87,8 +91,7 @@ internal fun DiagnosticScreen(
     onSavingsTarget: (String) -> Unit,
     onSavingsNow: (String) -> Unit,
     onRun: () -> Unit,
-    onConsentTicked: (Boolean) -> Unit,
-    onAgree: () -> Unit,
+    onOpenProfile: () -> Unit,
     onApplyDebtFirst: () -> Unit = {},
     onMonthlySavings: (String) -> Unit = {},
 ) {
@@ -107,8 +110,8 @@ internal fun DiagnosticScreen(
                 }
                 Text(state.title, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, modifier = Modifier.semantics { heading() })
 
-                if (state.policy != null) {
-                    Consent(state, onConsentTicked, onAgree)
+                if (state.aiOff) {
+                    AiOffNotice(onOpenProfile)
                 } else if (state.diagnostics != null) {
                     Form(state, FormActions(onSavingsTarget, onSavingsNow, onMonthlySavings, onRun))
                     state.result?.let { Result(state) }
@@ -120,8 +123,9 @@ internal fun DiagnosticScreen(
                 } else {
                     ErrorText(state.errorKey)
                 }
-                Text(strings(Strings.diagnostic_guidance), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                state.result?.disclaimer?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                // The guidance line and the region's disclaimer live in Profile
+                // (PM decision, 2026-11-06); here, the one line that leads there.
+                DisclaimerLink(onOpenProfile)
                 Spacer(Modifier.height(16.dp))
             }
         }
@@ -297,24 +301,4 @@ private fun Figure(row: DiagnosticRow) {
         }
         Text(row.amount, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold, color = color)
     }
-}
-
-@Composable
-private fun Consent(state: DiagnosticUiState, onConsentTicked: (Boolean) -> Unit, onAgree: () -> Unit) {
-    Text(strings(Strings.ai_budget_consent_title), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-    Text(strings(Strings.ai_budget_consent_body), style = MaterialTheme.typography.bodyMedium)
-    ErrorText(state.errorKey)
-    state.policy?.let { policy ->
-        Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), tonalElevation = 2.dp) {
-            Text(policy.body, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(16.dp))
-        }
-    }
-    Row(
-        Modifier.fillMaxWidth().heightIn(min = 48.dp).toggleable(value = state.consentTicked, role = Role.Checkbox, onValueChange = onConsentTicked),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Checkbox(checked = state.consentTicked, onCheckedChange = null)
-        Text(strings(Strings.import_consent_agree), style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(start = 12.dp))
-    }
-    GradientButton(text = strings(Strings.ai_budget_consent_allow), onClick = onAgree, enabled = state.consentTicked, busy = state.consentBusy)
 }

@@ -1,5 +1,6 @@
 package com.humblesolutions.finai.ui.plan
 
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -63,6 +64,7 @@ import com.humblesolutions.finai.R
 import com.humblesolutions.finai.i18n.Strings
 import com.humblesolutions.finai.model.PlanDiagnostics
 import com.humblesolutions.finai.model.PlanStrategy
+import com.humblesolutions.finai.ui.components.DisclaimerLink
 import com.humblesolutions.finai.ui.components.Field
 import com.humblesolutions.finai.ui.components.FieldVectors
 import com.humblesolutions.finai.ui.components.LightStatusBarIcons
@@ -94,6 +96,8 @@ internal data class PlanActions(
     val onEditRow: (SplitRow) -> Unit = {},
     /** The emergency fund suggestion's "Go to Goals"; null without a Goals tab. */
     val onOpenGoals: (() -> Unit)? = null,
+    /** Profile, which holds the guidance and the region's disclaimer in full. */
+    val onOpenProfile: () -> Unit = {},
 )
 
 /**
@@ -103,12 +107,12 @@ internal data class PlanActions(
  *
  * On the green field of the Goals and Budget tabs, white sheets beneath.
  * Every figure is the server's and every sentence shared `YourPlan`'s.
- * Guidance, not advice: "Save or invest" names no product, and the
- * disclaimer is on the page.
+ * Guidance, not advice: "Save or invest" names no product, and the page
+ * links to the disclaimer, which Profile holds.
  */
 @Composable
-internal fun PlanScreen(state: PlanUiState, actions: PlanActions) {
-    PlanFrame(state, actions, title = strings(Strings.plan_title)) {
+internal fun PlanScreen(state: PlanUiState, actions: PlanActions, scroll: ScrollState = rememberScrollState()) {
+    PlanFrame(state, actions, title = strings(Strings.plan_title), scroll) {
         state.surplus?.let { SurplusPanel(it) }
         if (state.showsSplit) {
             Sheet {
@@ -143,7 +147,7 @@ internal fun PlanScreen(state: PlanUiState, actions: PlanActions) {
                 LinkRow(strings(Strings.diagnostic_invest_title), CategoryIcon.SALARY) { actions.onRunDiagnostic(PlanDiagnostics.INVEST) }
             }
         }
-        Disclaimer(state)
+        Disclaimer(state, actions.onOpenProfile)
     }
 }
 
@@ -153,8 +157,8 @@ internal fun PlanScreen(state: PlanUiState, actions: PlanActions) {
  * Each debt opens its details; "Update balance" is a button on its row.
  */
 @Composable
-internal fun DebtsScreen(state: PlanUiState, actions: PlanActions) {
-    PlanFrame(state, actions, title = strings(Strings.debts_title)) {
+internal fun DebtsScreen(state: PlanUiState, actions: PlanActions, scroll: ScrollState = rememberScrollState()) {
+    PlanFrame(state, actions, title = strings(Strings.debts_title), scroll) {
         state.debtFreeLine?.let { Headline(it, listOfNotNull(state.totalInterestLine, state.interestSavedLine).joinToString(" · ").ifBlank { null }) }
         Sheet {
             if (state.showsNoDebts) {
@@ -172,14 +176,14 @@ internal fun DebtsScreen(state: PlanUiState, actions: PlanActions) {
                 )
             }
         }
-        Disclaimer(state)
+        Disclaimer(state, actions.onOpenProfile)
     }
 }
 
 // ── The frame ───────────────────────────────────────────────────────────
 
 @Composable
-private fun PlanFrame(state: PlanUiState, actions: PlanActions, title: String, content: @Composable ColumnScope.() -> Unit) {
+private fun PlanFrame(state: PlanUiState, actions: PlanActions, title: String, scroll: ScrollState, content: @Composable ColumnScope.() -> Unit) {
     val dark = isSystemInDarkTheme()
     LightStatusBarIcons(dark)
     Box(Modifier.fillMaxSize().background(Field.brush(dark))) {
@@ -204,7 +208,7 @@ private fun PlanFrame(state: PlanUiState, actions: PlanActions, title: String, c
                 Modifier
                     .widthIn(max = 560.dp)
                     .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
+                    .verticalScroll(scroll)
                     .padding(horizontal = 20.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
@@ -478,14 +482,14 @@ private fun LinkRow(label: String, icon: CategoryIcon, onClick: () -> Unit) {
     }
 }
 
-/** The plan's guidance line, always, and the region's disclaimer under it when it has one. */
+/**
+ * Where the guidance line and the region's disclaimer were: one line to
+ * Profile, which holds them in full (PM decision, 2026-11-06).
+ */
 @Composable
-private fun Disclaimer(state: PlanUiState) {
+private fun Disclaimer(state: PlanUiState, onOpenProfile: () -> Unit) {
     if (state.plan == null) return
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text(strings(Strings.plan_guidance), style = MaterialTheme.typography.bodySmall, color = Field.ink(0.85f))
-        state.disclaimerText?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = Field.ink(0.75f)) }
-    }
+    DisclaimerLink(onOpenProfile, color = Field.ink(0.85f))
 }
 
 // ── Your debts ──────────────────────────────────────────────────────────
@@ -561,7 +565,12 @@ private fun DebtLine(state: PlanUiState, row: DebtRow, actions: PlanActions) {
             source?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             linked?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             stale?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error) }
-            TextButton(onClick = { actions.onUpdateBalance(row.debtId) }, contentPadding = PaddingValues(0.dp)) { Text(update) }
+            // Both said out loud: the row opens the editor too, but nothing on
+            // it said so, and its type and linked account went unfound.
+            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                TextButton(onClick = { actions.onUpdateBalance(row.debtId) }, contentPadding = PaddingValues(0.dp)) { Text(update) }
+                TextButton(onClick = { actions.onEditDebt(row.debtId) }, contentPadding = PaddingValues(0.dp)) { Text(strings(Strings.debts_edit)) }
+            }
         }
     }
 }

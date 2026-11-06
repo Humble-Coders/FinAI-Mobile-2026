@@ -2,6 +2,7 @@ package com.humblesolutions.finai.ui.setup
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -11,6 +12,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -20,6 +22,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
@@ -41,6 +44,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -84,6 +88,7 @@ import com.humblesolutions.finai.usecase.SetupStep
  * the move, with a small loader only while a request is in flight — the coin
  * loader is for the first load alone, and lives at the app's root.
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun SetupScreen(
     state: SetupUiState,
@@ -101,6 +106,12 @@ fun SetupScreen(
     onRemoveRow: (Int) -> Unit,
     onKeepRows: () -> Unit,
     onDiscardRows: () -> Unit,
+    /**
+     * Opened from Profile over answers already given: no Skip — it would
+     * empty the debts and investments being edited — and the last step saves
+     * rather than completes.
+     */
+    editingAnswers: Boolean = false,
 ) {
     val ground = MaterialTheme.colorScheme.background
 
@@ -142,6 +153,9 @@ fun SetupScreen(
     LaunchedEffect(pager.settledPage) { onGoTo(SetupStep.entries[pager.settledPage]) }
 
     val statusTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    // With the keyboard up the art steps back to the header's height, or the
+    // field being typed into has no room left beneath it.
+    val band by animateDpAsState(if (WindowInsets.isImeVisible) HeaderHeight else BandHeight, label = "setupBand")
 
     Box(Modifier.fillMaxSize().background(ground)) {
         Column(
@@ -162,7 +176,7 @@ fun SetupScreen(
                 // the step are one piece and move together frame for frame,
                 // however far or fast they are dragged.
                 Column(Modifier.fillMaxSize()) {
-                    PathBand(page = page, top = statusTop)
+                    PathBand(page = page, top = statusTop, height = band)
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -195,7 +209,7 @@ fun SetupScreen(
                 }
                 // Skip sits above Continue, so the main action stays last and
                 // under the thumb.
-                if (state.showsSkip) {
+                if (state.showsSkip && !editingAnswers) {
                     TextButton(
                         onClick = onSkip,
                         enabled = state.canSkip,
@@ -206,7 +220,11 @@ fun SetupScreen(
                 }
                 GradientButton(
                     text = strings(
-                        if (state.step.isLast) Strings.setup_complete else Strings.action_continue,
+                        when {
+                            !state.step.isLast -> Strings.action_continue
+                            editingAnswers -> Strings.profile_save
+                            else -> Strings.setup_complete
+                        },
                     ),
                     onClick = {
                         focus.clearFocus()
@@ -313,12 +331,12 @@ private fun StepHeader(
  * and the art fades back into ground above the fields.
  */
 @Composable
-private fun PathBand(page: Int, top: Dp) {
+private fun PathBand(page: Int, top: Dp, height: Dp = BandHeight) {
     val ground = MaterialTheme.colorScheme.background
     Box(
         Modifier
             .fillMaxWidth()
-            .height(top + BandHeight)
+            .height(top + height)
             .clipToBounds(),
     ) {
         // A vector third per page (tools/make_setup_path_vectors.py), so a page

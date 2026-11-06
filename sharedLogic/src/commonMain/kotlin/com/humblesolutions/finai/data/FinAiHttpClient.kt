@@ -29,6 +29,7 @@ import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
+import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.Url
 import io.ktor.http.contentType
@@ -83,6 +84,23 @@ internal object FinAiHttpClient {
         }
         val client = if (engine == null) HttpClient(configure) else HttpClient(engine, configure)
 
+        // A save sent down a connection that went stale while the person was
+        // typing dies before the server sees it ("The network connection was
+        // lost", NSURLErrorNetworkConnectionLost). iOS retries a GET itself in
+        // that case, never a write, so on iPhone the first save after a pause
+        // failed every time and the second worked. Once, and only for that
+        // error: the request never reached the server, so it cannot be done twice.
+        client.plugin(HttpSend).intercept { request ->
+            try {
+                execute(request)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (request.method == HttpMethod.Get || !isStaleConnection(e)) throw e
+                execute(request)
+            }
+        }
+
         client.plugin(HttpSend).intercept { request ->
             val call = execute(request)
             if (call.response.status != HttpStatusCode.Unauthorized) return@intercept call
@@ -127,6 +145,16 @@ internal val SessionBearer = createClientPlugin("SessionBearer", ::SessionBearer
 
 /** Same scheme, host and port — the unit a bearer token may be sent to. */
 private fun Url.sameOriginAs(other: Url): Boolean = protocol == other.protocol && host.equals(other.host, ignoreCase = true) && port == other.port
+
+/**
+ * Whether [e] is a pooled connection the server had already closed: the
+ * request never left. Read from the message, since the Darwin engine's
+ * NSError is not visible from common code.
+ */
+internal fun isStaleConnection(e: Throwable): Boolean = generateSequence(e) { it.cause }.take(5).any { cause ->
+    val text = cause.message.orEmpty()
+    "-1005" in text || "network connection was lost" in text.lowercase()
+}
 
 /**
  * Sends a request and maps every failure to [ApiException]: statuses through

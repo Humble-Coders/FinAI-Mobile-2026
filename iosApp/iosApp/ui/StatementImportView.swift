@@ -270,16 +270,15 @@ struct StatementImportView: View {
         }
     }
 
+    /// AI is off: the way to Profile, where it is turned on, and the read
+    /// to try again on coming back. Consent is never given here (2026-11-06).
     private var consentStep: some View {
-        AiConsentPanel(
-            title: L.t(Strings.shared.import_consent_title),
-            policy: model.policy,
-            ticked: $model.consentTicked,
-            busy: model.consentBusy,
-            errorKey: model.consentErrorKey,
-            onAgree: { model.agree() },
-            onNotNow: { model.declineConsent() }
-        )
+        VStack(alignment: .leading, spacing: 16) {
+            title(Strings.shared.import_consent_title)
+            AiOffNotice(onRetry: { model.retryAfterConsent() })
+            Button(L.t(Strings.shared.import_consent_not_now)) { model.declineConsent() }
+                .frame(maxWidth: .infinity, minHeight: 44)
+        }
     }
 
     private var passwordStep: some View {

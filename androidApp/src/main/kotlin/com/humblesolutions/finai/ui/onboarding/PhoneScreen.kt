@@ -82,7 +82,7 @@ fun PhoneScreen(
                 value = state.phoneDigits,
                 onValueChange = onPhoneChange,
                 label = strings(Strings.welcome_phone_label),
-                placeholder = strings(Strings.welcome_phone_hint),
+                placeholder = DialCodes.exampleFor(state.dialCode.region),
                 keyboardOptions = KeyboardOptions(
                     keyboardType = KeyboardType.Phone,
                     imeAction = ImeAction.Done,

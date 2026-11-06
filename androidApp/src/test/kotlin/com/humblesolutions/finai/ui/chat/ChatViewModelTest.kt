@@ -1,8 +1,6 @@
 package com.humblesolutions.finai.ui.chat
 
 import androidx.lifecycle.SavedStateHandle
-import com.humblesolutions.finai.model.AiConsentStatus
-import com.humblesolutions.finai.model.AiPolicy
 import com.humblesolutions.finai.model.ApiException
 import com.humblesolutions.finai.model.ChatMessage
 import com.humblesolutions.finai.model.ChatReply
@@ -12,7 +10,6 @@ import com.humblesolutions.finai.model.ConversationSummary
 import com.humblesolutions.finai.model.LearningNeeds
 import com.humblesolutions.finai.model.LearningProgress
 import com.humblesolutions.finai.model.Terms
-import com.humblesolutions.finai.repository.AiConsentRepository
 import com.humblesolutions.finai.repository.ChatRepository
 import com.humblesolutions.finai.usecase.ChipPlacement
 import kotlinx.coroutines.CompletableDeferred
@@ -76,19 +73,7 @@ class ChatViewModelTest {
         override fun close() = Unit
     }
 
-    private class FakeConsent : AiConsentRepository {
-        val agreed = mutableListOf<String>()
-        var current = "ai-v1"
-        override suspend fun policy() = AiPolicy(version = current, body = "We send your question to an AI service.")
-        override suspend fun consent(version: String) {
-            if (version != current) throw ApiException.AiPolicyChanged(current)
-            agreed += version
-        }
-        override suspend fun status() = AiConsentStatus()
-        override fun close() = Unit
-    }
-
-    private fun model(chat: FakeChat = FakeChat(), consent: FakeConsent = FakeConsent(), saved: SavedStateHandle = SavedStateHandle()) = ChatViewModel(saved).also { it.bind("user-1") { ChatRepositories(chat, consent) } }
+    private fun model(chat: FakeChat = FakeChat(), saved: SavedStateHandle = SavedStateHandle()) = ChatViewModel(saved).also { it.bind("user-1") { ChatRepositories(chat) } }
 
     @Test
     fun `the list loads newest first with the disclaimer for the header`() {
@@ -155,52 +140,26 @@ class ChatViewModelTest {
         assertEquals("What did I spend?", thread.draft)
         assertEquals(2, thread.history.size)
         assertNotNull(thread.failure)
-        assertNull(model.uiState.value.consent, "not a consent problem")
+        assertFalse(thread.failure!!.needsConsent, "not a consent problem")
     }
 
     @Test
-    fun `consent required asks for consent then sends the same question`() {
+    fun `consent required says ai is off and coming back sends the same question`() {
         val chat = FakeChat().apply { fail = ApiException.ConsentRequired("ai-v1") }
-        val consent = FakeConsent()
-        val model = model(chat, consent)
+        val model = model(chat)
         model.open("c1")
         model.onDraftChange("What did I spend?")
         model.send()
 
-        val ask = model.uiState.value.consent!!
-        assertEquals("ai-v1", ask.policy?.version)
+        // Consent is given in Profile; the thread only says it is missing.
+        assertTrue(model.uiState.value.thread!!.failure!!.needsConsent)
 
-        model.onConsentTicked(true)
-        model.agree()
+        // Back from Profile, the screen sends it again.
+        model.retry()
 
-        assertEquals(listOf("ai-v1"), consent.agreed)
         assertEquals(listOf<Pair<String, String?>>("What did I spend?" to null, "What did I spend?" to null), chat.sent, "sent again without retyping")
-        assertNull(model.uiState.value.consent)
+        assertNull(model.uiState.value.thread!!.failure)
         assertEquals("You spent \$840.00 in August.", model.uiState.value.thread!!.bubbles.last().text)
-    }
-
-    @Test
-    fun `a policy updated while consent is open is read again and can be agreed to`() {
-        val chat = FakeChat().apply { fail = ApiException.ConsentRequired("ai-v1") }
-        val consent = FakeConsent()
-        val model = model(chat, consent)
-        model.open("c1")
-        model.onDraftChange("What did I spend?")
-        model.send()
-        model.onConsentTicked(true)
-
-        consent.current = "ai-v2"
-        model.agree()
-
-        val ask = model.uiState.value.consent!!
-        assertEquals("ai-v2", ask.policy?.version, "the new policy is shown")
-        assertFalse(ask.ticked, "agreeing again is deliberate")
-        assertNotNull(ask.errorKey)
-
-        model.onConsentTicked(true)
-        model.agree()
-        assertEquals(listOf("ai-v2"), consent.agreed)
-        assertNull(model.uiState.value.consent)
     }
 
     @Test

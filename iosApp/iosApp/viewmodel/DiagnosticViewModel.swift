@@ -25,9 +25,9 @@ final class DiagnosticViewModel: ObservableObject {
     @Published var monthlySavings = ""
     @Published private(set) var running = false
     @Published private(set) var errorKey: String?
-    @Published private(set) var policy: AiPolicy?
-    @Published var consentTicked = false
-    @Published private(set) var consentBusy = false
+    /// The run was refused because AI is off. Consent is given in Profile
+    /// only (2026-11-06): the screen says so, and Run tries again.
+    @Published private(set) var aiOff = false
     /// "Pay debt before goals" is being saved, or was.
     @Published private(set) var applying = false
     @Published private(set) var applied = false
@@ -37,7 +37,6 @@ final class DiagnosticViewModel: ObservableObject {
     let locale = "en"
 
     private var plan: PlanRepository?
-    private var consent: AiConsentRepository?
 
     #if DEBUG
     private let logging = true
@@ -54,13 +53,11 @@ final class DiagnosticViewModel: ObservableObject {
         let tokens = SupabaseTokenSource(client: client)
         let base = ApiConfig.shared.BASE_URL
         plan = KtorPlanRepository(baseUrl: base, tokens: tokens, logging: logging)
-        consent = KtorAiConsentRepository(baseUrl: base, tokens: tokens, logging: logging)
         Task { await load() }
     }
 
     deinit {
         plan?.close()
-        consent?.close()
     }
 
     func load() async {
@@ -97,7 +94,7 @@ final class DiagnosticViewModel: ObservableObject {
             ? PlanDiagnosticWords.shared.monthlyBlockingReason(monthlySavings: monthlySavings, currency: currency)
             : PlanDiagnosticWords.shared.blockingReason(savingsTarget: savingsTarget, savingsNow: savingsNow, currency: currency)
     }
-    var canRun: Bool { diagnostics != nil && block == nil && !running && !consentBusy }
+    var canRun: Bool { diagnostics != nil && block == nil && !running }
     var runsLeftLabel: String? {
         diagnostics.map { PlanDiagnosticWords.shared.runsLeft(diagnostics: $0, kind: kind, locale: locale) }
     }
@@ -186,6 +183,7 @@ final class DiagnosticViewModel: ObservableObject {
             now = n
         }
         running = true
+        aiOff = false
         errorKey = nil
         do {
             let answer = try await plan.runDiagnostic(kind: kind, savingsTarget: target, savingsNow: now, monthlySavings: monthly)
@@ -201,38 +199,7 @@ final class DiagnosticViewModel: ObservableObject {
         } catch {
             running = false
             if Self.kotlin(error) is ApiException.ConsentRequired {
-                await askForConsent()
-            } else {
-                errorKey = Self.messageKey(error)
-            }
-        }
-    }
-
-    private func askForConsent() async {
-        guard let consent else { return }
-        do {
-            policy = try await consent.policy()
-            consentTicked = false
-        } catch {
-            errorKey = Self.messageKey(error)
-        }
-    }
-
-    /// Records consent to the version shown, then runs.
-    func agree() async {
-        guard let consent, let shown = policy, consentTicked else { return }
-        consentBusy = true
-        errorKey = nil
-        do {
-            try await consent.consent(version: shown.version)
-            consentBusy = false
-            policy = nil
-            consentTicked = false
-            await run()
-        } catch {
-            consentBusy = false
-            if Self.kotlin(error) is ApiException.AiPolicyChanged {
-                await askForConsent()
+                aiOff = true
             } else {
                 errorKey = Self.messageKey(error)
             }

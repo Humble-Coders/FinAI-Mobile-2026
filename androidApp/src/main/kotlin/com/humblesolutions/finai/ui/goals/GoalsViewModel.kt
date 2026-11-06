@@ -260,7 +260,22 @@ class GoalsViewModel(
             try {
                 val goal = if (state.creating) {
                     val new = GoalEdit.goalToCreate(state.draft, state.currency) ?: return@launch update { it.copy(saving = false) }
-                    repos.goals.create(new)
+                    val made = repos.goals.create(new)
+                    // The list is read before the sheet closes, Save still
+                    // spinning, so the new goal is already in place when it
+                    // does — its position and the comparison are the server's.
+                    val page = try {
+                        repos.goals.list()
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: ApiException) {
+                        null
+                    }
+                    update { it.copy(saving = false, creating = false, editingId = null, draft = GoalDraft()) }
+                    if (page == null) return@launch settle(made)
+                    settle(page)
+                    // The plan's lines and the rest follow quietly.
+                    return@launch load(refresh = true)
                 } else {
                     val original = state.editing ?: return@launch update { it.copy(saving = false) }
                     repos.goals.update(original.id, GoalEdit.changes(original, state.draft, state.currency))

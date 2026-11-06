@@ -4,14 +4,11 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.humblesolutions.finai.config.ApiConfig
 import com.humblesolutions.finai.config.Supabase
-import com.humblesolutions.finai.data.KtorAiConsentRepository
 import com.humblesolutions.finai.data.KtorPlanRepository
 import com.humblesolutions.finai.data.SupabaseTokenSource
-import com.humblesolutions.finai.model.AiPolicy
 import com.humblesolutions.finai.model.ApiException
 import com.humblesolutions.finai.model.PlanDiagnostic
 import com.humblesolutions.finai.model.PlanDiagnostics
-import com.humblesolutions.finai.repository.AiConsentRepository
 import com.humblesolutions.finai.repository.PlanRepository
 import com.humblesolutions.finai.usecase.DiagnosticBlock
 import com.humblesolutions.finai.usecase.DiagnosticCheck
@@ -42,10 +39,11 @@ data class DiagnosticUiState(
     val monthlySavings: String = "",
     val running: Boolean = false,
     val errorKey: String? = null,
-    /** The AI may not be asked yet: the person is shown the policy first. */
-    val policy: AiPolicy? = null,
-    val consentTicked: Boolean = false,
-    val consentBusy: Boolean = false,
+    /**
+     * The server said AI processing needs consent. The screen says so and
+     * links to Profile, the one place it is given (PM decision, 2026-11-06).
+     */
+    val aiOff: Boolean = false,
     /** "Pay debt before goals" is being saved, or was. */
     val applying: Boolean = false,
     val applied: Boolean = false,
@@ -76,7 +74,7 @@ data class DiagnosticUiState(
 
     val runsLeftLabel: String? get() = diagnostics?.let { PlanDiagnosticWords.runsLeft(it, kind, locale) }
 
-    val canRun: Boolean get() = diagnostics != null && block == null && !running && !consentBusy
+    val canRun: Boolean get() = diagnostics != null && block == null && !running
 
     val rows: List<DiagnosticRow>
         get() = result?.let {
@@ -122,7 +120,6 @@ class DiagnosticViewModel : ViewModel() {
             val tokens = SupabaseTokenSource(client)
             DiagnosticRepositories(
                 plan = KtorPlanRepository(ApiConfig.BASE_URL, tokens, logging),
-                consent = KtorAiConsentRepository(ApiConfig.BASE_URL, tokens, logging),
             )
         }
     }
@@ -146,7 +143,7 @@ class DiagnosticViewModel : ViewModel() {
     }
 
     private fun show(kind: String) = _uiState.update {
-        it.copy(kind = kind, result = it.diagnostics?.last(kind), errorKey = null)
+        it.copy(kind = kind, result = it.diagnostics?.last(kind), errorKey = null, aiOff = false)
     }
 
     fun load() {
@@ -220,8 +217,7 @@ class DiagnosticViewModel : ViewModel() {
             } catch (e: CancellationException) {
                 throw e
             } catch (e: ApiException.ConsentRequired) {
-                _uiState.update { it.copy(running = false) }
-                askForConsent()
+                _uiState.update { it.copy(running = false, aiOff = true) }
             } catch (e: ApiException) {
                 _uiState.update { it.copy(running = false, errorKey = e.messageKey) }
             }
@@ -256,52 +252,19 @@ class DiagnosticViewModel : ViewModel() {
         }
     }
 
-    // ── Consent ─────────────────────────────────────────────────────────
-
-    private suspend fun askForConsent() {
-        val consent = repositories?.consent ?: return
-        try {
-            val policy = consent.policy()
-            _uiState.update { it.copy(policy = policy, consentTicked = false) }
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: ApiException) {
-            _uiState.update { it.copy(errorKey = e.messageKey) }
-        }
-    }
-
-    fun onConsentTicked(ticked: Boolean) = _uiState.update { it.copy(consentTicked = ticked) }
-
-    /** Records consent to the version shown, then runs. */
-    fun agree() {
-        val consent = repositories?.consent ?: return
-        val policy = _uiState.value.policy ?: return
-        if (!_uiState.value.consentTicked) return
-        _uiState.update { it.copy(consentBusy = true, errorKey = null) }
-        viewModelScope.launch {
-            try {
-                consent.consent(policy.version)
-                _uiState.update { it.copy(consentBusy = false, policy = null, consentTicked = false) }
-                run()
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: ApiException.AiPolicyChanged) {
-                _uiState.update { it.copy(consentBusy = false) }
-                askForConsent()
-            } catch (e: ApiException) {
-                _uiState.update { it.copy(consentBusy = false, errorKey = e.messageKey) }
-            }
-        }
+    /** Back from Profile with AI perhaps turned on: the run that was refused, again. */
+    fun retryAfterAi() {
+        if (!_uiState.value.aiOff) return
+        _uiState.update { it.copy(aiOff = false) }
+        run()
     }
 }
 
 /** What this screen talks to. Closed together when the model is cleared. */
 internal class DiagnosticRepositories(
     val plan: PlanRepository,
-    val consent: AiConsentRepository,
 ) {
     fun close() {
         plan.close()
-        consent.close()
     }
 }
