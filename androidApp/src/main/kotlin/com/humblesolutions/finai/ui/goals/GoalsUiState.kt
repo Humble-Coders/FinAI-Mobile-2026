@@ -89,6 +89,13 @@ data class GoalsUiState(
     /** The disclaimer, under a long-term goal still being saved for. */
     fun disclaimerOf(goal: Goal): String? = disclaimer?.body?.takeIf { goal.isLongTerm && !goal.isAchieved && it.isNotBlank() }
 
+    /**
+     * Whether the sheet ends with the line to Profile's disclaimer: where a
+     * goal would have carried it. Once for the page, not under each goal (PM
+     * decision, 2026-11-06).
+     */
+    val showsDisclaimerLink: Boolean get() = goals.any { disclaimerOf(it) != null }
+
     // ── The editor ──────────────────────────────────────────────────────
 
     val editing: Goal? get() = editingId?.let { id -> goals.firstOrNull { it.id == id } }

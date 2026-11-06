@@ -17,6 +17,7 @@ import io.github.jan.supabase.auth.providers.builtin.Email
 import io.github.jan.supabase.auth.providers.builtin.IDToken
 import io.github.jan.supabase.auth.status.SessionStatus
 import io.ktor.client.HttpClient
+import io.ktor.client.request.delete
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
@@ -165,6 +166,23 @@ class SupabaseAuthRepository internal constructor(
     @Throws(ApiException::class, CancellationException::class)
     override suspend fun acceptTerms(version: String): Me = http.postJson("me/consent", ConsentIn(version))
 
+    @Throws(ApiException::class, CancellationException::class)
+    override suspend fun updateName(name: String): Me = http.patchJson("me", ProfileIn(name))
+
+    @Throws(ApiException::class, CancellationException::class)
+    override suspend fun deleteAccount() {
+        http.sendMapped { delete("me") }
+        // The user is gone on the server, so a sign-out call there would be
+        // refused: the session is simply dropped here.
+        try {
+            auth.clearSession()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // Nothing left to sign out of; the next launch starts signed out.
+        }
+    }
+
     override fun close() = http.close()
 
     private fun SocialProvider.idTokenProvider(): IDTokenProvider = when (this) {
@@ -189,3 +207,9 @@ private data class RegionIn(@SerialName("country_code") val countryCode: String)
 
 @Serializable
 private data class ConsentIn(val version: String)
+
+@Serializable
+private data class ProfileIn(
+    @SerialName("display_name")
+    val displayName: String,
+)

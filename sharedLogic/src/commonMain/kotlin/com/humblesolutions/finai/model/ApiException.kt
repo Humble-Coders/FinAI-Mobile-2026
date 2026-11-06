@@ -271,6 +271,11 @@ sealed class ApiException(message: String, cause: Throwable? = null) : Exception
         override val messageKey: String = Strings.ai_budget_error_unavailable
     }
 
+    /** The account could not be deleted just now; nothing was removed. */
+    class DeletionUnavailable : ApiException("account deletion unavailable") {
+        override val messageKey: String = Strings.profile_delete_failed
+    }
+
     /** The setup suggestion was asked for three times (429). The last one stays. */
     class AiBudgetLimitReached : ApiException("ai budget suggestion limit reached") {
         override val messageKey: String = Strings.ai_budget_error_limit

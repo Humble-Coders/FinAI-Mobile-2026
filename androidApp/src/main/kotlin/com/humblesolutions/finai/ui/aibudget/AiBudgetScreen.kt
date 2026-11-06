@@ -14,17 +14,25 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.AutoAwesome
-import androidx.compose.material3.Checkbox
+import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -33,6 +41,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
@@ -44,11 +53,18 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.humblesolutions.finai.BuildConfig
+import com.humblesolutions.finai.data.PrefsAiBudgetDraftStore
 import com.humblesolutions.finai.i18n.Strings
+import com.humblesolutions.finai.model.Category
+import com.humblesolutions.finai.ui.components.AiConsentPanel
+import com.humblesolutions.finai.ui.components.AiOffNotice
 import com.humblesolutions.finai.ui.components.AmountField
 import com.humblesolutions.finai.ui.components.ErrorText
 import com.humblesolutions.finai.ui.components.GradientButton
 import com.humblesolutions.finai.ui.components.Mint
+import com.humblesolutions.finai.ui.components.RetryWhenBack
+import com.humblesolutions.finai.ui.components.SheetRow
+import com.humblesolutions.finai.ui.components.SheetTitle
 import com.humblesolutions.finai.ui.strings
 import com.humblesolutions.finai.usecase.AiBudgetBlock
 import com.humblesolutions.finai.usecase.AiBudgetEdit
@@ -56,17 +72,28 @@ import com.humblesolutions.finai.usecase.AiBudgetEdit
 /**
  * The suggested budget, with its own view model. [inSetup] draws it as setup's
  * last step ("Step 4 of 4", with Skip); otherwise it is opened from the Budget
- * tab. [onDone] runs once the budget is started, or on Skip / back.
+ * tab. [onDone] runs once the budget is started, or on Skip; [onBack] on the
+ * back arrow — in setup, the step before. Either way the suggestion and the
+ * edits stay kept, so coming back never asks the AI again.
  */
 @Composable
-internal fun AiBudgetRoute(userId: String, inSetup: Boolean, onDone: () -> Unit) {
+internal fun AiBudgetRoute(
+    userId: String,
+    inSetup: Boolean,
+    onDone: () -> Unit,
+    onBack: () -> Unit = onDone,
+    /** Profile, where AI is turned on; null in setup, before there is one to open. */
+    onOpenProfile: (() -> Unit)? = null,
+) {
     val model: AiBudgetViewModel = viewModel(key = "ai-budget-$inSetup")
     val state by model.uiState.collectAsStateWithLifecycle()
-    LaunchedEffect(userId) { model.bind(userId, logging = BuildConfig.DEBUG) }
+    val context = LocalContext.current
+    LaunchedEffect(userId) { model.bind(userId, logging = BuildConfig.DEBUG, drafts = PrefsAiBudgetDraftStore(context)) }
     // Nothing to suggest — budgets off, or no income — is not a dead end in
     // setup: the step simply passes.
     LaunchedEffect(state.unavailable) { if (state.unavailable && inSetup) onDone() }
-    BackHandler { onDone() }
+    BackHandler { onBack() }
+    RetryWhenBack(state.aiOff, model::retryAfterAi)
     AiBudgetScreen(
         state = state,
         inSetup = inSetup,
@@ -77,8 +104,14 @@ internal fun AiBudgetRoute(userId: String, inSetup: Boolean, onDone: () -> Unit)
             onSkip = onDone,
             onSuggestAgain = model::suggest,
             onRetry = model::load,
+            onOpenProfile = onOpenProfile,
             onConsentTicked = model::onConsentTicked,
-            onAgree = model::agree,
+            onAgreeToAi = model::agreeToAi,
+            onBack = onBack,
+            onOpenAdd = model::openAdd,
+            onCloseAdd = model::closeAdd,
+            onAdd = model::onAdd,
+            onRemove = model::onRemove,
         ),
     )
 }
@@ -90,8 +123,14 @@ internal class AiBudgetActions(
     val onSkip: () -> Unit = {},
     val onSuggestAgain: () -> Unit = {},
     val onRetry: () -> Unit = {},
+    val onOpenProfile: (() -> Unit)? = null,
     val onConsentTicked: (Boolean) -> Unit = {},
-    val onAgree: () -> Unit = {},
+    val onAgreeToAi: () -> Unit = {},
+    val onBack: () -> Unit = {},
+    val onOpenAdd: () -> Unit = {},
+    val onCloseAdd: () -> Unit = {},
+    val onAdd: (Category) -> Unit = {},
+    val onRemove: (Int) -> Unit = {},
 )
 
 @Composable
@@ -109,8 +148,13 @@ internal fun AiBudgetScreen(state: AiBudgetUiState, inSetup: Boolean, actions: A
                     .padding(horizontal = 24.dp, vertical = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
-                if (inSetup) {
-                    Text(strings(Strings.ai_budget_step), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = actions.onBack, modifier = Modifier.size(48.dp).padding(end = 4.dp)) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = strings(Strings.action_back))
+                    }
+                    if (inSetup) {
+                        Text(strings(Strings.ai_budget_step), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                 }
                 Text(
                     strings(Strings.ai_budget_title),
@@ -119,8 +163,23 @@ internal fun AiBudgetScreen(state: AiBudgetUiState, inSetup: Boolean, actions: A
                     modifier = Modifier.semantics { heading() },
                 )
                 when {
-                    state.needsConsent -> Consent(state, actions)
+                    // In setup there is no Profile yet: the one place the
+                    // AI consent is asked for in a screen, once.
+                    state.aiOff && inSetup -> AiConsentPanel(
+                        title = strings(Strings.ai_budget_consent_title),
+                        policy = state.policy,
+                        ticked = state.consentTicked,
+                        busy = state.consentBusy,
+                        errorKey = state.consentErrorKey,
+                        onTicked = actions.onConsentTicked,
+                        onAgree = actions.onAgreeToAi,
+                        onNotNow = actions.onSkip,
+                    )
+
+                    state.aiOff -> AiOffNotice(actions.onOpenProfile)
+
                     state.proposal == null -> Waiting(state, actions)
+
                     else -> Proposal(state, actions)
                 }
                 if (inSetup || state.proposal == null) {
@@ -129,6 +188,32 @@ internal fun AiBudgetScreen(state: AiBudgetUiState, inSetup: Boolean, actions: A
                     }
                 }
                 Spacer(Modifier.height(16.dp))
+            }
+        }
+        if (state.adding) AddSheet(state, actions)
+    }
+}
+
+/** Choosing a category to add a line for. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AddSheet(state: AiBudgetUiState, actions: AiBudgetActions) {
+    ModalBottomSheet(onDismissRequest = actions.onCloseAdd) {
+        SheetTitle(strings(Strings.ai_budget_add_title))
+        val addable = state.addable
+        if (addable.isEmpty()) {
+            Text(
+                strings(Strings.ai_budget_add_empty),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(24.dp),
+            )
+        } else {
+            LazyColumn(Modifier.fillMaxWidth()) {
+                items(addable, key = { it.id }) { category ->
+                    SheetRow(title = category.name, detail = null, selected = false, onClick = { actions.onAdd(category) }, role = Role.Button)
+                }
+                item { Spacer(Modifier.height(24.dp)) }
             }
         }
     }
@@ -155,35 +240,6 @@ private fun Waiting(state: AiBudgetUiState, actions: AiBudgetActions) {
 }
 
 @Composable
-private fun Consent(state: AiBudgetUiState, actions: AiBudgetActions) {
-    Text(strings(Strings.ai_budget_consent_title), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-    Text(strings(Strings.ai_budget_consent_body), style = MaterialTheme.typography.bodyMedium)
-    ErrorText(state.errorKey)
-    // The words are the server's, and it records which version was shown.
-    state.policy?.let { policy ->
-        Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), tonalElevation = 2.dp) {
-            Text(policy.body, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(16.dp))
-        }
-    }
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .heightIn(min = 48.dp)
-            .toggleable(value = state.consentTicked, role = Role.Checkbox, onValueChange = actions.onConsentTicked),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Checkbox(checked = state.consentTicked, onCheckedChange = null)
-        Text(strings(Strings.import_consent_agree), style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(start = 12.dp))
-    }
-    GradientButton(
-        text = strings(Strings.ai_budget_consent_allow),
-        onClick = actions.onAgree,
-        enabled = state.consentTicked,
-        busy = state.consentBusy,
-    )
-}
-
-@Composable
 private fun Proposal(state: AiBudgetUiState, actions: AiBudgetActions) {
     val proposal = state.proposal ?: return
     Text(strings(Strings.ai_budget_intro), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -204,6 +260,15 @@ private fun Proposal(state: AiBudgetUiState, actions: AiBudgetActions) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(line.line.name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
                     Text(AiBudgetEdit.kindLabel(line.line, state.locale), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (state.canRemove(index)) {
+                        IconButton(onClick = { actions.onRemove(index) }, modifier = Modifier.size(40.dp)) {
+                            Icon(
+                                Icons.Outlined.Delete,
+                                contentDescription = strings(Strings.ai_budget_remove_line, line.line.name),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
                 }
                 if (line.line.isDebt) {
                     // The minimums: the budget's own rule sets this line.
@@ -235,6 +300,17 @@ private fun Proposal(state: AiBudgetUiState, actions: AiBudgetActions) {
                 }
                 if (state.lineBlock(index) == AiBudgetBlock.BELOW_COMMITMENT) ErrorText(AiBudgetBlock.BELOW_COMMITMENT.messageKey)
             }
+        }
+    }
+
+    if (state.categories.isNotEmpty()) {
+        OutlinedButton(
+            onClick = actions.onOpenAdd,
+            enabled = !state.starting,
+            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+        ) {
+            Icon(Icons.Outlined.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+            Text(strings(Strings.ai_budget_add_line), modifier = Modifier.padding(start = 8.dp))
         }
     }
 

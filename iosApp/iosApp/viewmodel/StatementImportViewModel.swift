@@ -28,11 +28,6 @@ final class StatementImportViewModel: ObservableObject, NewAccountHost {
     @Published private(set) var passwordWrong = false
     @Published private(set) var page = 0
     @Published private(set) var pages = 0
-    @Published private(set) var policy: AiPolicy?
-    /// Unticked until the person ticks it — express consent, nothing pre-ticked.
-    @Published var consentTicked = false
-    @Published private(set) var consentBusy = false
-    @Published private(set) var consentErrorKey: String?
     @Published private(set) var problem: ImportProblem?
     @Published private(set) var canResend = false
     /// The "help us fix this" box — unticked every time, never remembered.
@@ -87,7 +82,6 @@ final class StatementImportViewModel: ObservableObject, NewAccountHost {
 
     private var accountsRepository: AccountsRepository?
     private var importsRepository: StatementImportRepository?
-    private var consentRepository: AiConsentRepository?
     /// Read only after a finished import, for the rows it produced.
     private var transactionsRepository: TransactionsRepository?
     private var categoriesRepository: CategoriesRepository?
@@ -122,7 +116,6 @@ final class StatementImportViewModel: ObservableObject, NewAccountHost {
     var offersManualEntry: Bool { problem?.failure.offersManualEntry ?? false }
     var offersDiagnostics: Bool { (problem?.failure.offersDiagnostics ?? false) && canResend && !diagnosticsSent }
     var canSendDiagnostics: Bool { offersDiagnostics && diagnosticsTicked }
-    var canAgree: Bool { policy != nil && consentTicked && !consentBusy }
 
     /// What the one coin loader says under the coin.
     var loaderCaption: String? {
@@ -157,7 +150,6 @@ final class StatementImportViewModel: ObservableObject, NewAccountHost {
         let base = ApiConfig.shared.BASE_URL
         accountsRepository = KtorAccountsRepository(baseUrl: base, tokens: tokens, logging: logging)
         importsRepository = KtorStatementImportRepository(baseUrl: base, tokens: tokens, logging: logging)
-        consentRepository = KtorAiConsentRepository(baseUrl: base, tokens: tokens, logging: logging)
         transactionsRepository = KtorTransactionsRepository(baseUrl: base, tokens: tokens, logging: logging)
         categoriesRepository = KtorCategoriesRepository(baseUrl: base, tokens: tokens, logging: logging)
         debtsRepository = KtorDebtsRepository(baseUrl: base, tokens: tokens, logging: logging)
@@ -175,8 +167,6 @@ final class StatementImportViewModel: ObservableObject, NewAccountHost {
         accountsRepository = nil
         importsRepository?.close()
         importsRepository = nil
-        consentRepository?.close()
-        consentRepository = nil
         work?.cancel()
         generation += 1
     }
@@ -221,9 +211,6 @@ final class StatementImportViewModel: ObservableObject, NewAccountHost {
         saveErrorKey = nil
         editing = nil
         draft = Self.emptyDraft
-        policy = nil
-        consentTicked = false
-        consentErrorKey = nil
     }
 
     // MARK: - What the import read (the same rules as Android's UI state)
@@ -593,7 +580,7 @@ final class StatementImportViewModel: ObservableObject, NewAccountHost {
             } catch {
                 guard started == self.generation, !Task.isCancelled else { return }
                 if let kotlin = Self.kotlin(error), StatementImportFlow.shared.needsConsent(error: kotlin) {
-                    self.askForConsent(kotlin as? ApiException.AiPolicyChanged)
+                    self.askForConsent()
                 } else {
                     self.fail(error)
                 }
@@ -966,59 +953,21 @@ final class StatementImportViewModel: ObservableObject, NewAccountHost {
 
     // MARK: - Consent
 
-    private func askForConsent(_ changed: ApiException.AiPolicyChanged?) {
-        guard let consentRepository else { return }
-        let started = generation
+    /// AI is off, or on for a policy that has moved on. Consent is given in
+    /// Profile only (PM decision, 2026-11-06): the step says so, and the file
+    /// waits for the person to come back and try again.
+    private func askForConsent() {
         inProgress = false
         step = .consent
-        consentTicked = false
-        consentBusy = true
-        consentErrorKey = changed?.messageKey
-        Task { [weak self] in
-            guard let self else { return }
-            do {
-                let policy = try await consentRepository.policy()
-                guard started == self.generation else { return }
-                self.policy = policy
-                self.consentBusy = false
-            } catch {
-                guard started == self.generation else { return }
-                self.consentBusy = false
-                self.consentErrorKey = Self.messageKey(error)
-            }
-        }
     }
 
-    /// Records consent to the version shown, then sends the statement it was asked for.
-    func agree() {
-        guard let consentRepository, let policy, canAgree else { return }
-        let started = generation
-        consentBusy = true
-        consentErrorKey = nil
-        Task { [weak self] in
-            guard let self else { return }
-            do {
-                try await consentRepository.consent(version: policy.version)
-                guard started == self.generation else { return }
-                self.consentBusy = false
-                self.consentTicked = false
-                if let document = self.document { self.send(document, keepText: false) } else { self.read() }
-            } catch {
-                guard started == self.generation else { return }
-                if let changed = Self.kotlin(error) as? ApiException.AiPolicyChanged {
-                    self.askForConsent(changed)
-                } else {
-                    self.consentBusy = false
-                    self.consentErrorKey = Self.messageKey(error)
-                }
-            }
-        }
+    /// Back from Profile: send the statement it was stopped for.
+    func retryAfterConsent() {
+        if let document { send(document, keepText: false) } else { read() }
     }
 
     /// "Not now": nothing is sent, and the file can be imported later.
     func declineConsent() {
-        consentTicked = false
-        consentErrorKey = nil
         step = .chooseFile
     }
 

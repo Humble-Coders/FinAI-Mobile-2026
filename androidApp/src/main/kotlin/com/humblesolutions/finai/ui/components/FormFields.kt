@@ -38,13 +38,18 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.OffsetMapping
+import androidx.compose.ui.text.input.TransformedText
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.humblesolutions.finai.ui.theme.FinAiPalette
+import com.humblesolutions.finai.util.Money
 
 /*
  * The form fields the setup wizard introduced, shared with every screen that
@@ -81,6 +86,8 @@ internal fun Modifier.fieldFrame(focused: Boolean, isError: Boolean): Modifier {
  * bold beside the currency the server named — never a hardcoded symbol — a faint
  * zero while it is empty, and what the figure is per, when it is per anything.
  * The whole box is the text field, so tapping anywhere on it starts typing.
+ * The figure shows grouped as it is typed — `1,00,000` in rupees — while
+ * [value] stays as typed ([AmountGrouping]).
  */
 @Composable
 internal fun AmountField(
@@ -114,6 +121,7 @@ internal fun AmountField(
                 fontWeight = FontWeight.SemiBold,
             ),
             cursorBrush = SolidColor(FinAiPalette.Green),
+            visualTransformation = remember(symbol) { AmountGrouping(symbol) },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = imeAction),
             keyboardActions = closingKeyboardActions(),
             modifier = Modifier
@@ -301,4 +309,36 @@ internal fun closingKeyboardActions(onDone: (() -> Unit)? = null): KeyboardActio
             focus.clearFocus()
         },
     )
+}
+
+/**
+ * Draws an amount grouped as the app writes it (`Money.groupInput`) while the
+ * text itself stays as typed, so nothing that reads the field sees a comma.
+ * Text that already has commas — typed as a decimal comma, say — is shown as
+ * it is.
+ */
+internal class AmountGrouping(private val symbol: String) : VisualTransformation {
+    override fun filter(text: AnnotatedString): TransformedText {
+        val raw = text.text
+        if (',' in raw) return TransformedText(text, OffsetMapping.Identity)
+        val shown = Money.groupInput(raw, symbol)
+        val mapping = object : OffsetMapping {
+            // Only commas are added, so an offset is the count of the other characters before it.
+            override fun originalToTransformed(offset: Int): Int {
+                var seen = 0
+                shown.forEachIndexed { index, c ->
+                    if (seen == offset) return index
+                    if (c != ',') seen++
+                }
+                return shown.length
+            }
+
+            override fun transformedToOriginal(offset: Int): Int = shown.take(offset).count { it != ',' }
+        }
+        return TransformedText(AnnotatedString(shown), mapping)
+    }
+
+    override fun equals(other: Any?): Boolean = other is AmountGrouping && other.symbol == symbol
+
+    override fun hashCode(): Int = symbol.hashCode()
 }

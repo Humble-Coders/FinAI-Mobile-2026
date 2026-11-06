@@ -41,6 +41,10 @@ struct RootView: View {
     /// Split expense, from Home's "Split a bill", gated by `split_expenses`.
     @StateObject private var splitModel = SplitViewModel()
 
+    /// Profile (PM decision, 2026-11-06), opened over the bar from Home's
+    /// monogram and from every "Open Profile".
+    @StateObject private var profileModel = ProfileViewModel()
+
     /// What the tab bar may offer. Read once per signed-in user.
     @StateObject private var features = FeaturesViewModel()
     /// Income, Expenses, Investments and Debts, opened from Home's cards.
@@ -60,12 +64,17 @@ struct RootView: View {
     /// Where the money screens' back arrow goes: Home, or the Budget tab's
     /// "Add any expected income".
     @SceneStorage("home.moneyFrom") private var moneyFrom = HomeRoute.home.rawValue
+    /// Where Profile's back arrow goes: the tab or screen it was opened from,
+    /// so an "Open Profile" in the middle of an import comes back to it.
+    @SceneStorage("home.profileFrom") private var profileFrom = HomeRoute.home.rawValue
     /// One coin loader for the whole app: centred, everything behind it blurred.
     /// Signing in or up holds it for two seconds; after that, as long as it takes.
     @StateObject private var loader = AppLoader()
     @State private var changingRegion = false
     /// Setup's step 4: the AI's suggested budget, once steps 1–3 are saved.
     @State private var suggestingBudget = false
+    /// The last tab shown, which stays under a screen opened over the bar.
+    @State private var lastTab = HomeRoute.home.rawValue
     /// Whether this process has shown the app yet; see `onAppear`.
     @MainActor private static var launched = false
 
@@ -98,6 +107,11 @@ struct RootView: View {
             model.bind()
         }
         .onDisappear { model.unbind() }
+        // Signed out — from Profile, or the account deleted — so whoever signs
+        // in next starts on Home, not on the last person's Profile.
+        .onChange(of: model.session) { _, session in
+            if session == .signedOut { homeRoute = HomeRoute.home.rawValue }
+        }
         .sheet(isPresented: $changingRegion) {
             // Not an onboarding step: the server is not asking for it, the user
             // chose to correct it (PRD §4.6).
@@ -119,22 +133,24 @@ struct RootView: View {
     /// Signing in or up, the hand-over between steps, and the wizard's first
     /// load. Continue inside the wizard is not here: it never waits on the coin.
     private var loaderActive: Bool {
-        model.busy || model.showLoadingCard || (showingSetup && setupModel.loading)
+        // Not while the suggested budget shows: SetupView's unbind leaves the
+        // wizard's model loading, and the coin would cover the suggestion.
+        model.busy || model.showLoadingCard || (showingSetup && !suggestingBudget && setupModel.loading)
+            // The answers being read for amending, from Profile.
+            || (showingSetupEdit && setupModel.loading)
             || (showingEntry && entryModel.loading)
             || (showingImport && (importModel.working || importModel.accountsLoading))
             || (showingReview && reviewModel.loading)
-            // Home's first read: figures, not a screen of zeroes, until they arrive.
-            || (showingHome && (dashboardModel.loading || dashboardModel.switchingMonth))
-            // The Budget tab's first read, and each change of month, as Android.
-            || (showingBudget && (budgetModel.loading || budgetModel.switchingMonth))
+            // A tab's first read draws the page's shape (`tabSkeleton`); a change
+            // of month keeps the coin, with the figures left up, as Android.
+            || (showingHome && dashboardModel.switchingMonth)
+            || (showingBudget && budgetModel.switchingMonth)
             // The plan's first read (#76); a return refreshes under what is shown.
             || (showingPlan && planModel.loading && planModel.plan == nil)
-            // The other tabs and Home's money screens, as Android: a first load, and
-            // each change of month.
-            || (showingGoals && goalsModel.loading && goalsModel.page == nil)
-            // Only a first read earns the coin: the list, or a conversation opening.
-            || (showingCoach && ((chatModel.listLoading && !chatModel.listLoaded) || (chatModel.threadLoading && chatModel.thread == nil)))
-            || (showingTransactions && (transactionsModel.loading || transactionsModel.switchingMonth))
+            // A conversation opening earns the coin; the list's first read is a skeleton.
+            || (showingCoach && chatModel.threadLoading && chatModel.thread == nil)
+            || (showingTransactions && transactionsModel.switchingMonth)
+            // Home's money screens, as Android: a first load, and each change of month.
             || (showingMoney && (moneyModel.loading || moneyModel.switchingMonth))
             // Reading a receipt, opening a saved split, the history's first read.
             || (showingSplit && splitModel.working)
@@ -147,6 +163,8 @@ struct RootView: View {
     }
 
     private var showingHome: Bool { atHome && homeRoute == HomeRoute.home.rawValue }
+
+    private var showingSetupEdit: Bool { atHome && homeRoute == HomeRoute.editSetup.rawValue }
 
     private var showingBudget: Bool { atHome && homeRoute == HomeRoute.budget.rawValue }
 
@@ -240,91 +258,36 @@ struct RootView: View {
         case .financialSetup:
             if suggestingBudget {
                 // Start or Skip there is what finishes setup.
-                AiBudgetView(userId: model.me?.user.id ?? "", inSetup: true) {
-                    suggestingBudget = false
-                    model.loadMe()
-                }
+                AiBudgetView(
+                    userId: model.me?.user.id ?? "",
+                    inSetup: true,
+                    onDone: {
+                        suggestingBudget = false
+                        model.loadMe()
+                    },
+                    // Back to the last step; the suggestion stays kept for
+                    // when they come forward again.
+                    onBack: { suggestingBudget = false }
+                )
             } else {
                 SetupView(model: setupModel) { suggestingBudget = true }
-                    .onAppear { setupModel.bind() }
+                    .onAppear { setupModel.bind(amending: false) }
                     .onDisappear { setupModel.unbind() }
             }
         case .updateRequired:
             UpdateRequiredView()
         case .home:
-            switch HomeRoute(rawValue: homeRoute) ?? .home {
-            case .home, .transactions, .budget, .goals, .coach:
+            // The tabs stay alive under a screen opened over the bar, so each
+            // keeps its scroll position and figures for when it comes back.
+            ZStack {
                 tabs
-            case .review:
-                ReviewView(
-                    model: reviewModel,
-                    userId: model.me?.user.id ?? "",
-                    onClose: { withAnimation(.easeOut(duration: 0.25)) { homeRoute = reviewFrom } },
-                    showsBack: true
-                )
-                .transition(.opacity.combined(with: .offset(y: 30)))
-            case .income, .expenses, .investments, .debts:
-                MoneyDetailView(
-                    model: moneyModel,
-                    entry: moneyEntryModel,
-                    userId: model.me?.user.id ?? "",
-                    kind: moneyKind(homeRoute),
-                    onBack: { withAnimation(.easeOut(duration: 0.25)) { homeRoute = moneyFrom } },
-                    onOpenPlan: homeRoute == HomeRoute.debts.rawValue && features.gate(FeaturesViewModel.planFeature) == .on
-                        ? { openPlan(.planDebts) }
-                        : nil
-                )
-                .transition(.opacity.combined(with: .offset(y: 30)))
-            case .plan, .planDebts:
-                PlanView(
-                    model: planModel,
-                    userId: model.me?.user.id ?? "",
-                    startOnDebts: homeRoute == HomeRoute.planDebts.rawValue,
-                    onClose: {
-                        planModel.unbind()
-                        withAnimation(.easeOut(duration: 0.25)) { homeRoute = planFrom }
-                    },
-                    onOpenGoals: {
-                        planModel.unbind()
-                        withAnimation(.easeOut(duration: 0.25)) { homeRoute = HomeRoute.goals.rawValue }
-                    }
-                )
-                .transition(.opacity.combined(with: .offset(y: 30)))
-                // Turned off between reads: nowhere to be, so home.
-                .onChange(of: features.gates) { _, gates in
-                    if gates.plan == .off { homeRoute = HomeRoute.home.rawValue }
-                }
-            case .add, .addAfterImport:
-                ManualEntryView(
-                    model: entryModel,
-                    userId: model.me?.user.id ?? "",
-                    fromUnreadable: homeRoute == HomeRoute.addAfterImport.rawValue
-                ) {
-                    homeRoute = HomeRoute.home.rawValue
-                }
-            case .split:
-                SplitView(
-                    model: splitModel,
-                    userId: model.me?.user.id ?? "",
-                    onClose: { withAnimation(.easeOut(duration: 0.25)) { homeRoute = HomeRoute.home.rawValue } }
-                )
-                .transition(.opacity.combined(with: .offset(y: 30)))
-                // Turned off between reads: nowhere to be, so home.
-                .onChange(of: features.gates) { _, gates in
-                    if gates.split == .off {
-                        splitModel.close()
-                        homeRoute = HomeRoute.home.rawValue
-                    }
-                }
-            case .importStatement:
-                StatementImportView(
-                    model: importModel,
-                    userId: model.me?.user.id ?? "",
-                    onClose: { homeRoute = HomeRoute.home.rawValue },
-                    onTypeInstead: { homeRoute = HomeRoute.addAfterImport.rawValue },
-                    onReview: { openReview() }
-                )
+                    .opacity(onTabs ? 1 : 0)
+                    .allowsHitTesting(onTabs)
+                    .accessibilityHidden(!onTabs)
+                overTabs
             }
+            // Every "Open Profile" and disclaimer line under here reaches it.
+            .environment(\.openProfile, { openProfile() })
         case .failed:
             FailedView(
                 messageKey: failureKey,
@@ -337,6 +300,129 @@ struct RootView: View {
         }
     }
 
+    /// The screens that open over the tab bar: Review, the money screens, the
+    /// plan, an entry, a split, an import. Nothing while a tab is showing.
+    @ViewBuilder
+    private var overTabs: some View {
+        switch HomeRoute(rawValue: homeRoute) ?? .home {
+        case .home, .transactions, .budget, .goals, .coach:
+            EmptyView()
+        case .review:
+            ReviewView(
+                model: reviewModel,
+                userId: model.me?.user.id ?? "",
+                onClose: { withAnimation(.easeOut(duration: 0.25)) { homeRoute = reviewFrom } },
+                showsBack: true
+            )
+            .transition(.opacity.combined(with: .offset(y: 30)))
+        case .income, .expenses, .investments, .debts:
+            MoneyDetailView(
+                model: moneyModel,
+                entry: moneyEntryModel,
+                userId: model.me?.user.id ?? "",
+                kind: moneyKind(homeRoute),
+                onBack: { withAnimation(.easeOut(duration: 0.25)) { homeRoute = moneyFrom } },
+                onOpenPlan: homeRoute == HomeRoute.debts.rawValue && features.gate(FeaturesViewModel.planFeature) == .on
+                    ? { openPlan(.planDebts) }
+                    : nil
+            )
+            .transition(.opacity.combined(with: .offset(y: 30)))
+        case .plan, .planDebts:
+            PlanView(
+                model: planModel,
+                userId: model.me?.user.id ?? "",
+                startOnDebts: homeRoute == HomeRoute.planDebts.rawValue,
+                onClose: {
+                    planModel.unbind()
+                    withAnimation(.easeOut(duration: 0.25)) { homeRoute = planFrom }
+                },
+                onOpenGoals: {
+                    planModel.unbind()
+                    withAnimation(.easeOut(duration: 0.25)) { homeRoute = HomeRoute.goals.rawValue }
+                }
+            )
+            .transition(.opacity.combined(with: .offset(y: 30)))
+            // Turned off between reads: nowhere to be, so home.
+            .onChange(of: features.gates) { _, gates in
+                if gates.plan == .off { homeRoute = HomeRoute.home.rawValue }
+            }
+        case .add, .addAfterImport:
+            ManualEntryView(
+                model: entryModel,
+                userId: model.me?.user.id ?? "",
+                fromUnreadable: homeRoute == HomeRoute.addAfterImport.rawValue
+            ) {
+                homeRoute = HomeRoute.home.rawValue
+            }
+        case .split:
+            SplitView(
+                model: splitModel,
+                userId: model.me?.user.id ?? "",
+                onClose: { withAnimation(.easeOut(duration: 0.25)) { homeRoute = HomeRoute.home.rawValue } }
+            )
+            .transition(.opacity.combined(with: .offset(y: 30)))
+            // Turned off between reads: nowhere to be, so home.
+            .onChange(of: features.gates) { _, gates in
+                if gates.split == .off {
+                    splitModel.close()
+                    homeRoute = HomeRoute.home.rawValue
+                }
+            }
+        case .importStatement:
+            StatementImportView(
+                model: importModel,
+                userId: model.me?.user.id ?? "",
+                onClose: { homeRoute = HomeRoute.home.rawValue },
+                onTypeInstead: { homeRoute = HomeRoute.addAfterImport.rawValue },
+                onReview: { openReview() }
+            )
+        case .profile:
+            ProfileView(
+                model: profileModel,
+                account: model,
+                onBack: { withAnimation(.easeOut(duration: 0.25)) { homeRoute = profileFrom } },
+                onChangeRegion: { changingRegion = true },
+                onEditSetup: { withAnimation(.easeOut(duration: 0.3)) { homeRoute = HomeRoute.editSetup.rawValue } },
+                onDeleted: { model.accountDeleted() }
+            )
+            .transition(.opacity.combined(with: .offset(y: 30)))
+        case .editSetup:
+            // The wizard over answers already given: no suggested budget at
+            // the end, and Cancel or Save both go back to Profile.
+            SetupView(
+                model: setupModel,
+                onCancel: { withAnimation(.easeOut(duration: 0.25)) { homeRoute = HomeRoute.profile.rawValue } },
+                onFinished: {
+                    // Income, commitments, debts and investments feed every
+                    // figure screen: each re-reads on its own notification.
+                    LedgerChanged.announce()
+                    BudgetChanged.announce()
+                    GoalsChanged.announce()
+                    PlanChanged.announce()
+                    profileModel.show(Strings.shared.profile_setup_updated)
+                    withAnimation(.easeOut(duration: 0.25)) { homeRoute = HomeRoute.profile.rawValue }
+                }
+            )
+            .onAppear { setupModel.bind(amending: true) }
+            .onDisappear { setupModel.unbind() }
+            .transition(.opacity.combined(with: .offset(y: 30)))
+        }
+    }
+
+    private static let tabRoutes: Set<String> = Set(
+        [HomeRoute.home, .transactions, .budget, .goals, .coach].map(\.rawValue)
+    )
+
+    private var onTabs: Bool { Self.tabRoutes.contains(homeRoute) }
+
+    /// The tab the bar shows: the route itself on a tab, otherwise the tab the
+    /// screen over it was opened from, so the bar under it stays where it was.
+    private var currentTab: String { onTabs ? homeRoute : lastTab }
+
+    private var tabSelection: Binding<String> {
+        Binding(get: { currentTab }, set: { homeRoute = $0 })
+    }
+
     /**
      Home, every transaction and the review queue, on the system tab bar. The
      import and manual entry are flows with a start and an end, so they cover
@@ -346,7 +432,7 @@ struct RootView: View {
     private var tabs: some View {
         let userId = model.me?.user.id ?? ""
         let goHome = { homeRoute = HomeRoute.home.rawValue }
-        return TabView(selection: $homeRoute) {
+        return TabView(selection: tabSelection) {
             DashboardView(
                 model: dashboardModel,
                 userId: userId,
@@ -354,7 +440,8 @@ struct RootView: View {
                 onAddTransaction: { homeRoute = HomeRoute.add.rawValue },
                 onReview: { openReview() },
                 onViewAll: { homeRoute = HomeRoute.transactions.rawValue },
-                onSignOut: { model.signOut() },
+                profileInitials: model.me.map { Profile.shared.initials(me: $0) } ?? "",
+                onOpenProfile: { openProfile() },
                 onOpenMoney: { kind in
                     moneyFrom = HomeRoute.home.rawValue
                     withAnimation(.easeOut(duration: 0.3)) { homeRoute = HomeRoute.route(for: kind).rawValue }
@@ -379,14 +466,16 @@ struct RootView: View {
                     ? { withAnimation(.easeOut(duration: 0.3)) { homeRoute = HomeRoute.split.rawValue } }
                     : nil
             )
+            .tabSkeleton(dashboardModel.loading && !dashboardModel.switchingMonth, title: L.t(Strings.shared.tab_home))
             .tabItem { Label(L.t(Strings.shared.tab_home), systemImage: "house.fill") }
             .tag(HomeRoute.home.rawValue)
 
             TransactionsView(model: transactionsModel, userId: userId, onClose: goHome, showsBack: false)
+                .tabSkeleton(transactionsModel.loading && !transactionsModel.switchingMonth, title: L.t(Strings.shared.tab_transactions))
                 .tabItem { Label(L.t(Strings.shared.tab_transactions), systemImage: "list.bullet.rectangle.fill") }
                 .tag(HomeRoute.transactions.rawValue)
 
-            if features.shows(FeaturesViewModel.budgetFeature, onTab: homeRoute == HomeRoute.budget.rawValue) {
+            if features.shows(FeaturesViewModel.budgetFeature, onTab: currentTab == HomeRoute.budget.rawValue) {
                 BudgetView(
                     model: budgetModel,
                     userId: userId,
@@ -400,18 +489,24 @@ struct RootView: View {
                         withAnimation(.easeOut(duration: 0.3)) { homeRoute = HomeRoute.income.rawValue }
                     }
                 )
+                .tabSkeleton(
+                    budgetModel.loading && budgetModel.budget == nil && !budgetModel.switchingMonth,
+                    title: L.t(Strings.shared.tab_budget)
+                )
                 .tabItem { Label(L.t(Strings.shared.tab_budget), systemImage: "chart.pie.fill") }
                 .tag(HomeRoute.budget.rawValue)
             }
 
-            if features.shows(FeaturesViewModel.goalsFeature, onTab: homeRoute == HomeRoute.goals.rawValue) {
+            if features.shows(FeaturesViewModel.goalsFeature, onTab: currentTab == HomeRoute.goals.rawValue) {
                 GoalsView(model: goalsModel, userId: userId)
+                    .tabSkeleton(goalsModel.loading && goalsModel.page == nil, title: L.t(Strings.shared.tab_goals))
                     .tabItem { Label(L.t(Strings.shared.tab_goals), systemImage: "flag.fill") }
                     .tag(HomeRoute.goals.rawValue)
             }
 
-            if features.shows(FeaturesViewModel.chatFeature, onTab: homeRoute == HomeRoute.coach.rawValue) {
+            if features.shows(FeaturesViewModel.chatFeature, onTab: currentTab == HomeRoute.coach.rawValue) {
                 CoachView(model: chatModel, userId: userId)
+                    .tabSkeleton(chatModel.listLoading && !chatModel.listLoaded, title: L.t(Strings.shared.chat_tab))
                     .tabItem { Label(L.t(Strings.shared.chat_tab), systemImage: "bubble.left.and.bubble.right.fill") }
                     .tag(HomeRoute.coach.rawValue)
             }
@@ -423,20 +518,24 @@ struct RootView: View {
         // "off" the tab never changes, so watching it would miss exactly the
         // case where a restored person must be moved.
         .onChange(of: features.gates) { _, _ in
-            let onBudget = homeRoute == HomeRoute.budget.rawValue
-            let onGoals = homeRoute == HomeRoute.goals.rawValue
-            let onCoach = homeRoute == HomeRoute.coach.rawValue
+            let onBudget = currentTab == HomeRoute.budget.rawValue
+            let onGoals = currentTab == HomeRoute.goals.rawValue
+            let onCoach = currentTab == HomeRoute.coach.rawValue
             if features.leaves(FeaturesViewModel.budgetFeature, onTab: onBudget)
                 || features.leaves(FeaturesViewModel.goalsFeature, onTab: onGoals)
                 || features.leaves(FeaturesViewModel.chatFeature, onTab: onCoach) {
-                goHome()
+                // Under a screen over the bar, only the tab it returns to moves.
+                if onTabs { goHome() } else { lastTab = HomeRoute.home.rawValue }
             }
         }
+        .onChange(of: homeRoute, initial: true) { _, route in
+            if Self.tabRoutes.contains(route) { lastTab = route }
+        }
         .tint(Brand.greenDeep)
-        // Leaving the tabs for good — for the import, an entry, signing out —
-        // closes their clients. Switching between them does not: a tab keeps
-        // its connections and its figures, and stays current through
-        // LedgerChanged while it is out of sight.
+        // Leaving the tabs for good — signing out — closes their clients. A
+        // screen opened over the bar does not: the tabs stay alive under it,
+        // keep their connections, figures and scroll, and stay current through
+        // LedgerChanged while out of sight.
         .onDisappear {
             dashboardModel.unbind()
             transactionsModel.unbind()
@@ -445,6 +544,14 @@ struct RootView: View {
             goalsModel.unbind()
             chatModel.unbind()
         }
+    }
+
+    /// Open Profile, remembering where to go back to. From the wizard it
+    /// opened, the way back stays the one Profile already had.
+    private func openProfile() {
+        let from = HomeRoute(rawValue: homeRoute) ?? .home
+        if from != .profile && from != .editSetup { profileFrom = from.rawValue }
+        withAnimation(.easeOut(duration: 0.3)) { homeRoute = HomeRoute.profile.rawValue }
     }
 
     /// Open the plan (#76), remembering where to go back to.
@@ -511,6 +618,10 @@ private enum HomeRoute: String {
     case planDebts = "plan_debts"
     /// Split expense, from Home's "Split a bill".
     case split
+    /// Profile, from Home's monogram and every "Open Profile".
+    case profile
+    /// The setup wizard over answers already given, from Profile.
+    case editSetup = "edit_setup"
 
     static func route(for kind: MoneyKind) -> HomeRoute {
         switch kind {

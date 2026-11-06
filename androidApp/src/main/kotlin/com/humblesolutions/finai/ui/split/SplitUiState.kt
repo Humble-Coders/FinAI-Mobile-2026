@@ -2,7 +2,6 @@ package com.humblesolutions.finai.ui.split
 
 import com.humblesolutions.finai.i18n.LocalizationRegistry
 import com.humblesolutions.finai.i18n.Strings
-import com.humblesolutions.finai.model.AiPolicy
 import com.humblesolutions.finai.model.Split
 import com.humblesolutions.finai.model.SplitContact
 import com.humblesolutions.finai.model.SplitMode
@@ -22,14 +21,6 @@ internal enum class SplitStep { START, BILL, PEOPLE, ASSIGN, REVIEW, HISTORY }
 
 /** Where a receipt is: waiting to be chosen, being read, or read and under review. */
 internal enum class ReceiptStage { PICK, READING, READ }
-
-/** Consent to AI processing, asked before the first receipt is read. Nothing is pre-ticked. */
-internal data class SplitConsentAsk(
-    val policy: AiPolicy? = null,
-    val ticked: Boolean = false,
-    val busy: Boolean = false,
-    val errorKey: String? = null,
-)
 
 /** The "Add new person" sheet: typed, or filled from the phone's contacts. */
 internal data class NewPersonDraft(
@@ -70,7 +61,14 @@ internal data class SplitUiState(
     /** The read failed in a way that sending the same text again could fix. */
     val receiptCanRetry: Boolean = false,
     val unreadable: Int = 0,
-    val consent: SplitConsentAsk? = null,
+    /**
+     * The server would not read the receipt for want of AI consent: a sheet
+     * says so and links to Profile, the one place it is given (PM decision,
+     * 2026-11-06).
+     */
+    val aiOff: Boolean = false,
+    /** Profile was opened from that sheet: coming back reads the same receipt again. */
+    val readAfterProfile: Boolean = false,
     // ── People ──
     val contacts: List<SplitContact> = emptyList(),
     val contactsLoading: Boolean = false,

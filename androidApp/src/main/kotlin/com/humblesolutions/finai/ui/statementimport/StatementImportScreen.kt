@@ -71,7 +71,7 @@ import com.humblesolutions.finai.model.Transaction
 import com.humblesolutions.finai.model.TransactionDirection
 import com.humblesolutions.finai.ui.components.AccountSheet
 import com.humblesolutions.finai.ui.components.AccountTints
-import com.humblesolutions.finai.ui.components.AiConsentPanel
+import com.humblesolutions.finai.ui.components.AiOffNotice
 import com.humblesolutions.finai.ui.components.ChoiceCard
 import com.humblesolutions.finai.ui.components.ErrorText
 import com.humblesolutions.finai.ui.components.GradientButton
@@ -111,8 +111,8 @@ class StatementImportActions(
     val onPickPhoto: () -> Unit,
     val onTakePhoto: () -> Unit,
     val onSubmitPassword: (String) -> Unit,
-    val onConsentTicked: (Boolean) -> Unit,
-    val onAgree: () -> Unit,
+    /** Profile, where AI is turned on, from the step that says it is off. */
+    val onOpenProfile: () -> Unit,
     val onDeclineConsent: () -> Unit,
     val onRetry: () -> Unit,
     val onChooseAnother: () -> Unit,
@@ -166,7 +166,7 @@ fun StatementImportScreen(state: StatementImportUiState, actions: StatementImpor
 
                     ImportStep.CHOOSE_FILE -> FileStep(state, actions)
 
-                    ImportStep.CONSENT -> Panelled { ConsentStep(state, actions) }
+                    ImportStep.CONSENT -> Panelled { ConsentStep(actions) }
 
                     ImportStep.PASSWORD -> Panelled { PasswordStep(state, actions) }
 
@@ -394,19 +394,25 @@ private fun PrivacyNote() {
     }
 }
 
+/**
+ * AI processing is off, so the statement was not sent: said in one line with
+ * the way to Profile, the one place it is turned on (PM decision,
+ * 2026-11-06). "Not now" goes back to choosing a file.
+ */
 @Composable
-private fun ConsentStep(state: StatementImportUiState, actions: StatementImportActions) {
-    // Shared with the coach (#54), so both ask the same way.
-    AiConsentPanel(
-        title = strings(Strings.import_consent_title),
-        policy = state.policy,
-        ticked = state.consentTicked,
-        busy = state.consentBusy,
-        errorKey = state.consentErrorKey,
-        onTicked = actions.onConsentTicked,
-        onAgree = actions.onAgree,
-        onNotNow = actions.onDeclineConsent,
-    )
+private fun ConsentStep(actions: StatementImportActions) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text(
+            text = strings(Strings.import_consent_title),
+            style = MaterialTheme.typography.headlineSmall,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.semantics { heading() },
+        )
+        AiOffNotice(actions.onOpenProfile)
+        TextButton(onClick = actions.onDeclineConsent, modifier = Modifier.fillMaxWidth()) {
+            Text(strings(Strings.import_consent_not_now))
+        }
+    }
 }
 
 @Composable

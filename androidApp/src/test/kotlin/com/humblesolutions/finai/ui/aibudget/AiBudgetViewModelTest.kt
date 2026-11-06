@@ -7,10 +7,14 @@ import com.humblesolutions.finai.model.AiProposal
 import com.humblesolutions.finai.model.AiProposalLine
 import com.humblesolutions.finai.model.ApiException
 import com.humblesolutions.finai.model.Budget
+import com.humblesolutions.finai.model.Category
 import com.humblesolutions.finai.model.FeatureReason
 import com.humblesolutions.finai.model.SpendingCheck
-import com.humblesolutions.finai.repository.AiConsentRepository
+import com.humblesolutions.finai.model.Terms
+import com.humblesolutions.finai.repository.AiBudgetDraftStore
 import com.humblesolutions.finai.repository.BudgetRepository
+import com.humblesolutions.finai.repository.CategoriesRepository
+import com.humblesolutions.finai.repository.LegalRepository
 import com.humblesolutions.finai.usecase.AiBudgetBlock
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -80,18 +84,95 @@ class AiBudgetViewModelTest {
         override fun close() = Unit
     }
 
-    private class FakeConsent : AiConsentRepository {
-        var agreed: String? = null
-        override suspend fun policy() = AiPolicy(version = "ai-v2", body = "What is sent, and why.")
-        override suspend fun consent(version: String) {
-            agreed = version
-        }
-        override suspend fun status() = AiConsentStatus(consented = agreed != null, version = "ai-v2")
+    private class FakeCategories : CategoriesRepository {
+        override suspend fun list() = listOf(
+            Category("cat-rent", "rent", "Rent & mortgage"),
+            Category("cat-groceries", "groceries", "Groceries"),
+            Category("cat-gifts", "gifts", "Gifts"),
+            Category("cat-income", "income", "Income"),
+        )
+        override suspend fun create(name: String) = Category("cat-new", "new", name, isSystem = false)
         override fun close() = Unit
     }
 
-    private fun model(budgets: FakeBudgets, consent: FakeConsent = FakeConsent()) = AiBudgetViewModel().also {
-        it.bind("user-1") { AiBudgetRepositories(budgets, consent) }
+    /** The phone's storage, shared across models so a second one is "coming back". */
+    private class FakeDrafts : AiBudgetDraftStore {
+        val kept = mutableMapOf<String, String>()
+        override fun load(userId: String) = kept[userId]
+        override fun save(userId: String, draft: String) {
+            kept[userId] = draft
+        }
+        override fun clear(userId: String) {
+            kept.remove(userId)
+        }
+    }
+
+    private fun model(budgets: FakeBudgets, drafts: FakeDrafts = FakeDrafts(), legal: FakeLegal? = null) = AiBudgetViewModel().also {
+        it.bind("user-1") { AiBudgetRepositories(budgets, FakeCategories(), drafts, legal) }
+    }
+
+    /** Setup's one-time AI consent: the policy, and what was agreed to. */
+    private class FakeLegal : LegalRepository {
+        var agreed: String? = null
+        override suspend fun terms() = Terms()
+        override suspend fun disclaimer(): Terms? = null
+        override suspend fun aiPolicy() = AiPolicy(version = "ai-v2", body = "What is sent, and why.")
+        override suspend fun aiStatus() = AiConsentStatus(consented = agreed != null, version = "ai-v2")
+        override suspend fun consentToAi(version: String) {
+            agreed = version
+        }
+        override suspend fun withdrawAi() = AiConsentStatus(consented = false, version = "ai-v2")
+        override fun close() = Unit
+    }
+
+    @Test
+    fun in_setup_the_ai_is_agreed_to_once_and_the_budget_suggested() = runTest {
+        val budgets = FakeBudgets(made = proposal, failSuggest = ApiException.ConsentRequired("ai-v2"))
+        val legal = FakeLegal()
+        val model = model(budgets, legal = legal)
+        assertTrue(model.uiState.value.aiOff)
+        assertEquals("ai-v2", model.uiState.value.policy?.version)
+
+        budgets.failSuggest = null
+        model.agreeToAi()
+        assertNull(legal.agreed, "nothing is agreed to before the box is ticked")
+        model.onConsentTicked(true)
+        model.agreeToAi()
+
+        assertEquals("ai-v2", legal.agreed)
+        assertFalse(model.uiState.value.aiOff)
+        assertEquals(proposal, model.uiState.value.proposal)
+    }
+
+    @Test
+    fun lines_added_removed_and_typed_come_back_without_asking_the_ai_again() = runTest {
+        val budgets = FakeBudgets(stored = proposal)
+        val drafts = FakeDrafts()
+        val first = model(budgets, drafts = drafts)
+        assertEquals(listOf("Gifts"), first.uiState.value.addable.map { it.name })
+        assertFalse(first.uiState.value.canRemove(0), "rent holds commitments")
+        assertTrue(first.uiState.value.canRemove(1))
+
+        first.onAdd(first.uiState.value.addable.single())
+        first.onAmount(3, "40")
+        first.onRemove(1)
+
+        val back = model(budgets, drafts = drafts).uiState.value
+        assertEquals(listOf("Rent & mortgage", "Debt payment", "Gifts"), back.draft.lines.map { it.line.name })
+        assertEquals("40", back.draft.lines.last().amount)
+        assertEquals(0, budgets.suggestions, "coming back never asks the AI")
+    }
+
+    @Test
+    fun starting_the_budget_forgets_the_kept_draft() = runTest {
+        val drafts = FakeDrafts()
+        val model = model(FakeBudgets(stored = proposal), drafts = drafts)
+        model.onAmount(1, "450")
+        assertTrue(drafts.kept.isNotEmpty())
+
+        model.start {}
+
+        assertTrue(drafts.kept.isEmpty())
     }
 
     @Test
@@ -114,21 +195,19 @@ class AiBudgetViewModelTest {
     }
 
     @Test
-    fun without_consent_the_policy_is_shown_and_agreeing_asks_again() = runTest {
+    fun without_consent_ai_is_said_to_be_off_and_coming_back_asks_again() = runTest {
         val budgets = FakeBudgets(made = proposal, failSuggest = ApiException.ConsentRequired("ai-v2"))
-        val consent = FakeConsent()
-        val model = model(budgets, consent)
-        assertTrue(model.uiState.value.needsConsent)
+        val model = model(budgets)
+        assertTrue(model.uiState.value.aiOff, "consent is given in Profile, not here")
+        assertNull(model.uiState.value.proposal)
 
+        // Turned on in Profile; back here, the suggestion is asked for again.
         budgets.failSuggest = null
-        model.agree()
-        assertNull(consent.agreed, "nothing is agreed to before the box is ticked")
-        model.onConsentTicked(true)
-        model.agree()
+        model.retryAfterAi()
 
-        assertEquals("ai-v2", consent.agreed)
-        assertFalse(model.uiState.value.needsConsent)
+        assertFalse(model.uiState.value.aiOff)
         assertNotNull(model.uiState.value.proposal)
+        assertEquals(2, budgets.suggestions)
     }
 
     @Test

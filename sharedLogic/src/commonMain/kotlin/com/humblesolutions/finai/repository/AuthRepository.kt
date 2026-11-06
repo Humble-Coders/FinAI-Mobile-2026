@@ -114,6 +114,18 @@ interface AuthRepository {
     @Throws(ApiException::class, CancellationException::class)
     suspend fun acceptTerms(version: String): Me
 
+    /** Profile's name for the person. Answers with the updated `/me`. */
+    @Throws(ApiException::class, CancellationException::class)
+    suspend fun updateName(name: String): Me
+
+    /**
+     * Deletes the account on the server — every row and the sign-in — then
+     * clears the session here. [ApiException.DeletionUnavailable] when the
+     * server could not, in which case nothing was deleted.
+     */
+    @Throws(ApiException::class, CancellationException::class)
+    suspend fun deleteAccount()
+
     /** Releases the HTTP client. Built fresh per bind, never shared. */
     fun close()
 }

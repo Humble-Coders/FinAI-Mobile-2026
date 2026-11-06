@@ -164,15 +164,7 @@ final class OnboardingViewModel: ObservableObject {
                 if state == .signedIn {
                     self.loadMe()
                 } else if state == .signedOut, was != .signedOut {
-                    self.me = nil
-                    self.meFailure = nil
-                    self.terms = nil
-                    self.code = ""
-                    self.codeSent = false
-                    self.phoneDigits = ""
-                    self.reset = nil
-                    self.emailCodeFor = nil
-                    self.password = ""
+                    self.clearSignedOut()
                 }
             }
         }
@@ -519,6 +511,39 @@ final class OnboardingViewModel: ObservableObject {
     func signOut() {
         guard let auth else { return }
         perform { try await auth.signOut() } onSuccess: {}
+    }
+
+    /// Profile saved something and the server answered with the new `/me`:
+    /// take it, so every screen reading the person — Home's monogram — changes.
+    func replaceMe(_ updated: Me) {
+        guard session == .signedIn else { return }
+        me = updated
+    }
+
+    /// Profile deleted the account. The shared repository drops the session,
+    /// which the session stream reports; should that not arrive — the local
+    /// clear failed — the app still leaves for the welcome screen rather than
+    /// staying signed in to an account that no longer exists.
+    func accountDeleted() {
+        Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 500_000_000)
+            guard let self, self.session != .signedOut else { return }
+            self.session = .signedOut
+            self.clearSignedOut()
+        }
+    }
+
+    /// Nothing of the person who left stays behind for whoever signs in next.
+    private func clearSignedOut() {
+        me = nil
+        meFailure = nil
+        terms = nil
+        code = ""
+        codeSent = false
+        phoneDigits = ""
+        reset = nil
+        emailCodeFor = nil
+        password = ""
     }
 
     func retry() {

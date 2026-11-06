@@ -140,7 +140,11 @@ struct ChatView: View {
                     }
                 }
             }
-            if let failure = thread.failure, !failure.needsConsent {
+            // AI is off: consent is given in Profile only (2026-11-06). The
+            // question stays failed, so Try again sends it on coming back.
+            if let failure = thread.failure, failure.needsConsent {
+                AiOffNotice(onRetry: { model.retry() })
+            } else if let failure = thread.failure {
                 HStack {
                     Text(L.t(failure.messageKey))
                         .font(.footnote)

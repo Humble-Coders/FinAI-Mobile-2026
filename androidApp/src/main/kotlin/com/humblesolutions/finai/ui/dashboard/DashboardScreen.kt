@@ -47,7 +47,6 @@ import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CreditCard
 import androidx.compose.material.icons.filled.NorthEast
-import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Savings
 import androidx.compose.material.icons.filled.SouthWest
@@ -148,7 +147,10 @@ fun DashboardScreen(
     onAddTransaction: () -> Unit,
     onReview: () -> Unit,
     onViewAll: () -> Unit,
-    onSignOut: () -> Unit,
+    /** The monogram in the header: the person's initials, from shared `Profile`. */
+    initials: String = "",
+    /** Opens Profile, from the monogram where the bell was. */
+    onOpenProfile: () -> Unit = {},
     commitments: CommitmentActions = CommitmentActions(),
     onOpenMoney: (MoneyKind) -> Unit = {},
     insights: InsightActions = InsightActions(),
@@ -207,7 +209,7 @@ fun DashboardScreen(
                     ) {
                         // Out over the first half of the stretch; the bar comes in over the
                         // second, so the two greetings are never on screen together.
-                        Header(state, onReview, Modifier.graphicsLayer { alpha = 1f - (collapsed() * 2f).coerceAtMost(1f) })
+                        Header(initials, onOpenProfile, Modifier.graphicsLayer { alpha = 1f - (collapsed() * 2f).coerceAtMost(1f) })
                         Spacer(Modifier.height(26.dp))
                         Hero(state, onToggleAmounts, onPreviousMonth, onNextMonth)
                         sections.freshness?.let {
@@ -238,11 +240,11 @@ fun DashboardScreen(
                     }
                 }
 
-                Sheet(state, sections, onViewAll, onSignOut, commitments, insights)
+                Sheet(state, sections, onViewAll, commitments, insights)
             }
         }
 
-        CompactHeader(state, dark, collapsed, onReview)
+        CompactHeader(initials, onOpenProfile, dark, collapsed)
     }
 }
 
@@ -254,10 +256,10 @@ private val SHEET_OVERLAP = 28.dp
 // ── The header ──────────────────────────────────────────────────────────
 
 @Composable
-private fun Header(state: DashboardUiState, onReview: () -> Unit, modifier: Modifier = Modifier) {
+private fun Header(initials: String, onOpenProfile: () -> Unit, modifier: Modifier = Modifier) {
     Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        // A silhouette, not an initial. We deliberately do not hold a name:
-        // the requirements forbid collecting one, and a letter would need it.
+        // A silhouette, not an initial: the initials are on the right, on
+        // the one control that opens Profile.
         Box(
             modifier = Modifier
                 .size(52.dp)
@@ -276,31 +278,32 @@ private fun Header(state: DashboardUiState, onReview: () -> Unit, modifier: Modi
                 color = Field.ink(),
             )
         }
-        Bell(state, onReview, 48.dp)
+        ProfileButton(initials, 48.dp, onOpenProfile)
     }
 }
 
-/** The header once the page has scrolled, with the bell still in reach. */
+/** The header once the page has scrolled, with Profile still in reach. */
 @Composable
-private fun CompactHeader(state: DashboardUiState, dark: Boolean, collapsed: () -> Float, onReview: () -> Unit) {
+private fun CompactHeader(initials: String, onOpenProfile: () -> Unit, dark: Boolean, collapsed: () -> Float) {
     CollapsingTitleBar(strings(Strings.tab_home), dark, collapsed) {
-        Bell(state, onReview, 40.dp, Modifier.align(Alignment.CenterEnd))
+        ProfileButton(initials, 40.dp, onOpenProfile, Modifier.align(Alignment.CenterEnd))
     }
 }
 
 /**
- * The bell is the review queue, and its dot means something: rows are
- * waiting. A decorative badge that never changes teaches people to ignore it.
+ * The person's monogram, where the bell was (PM decision, 2026-11-06): the
+ * way into Profile. Glass on the green field, as the bell was, with a touch
+ * target of at least 48dp however small it is drawn.
  */
 @Composable
-private fun Bell(state: DashboardUiState, onReview: () -> Unit, size: Dp, modifier: Modifier = Modifier) {
+private fun ProfileButton(initials: String, size: Dp, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val label = strings(Strings.profile_open)
     Box(
         modifier = modifier
-            // Never under 48dp to touch, however small it is drawn.
             .size(maxOf(size, 48.dp))
             .clip(CircleShape)
-            .clickable(onClick = onReview)
-            .semantics { contentDescription = state.notificationsLabel },
+            .clickable(role = Role.Button, onClick = onClick)
+            .semantics { contentDescription = label },
         contentAlignment = Alignment.Center,
     ) {
         Box(
@@ -308,19 +311,20 @@ private fun Bell(state: DashboardUiState, onReview: () -> Unit, size: Dp, modifi
                 .size(size)
                 .clip(CircleShape)
                 .background(Field.Glass)
-                .border(1.dp, Field.GlassEdge, CircleShape),
+                .border(1.dp, Field.GlassEdge, CircleShape)
+                // The letters would be read out one by one; the label says what it is.
+                .clearAndSetSemantics {},
             contentAlignment = Alignment.Center,
         ) {
-            FinAiIcon(Icons.Filled.Notifications, tint = Field.ink(), size = size * 0.46f)
-            if (state.hasPending) {
-                Box(
-                    Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(top = size * 0.23f, end = size * 0.25f)
-                        .size(9.dp)
-                        .clip(CircleShape)
-                        .background(FinAiPalette.Red)
-                        .border(1.5.dp, Field.ink(), CircleShape),
+            if (initials.isEmpty()) {
+                FinAiIcon(Icons.Filled.Person, tint = Field.ink(), size = size * 0.46f)
+            } else {
+                Text(
+                    initials,
+                    color = Field.ink(),
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = (size.value * 0.36f).sp,
+                    maxLines = 1,
                 )
             }
         }
@@ -968,7 +972,6 @@ private fun Sheet(
     state: DashboardUiState,
     sections: HomeSections,
     onViewAll: () -> Unit,
-    onSignOut: () -> Unit,
     commitments: CommitmentActions,
     insights: InsightActions,
 ) {
@@ -1009,9 +1012,6 @@ private fun Sheet(
                 Commitments(state, commitments)
             }
             Spacer(Modifier.height(12.dp))
-            TextButton(onClick = onSignOut, modifier = Modifier.align(Alignment.CenterHorizontally)) {
-                Text(strings(Strings.action_sign_out), color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
         }
     }
 }

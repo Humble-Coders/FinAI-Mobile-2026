@@ -32,8 +32,9 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.humblesolutions.finai.BuildConfig
 import com.humblesolutions.finai.i18n.LocalizationRegistry
 import com.humblesolutions.finai.i18n.Strings
-import com.humblesolutions.finai.ui.components.AiConsentPanel
+import com.humblesolutions.finai.ui.components.AiOffNotice
 import com.humblesolutions.finai.ui.components.LoaderSignal
+import com.humblesolutions.finai.ui.components.RetryWhenBack
 import com.humblesolutions.finai.ui.strings
 import java.io.File
 
@@ -46,7 +47,7 @@ import java.io.File
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun SplitRoute(userId: String, currency: String, locale: String, onClose: () -> Unit) {
+internal fun SplitRoute(userId: String, currency: String, locale: String, onClose: () -> Unit, onOpenProfile: () -> Unit = {}) {
     val model: SplitViewModel = viewModel()
     val state by model.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
@@ -182,24 +183,18 @@ internal fun SplitRoute(userId: String, currency: String, locale: String, onClos
         }
     }
 
-    state.consent?.let { ask ->
-        ModalBottomSheet(onDismissRequest = model::declineConsent) {
-            AiConsentPanel(
-                title = strings(Strings.split_consent_title),
-                policy = ask.policy,
-                ticked = ask.ticked,
-                busy = ask.busy,
-                errorKey = ask.errorKey,
-                onTicked = model::onConsentTicked,
-                onAgree = model::agree,
-                onNotNow = model::declineConsent,
-                modifier = Modifier
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 20.dp)
-                    .navigationBarsPadding(),
+    if (state.aiOff) {
+        ModalBottomSheet(onDismissRequest = model::dismissAiOff) {
+            AiOffNotice(
+                onOpenProfile = {
+                    model.openProfileForAi()
+                    onOpenProfile()
+                },
+                modifier = Modifier.padding(horizontal = 20.dp).padding(bottom = 24.dp).navigationBarsPadding(),
             )
         }
     }
+    RetryWhenBack(state.readAfterProfile, model::retryAfterAi)
 }
 
 /**

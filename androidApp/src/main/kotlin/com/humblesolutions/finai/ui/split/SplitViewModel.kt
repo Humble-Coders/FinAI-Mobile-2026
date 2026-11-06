@@ -7,7 +7,6 @@ import androidx.lifecycle.viewModelScope
 import com.humblesolutions.finai.config.ApiConfig
 import com.humblesolutions.finai.config.Supabase
 import com.humblesolutions.finai.data.AndroidStatementReader
-import com.humblesolutions.finai.data.KtorAiConsentRepository
 import com.humblesolutions.finai.data.KtorSplitRepository
 import com.humblesolutions.finai.data.SupabaseTokenSource
 import com.humblesolutions.finai.i18n.Strings
@@ -15,7 +14,6 @@ import com.humblesolutions.finai.model.ApiException
 import com.humblesolutions.finai.model.SplitContact
 import com.humblesolutions.finai.model.SplitMode
 import com.humblesolutions.finai.model.SplitSummary
-import com.humblesolutions.finai.repository.AiConsentRepository
 import com.humblesolutions.finai.repository.SplitRepository
 import com.humblesolutions.finai.repository.StatementReader
 import com.humblesolutions.finai.usecase.ManualEntry
@@ -37,13 +35,11 @@ import kotlin.coroutines.cancellation.CancellationException
 /** The clients a split needs, built fresh on every bind and closed with it. */
 internal class SplitRepositories(
     val splits: SplitRepository,
-    val consent: AiConsentRepository,
     /** The statement import's own on-device reader: ML Kit for photos, PdfBox for PDFs. */
     val reader: StatementReader,
 ) {
     fun close() {
         splits.close()
-        consent.close()
         reader.close()
     }
 }
@@ -92,7 +88,6 @@ internal class SplitViewModel internal constructor(
             val tokens = SupabaseTokenSource(client)
             SplitRepositories(
                 splits = KtorSplitRepository(ApiConfig.BASE_URL, tokens, logging),
-                consent = KtorAiConsentRepository(ApiConfig.BASE_URL, tokens, logging),
                 reader = AndroidStatementReader(context.applicationContext),
             )
         }
@@ -304,8 +299,7 @@ internal class SplitViewModel internal constructor(
             throw e
         } catch (e: ApiException.ConsentRequired) {
             if (started != generation) return
-            change { it.copy(receiptStage = ReceiptStage.PICK) }
-            askForConsent()
+            change { it.copy(receiptStage = ReceiptStage.PICK, aiOff = true) }
         } catch (e: ApiException) {
             if (started != generation) return
             receiptFailed(e.messageKey, canRetry = e is ApiException.Network || e is ApiException.Server || e is ApiException.ParseFailed)
@@ -337,50 +331,20 @@ internal class SplitViewModel internal constructor(
         }
     }
 
-    // ── Consent ─────────────────────────────────────────────────────────
-
-    /** Reads the policy to show; [errorKey] says why it is being asked again. */
-    private fun askForConsent(errorKey: String? = null) {
-        val repos = repositories ?: return
-        update { it.copy(consent = SplitConsentAsk(busy = true, errorKey = errorKey)) }
-        viewModelScope.launch {
-            try {
-                val policy = repos.consent.policy()
-                update { it.copy(consent = it.consent?.copy(policy = policy, busy = false)) }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: ApiException) {
-                update { it.copy(consent = it.consent?.copy(busy = false, errorKey = e.messageKey)) }
-            }
-        }
-    }
-
-    fun onConsentTicked(ticked: Boolean) = update { it.copy(consent = it.consent?.copy(ticked = ticked)) }
-
-    /** Records consent to the version shown, then reads the receipt it was asked for. */
-    fun agree() {
-        val repos = repositories ?: return
-        val ask = _uiState.value.consent ?: return
-        val policy = ask.policy ?: return
-        if (!ask.ticked || ask.busy) return
-        update { it.copy(consent = ask.copy(busy = true, errorKey = null)) }
-        viewModelScope.launch {
-            try {
-                repos.consent.consent(policy.version)
-                update { it.copy(consent = null) }
-                retryReceipt()
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: ApiException.AiPolicyChanged) {
-                askForConsent(e.messageKey)
-            } catch (e: ApiException) {
-                update { it.copy(consent = it.consent?.copy(busy = false, errorKey = e.messageKey)) }
-            }
-        }
-    }
+    // ── AI off ──────────────────────────────────────────────────────────
 
     /** "Not now": nothing is read; the bill can still be typed in. */
-    fun declineConsent() = update { it.copy(consent = null) }
+    fun dismissAiOff() = update { it.copy(aiOff = false) }
+
+    /** "Open Profile" from the sheet: it closes, and coming back reads the receipt again. */
+    fun openProfileForAi() = update { it.copy(aiOff = false, readAfterProfile = true) }
+
+    /** Back from Profile, where AI may have been turned on: the same receipt, read again. */
+    fun retryAfterAi() {
+        if (!_uiState.value.readAfterProfile) return
+        update { it.copy(readAfterProfile = false) }
+        retryReceipt()
+    }
 
     // ── People ──────────────────────────────────────────────────────────
 

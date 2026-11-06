@@ -1,8 +1,6 @@
 package com.humblesolutions.finai.ui.split
 
 import androidx.lifecycle.SavedStateHandle
-import com.humblesolutions.finai.model.AiConsentStatus
-import com.humblesolutions.finai.model.AiPolicy
 import com.humblesolutions.finai.model.ApiException
 import com.humblesolutions.finai.model.ExtractedDocument
 import com.humblesolutions.finai.model.ExtractedLine
@@ -15,7 +13,6 @@ import com.humblesolutions.finai.model.SplitMode
 import com.humblesolutions.finai.model.SplitParticipant
 import com.humblesolutions.finai.model.SplitSummary
 import com.humblesolutions.finai.model.SplitToSave
-import com.humblesolutions.finai.repository.AiConsentRepository
 import com.humblesolutions.finai.repository.SplitRepository
 import com.humblesolutions.finai.repository.StatementReader
 import com.humblesolutions.finai.usecase.SplitBlock
@@ -97,16 +94,6 @@ class SplitViewModelTest {
         override fun close() = Unit
     }
 
-    private class FakeConsent : AiConsentRepository {
-        val agreed = mutableListOf<String>()
-        override suspend fun policy() = AiPolicy(version = "ai-v1", body = "We send the receipt's text to an AI service.")
-        override suspend fun consent(version: String) {
-            agreed += version
-        }
-        override suspend fun status() = AiConsentStatus()
-        override fun close() = Unit
-    }
-
     private class FakeReader(private val lines: List<String>) : StatementReader {
         val read = mutableListOf<String>()
         override suspend fun read(source: String, password: String?, onPage: (Int, Int) -> Unit): ExtractedDocument {
@@ -120,10 +107,9 @@ class SplitViewModelTest {
 
     private fun model(
         splits: FakeSplits = FakeSplits(),
-        consent: FakeConsent = FakeConsent(),
         reader: FakeReader = FakeReader(receiptLines),
     ) = SplitViewModel(SavedStateHandle()) { LocalDate(2026, 11, 4) }.also {
-        it.bind("user-1", "INR", "en") { SplitRepositories(splits, consent, reader) }
+        it.bind("user-1", "INR", "en") { SplitRepositories(splits, reader) }
     }
 
     private val SplitViewModel.state get() = uiState.value
@@ -208,31 +194,29 @@ class SplitViewModelTest {
     }
 
     @Test
-    fun `consent asked for by the server is shown and the receipt read again once given`() {
+    fun `ai off is said with the way to Profile and the receipt is read again on coming back`() {
         val splits = FakeSplits()
         splits.receiptAnswers += ApiException.ConsentRequired("ai-v1")
         splits.receiptAnswers += ReceiptRead(merchant = "Cafe", total = "600.00")
-        val consent = FakeConsent()
-        val model = model(splits = splits, consent = consent)
+        val model = model(splits = splits)
         model.chooseSource(SplitSource.RECEIPT)
         model.chooseMode(SplitMode.EQUAL)
         model.continueFromStart()
 
         model.onReceiptPicked("content://receipt/1")
 
-        val ask = assertNotNull(model.state.consent)
-        assertEquals("ai-v1", ask.policy?.version)
+        assertTrue(model.state.aiOff, "consent is given in Profile, not here")
         assertEquals(ReceiptStage.PICK, model.state.receiptStage)
 
-        // Nothing is pre-ticked: agreeing without the tick does nothing.
-        model.agree()
-        assertTrue(consent.agreed.isEmpty())
+        // A return that did not come from the sheet's button reads nothing.
+        model.retryAfterAi()
+        assertEquals(1, splits.receiptTexts.size)
 
-        model.onConsentTicked(true)
-        model.agree()
+        model.openProfileForAi()
+        assertFalse(model.state.aiOff)
+        model.retryAfterAi()
 
-        assertEquals(listOf("ai-v1"), consent.agreed)
-        assertNull(model.state.consent)
+        assertFalse(model.state.readAfterProfile)
         assertEquals(2, splits.receiptTexts.size)
         assertEquals(splits.receiptTexts[0], splits.receiptTexts[1])
         assertEquals(ReceiptStage.READ, model.state.receiptStage)
@@ -376,7 +360,7 @@ class SplitViewModelTest {
         val saved = SavedStateHandle()
         val splits = FakeSplits()
         val first = SplitViewModel(saved) { LocalDate(2026, 11, 4) }
-        first.bind("user-1", "INR", "en") { SplitRepositories(splits, FakeConsent(), FakeReader(receiptLines)) }
+        first.bind("user-1", "INR", "en") { SplitRepositories(splits, FakeReader(receiptLines)) }
         first.chooseSource(SplitSource.MANUAL)
         first.chooseMode(SplitMode.ITEMS)
         first.continueFromStart()
@@ -386,14 +370,14 @@ class SplitViewModelTest {
         first.toggleAssignee(0, 1)
 
         val again = SplitViewModel(saved) { LocalDate(2026, 11, 4) }
-        again.bind("user-1", "INR", "en") { SplitRepositories(splits, FakeConsent(), FakeReader(receiptLines)) }
+        again.bind("user-1", "INR", "en") { SplitRepositories(splits, FakeReader(receiptLines)) }
 
         assertEquals(first.state.draft, again.state.draft)
         assertEquals(SplitStep.BILL, again.state.step)
 
         // Someone else signing in on the phone starts clean.
         val other = SplitViewModel(saved) { LocalDate(2026, 11, 4) }
-        other.bind("user-2", "INR", "en") { SplitRepositories(splits, FakeConsent(), FakeReader(receiptLines)) }
+        other.bind("user-2", "INR", "en") { SplitRepositories(splits, FakeReader(receiptLines)) }
         assertNull(other.state.draft.mode)
         assertEquals(SplitStep.START, other.state.step)
     }

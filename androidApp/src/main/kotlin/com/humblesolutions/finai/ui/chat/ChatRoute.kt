@@ -19,22 +19,35 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.humblesolutions.finai.BuildConfig
 import com.humblesolutions.finai.i18n.Strings
-import com.humblesolutions.finai.ui.components.AiConsentPanel
 import com.humblesolutions.finai.ui.components.LoaderSignal
+import com.humblesolutions.finai.ui.components.RetryWhenBack
+import com.humblesolutions.finai.ui.components.TabSkeleton
 import com.humblesolutions.finai.ui.strings
 
 /** The Coach tab with its own view model (#54). */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun ChatRoute(userId: String, onClose: () -> Unit, onConversationOpen: (Boolean) -> Unit = {}) {
+internal fun ChatRoute(
+    userId: String,
+    onClose: () -> Unit,
+    onConversationOpen: (Boolean) -> Unit = {},
+    /** Profile, where AI is turned on. */
+    onOpenProfile: () -> Unit = {},
+) {
     val model: ChatViewModel = viewModel()
     val state by model.uiState.collectAsStateWithLifecycle()
     LaunchedEffect(userId) { model.bind(userId, logging = BuildConfig.DEBUG) }
     // The tab bar steps aside while a conversation is open: it has its own bar.
     LaunchedEffect(state.openId) { onConversationOpen(state.openId != null) }
-    // Only a first read earns the coin.
-    LoaderSignal(key = "chat", active = state.listLoading || (state.threadLoading && state.thread == null))
+    // A conversation's first read earns the coin; the list's draws its shape.
+    LoaderSignal(key = "chat", active = state.threadLoading && state.thread == null)
     BackHandler { if (state.openId != null) model.close() else onClose() }
+    // Back from Profile with the question refused for want of consent: sent again.
+    RetryWhenBack(state.thread?.failure?.needsConsent == true, model::retry)
+    if (state.openId == null && state.listLoading && !state.listLoaded) {
+        TabSkeleton(strings(Strings.chat_tab))
+        return
+    }
 
     if (state.openId == null) {
         ChatListScreen(
@@ -53,27 +66,9 @@ internal fun ChatRoute(userId: String, onClose: () -> Unit, onConversationOpen: 
                 onDismissFailure = model::dismissFailure,
                 onDisclaimer = { model.showDisclaimer(true) },
                 onReload = { state.openId?.let(model::open) },
+                onOpenProfile = onOpenProfile,
             ),
         )
-    }
-
-    state.consent?.let { ask ->
-        ModalBottomSheet(onDismissRequest = model::declineConsent) {
-            AiConsentPanel(
-                title = strings(Strings.chat_consent_title),
-                policy = ask.policy,
-                ticked = ask.ticked,
-                busy = ask.busy,
-                errorKey = ask.errorKey,
-                onTicked = model::onConsentTicked,
-                onAgree = model::agree,
-                onNotNow = model::declineConsent,
-                modifier = Modifier
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 20.dp)
-                    .navigationBarsPadding(),
-            )
-        }
     }
 
     if (state.showingDisclaimer) {

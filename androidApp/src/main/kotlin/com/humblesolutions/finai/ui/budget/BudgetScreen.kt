@@ -1,5 +1,6 @@
 package com.humblesolutions.finai.ui.budget
 
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -83,6 +84,7 @@ import androidx.compose.ui.unit.sp
 import com.humblesolutions.finai.i18n.Strings
 import com.humblesolutions.finai.model.BudgetLine
 import com.humblesolutions.finai.model.SpendingCheck
+import com.humblesolutions.finai.ui.components.AiOffNotice
 import com.humblesolutions.finai.ui.components.CollapsingTitleBar
 import com.humblesolutions.finai.ui.components.ErrorText
 import com.humblesolutions.finai.ui.components.Field
@@ -148,10 +150,11 @@ internal fun BudgetScreen(
     onOpenIncome: () -> Unit = {},
     /** Ticking a commitment off by hand. */
     tick: TickActions = TickActions(),
+    /** Held by the route, so a screen opened over this one gives it back where it was. */
+    scroll: ScrollState = rememberScrollState(),
 ) {
     val dark = isSystemInDarkTheme()
     LightStatusBarIcons(dark)
-    val scroll = rememberScrollState()
     // How far the big title has shrunk into the bar, as on Home.
     val collapsed = rememberTitleCollapse(scroll)
     var insightOpen by rememberSaveable { mutableStateOf(false) }
@@ -337,8 +340,8 @@ private fun MonthButton(state: BudgetUiState, onMonth: (String) -> Unit) {
 /** What "How you're spending" can ask of the model. */
 internal class SpendingActions(
     val onAsk: () -> Unit = {},
-    val onConsentTicked: (Boolean) -> Unit = {},
-    val onAgree: () -> Unit = {},
+    /** Profile, where AI is turned on, when the server says it is off. */
+    val onOpenProfile: () -> Unit = {},
 )
 
 /**
@@ -388,30 +391,8 @@ private fun SpendingCheckBody(state: BudgetUiState, check: SpendingCheck, action
     Text(SpendingCheckWords.title(state.locale), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Medium)
     Text(SpendingCheckWords.incomeLine(check, state.locale), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     state.spendingRows.forEach { ShareRow(it) }
-    val policy = state.spendingPolicy
-    if (policy != null) {
-        Text(strings(Strings.ai_budget_consent_title), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Medium)
-        Text(strings(Strings.ai_budget_consent_body), style = MaterialTheme.typography.bodySmall)
-        Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), tonalElevation = 2.dp) {
-            Text(policy.body, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(12.dp))
-        }
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .heightIn(min = 48.dp)
-                .toggleable(value = state.spendingConsentTicked, role = Role.Checkbox, onValueChange = actions.onConsentTicked),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Checkbox(checked = state.spendingConsentTicked, onCheckedChange = null)
-            Text(strings(Strings.import_consent_agree), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(start = 12.dp))
-        }
-        ErrorText(state.spendingErrorKey)
-        GradientButton(
-            text = strings(Strings.ai_budget_consent_allow),
-            onClick = actions.onAgree,
-            enabled = state.spendingConsentTicked,
-            busy = state.spendingConsentBusy,
-        )
+    if (state.spendingAiOff) {
+        AiOffNotice(actions.onOpenProfile)
         return
     }
     check.headline?.let { headline ->

@@ -110,7 +110,7 @@ data class SetupUiState(
     fun rowBlock(index: Int): SetupBlock? {
         val row = rows.getOrNull(index) ?: return null
         if (editing == ItemList.OBLIGATIONS) return SetupWizard.commitmentBlock(row, fractionDigits)
-        return SetupWizard.itemBlock(row, fractionDigits, debt = editing == ItemList.DEBTS)
+        return SetupWizard.editorItemBlock(row, fractionDigits, debt = editing == ItemList.DEBTS)
     }
 
     val canKeepRows: Boolean get() = !busy && rows.indices.all { rowBlock(it) == null }

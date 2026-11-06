@@ -300,22 +300,10 @@ struct BudgetView: View {
         Text(words.title(locale: model.locale)).font(.headline)
         Text(words.incomeLine(c: check, locale: model.locale)).font(.caption).foregroundColor(.secondary)
         ForEach(Array(model.spendingRows.enumerated()), id: \.offset) { _, row in shareRow(row, dark: dark) }
-        if let policy = model.spendingPolicy {
-            Text(L.t(Strings.shared.ai_budget_consent_title)).font(.subheadline.weight(.medium))
-            Text(L.t(Strings.shared.ai_budget_consent_body)).font(.caption)
-            Text(policy.body)
-                .font(.caption)
-                .padding(12)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(RoundedRectangle(cornerRadius: 12).fill(Color(.secondarySystemBackground)))
-            Toggle(isOn: $model.spendingConsentTicked) { Text(L.t(Strings.shared.import_consent_agree)) }
-                .toggleStyle(CheckboxStyle())
-            ErrorText(messageKey: model.spendingErrorKey)
-            GradientButton(
-                title: L.t(Strings.shared.ai_budget_consent_allow),
-                enabled: model.spendingConsentTicked,
-                busy: model.spendingConsentBusy
-            ) { model.agreeSpending() }
+        if model.spendingAiOff {
+            // Consent is given in Profile only (2026-11-06); the sheet closes
+            // on the way there, and Try again asks once they are back.
+            AiOffNotice(onRetry: { model.askSpending() }, beforeOpen: { insightOpen = false })
         } else {
             if let headline = check.headline {
                 HStack(alignment: .top, spacing: 10) {
@@ -346,7 +334,8 @@ struct BudgetView: View {
                 Text(words.runsLeft(c: check, locale: model.locale)).font(.caption2).foregroundColor(.secondary)
             }
             if check.hasAdvice {
-                Text(L.t(Strings.shared.diagnostic_guidance)).font(.caption2).foregroundColor(.secondary)
+                // The guidance itself is in Profile (2026-11-06).
+                DisclaimerLink(beforeOpen: { insightOpen = false })
             }
         }
     }
@@ -702,8 +691,10 @@ private struct LineRow: View {
         return BudgetBoard.shared.allotted(line: line, budget: budget, locale: model.locale)
     }
 
+    /// For a raise, only while the budget has room for it (`AiBudgetEdit.suggestionLabel`).
     private var aiLabel: String? {
-        AiBudgetEdit.shared.suggestionLabel(line: line, currency: model.currency, locale: model.locale)
+        guard let budget = model.budget else { return nil }
+        return AiBudgetEdit.shared.suggestionLabel(line: line, budget: budget, locale: model.locale)
     }
 
     /// What is said under the row, each in its own colour.

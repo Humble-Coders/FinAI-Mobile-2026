@@ -34,16 +34,7 @@ final class ChatViewModel: ObservableObject {
     @Published private(set) var disclaimer: Terms?
     @Published var showingDisclaimer = false
 
-    // MARK: Consent, asked for when a typed question needs it
-    @Published private(set) var consentAsked = false
-    @Published private(set) var policy: AiPolicy?
-    /// Unticked until the person ticks it — express consent, nothing pre-ticked.
-    @Published var consentTicked = false
-    @Published private(set) var consentBusy = false
-    @Published private(set) var consentErrorKey: String?
-
     private var chatRepository: ChatRepository?
-    private var consentRepository: AiConsentRepository?
     private var owner: String?
     /// The draft brought back by `restore`, until its conversation is open again.
     private var restoredDraft = ""
@@ -68,7 +59,6 @@ final class ChatViewModel: ObservableObject {
         let tokens = SupabaseTokenSource(client: client)
         let base = ApiConfig.shared.BASE_URL
         chatRepository = KtorChatRepository(baseUrl: base, tokens: tokens, logging: logging)
-        consentRepository = KtorAiConsentRepository(baseUrl: base, tokens: tokens, logging: logging)
         loadList()
         loadDisclaimer()
         if let openId {
@@ -80,14 +70,11 @@ final class ChatViewModel: ObservableObject {
 
     func unbind() {
         chatRepository?.close()
-        consentRepository?.close()
         chatRepository = nil
-        consentRepository = nil
     }
 
     deinit {
         chatRepository?.close()
-        consentRepository?.close()
     }
 
     private func reset() {
@@ -104,7 +91,6 @@ final class ChatViewModel: ObservableObject {
         disclaimer = nil
         showingDisclaimer = false
         restoredDraft = ""
-        clearConsent()
     }
 
     // MARK: The list
@@ -176,7 +162,6 @@ final class ChatViewModel: ObservableObject {
         openId = id
         threadLoading = true
         threadErrorKey = nil
-        clearConsent()
         Task {
             do {
                 let conversation = try await chatRepository.conversation(id: id)
@@ -203,7 +188,6 @@ final class ChatViewModel: ObservableObject {
         threadLoading = false
         threadErrorKey = nil
         restoredDraft = ""
-        clearConsent()
         loadList()
     }
 
@@ -259,66 +243,11 @@ final class ChatViewModel: ObservableObject {
                 guard started == generation, !Self.cancelled(error), let thread else { return }
                 let kotlin = Self.kotlin(error) ?? KotlinThrowable(message: error.localizedDescription)
                 let failed = ChatThread.shared.failed(state: thread, error: kotlin)
+                // A failure that needs consent is shown as AI being off, with
+                // the way to Profile (ChatView); nothing is asked here.
                 self.thread = failed
-                if failed.failure?.needsConsent == true { askForConsent() }
             }
         }
-    }
-
-    // MARK: Consent
-
-    /// Reads the policy to show; `errorKey` says why it is being asked again.
-    private func askForConsent(errorKey: String? = nil) {
-        guard let consentRepository else { return }
-        consentAsked = true
-        policy = nil
-        consentTicked = false
-        consentBusy = true
-        consentErrorKey = errorKey
-        Task {
-            do {
-                policy = try await consentRepository.policy()
-                consentBusy = false
-            } catch {
-                guard !Self.cancelled(error) else { return }
-                consentBusy = false
-                consentErrorKey = Self.messageKey(error)
-            }
-        }
-    }
-
-    /// Records consent to the version shown, then sends the question it was asked for.
-    func agree() {
-        guard let consentRepository, let policy, consentTicked, !consentBusy else { return }
-        consentBusy = true
-        consentErrorKey = nil
-        Task {
-            do {
-                try await consentRepository.consent(version: policy.version)
-                clearConsent()
-                retry()
-            } catch {
-                guard !Self.cancelled(error) else { return }
-                if let changed = Self.kotlin(error) as? ApiException.AiPolicyChanged {
-                    // The policy moved on while it was open: show the new one to agree to.
-                    askForConsent(errorKey: changed.messageKey)
-                    return
-                }
-                consentBusy = false
-                consentErrorKey = Self.messageKey(error)
-            }
-        }
-    }
-
-    /// "Not now": the question stays in the field; chips still work.
-    func declineConsent() { clearConsent() }
-
-    private func clearConsent() {
-        consentAsked = false
-        policy = nil
-        consentTicked = false
-        consentBusy = false
-        consentErrorKey = nil
     }
 
     // MARK: The disclaimer

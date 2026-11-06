@@ -4,7 +4,6 @@ import com.humblesolutions.finai.i18n.LocalizationRegistry
 import com.humblesolutions.finai.i18n.Strings
 import com.humblesolutions.finai.model.Account
 import com.humblesolutions.finai.model.AiLine
-import com.humblesolutions.finai.model.AiPolicy
 import com.humblesolutions.finai.model.Budget
 import com.humblesolutions.finai.model.BudgetCommitment
 import com.humblesolutions.finai.model.BudgetLine
@@ -64,10 +63,8 @@ data class BudgetUiState(
     val spendingCheck: SpendingCheck? = null,
     val checkingSpending: Boolean = false,
     val spendingErrorKey: String? = null,
-    /** The AI may not be asked yet: the policy is shown first. */
-    val spendingPolicy: AiPolicy? = null,
-    val spendingConsentTicked: Boolean = false,
-    val spendingConsentBusy: Boolean = false,
+    /** The server said AI processing needs consent; the sheet links to Profile, where it is given. */
+    val spendingAiOff: Boolean = false,
     /** The commitment being ticked off by hand, by its setup id; null when the sheet is closed. */
     val tickingId: String? = null,
     /** The month's payments out, for matching; null while they load. */
@@ -189,8 +186,11 @@ data class BudgetUiState(
 
     // ── The AI's suggestions (ai_budget) ────────────────────────────────
 
-    /** "AI suggests $430.00", when the AI's number for the line differs from it. */
-    fun aiLabel(line: BudgetLine): String? = AiBudgetEdit.suggestionLabel(line, currency, locale)
+    /**
+     * "AI suggests $430.00", when the AI's number for the line differs from it
+     * — and, for a raise, only while the budget has room for it.
+     */
+    fun aiLabel(line: BudgetLine): String? = budget?.let { AiBudgetEdit.suggestionLabel(line, it, locale) }
 
     /** The month's AI review advice, shown while the month runs. */
     val aiAdvice: String? get() = budget?.takeIf { showsPlan }?.aiAdvice

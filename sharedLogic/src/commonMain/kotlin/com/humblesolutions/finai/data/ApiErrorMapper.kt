@@ -38,6 +38,7 @@ internal object ApiErrorMapper {
     private const val ORDER_MISMATCH = "order_mismatch"
     private const val IMPORT_SUPERSEDED = "import_superseded"
     private const val AI_UNAVAILABLE = "ai_unavailable"
+    private const val DELETION_UNAVAILABLE = "deletion_unavailable"
     private const val AI_BUDGET_LIMIT = "ai_budget_limit_reached"
     private const val SETUP_INCOME_MISSING = "setup_income_missing"
     private const val STILL_LEARNING = "still_learning"
@@ -76,6 +77,7 @@ internal object ApiErrorMapper {
         503 -> when (code(body)) {
             AI_PROCESSING_UNAVAILABLE -> ApiException.ImportUnavailable()
             AI_UNAVAILABLE -> ApiException.AiUnavailable()
+            DELETION_UNAVAILABLE -> ApiException.DeletionUnavailable()
             else -> ApiException.Server(status)
         }
 

@@ -6,12 +6,15 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.width
@@ -134,7 +137,7 @@ class ManualEntryActions(
  * @param fromUnreadable opened because a statement could not be read (#31):
  *   the screen says so, so the person knows why they are typing.
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun ManualEntryScreen(state: ManualEntryUiState, fromUnreadable: Boolean, actions: ManualEntryActions) {
     val focus = LocalFocusManager.current
@@ -245,8 +248,10 @@ fun ManualEntryScreen(state: ManualEntryUiState, fromUnreadable: Boolean, action
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             ErrorText(state.errorKey)
-            // The same rule the button reads, said out loud.
-            if (state.errorKey == null) ErrorText(state.notice?.messageKey)
+            // The same rule the button reads, said out loud — but not while the
+            // keyboard is up: the field's red edge says it, and the line sat
+            // against the clipped form as if the page had broken.
+            if (state.errorKey == null && !WindowInsets.isImeVisible) ErrorText(state.notice?.messageKey)
             state.saved?.let { saved ->
                 Text(
                     text = strings(saved.messageKey),

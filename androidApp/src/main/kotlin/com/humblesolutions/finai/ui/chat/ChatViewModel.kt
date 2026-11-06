@@ -5,12 +5,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.humblesolutions.finai.config.ApiConfig
 import com.humblesolutions.finai.config.Supabase
-import com.humblesolutions.finai.data.KtorAiConsentRepository
 import com.humblesolutions.finai.data.KtorChatRepository
 import com.humblesolutions.finai.data.SupabaseTokenSource
 import com.humblesolutions.finai.model.ApiException
 import com.humblesolutions.finai.model.ChatSuggestion
-import com.humblesolutions.finai.repository.AiConsentRepository
 import com.humblesolutions.finai.repository.ChatRepository
 import com.humblesolutions.finai.usecase.ChatOutgoing
 import com.humblesolutions.finai.usecase.ChatThread
@@ -25,11 +23,9 @@ import kotlin.coroutines.cancellation.CancellationException
 
 internal class ChatRepositories(
     val chat: ChatRepository,
-    val consent: AiConsentRepository,
 ) {
     fun close() {
         chat.close()
-        consent.close()
     }
 }
 
@@ -67,7 +63,6 @@ internal class ChatViewModel(
             val tokens = SupabaseTokenSource(client)
             ChatRepositories(
                 chat = KtorChatRepository(ApiConfig.BASE_URL, tokens, logging),
-                consent = KtorAiConsentRepository(ApiConfig.BASE_URL, tokens, logging),
             )
         }
     }
@@ -157,7 +152,7 @@ internal class ChatViewModel(
         val repos = repositories ?: return
         val started = ++generation
         saved[KEY_OPEN] = id
-        update { it.copy(openId = id, threadLoading = true, threadErrorKey = null, consent = null) }
+        update { it.copy(openId = id, threadLoading = true, threadErrorKey = null) }
         viewModelScope.launch {
             try {
                 val conversation = repos.chat.conversation(id)
@@ -185,7 +180,7 @@ internal class ChatViewModel(
         generation++
         saved.remove<String>(KEY_OPEN)
         saved.remove<String>(KEY_DRAFT)
-        update { it.copy(openId = null, thread = null, threadLoading = false, threadErrorKey = null, consent = null) }
+        update { it.copy(openId = null, thread = null, threadLoading = false, threadErrorKey = null) }
         loadList()
     }
 
@@ -233,57 +228,13 @@ internal class ChatViewModel(
                 throw e
             } catch (e: ApiException) {
                 if (started != generation) return@launch
+                // A refusal for want of AI consent shows as a notice that
+                // links to Profile, the one place it is given (PM decision,
+                // 2026-11-06); the question stays to send again.
                 updateThread { ChatThread.failed(it, e) }
-                if (_uiState.value.thread?.failure?.needsConsent == true) askForConsent()
             }
         }
     }
-
-    // ── Consent ─────────────────────────────────────────────────────────
-
-    /** Reads the policy to show; [errorKey] says why it is being asked again. */
-    private fun askForConsent(errorKey: String? = null) {
-        val repos = repositories ?: return
-        update { it.copy(consent = ConsentAsk(busy = true, errorKey = errorKey)) }
-        viewModelScope.launch {
-            try {
-                val policy = repos.consent.policy()
-                update { it.copy(consent = it.consent?.copy(policy = policy, busy = false)) }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: ApiException) {
-                update { it.copy(consent = it.consent?.copy(busy = false, errorKey = e.messageKey)) }
-            }
-        }
-    }
-
-    fun onConsentTicked(ticked: Boolean) = update { it.copy(consent = it.consent?.copy(ticked = ticked)) }
-
-    /** Records consent to the version shown, then sends the question it was asked for. */
-    fun agree() {
-        val repos = repositories ?: return
-        val ask = _uiState.value.consent ?: return
-        val policy = ask.policy ?: return
-        if (!ask.ticked || ask.busy) return
-        update { it.copy(consent = ask.copy(busy = true, errorKey = null)) }
-        viewModelScope.launch {
-            try {
-                repos.consent.consent(policy.version)
-                update { it.copy(consent = null) }
-                retry()
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: ApiException.AiPolicyChanged) {
-                // The policy moved on while it was open: show the new one to agree to.
-                askForConsent(e.messageKey)
-            } catch (e: ApiException) {
-                update { it.copy(consent = it.consent?.copy(busy = false, errorKey = e.messageKey)) }
-            }
-        }
-    }
-
-    /** "Not now": the question stays in the field; chips still work. */
-    fun declineConsent() = update { it.copy(consent = null) }
 
     // ── The disclaimer ──────────────────────────────────────────────────
 

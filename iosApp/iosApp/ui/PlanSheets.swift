@@ -153,7 +153,7 @@ struct RowEditSheet: View {
                 Section {
                     HStack(spacing: 6) {
                         Text(model.currencySymbol).foregroundColor(.secondary)
-                        TextField(model.amountPlaceholder, text: $model.rowAmount)
+                        TextField(model.amountPlaceholder, text: $model.rowAmount.groupedAmount(model.currencySymbol))
                             .keyboardType(.decimalPad)
                             .focused($focused)
                             .accessibilityLabel(L.t(Strings.shared.plan_edit_amount))
@@ -241,7 +241,7 @@ struct DebtEditorSheet: View {
                         Text(L.t(Strings.shared.debts_field_minimum)).foregroundColor(.secondary)
                         Spacer(minLength: 8)
                         Text(model.currencySymbol).foregroundColor(.secondary)
-                        TextField(model.amountPlaceholder, text: $model.minimum)
+                        TextField(model.amountPlaceholder, text: $model.minimum.groupedAmount(model.currencySymbol))
                             .keyboardType(.decimalPad)
                             .multilineTextAlignment(.trailing)
                             .focused($focused, equals: .minimum)
@@ -338,7 +338,7 @@ struct BalanceSheet: View {
                 Section {
                     HStack(spacing: 6) {
                         Text(model.currencySymbol).foregroundColor(.secondary)
-                        TextField(model.amountPlaceholder, text: $model.balanceAmount)
+                        TextField(model.amountPlaceholder, text: $model.balanceAmount.groupedAmount(model.currencySymbol))
                             .keyboardType(.decimalPad)
                             .focused($focused)
                     }

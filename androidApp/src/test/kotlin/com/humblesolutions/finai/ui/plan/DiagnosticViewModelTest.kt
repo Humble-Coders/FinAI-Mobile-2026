@@ -1,7 +1,5 @@
 package com.humblesolutions.finai.ui.plan
 
-import com.humblesolutions.finai.model.AiConsentStatus
-import com.humblesolutions.finai.model.AiPolicy
 import com.humblesolutions.finai.model.ApiException
 import com.humblesolutions.finai.model.Plan
 import com.humblesolutions.finai.model.PlanCategory
@@ -12,7 +10,6 @@ import com.humblesolutions.finai.model.PlanPreferencesToSave
 import com.humblesolutions.finai.model.PlanSplitEdit
 import com.humblesolutions.finai.model.PlanWeight
 import com.humblesolutions.finai.model.Terms
-import com.humblesolutions.finai.repository.AiConsentRepository
 import com.humblesolutions.finai.repository.PlanRepository
 import com.humblesolutions.finai.usecase.DiagnosticBlock
 import com.humblesolutions.finai.util.BudgetChanged
@@ -97,18 +94,8 @@ class DiagnosticViewModelTest {
         override fun close() = Unit
     }
 
-    private class FakeConsent : AiConsentRepository {
-        var agreed: String? = null
-        override suspend fun policy() = AiPolicy(version = "ai-v2", body = "What is sent, and why.")
-        override suspend fun consent(version: String) {
-            agreed = version
-        }
-        override suspend fun status() = AiConsentStatus(consented = agreed != null, version = "ai-v2")
-        override fun close() = Unit
-    }
-
-    private fun model(plan: FakePlan, consent: FakeConsent = FakeConsent(), kind: String = PlanDiagnostics.ALLOCATION) = DiagnosticViewModel().also {
-        it.bind("user-1", kind) { DiagnosticRepositories(plan, consent) }
+    private fun model(plan: FakePlan, kind: String = PlanDiagnostics.ALLOCATION) = DiagnosticViewModel().also {
+        it.bind("user-1", kind) { DiagnosticRepositories(plan) }
     }
 
     @Test
@@ -177,19 +164,16 @@ class DiagnosticViewModelTest {
     }
 
     @Test
-    fun without_consent_the_policy_is_shown_and_agreeing_runs() = runTest {
+    fun without_consent_ai_is_said_to_be_off_and_coming_back_runs_again() = runTest {
         val plan = FakePlan(failRun = ApiException.ConsentRequired("ai-v2"), answer = answer)
-        val consent = FakeConsent()
-        val model = model(plan, consent)
+        val model = model(plan)
 
         model.run()
-        assertNotNull(model.uiState.value.policy)
+        assertTrue(model.uiState.value.aiOff, "consent is given in Profile, not here")
         plan.failRun = null
-        model.onConsentTicked(true)
-        model.agree()
+        model.retryAfterAi()
 
-        assertEquals("ai-v2", consent.agreed)
-        assertNull(model.uiState.value.policy)
+        assertFalse(model.uiState.value.aiOff)
         assertEquals(2, plan.runs.size)
         assertNotNull(model.uiState.value.result)
     }

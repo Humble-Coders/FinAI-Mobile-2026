@@ -1,6 +1,7 @@
 package com.humblesolutions.finai.ui.plan
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -20,9 +21,16 @@ import com.humblesolutions.finai.ui.components.LoaderSignal
  * come for. From Your plan, Back on Your debts returns to the plan.
  * [onOpenGoals] is the emergency fund suggestion's way to the Goals tab; null
  * where there is no Goals tab, and the suggestion then has no button.
+ * [onOpenProfile] is where the disclaimer is read and AI is turned on.
  */
 @Composable
-internal fun PlanRoute(userId: String, startOnDebts: Boolean, onClose: () -> Unit, onOpenGoals: (() -> Unit)? = null) {
+internal fun PlanRoute(
+    userId: String,
+    startOnDebts: Boolean,
+    onClose: () -> Unit,
+    onOpenGoals: (() -> Unit)? = null,
+    onOpenProfile: () -> Unit = {},
+) {
     val model: PlanViewModel = viewModel()
     val state by model.uiState.collectAsStateWithLifecycle()
     // The first page once; a restored process keeps the page it was on.
@@ -36,10 +44,14 @@ internal fun PlanRoute(userId: String, startOnDebts: Boolean, onClose: () -> Uni
     LaunchedEffect(userId) { model.bind(userId, logging = BuildConfig.DEBUG) }
     LoaderSignal(key = "plan", active = state.loading)
 
+    // Kept here, above the diagnostic's early return, so coming back from it
+    // lands where the person left off — one for each page.
+    val planScroll = rememberScrollState()
+    val debtsScroll = rememberScrollState()
     // A diagnostic, over the plan; back returns to it.
     var diagnostic by rememberSaveable { mutableStateOf<String?>(null) }
     diagnostic?.let { kind ->
-        DiagnosticRoute(userId = userId, kind = kind) {
+        DiagnosticRoute(userId = userId, kind = kind, onOpenProfile = onOpenProfile) {
             diagnostic = null
             // A diagnostic can change the plan's choices ("Pay debt before goals").
             model.load(refresh = true)
@@ -63,10 +75,11 @@ internal fun PlanRoute(userId: String, startOnDebts: Boolean, onClose: () -> Uni
         onRunDiagnostic = { diagnostic = it },
         onEditRow = model::startRowEdit,
         onOpenGoals = onOpenGoals,
+        onOpenProfile = onOpenProfile,
     )
     when (state.page) {
-        PlanPage.PLAN -> PlanScreen(state, actions)
-        PlanPage.DEBTS -> DebtsScreen(state, actions)
+        PlanPage.PLAN -> PlanScreen(state, actions, planScroll)
+        PlanPage.DEBTS -> DebtsScreen(state, actions, debtsScroll)
     }
 
     RowEditSheet(

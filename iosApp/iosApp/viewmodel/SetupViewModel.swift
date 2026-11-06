@@ -41,6 +41,10 @@ final class SetupViewModel: ObservableObject {
     @Published private(set) var touched = false
     /// The user cancelled setup: the wizard says it is required instead of a step.
     @Published private(set) var cancelled = false
+    /// Opened from Profile to change answers already given (PM decision,
+    /// 2026-11-06): it opens on step 1, offers no Skip, and saves only on the
+    /// last step's Save — so Cancel leaves what the server holds untouched.
+    @Published private(set) var amending = false
 
     private var repository: FinancialSetupRepository?
     private var capabilities: CapabilitiesRepository?
@@ -90,8 +94,9 @@ final class SetupViewModel: ObservableObject {
         SetupWizard.shared.warning(step: step, draft: draft, fractionDigits: fractionDigits)
     }
 
-    /// Skip is drawn only on the step that is optional in full…
-    var showsSkip: Bool { step.isOptional }
+    /// Skip is drawn only on the step that is optional in full… and never
+    /// when amending, where it would empty debts and investments already saved.
+    var showsSkip: Bool { step.isOptional && !amending }
 
     /// …and goes through only once both mandatory figures are in.
     var canSkip: Bool {
@@ -120,7 +125,7 @@ final class SetupViewModel: ObservableObject {
         if editing == .obligations {
             return SetupWizard.shared.commitmentBlock(item: rows[index], fractionDigits: fractionDigits)
         }
-        return SetupWizard.shared.itemBlock(
+        return SetupWizard.shared.editorItemBlock(
             item: rows[index],
             fractionDigits: fractionDigits,
             debt: editing == .debts
@@ -137,8 +142,10 @@ final class SetupViewModel: ObservableObject {
 
     // MARK: - Lifecycle
 
-    func bind() {
+    /// `amending`: opened from Profile over answers already given.
+    func bind(amending: Bool = false) {
         guard repository == nil, let client = Supabase.shared.clientOrNull() else { return }
+        self.amending = amending
         let tokens = SupabaseTokenSource(client: client)
         repository = KtorFinancialSetupRepository(
             baseUrl: ApiConfig.shared.BASE_URL,
@@ -175,6 +182,7 @@ final class SetupViewModel: ObservableObject {
         errorKey = nil
         touched = false
         cancelled = false
+        amending = false
         busy = false
         syncing = false
         loading = true
@@ -201,7 +209,8 @@ final class SetupViewModel: ObservableObject {
                     ?? saved.currency
                 self.locale = payload?.locale ?? ""
                 self.draft = SetupWizard.shared.draftFrom(setup: saved)
-                self.step = SetupWizard.shared.resumeAt(setup: saved)
+                // Amending walks every answer from the first; setup resumes.
+                self.step = self.amending ? .income : SetupWizard.shared.resumeAt(setup: saved)
                 self.touched = false
                 // What was just loaded is what the server holds, so walking
                 // through the steps without changing anything sends nothing.
@@ -259,7 +268,7 @@ final class SetupViewModel: ObservableObject {
         step = step == .income ? .expenses : .portfolio
         touched = false
         errorKey = nil
-        persist()
+        if !amending { persist() }
     }
 
     /// Past the last step without filling it in: an empty list is the record
@@ -349,7 +358,7 @@ final class SetupViewModel: ObservableObject {
         }
         editing = nil
         rows = []
-        persist()
+        if !amending { persist() }
     }
 
     /// Leaves the list as it was before it was opened.

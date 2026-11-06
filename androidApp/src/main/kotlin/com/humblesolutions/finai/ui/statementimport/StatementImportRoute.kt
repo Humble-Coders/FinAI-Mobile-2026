@@ -20,6 +20,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.humblesolutions.finai.BuildConfig
 import com.humblesolutions.finai.i18n.Strings
 import com.humblesolutions.finai.ui.components.LoaderSignal
+import com.humblesolutions.finai.ui.components.RetryWhenBack
 import com.humblesolutions.finai.ui.edit.TransactionEditorActions
 import com.humblesolutions.finai.ui.strings
 import com.humblesolutions.finai.usecase.ImportStep
@@ -36,11 +37,15 @@ internal fun StatementImportRoute(
     onClose: () -> Unit,
     onTypeInstead: () -> Unit,
     onReview: () -> Unit,
+    /** Profile, where AI is turned on. */
+    onOpenProfile: () -> Unit = {},
 ) {
     val model: StatementImportViewModel = viewModel()
     val state by model.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
     LaunchedEffect(userId) { model.bind(userId, context, logging = BuildConfig.DEBUG) }
+    // Back from Profile on the AI-off step: the statement is read again.
+    RetryWhenBack(state.step == ImportStep.CONSENT, model::retryAfterAi)
 
     // The one coin loader, saying what the wait is for (#31).
     val caption = when (state.step) {
@@ -113,8 +118,7 @@ internal fun StatementImportRoute(
                 camera.launch(uri)
             },
             onSubmitPassword = model::submitPassword,
-            onConsentTicked = model::onConsentTicked,
-            onAgree = model::agree,
+            onOpenProfile = onOpenProfile,
             onDeclineConsent = model::declineConsent,
             onRetry = model::retry,
             onChooseAnother = model::chooseAnotherFile,

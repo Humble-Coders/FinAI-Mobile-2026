@@ -67,6 +67,25 @@ class FeaturesViewModel : ViewModel() {
         }
     }
 
+    /**
+     * Reads the payload again — after Profile changed the region, which moves
+     * the currency and can move the features. A failure keeps what was read
+     * before: tabs vanishing over a refresh that did not land would be worse
+     * than one stale read.
+     */
+    fun reload() {
+        val repo = repository ?: return
+        viewModelScope.launch {
+            try {
+                _capabilities.value = repo.fetch()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: ApiException) {
+                // Keep the last answer.
+            }
+        }
+    }
+
     override fun onCleared() {
         repository?.close()
         repository = null

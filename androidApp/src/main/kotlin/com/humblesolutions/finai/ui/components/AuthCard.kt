@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -155,7 +156,9 @@ fun CardScreen(
     Box(Modifier.fillMaxSize()) {
         HeroBackground()
         AuthCard(
-            Modifier.align(Alignment.BottomCenter),
+            // Never under the status bar: with the keyboard up the card grows
+            // to the top, and its title ran into the clock.
+            Modifier.align(Alignment.BottomCenter).statusBarsPadding(),
             spacing = spacing,
             content = content,
         )

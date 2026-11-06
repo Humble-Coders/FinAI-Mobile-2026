@@ -8,7 +8,6 @@ import com.humblesolutions.finai.config.ApiConfig
 import com.humblesolutions.finai.config.Supabase
 import com.humblesolutions.finai.data.AndroidStatementReader
 import com.humblesolutions.finai.data.KtorAccountsRepository
-import com.humblesolutions.finai.data.KtorAiConsentRepository
 import com.humblesolutions.finai.data.KtorCategoriesRepository
 import com.humblesolutions.finai.data.KtorDebtsRepository
 import com.humblesolutions.finai.data.KtorStatementImportRepository
@@ -22,7 +21,6 @@ import com.humblesolutions.finai.model.ParsedStatement
 import com.humblesolutions.finai.model.SaveOutcome
 import com.humblesolutions.finai.model.TransactionDirection
 import com.humblesolutions.finai.repository.AccountsRepository
-import com.humblesolutions.finai.repository.AiConsentRepository
 import com.humblesolutions.finai.repository.CategoriesRepository
 import com.humblesolutions.finai.repository.DebtsRepository
 import com.humblesolutions.finai.repository.StatementImportRepository
@@ -108,7 +106,6 @@ class StatementImportViewModel(private val saved: SavedStateHandle) : ViewModel(
             ImportRepositories(
                 accounts = KtorAccountsRepository(ApiConfig.BASE_URL, tokens, logging),
                 imports = KtorStatementImportRepository(ApiConfig.BASE_URL, tokens, logging),
-                consent = KtorAiConsentRepository(ApiConfig.BASE_URL, tokens, logging),
                 reader = AndroidStatementReader(context.applicationContext),
                 files = AndroidPickedFiles(context.applicationContext),
                 transactions = KtorTransactionsRepository(ApiConfig.BASE_URL, tokens, logging),
@@ -384,7 +381,7 @@ class StatementImportViewModel(private val saved: SavedStateHandle) : ViewModel(
                 throw e
             } catch (e: Exception) {
                 if (started != generation) return@launch
-                if (StatementImportFlow.needsConsent(e)) askForConsent(e as? ApiException) else fail(e)
+                if (StatementImportFlow.needsConsent(e)) showAiOff() else fail(e)
             }
         }
     }
@@ -782,67 +779,26 @@ class StatementImportViewModel(private val saved: SavedStateHandle) : ViewModel(
         }
     }
 
-    // ── Consent ─────────────────────────────────────────────────────────
+    // ── AI off ──────────────────────────────────────────────────────────
 
-    private fun askForConsent(error: ApiException?) {
-        val consent = repositories?.consent ?: return
-        val started = generation
+    /**
+     * The server would not read the statement for want of AI consent. The
+     * step says so and links to Profile, the one place it is given (PM
+     * decision, 2026-11-06); nothing is sent.
+     */
+    private fun showAiOff() {
         saved.remove<Boolean>(KEY_IN_PROGRESS)
-        _uiState.update {
-            it.copy(
-                step = ImportStep.CONSENT,
-                consentTicked = false,
-                consentBusy = true,
-                consentErrorKey = (error as? ApiException.AiPolicyChanged)?.messageKey,
-            )
-        }
-        viewModelScope.launch {
-            try {
-                val policy = consent.policy()
-                if (started != generation) return@launch
-                _uiState.update { it.copy(policy = policy, consentBusy = false) }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: ApiException) {
-                if (started != generation) return@launch
-                _uiState.update { it.copy(consentBusy = false, consentErrorKey = e.messageKey) }
-            }
-        }
+        _uiState.update { it.copy(step = ImportStep.CONSENT) }
     }
 
-    fun onConsentTicked(ticked: Boolean) = _uiState.update { it.copy(consentTicked = ticked) }
-
-    /** Records consent to the version shown, then sends the statement it was asked for. */
-    fun agree() {
-        val consent = repositories?.consent ?: return
-        val state = _uiState.value
-        val policy = state.policy ?: return
-        if (!state.canAgree) return
-        val started = generation
-        _uiState.update { it.copy(consentBusy = true, consentErrorKey = null) }
-        viewModelScope.launch {
-            try {
-                consent.consent(policy.version)
-                if (started != generation) return@launch
-                _uiState.update { it.copy(consentBusy = false, consentTicked = false) }
-                document?.let { send(it, keepText = false) } ?: read()
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: ApiException.AiPolicyChanged) {
-                if (started != generation) return@launch
-                // The text changed under them: show the new one, unticked.
-                askForConsent(e)
-            } catch (e: ApiException) {
-                if (started != generation) return@launch
-                _uiState.update { it.copy(consentBusy = false, consentErrorKey = e.messageKey) }
-            }
-        }
+    /** Back from Profile, where AI may have been turned on: the statement it was refused, again. */
+    fun retryAfterAi() {
+        if (_uiState.value.step != ImportStep.CONSENT) return
+        document?.let { send(it, keepText = false) } ?: read()
     }
 
     /** "Not now": nothing is sent, and the file can be imported later. */
-    fun declineConsent() = _uiState.update {
-        it.copy(step = ImportStep.CHOOSE_FILE, consentTicked = false, consentErrorKey = null)
-    }
+    fun declineConsent() = _uiState.update { it.copy(step = ImportStep.CHOOSE_FILE) }
 
     // ── Diagnostics ─────────────────────────────────────────────────────
 
@@ -946,7 +902,6 @@ internal class AndroidPickedFiles(private val context: Context) : PickedFiles {
 internal class ImportRepositories(
     val accounts: AccountsRepository,
     val imports: StatementImportRepository,
-    val consent: AiConsentRepository,
     val reader: StatementReader,
     val files: PickedFiles,
     val transactions: TransactionsRepository,
@@ -957,7 +912,6 @@ internal class ImportRepositories(
     fun close() {
         accounts.close()
         imports.close()
-        consent.close()
         reader.close()
         transactions.close()
         categories.close()

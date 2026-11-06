@@ -32,21 +32,6 @@ struct CoachView: View {
             model.bind(userId: userId)
         }
         .onChange(of: model.snapshot) { _, snapshot in stored = snapshot }
-        .sheet(isPresented: consentShown) {
-            ScrollView {
-                AiConsentPanel(
-                    title: L.t(Strings.shared.chat_consent_title),
-                    policy: model.policy,
-                    ticked: $model.consentTicked,
-                    busy: model.consentBusy,
-                    errorKey: model.consentErrorKey,
-                    onAgree: { model.agree() },
-                    onNotNow: { model.declineConsent() }
-                )
-                .padding(20)
-            }
-            .presentationDetents([.medium, .large])
-        }
         .sheet(isPresented: $model.showingDisclaimer) {
             if let terms = model.disclaimer {
                 ScrollView {
@@ -58,10 +43,6 @@ struct CoachView: View {
                 .presentationDetents([.medium, .large])
             }
         }
-    }
-
-    private var consentShown: Binding<Bool> {
-        Binding(get: { model.consentAsked }, set: { if !$0 { model.declineConsent() } })
     }
 }
 

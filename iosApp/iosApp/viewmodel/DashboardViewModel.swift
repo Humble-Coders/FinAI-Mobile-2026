@@ -596,13 +596,6 @@ final class DashboardViewModel: ObservableObject {
         L.t(amountsHidden ? Strings.shared.dashboard_show_amounts : Strings.shared.dashboard_hide_amounts)
     }
 
-    /// Whether anything is waiting, which is what the bell's dot means.
-    var hasPending: Bool { data.pendingReview > 0 }
-
-    var notificationsLabel: String {
-        L.t(hasPending ? Strings.shared.dashboard_notifications : Strings.shared.dashboard_notifications_none)
-    }
-
     var canGoForward: Bool {
         !loading && DashboardMonths.shared.canGoForward(
             month: month,

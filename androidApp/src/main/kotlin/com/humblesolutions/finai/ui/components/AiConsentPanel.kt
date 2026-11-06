@@ -26,8 +26,9 @@ import com.humblesolutions.finai.model.AiPolicy
 import com.humblesolutions.finai.ui.strings
 
 /**
- * Consent to AI processing, wherever something needs it first: a statement
- * import (#31), or a question typed to the coach (#54).
+ * Consent to AI processing, given in one place: Profile's "Turn on" (PM
+ * decision, 2026-11-06). Screens that need it only say it is off and link
+ * there ([AiOffNotice]).
  *
  * The policy's words are the server's, so they can change without an app
  * release, and agreeing records exactly the version shown. Nothing is

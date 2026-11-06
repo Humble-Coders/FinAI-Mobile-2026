@@ -18,6 +18,8 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.text.BasicText
+import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ReceiptLong
 import androidx.compose.material.icons.automirrored.outlined.ReceiptLong
@@ -30,6 +32,8 @@ import androidx.compose.material.icons.outlined.Forum
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.PieChart
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Text
@@ -42,9 +46,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -84,6 +90,7 @@ import com.humblesolutions.finai.ui.onboarding.SplashScreen
 import com.humblesolutions.finai.ui.onboarding.UpdateRequiredScreen
 import com.humblesolutions.finai.ui.onboarding.WelcomeScreen
 import com.humblesolutions.finai.ui.plan.PlanRoute
+import com.humblesolutions.finai.ui.profile.ProfileRoute
 import com.humblesolutions.finai.ui.review.ReviewRoute
 import com.humblesolutions.finai.ui.setup.SetupScreen
 import com.humblesolutions.finai.ui.setup.SetupViewModel
@@ -93,6 +100,7 @@ import com.humblesolutions.finai.ui.strings
 import com.humblesolutions.finai.ui.transactions.TransactionsRoute
 import com.humblesolutions.finai.usecase.Destination
 import com.humblesolutions.finai.usecase.MoneyKind
+import com.humblesolutions.finai.usecase.Profile
 import com.humblesolutions.finai.usecase.SplitExpense
 import com.humblesolutions.finai.usecase.YourPlan
 import com.humblesolutions.finai.util.LoaderTiming
@@ -250,7 +258,14 @@ private fun AppContent(viewModel: OnboardingViewModel) {
 
         Destination.UpdateRequired -> UpdateRequiredScreen()
 
-        Destination.Home -> HomeOrEntry(userId = state.me?.user?.id.orEmpty(), onSignOut = viewModel::signOut)
+        Destination.Home -> HomeOrEntry(
+            userId = state.me?.user?.id.orEmpty(),
+            initials = state.me?.let(Profile::initials).orEmpty(),
+            onSignOut = viewModel::signOut,
+            // Profile changed the name or region: the monogram and the
+            // router's own `/me` follow.
+            onAccountChanged = viewModel::loadMe,
+        )
 
         is Destination.Failed -> FailedScreen(
             messageKey = destination.error.messageKey,
@@ -281,7 +296,9 @@ private fun SetupRoute(userId: String, onFinished: () -> Unit) {
     // Skip there is what finishes setup.
     var suggesting by rememberSaveable { mutableStateOf(false) }
     if (suggesting) {
-        AiBudgetRoute(userId = userId, inSetup = true, onDone = onFinished)
+        // Back returns to the last step; the suggestion stays kept for when
+        // they come forward again.
+        AiBudgetRoute(userId = userId, inSetup = true, onDone = onFinished, onBack = { suggesting = false })
         return
     }
     // The first load is the only wait here that uses the coin; Continue does not.
@@ -307,7 +324,7 @@ private fun SetupRoute(userId: String, onFinished: () -> Unit) {
 }
 
 /** Where the signed-in, set-up person is: home, or one of the two ways money gets in. */
-internal enum class HomeRoute { HOME, ADD, IMPORT, ADD_AFTER_IMPORT, REVIEW, TRANSACTIONS, BUDGET, GOALS, COACH, INCOME, EXPENSES, INVESTMENTS, DEBTS, PLAN, PLAN_DEBTS, SPLIT }
+internal enum class HomeRoute { HOME, ADD, IMPORT, ADD_AFTER_IMPORT, REVIEW, TRANSACTIONS, BUDGET, GOALS, COACH, INCOME, EXPENSES, INVESTMENTS, DEBTS, PLAN, PLAN_DEBTS, SPLIT, PROFILE }
 
 /**
  * The places the bar always offers; everything else is a flow over them.
@@ -417,7 +434,7 @@ internal fun leavesSplit(capabilities: Capabilities?, current: HomeRoute): Boole
  * screen the person was on rather than dropping them on home.
  */
 @Composable
-private fun HomeOrEntry(userId: String, onSignOut: () -> Unit) {
+private fun HomeOrEntry(userId: String, initials: String, onSignOut: () -> Unit, onAccountChanged: () -> Unit) {
     var route by rememberSaveable(stateSaver = RouteSaver) { mutableStateOf(HomeRoute.HOME) }
     SideEffect { Launch.drawn = true }
     // The month Home's "See budget" asked the Budget tab to open on; cleared
@@ -460,9 +477,20 @@ private fun HomeOrEntry(userId: String, onSignOut: () -> Unit) {
         reviewFrom = reviewReturnsTo(route)
         route = HomeRoute.REVIEW
     }
+    // Where Profile goes back to (PM decision, 2026-11-06): it opens over the
+    // bar from Home's monogram, and from every "Open Profile" a screen shows
+    // where AI is off or a disclaimer used to be.
+    var profileFrom by rememberSaveable { mutableStateOf(HomeRoute.HOME) }
+    val openProfile = {
+        profileFrom = route
+        route = HomeRoute.PROFILE
+    }
     val tabbed = route in tabs
     // A conversation open in the Coach tab has its own input bar at the bottom.
     var chatOpen by rememberSaveable { mutableStateOf(false) }
+    // Each route's saveable state — its scroll position above all — kept while
+    // another route shows, so going back lands where the person left off.
+    val kept = rememberSaveableStateHolder()
     Column(Modifier.fillMaxSize()) {
         Box(
             Modifier
@@ -476,126 +504,159 @@ private fun HomeOrEntry(userId: String, onSignOut: () -> Unit) {
                 transitionSpec = { homeTransition(initialState, targetState) },
                 label = "homeRoute",
             ) { shown ->
-                when (shown) {
-                    HomeRoute.HOME -> DashboardRoute(
-                        userId = userId,
-                        onImportStatement = { route = HomeRoute.IMPORT },
-                        onReview = openReview,
-                        onAddTransaction = { route = HomeRoute.ADD },
-                        onViewAll = { route = HomeRoute.TRANSACTIONS },
-                        onSignOut = onSignOut,
-                        onOpenMoney = { kind ->
-                            route = when (kind) {
-                                MoneyKind.INCOME -> HomeRoute.INCOME.also { incomeFrom = HomeRoute.HOME }
-                                MoneyKind.EXPENSES -> HomeRoute.EXPENSES
-                                MoneyKind.INVESTMENTS -> HomeRoute.INVESTMENTS
-                                MoneyKind.DEBTS -> HomeRoute.DEBTS
-                            }
-                        },
-                        // "See budget" only where the bar has a Budget tab to go to,
-                        // and on the month Home is showing.
-                        onOpenBudget = if (HomeRoute.BUDGET in tabs) {
-                            { month ->
-                                budgetMonth = month
-                                route = HomeRoute.BUDGET
-                            }
-                        } else {
-                            null
-                        },
-                        onOpenGoals = if (HomeRoute.GOALS in tabs) {
-                            { route = HomeRoute.GOALS }
-                        } else {
-                            null
-                        },
-                        onOpenPlan = if (planOn) {
-                            { openPlan(HomeRoute.PLAN) }
-                        } else {
-                            null
-                        },
-                        onSplitBill = if (splitOn) {
-                            { route = HomeRoute.SPLIT }
-                        } else {
-                            null
-                        },
-                    )
+                kept.SaveableStateProvider(shown.name) {
+                    when (shown) {
+                        HomeRoute.HOME -> DashboardRoute(
+                            userId = userId,
+                            onImportStatement = { route = HomeRoute.IMPORT },
+                            onReview = openReview,
+                            onAddTransaction = { route = HomeRoute.ADD },
+                            onViewAll = { route = HomeRoute.TRANSACTIONS },
+                            initials = initials,
+                            onOpenProfile = openProfile,
+                            onOpenMoney = { kind ->
+                                route = when (kind) {
+                                    MoneyKind.INCOME -> HomeRoute.INCOME.also { incomeFrom = HomeRoute.HOME }
+                                    MoneyKind.EXPENSES -> HomeRoute.EXPENSES
+                                    MoneyKind.INVESTMENTS -> HomeRoute.INVESTMENTS
+                                    MoneyKind.DEBTS -> HomeRoute.DEBTS
+                                }
+                            },
+                            // "See budget" only where the bar has a Budget tab to go to,
+                            // and on the month Home is showing.
+                            onOpenBudget = if (HomeRoute.BUDGET in tabs) {
+                                { month ->
+                                    budgetMonth = month
+                                    route = HomeRoute.BUDGET
+                                }
+                            } else {
+                                null
+                            },
+                            onOpenGoals = if (HomeRoute.GOALS in tabs) {
+                                { route = HomeRoute.GOALS }
+                            } else {
+                                null
+                            },
+                            onOpenPlan = if (planOn) {
+                                { openPlan(HomeRoute.PLAN) }
+                            } else {
+                                null
+                            },
+                            onSplitBill = if (splitOn) {
+                                { route = HomeRoute.SPLIT }
+                            } else {
+                                null
+                            },
+                        )
 
-                    // A flow over the bar, like the import; it closes back to Home.
-                    HomeRoute.SPLIT -> SplitRoute(
-                        userId = userId,
-                        currency = capabilities?.currency.orEmpty(),
-                        locale = capabilities?.locale.orEmpty(),
-                        onClose = { route = HomeRoute.HOME },
-                    )
+                        // A flow over the bar, like the import; it closes back to Home.
+                        HomeRoute.SPLIT -> SplitRoute(
+                            userId = userId,
+                            currency = capabilities?.currency.orEmpty(),
+                            locale = capabilities?.locale.orEmpty(),
+                            onClose = { route = HomeRoute.HOME },
+                            onOpenProfile = openProfile,
+                        )
 
-                    HomeRoute.ADD -> ManualEntryRoute(userId = userId, fromUnreadable = false, onClose = { route = HomeRoute.HOME })
+                        HomeRoute.ADD -> ManualEntryRoute(userId = userId, fromUnreadable = false, onClose = { route = HomeRoute.HOME })
 
-                    HomeRoute.ADD_AFTER_IMPORT ->
-                        ManualEntryRoute(userId = userId, fromUnreadable = true, onClose = { route = HomeRoute.HOME })
+                        HomeRoute.ADD_AFTER_IMPORT ->
+                            ManualEntryRoute(userId = userId, fromUnreadable = true, onClose = { route = HomeRoute.HOME })
 
-                    HomeRoute.IMPORT -> StatementImportRoute(
-                        userId = userId,
-                        onClose = { route = HomeRoute.HOME },
-                        onTypeInstead = { route = HomeRoute.ADD_AFTER_IMPORT },
-                        onReview = openReview,
-                    )
+                        HomeRoute.IMPORT -> StatementImportRoute(
+                            userId = userId,
+                            onClose = { route = HomeRoute.HOME },
+                            onTypeInstead = { route = HomeRoute.ADD_AFTER_IMPORT },
+                            onReview = openReview,
+                            onOpenProfile = openProfile,
+                        )
 
-                    // A flow over the bar since #52, with a back arrow to the
-                    // tab it was opened from.
-                    HomeRoute.REVIEW -> ReviewRoute(userId = userId, onClose = { route = reviewFrom }, showsBack = true)
+                        // A flow over the bar since #52, with a back arrow to the
+                        // tab it was opened from.
+                        HomeRoute.REVIEW -> ReviewRoute(userId = userId, onClose = { route = reviewFrom }, showsBack = true)
 
-                    HomeRoute.TRANSACTIONS ->
-                        TransactionsRoute(userId = userId, onClose = { route = HomeRoute.HOME }, showsBack = false)
+                        HomeRoute.TRANSACTIONS ->
+                            TransactionsRoute(userId = userId, onClose = { route = HomeRoute.HOME }, showsBack = false)
 
-                    HomeRoute.BUDGET -> BudgetRoute(
-                        userId = userId,
-                        onClose = { route = HomeRoute.HOME },
-                        onReview = openReview,
-                        onImport = { route = HomeRoute.IMPORT },
-                        requestedMonth = budgetMonth,
-                        onRequestedMonthShown = { budgetMonth = null },
-                        onOpenPlan = if (planOn) {
-                            { openPlan(HomeRoute.PLAN) }
-                        } else {
-                            null
-                        },
-                        onOpenIncome = {
-                            incomeFrom = HomeRoute.BUDGET
-                            route = HomeRoute.INCOME
-                        },
-                    )
+                        HomeRoute.BUDGET -> BudgetRoute(
+                            userId = userId,
+                            onClose = { route = HomeRoute.HOME },
+                            onReview = openReview,
+                            onImport = { route = HomeRoute.IMPORT },
+                            requestedMonth = budgetMonth,
+                            onRequestedMonthShown = { budgetMonth = null },
+                            onOpenPlan = if (planOn) {
+                                { openPlan(HomeRoute.PLAN) }
+                            } else {
+                                null
+                            },
+                            onOpenIncome = {
+                                incomeFrom = HomeRoute.BUDGET
+                                route = HomeRoute.INCOME
+                            },
+                            onOpenProfile = openProfile,
+                        )
 
-                    HomeRoute.GOALS -> GoalsRoute(userId = userId, onClose = { route = HomeRoute.HOME })
+                        HomeRoute.GOALS -> GoalsRoute(userId = userId, onClose = { route = HomeRoute.HOME }, onOpenProfile = openProfile)
 
-                    HomeRoute.COACH -> ChatRoute(
-                        userId = userId,
-                        onClose = { route = HomeRoute.HOME },
-                        onConversationOpen = { chatOpen = it },
-                    )
+                        HomeRoute.COACH -> ChatRoute(
+                            userId = userId,
+                            onClose = { route = HomeRoute.HOME },
+                            onConversationOpen = { chatOpen = it },
+                            onOpenProfile = openProfile,
+                        )
 
-                    // The four money screens open over the bar, like a flow,
-                    // and back returns home.
-                    HomeRoute.INCOME -> MoneyDetailRoute(userId, MoneyKind.INCOME, onBack = { route = incomeFrom })
+                        // The four money screens open over the bar, like a flow,
+                        // and back returns home.
+                        HomeRoute.INCOME -> MoneyDetailRoute(userId, MoneyKind.INCOME, onBack = { route = incomeFrom })
 
-                    HomeRoute.EXPENSES -> MoneyDetailRoute(userId, MoneyKind.EXPENSES, onBack = { route = HomeRoute.HOME })
+                        HomeRoute.EXPENSES -> MoneyDetailRoute(userId, MoneyKind.EXPENSES, onBack = { route = HomeRoute.HOME })
 
-                    HomeRoute.INVESTMENTS -> MoneyDetailRoute(userId, MoneyKind.INVESTMENTS, onBack = { route = HomeRoute.HOME })
+                        HomeRoute.INVESTMENTS -> MoneyDetailRoute(userId, MoneyKind.INVESTMENTS, onBack = { route = HomeRoute.HOME })
 
-                    HomeRoute.DEBTS -> MoneyDetailRoute(
-                        userId,
-                        MoneyKind.DEBTS,
-                        onBack = { route = HomeRoute.HOME },
-                        onOpenPlan = if (planOn) {
-                            { openPlan(HomeRoute.PLAN_DEBTS) }
-                        } else {
-                            null
-                        },
-                    )
+                        HomeRoute.DEBTS -> MoneyDetailRoute(
+                            userId,
+                            MoneyKind.DEBTS,
+                            onBack = { route = HomeRoute.HOME },
+                            onOpenPlan = if (planOn) {
+                                { openPlan(HomeRoute.PLAN_DEBTS) }
+                            } else {
+                                null
+                            },
+                        )
 
-                    // Over the bar, like the money screens; back returns to
-                    // wherever the plan was opened from.
-                    HomeRoute.PLAN -> PlanRoute(userId = userId, startOnDebts = false, onClose = { route = planFrom }, onOpenGoals = openGoalsFromPlan)
+                        // Over the bar, like the money screens; back returns to
+                        // wherever the plan was opened from.
+                        HomeRoute.PLAN -> PlanRoute(
+                            userId = userId,
+                            startOnDebts = false,
+                            onClose = { route = planFrom },
+                            onOpenGoals = openGoalsFromPlan,
+                            onOpenProfile = openProfile,
+                        )
 
-                    HomeRoute.PLAN_DEBTS -> PlanRoute(userId = userId, startOnDebts = true, onClose = { route = planFrom }, onOpenGoals = openGoalsFromPlan)
+                        HomeRoute.PLAN_DEBTS -> PlanRoute(
+                            userId = userId,
+                            startOnDebts = true,
+                            onClose = { route = planFrom },
+                            onOpenGoals = openGoalsFromPlan,
+                            onOpenProfile = openProfile,
+                        )
+
+                        // Over the bar, like the plan; back returns to wherever
+                        // it was opened from.
+                        HomeRoute.PROFILE -> ProfileRoute(
+                            userId = userId,
+                            currency = capabilities?.currency.orEmpty(),
+                            onClose = { route = profileFrom },
+                            onSignOut = onSignOut,
+                            onAccountChanged = {
+                                // A new region moves the currency and can move the features.
+                                features.reload()
+                                onAccountChanged()
+                            },
+                        )
+                    }
                 }
             }
         }
@@ -628,7 +689,16 @@ private fun HomeBar(tabs: List<HomeRoute>, current: HomeRoute, onSelect: (HomeRo
                 selected = selected,
                 onClick = { if (!selected) onSelect(tab) },
                 icon = { Icon(if (selected) filled else outlined, contentDescription = null) },
-                label = { Text(strings(label)) },
+                // One line, smaller rather than broken: "Transactions" wrapped
+                // to two lines on a narrow phone.
+                label = {
+                    BasicText(
+                        strings(label),
+                        maxLines = 1,
+                        style = MaterialTheme.typography.labelMedium.copy(color = LocalContentColor.current),
+                        autoSize = TextAutoSize.StepBased(minFontSize = 9.sp, maxFontSize = MaterialTheme.typography.labelMedium.fontSize),
+                    )
+                },
             )
         }
     }
@@ -661,6 +731,13 @@ private fun homeTransition(from: HomeRoute, to: HomeRoute): ContentTransform = w
         (fadeIn(tween(260)) + slideInVertically(tween(300)) { it / 14 }) togetherWith fadeOut(tween(180))
 
     from in MONEY && to == HomeRoute.HOME ->
+        fadeIn(tween(220)) togetherWith (fadeOut(tween(200)) + slideOutVertically(tween(240)) { it / 14 })
+
+    // Profile rises in from wherever it was opened, and settles back down.
+    to == HomeRoute.PROFILE ->
+        (fadeIn(tween(260)) + slideInVertically(tween(300)) { it / 14 }) togetherWith fadeOut(tween(180))
+
+    from == HomeRoute.PROFILE ->
         fadeIn(tween(220)) togetherWith (fadeOut(tween(200)) + slideOutVertically(tween(240)) { it / 14 })
 
     // The plan rises in from wherever it was opened, and settles back down.

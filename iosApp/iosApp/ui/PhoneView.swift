@@ -39,7 +39,7 @@ struct PhoneView: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel(L.t(Strings.shared.welcome_dial_code_label))
 
-                TextField(L.t(Strings.shared.welcome_phone_hint), text: $model.phoneDigits)
+                TextField(DialCodes.shared.exampleFor(region: model.dialCode.region), text: $model.phoneDigits)
                     .keyboardType(.phonePad)
                     .textContentType(.telephoneNumber)
                     .font(.title3)

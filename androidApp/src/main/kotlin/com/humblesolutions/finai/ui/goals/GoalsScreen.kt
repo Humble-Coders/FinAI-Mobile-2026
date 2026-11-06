@@ -51,6 +51,7 @@ import androidx.compose.ui.unit.dp
 import com.humblesolutions.finai.i18n.Strings
 import com.humblesolutions.finai.model.Goal
 import com.humblesolutions.finai.ui.components.CollapsingTitleBar
+import com.humblesolutions.finai.ui.components.DisclaimerLink
 import com.humblesolutions.finai.ui.components.Field
 import com.humblesolutions.finai.ui.components.FieldVectors
 import com.humblesolutions.finai.ui.components.LightStatusBarIcons
@@ -75,6 +76,8 @@ internal data class GoalsActions(
     val onRetry: () -> Unit,
     /** The emergency fund suggestion's "Add goal". */
     val onAddEmergency: () -> Unit = {},
+    /** Profile, which holds the region's disclaimer in full. */
+    val onOpenProfile: () -> Unit = {},
 )
 
 /**
@@ -87,7 +90,7 @@ internal data class GoalsActions(
  *
  * **Where a goal stands is always said in words**, never left to the bar's
  * colour, and a long-term goal says plainly that its projection counts no
- * investment growth, beside the region's disclaimer.
+ * investment growth. The region's disclaimer is in Profile, one line away.
  */
 @Composable
 internal fun GoalsScreen(state: GoalsUiState, actions: GoalsActions) {
@@ -223,6 +226,8 @@ private fun Sheet(state: GoalsUiState, actions: GoalsActions) {
 
         NewGoalRow(state, actions.onNew)
 
+        if (state.showsDisclaimerLink) DisclaimerLink(actions.onOpenProfile)
+
         // A refusal that is not about one sheet — a reorder that failed, say.
         state.noticeKey?.let {
             Text(strings(it), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
@@ -309,9 +314,6 @@ private fun GoalRow(state: GoalsUiState, goal: Goal, index: Int, actions: GoalsA
                 Text(it, style = MaterialTheme.typography.labelMedium, color = Mint.greenText())
             }
             state.growthLineOf(goal)?.let {
-                Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            state.disclaimerOf(goal)?.let {
                 Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             if (!goal.isAchieved && !state.reordering) {

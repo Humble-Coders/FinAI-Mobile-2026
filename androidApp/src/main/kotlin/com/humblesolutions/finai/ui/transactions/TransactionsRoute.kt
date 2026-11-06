@@ -7,8 +7,11 @@ import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.humblesolutions.finai.BuildConfig
+import com.humblesolutions.finai.i18n.Strings
 import com.humblesolutions.finai.ui.components.LoaderSignal
+import com.humblesolutions.finai.ui.components.TabSkeleton
 import com.humblesolutions.finai.ui.edit.TransactionEditorActions
+import com.humblesolutions.finai.ui.strings
 
 /** Everything the household has, with its own view model (#F3). */
 @Composable
@@ -16,9 +19,14 @@ internal fun TransactionsRoute(userId: String, onClose: () -> Unit, showsBack: B
     val model: TransactionsViewModel = viewModel()
     val state by model.uiState.collectAsStateWithLifecycle()
     LaunchedEffect(userId) { model.bind(userId, logging = BuildConfig.DEBUG) }
-    // A first load and a new month earn the coin; a new statement refreshes underneath.
-    LoaderSignal(key = "transactions", active = state.loading || state.switchingMonth)
+    // A first load draws the page's shape; a new month earns the coin; a new
+    // statement refreshes underneath.
+    LoaderSignal(key = "transactions", active = state.switchingMonth)
     BackHandler { onClose() }
+    if (state.loading && !state.switchingMonth) {
+        TabSkeleton(strings(Strings.tab_transactions))
+        return
+    }
 
     TransactionsScreen(
         state = state,
