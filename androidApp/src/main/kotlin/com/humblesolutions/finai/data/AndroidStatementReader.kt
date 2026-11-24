@@ -8,6 +8,7 @@ import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import com.humblesolutions.finai.config.StatementLimits
 import com.humblesolutions.finai.model.BoundingBox
+import com.humblesolutions.finai.model.ExtractedCell
 import com.humblesolutions.finai.model.ExtractedDocument
 import com.humblesolutions.finai.model.ExtractedLine
 import com.humblesolutions.finai.model.ExtractedPage
@@ -143,6 +144,7 @@ class AndroidStatementReader(private val context: Context) : StatementReader {
                 if (text.isBlank() || positions.isEmpty()) return
                 lines += ExtractedLine(
                     text = text.trim(),
+                    cells = words(positions),
                     box = BoundingBox(
                         left = positions.minOf { it.xDirAdj },
                         top = positions.minOf { it.yDirAdj },
@@ -156,6 +158,37 @@ class AndroidStatementReader(private val context: Context) : StatementReader {
         stripper.endPage = page
         stripper.getText(document)
         return lines
+    }
+
+    /**
+     * The line's words with where each sits across the page: what tells which
+     * column of a statement's table an amount was printed in. A word ends at a
+     * space glyph or a gap wider than a third of a character, since PDFBox
+     * does not always emit the space itself.
+     */
+    private fun words(positions: List<TextPosition>): List<ExtractedCell> {
+        val words = mutableListOf<ExtractedCell>()
+        val text = StringBuilder()
+        var left = 0f
+        var right = 0f
+        fun close() {
+            if (text.isNotBlank()) words += ExtractedCell(text.toString(), left, right)
+            text.clear()
+        }
+        for (glyph in positions) {
+            val unicode = glyph.unicode ?: continue
+            if (unicode.isBlank()) {
+                close()
+                continue
+            }
+            val start = glyph.xDirAdj
+            if (text.isNotEmpty() && start - right > glyph.widthDirAdj / 3) close()
+            if (text.isEmpty()) left = start
+            text.append(unicode)
+            right = start + glyph.widthDirAdj
+        }
+        close()
+        return words
     }
 
     /** Path 2 — draw each page of the document already open, then read it. */

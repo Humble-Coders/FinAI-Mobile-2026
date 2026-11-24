@@ -9,9 +9,8 @@ package com.humblesolutions.finai.model
  * something that can be sent (PRD F2, 2026-09-21).
  *
  * Lines carry their [BoundingBox] because a statement is a table, and reading
- * order alone loses which column a number was in. Nothing uses the coordinates
- * yet; they are kept because throwing them away here means re-reading the whole
- * document to get them back.
+ * order alone loses which column a number was in. Their [ExtractedLine.cells]
+ * are what puts that back: which column each amount sat under.
  */
 data class ExtractedDocument(
     val pages: List<ExtractedPage> = emptyList(),
@@ -38,6 +37,21 @@ data class ExtractedPage(
 data class ExtractedLine(
     val text: String = "",
     val box: BoundingBox = BoundingBox(),
+    /**
+     * The line's pieces with where each sits across the page: words from a
+     * PDF's text layer, or the fragments OCR returned. What tells which column
+     * an amount was printed in (see
+     * [com.humblesolutions.finai.usecase.StatementColumns]). Empty when the
+     * reader could not say.
+     */
+    val cells: List<ExtractedCell> = emptyList(),
+)
+
+/** One piece of a line and its horizontal extent, in the page's own units. */
+data class ExtractedCell(
+    val text: String = "",
+    val left: Float = 0f,
+    val right: Float = 0f,
 )
 
 /** Page coordinates, origin top-left, in the page's own units. */

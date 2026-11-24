@@ -600,6 +600,18 @@ class StatementImportViewModel(private val saved: SavedStateHandle) : ViewModel(
         }
     }
 
+    /** One row read the wrong way round: money in becomes money out, or back. */
+    fun swapRow(id: String) {
+        if (_uiState.value.step != ImportStep.CHECK) return
+        _uiState.update { it.copy(checkRows = ImportCheck.swap(it.checkRows, id), saveErrorKey = null) }
+    }
+
+    /** A whole statement read the wrong way round. */
+    fun swapAll() {
+        if (_uiState.value.step != ImportStep.CHECK) return
+        _uiState.update { it.copy(checkRows = ImportCheck.swapAll(it.checkRows), saveErrorKey = null) }
+    }
+
     /**
      * The sheet asked first. Before saving, the row is simply left out of the
      * import; after, it is deleted from the person's records.

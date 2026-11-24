@@ -853,6 +853,20 @@ final class StatementImportViewModel: ObservableObject, NewAccountHost {
         }
     }
 
+    /// One row read the wrong way round: money in becomes money out, or back.
+    func swapRow(_ id: String) {
+        guard step == .check else { return }
+        checkRows = ImportCheck.shared.swap(rows: checkRows, id: id)
+        saveErrorKey = nil
+    }
+
+    /// A whole statement read the wrong way round.
+    func swapAll() {
+        guard step == .check else { return }
+        checkRows = ImportCheck.shared.swapAll(rows: checkRows)
+        saveErrorKey = nil
+    }
+
     /// The sheet asked first. Before saving, the row is simply left out of the
     /// import; after, it is deleted from the person's records.
     func deleteEditing() {

@@ -199,4 +199,30 @@ class ImportCheckTest {
         assertEquals(listOf<String?>(null, null, null, null), breakdown.moneyOut.map { it.name })
         assertNull(breakdown.betweenAccounts)
     }
+
+    @Test
+    fun swapping_a_row_turns_it_around_and_clears_its_category() {
+        val filed = rows.map { it.copy(row = it.row.copy(categoryId = "cat-food")) }
+        val swapped = ImportCheck.swap(filed, "check-0")
+
+        assertEquals(TransactionDirection.CREDIT, swapped[0].row.direction)
+        assertNull(swapped[0].row.categoryId, "the server files it again on the right side")
+        assertTrue(swapped[0].edited, "the person has looked at it")
+        assertEquals(filed.drop(1), swapped.drop(1), "the other rows are untouched")
+        assertEquals(TransactionDirection.DEBIT, ImportCheck.swap(swapped, "check-0")[0].row.direction)
+    }
+
+    @Test
+    fun swapping_all_turns_every_row_around() {
+        val swapped = ImportCheck.swapAll(rows)
+
+        assertEquals(
+            listOf(TransactionDirection.CREDIT, TransactionDirection.DEBIT, TransactionDirection.CREDIT),
+            swapped.map { it.row.direction },
+        )
+        assertEquals(0, ImportCheck.doubtCount(swapped), "every row has now been looked at")
+        val saved = ImportCheck.rowsToSave("acc-1", swapped).rows
+        assertEquals(listOf("credit", "debit", "credit"), saved.map { it.direction })
+        assertEquals(listOf(ImportCheck.CONFIRMED), saved.map { it.confidence }.distinct())
+    }
 }

@@ -75,6 +75,15 @@ data class StatementUpload(
     @SerialName("statement_period_end")
     val statementPeriodEnd: String? = null,
     /**
+     * The statement table's column headings, left to right ("Date | Details |
+     * Withdrawals | Deposits | Balance"), read before redaction drops the
+     * block they sit in. Words from a fixed vocabulary only — see
+     * [com.humblesolutions.finai.usecase.StatementColumns]. Null when none
+     * were found; left off the wire then.
+     */
+    @SerialName("statement_columns")
+    val statementColumns: String? = null,
+    /**
      * "Keep this text so the parser can be fixed" — the person's answer to an
      * explicit, unticked offer shown after a failed import, and only then
      * (#31). Asked per import, never remembered. Left off the wire when false,
