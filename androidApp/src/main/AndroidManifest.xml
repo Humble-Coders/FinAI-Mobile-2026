@@ -13,7 +13,8 @@
         <activity
             android:exported="true"
             android:name=".MainActivity"
-            android:theme="@style/Theme.FinAISplash">
+            android:theme="@style/Theme.FinAISplash"
+            android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
 

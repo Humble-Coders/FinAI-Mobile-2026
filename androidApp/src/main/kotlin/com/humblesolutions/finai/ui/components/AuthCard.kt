@@ -107,9 +107,12 @@ fun AuthCard(
     val owner = remember { Any() }
     DisposableEffect(owner) { onDispose { loader.release(owner) } }
 
-    Box(modifier.fillMaxWidth().padding(top = CoinBadgeSize / 2)) {
+    Box(modifier.fillMaxWidth()) {
+        // The card starts half a coin down and the coin sits at the top, so it
+        // straddles the edge. With the offset on the box instead, the coin sat
+        // inside the card and ran into the title on shorter phones.
         Surface(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().padding(top = CoinBadgeSize / 2),
             shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
             color = MaterialTheme.colorScheme.surface,
             tonalElevation = 2.dp,

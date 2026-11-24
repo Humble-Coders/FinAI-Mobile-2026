@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -143,7 +144,12 @@ fun TransactionEditorSheet(state: TransactionEditorState, actions: TransactionEd
     val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val busy = state.saving || state.deleting
 
-    ModalBottomSheet(onDismissRequest = actions.onCancel, sheetState = sheet) {
+    ModalBottomSheet(
+        onDismissRequest = actions.onCancel,
+        sheetState = sheet,
+        // A tall form on a shorter phone: stop below the status bar.
+        modifier = Modifier.statusBarsPadding(),
+    ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()

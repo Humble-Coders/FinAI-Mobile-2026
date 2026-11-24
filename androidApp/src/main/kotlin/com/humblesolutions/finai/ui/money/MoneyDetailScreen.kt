@@ -215,6 +215,9 @@ fun MoneyDetailScreen(state: MoneyDetailUiState, actions: MoneyDetailActions) {
 
 private val ContentMaxWidth = 560.dp
 
+/** About six months at a time: fits below the chip on any phone. */
+private val MonthMenuMaxHeight = 300.dp
+
 // ── Colour ──────────────────────────────────────────────────────────────
 
 /** One screen's colour: the card's accent on Home, and the wash behind it. */
@@ -290,7 +293,14 @@ private fun Title(state: MoneyDetailUiState, onMonth: (LocalDate) -> Unit) {
                 Spacer(Modifier.width(4.dp))
                 FinAiIcon(Icons.Filled.KeyboardArrowDown, tint = MaterialTheme.colorScheme.onBackground, size = 22.dp)
             }
-            DropdownMenu(expanded = choosing, onDismissRequest = { choosing = false }) {
+            // A year of months is taller than a shorter phone has room for
+            // below the chip, so the menu jumped up over the title and back
+            // button. Capped, it opens below the chip and scrolls instead.
+            DropdownMenu(
+                expanded = choosing,
+                onDismissRequest = { choosing = false },
+                modifier = Modifier.heightIn(max = MonthMenuMaxHeight),
+            ) {
                 state.months.forEach { month ->
                     DropdownMenuItem(
                         text = {
