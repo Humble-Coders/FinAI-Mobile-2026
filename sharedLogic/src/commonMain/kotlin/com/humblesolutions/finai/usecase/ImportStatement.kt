@@ -84,13 +84,18 @@ class ImportStatement(
         onClosingBalance: (StatementBalance.Found?) -> Unit = {},
     ): ParsedStatement {
         val rows = OcrRows.of(document)
+        // Before redaction, like the period: the table's heading sits in the
+        // block the redactor drops. Only its column names leave the phone.
+        val columns = StatementColumns.find(rows)
         val found = StatementPeriod.find(rows)
         val period = found ?: recentYear(rows)
         // Before redaction, for the period's reason: the summary is in the
         // block the redactor drops. A screenshot has no summary, so its
         // made-up year is never a closing date.
         onClosingBalance(if (rows.fromImage) null else StatementBalance.find(rows, found?.end, accountCurrency))
-        val redaction = StatementRedactor.of(rows)
+        // Each amount marked with the column it sat under, so the server's
+        // reader need not guess which way the money went.
+        val redaction = StatementRedactor.of(StatementColumns.tag(rows))
         // A screenshot's dates carry no year; the year is decided here, not
         // left to the model. See YearlessDates.
         val text = if (rows.fromImage) YearlessDates.complete(redaction.text, today()) else redaction.text
@@ -113,6 +118,7 @@ class ImportStatement(
                 accountId = accountId,
                 statementPeriodStart = period?.start,
                 statementPeriodEnd = period?.end,
+                statementColumns = columns?.label?.takeIf { it.isNotEmpty() },
                 keepTextForDiagnostics = keepTextForDiagnostics,
             ),
         )

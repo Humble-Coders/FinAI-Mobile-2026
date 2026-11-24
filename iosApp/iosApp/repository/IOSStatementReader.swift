@@ -141,11 +141,54 @@ final class IOSStatementReader {
                         top: Float(pageHeight - box.maxY),
                         right: Float(box.maxX),
                         bottom: Float(pageHeight - box.minY)
-                    )
+                    ),
+                    cells: words(in: raw, from: characterIndex, end: end, on: page)
                 )
             )
         }
         return result
+    }
+
+    /// The line's words and where each sits across the page — what tells
+    /// which column of a statement's table an amount was printed in. Walks
+    /// UTF-16 units, as `characterBounds(at:)` indexes them (see above).
+    private func words(in raw: String, from start: Int, end: Int, on page: PDFPage) -> [ExtractedCell] {
+        let units = Array(raw.utf16)
+        var cells: [ExtractedCell] = []
+        var wordStart: Int?
+        var left = CGFloat.zero
+        var right = CGFloat.zero
+
+        func close(at offset: Int) {
+            if let first = wordStart {
+                let text = String(decoding: units[first..<offset], as: UTF16.self)
+                if !text.trimmingCharacters(in: .whitespaces).isEmpty {
+                    cells.append(ExtractedCell(text: text, left: Float(left), right: Float(right)))
+                }
+            }
+            wordStart = nil
+        }
+
+        for offset in 0..<units.count {
+            let position = start + offset
+            guard position < end else { break }
+            let unit = units[offset]
+            // Space, tab, no-break space.
+            if unit == 0x20 || unit == 0x09 || unit == 0xA0 {
+                close(at: offset)
+                continue
+            }
+            let bounds = page.characterBounds(at: position)
+            if wordStart == nil {
+                wordStart = offset
+                left = bounds.minX
+                right = bounds.maxX
+            } else {
+                right = max(right, bounds.maxX)
+            }
+        }
+        close(at: min(units.count, end - start))
+        return cells
     }
 
     // MARK: - Path 2: a scanned PDF
@@ -221,7 +264,10 @@ final class IOSStatementReader {
                             top: Float((1 - box.maxY) * height),
                             right: Float(box.maxX * width),
                             bottom: Float((1 - box.minY) * height)
-                        )
+                        ),
+                        // Each observation is one fragment; shared OcrRows
+                        // gathers a row's fragments into its cells.
+                        cells: []
                     )
                 }
                 continuation.resume(returning: lines)

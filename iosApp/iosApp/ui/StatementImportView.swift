@@ -563,6 +563,7 @@ struct StatementImportView: View {
                 }
                 if let breakdown = model.checkBreakdown { breakdownCard(breakdown) }
                 if let question = model.balanceQuestion { balanceCard(question) }
+                swapAllCard
                 ForEach(model.checkDays, id: \.date) { day in
                     Text(model.dateLabel(day.date))
                         .font(.caption)
@@ -570,15 +571,21 @@ struct StatementImportView: View {
                         .padding(.top, 6)
                     VStack(spacing: 0) {
                         ForEach(Array(day.rows.enumerated()), id: \.element.id) { index, row in
-                            importedRow(row, description: model.checkRowDescription(row), hint: model.checkRowHint(row)) {
-                                HStack(spacing: 6) {
-                                    if let category = model.checkCategoryLabel(row) {
-                                        note(category, warning: row.categoryId == nil)
-                                    }
-                                    if let key = model.checkNoteKey(row) {
-                                        note(L.t(key), warning: key == Strings.shared.import_check_doubt)
+                            // The swap button sits beside the row rather than in
+                            // it: a button inside the row's own button would
+                            // not get its taps.
+                            HStack(spacing: 0) {
+                                importedRow(row, description: model.checkRowDescription(row), hint: model.checkRowHint(row)) {
+                                    HStack(spacing: 6) {
+                                        if let category = model.checkCategoryLabel(row) {
+                                            note(category, warning: row.categoryId == nil)
+                                        }
+                                        if let key = model.checkNoteKey(row) {
+                                            note(L.t(key), warning: key == Strings.shared.import_check_doubt)
+                                        }
                                     }
                                 }
+                                swapButton(row)
                             }
                             if index != day.rows.count - 1 {
                                 Divider().overlay(Brand.border)
@@ -590,6 +597,41 @@ struct StatementImportView: View {
                 }
             }
         }
+    }
+
+    /// "Swap all in/out", for a statement read the wrong way round throughout —
+    /// the safety net under the reader's own checks.
+    private var swapAllCard: some View {
+        HStack(spacing: 8) {
+            Text(L.t(Strings.shared.import_check_swap_all_note))
+                .font(.footnote)
+                .foregroundColor(Brand.textMuted)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Button { model.swapAll() } label: {
+                Label(L.t(Strings.shared.import_check_swap_all), systemImage: "arrow.up.arrow.down")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundColor(Brand.green)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(Brand.surface.opacity(0.6))
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    /// One row's "Swap in/out": money in becomes money out, or back.
+    private func swapButton(_ row: SharedLogic.Transaction) -> some View {
+        Button { model.swapRow(row.id) } label: {
+            Image(systemName: "arrow.up.arrow.down")
+                .font(.footnote.weight(.semibold))
+                .foregroundColor(Brand.green)
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .padding(.trailing, 4)
+        .accessibilityLabel(L.t(Strings.shared.import_check_swap_hint, model.checkRowDescription(row)))
     }
 
     /// The statement's closing balance, read on the phone, and whether it should

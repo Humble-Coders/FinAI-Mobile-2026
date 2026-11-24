@@ -1,6 +1,7 @@
 package com.humblesolutions.finai.usecase
 
 import com.humblesolutions.finai.model.BoundingBox
+import com.humblesolutions.finai.model.ExtractedCell
 import com.humblesolutions.finai.model.ExtractedDocument
 import com.humblesolutions.finai.model.ExtractedLine
 import com.humblesolutions.finai.model.SourceKind
@@ -45,6 +46,9 @@ object OcrRows {
             val ordered = row.sortedBy { it.box.left }
             ExtractedLine(
                 text = ordered.joinToString(COLUMN_GAP) { it.text.trim() },
+                // Each fragment kept with where it sat, so an amount can be
+                // matched to the column heading above it.
+                cells = ordered.map { ExtractedCell(it.text.trim(), it.box.left, it.box.right) },
                 box = BoundingBox(
                     left = ordered.minOf { it.box.left },
                     top = ordered.minOf { it.box.top },

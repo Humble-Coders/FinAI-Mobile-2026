@@ -136,6 +136,8 @@ internal fun StatementImportRoute(
             onDiagnosticsTicked = model::onDiagnosticsTicked,
             onSendDiagnostics = model::sendDiagnostics,
             onEditRow = model::edit,
+            onSwapRow = model::swapRow,
+            onSwapAll = model::swapAll,
             onSaveChecked = model::saveChecked,
             onAskDiscard = model::askDiscard,
             onKeepChecking = model::keepChecking,

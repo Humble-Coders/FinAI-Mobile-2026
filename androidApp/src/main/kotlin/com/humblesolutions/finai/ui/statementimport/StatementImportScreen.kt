@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.PhotoCamera
+import androidx.compose.material.icons.filled.SwapVert
 import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
@@ -124,6 +125,10 @@ class StatementImportActions(
     val onSendDiagnostics: () -> Unit,
     /** A row to fix: one being checked, or one just saved (#55). */
     val onEditRow: (String) -> Unit,
+    /** Money in and money out swapped for one row being checked. */
+    val onSwapRow: (String) -> Unit = {},
+    /** Money in and money out swapped for every row being checked. */
+    val onSwapAll: () -> Unit = {},
     val onSaveChecked: () -> Unit,
     val onAskDiscard: () -> Unit,
     val onKeepChecking: () -> Unit,
@@ -562,6 +567,7 @@ private fun CheckStep(state: StatementImportUiState, actions: StatementImportAct
     )
     state.checkBreakdown?.let { BreakdownCard(state, it) }
     state.balanceQuestion?.let { BalanceCard(it, state.updateBalance, actions.onUpdateBalance) }
+    SwapAllRow(actions.onSwapAll)
 
     state.checkDays.forEach { day ->
         Text(
@@ -585,11 +591,12 @@ private fun CheckStep(state: StatementImportUiState, actions: StatementImportAct
                         clickLabel = state.checkRowHint(row),
                         onClick = { actions.onEditRow(row.id) },
                     ) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                             state.checkCategoryLabel(row)?.let { label ->
                                 Tag(label, warning = row.categoryId == null)
                             }
                             CheckNote(state, row)
+                            SwapChip(description = state.checkRowDescription(row)) { actions.onSwapRow(row.id) }
                         }
                     }
                     if (index != day.rows.lastIndex) {
@@ -598,6 +605,53 @@ private fun CheckStep(state: StatementImportUiState, actions: StatementImportAct
                 }
             }
         }
+    }
+}
+
+/**
+ * "Swap all in/out", for a statement read the wrong way round throughout —
+ * the safety net under the reader's own checks.
+ */
+@Composable
+private fun SwapAllRow(onSwapAll: () -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+            .padding(start = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = strings(Strings.import_check_swap_all_note),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f).padding(vertical = 8.dp),
+        )
+        TextButton(onClick = onSwapAll) {
+            Icon(Icons.Filled.SwapVert, contentDescription = null, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(4.dp))
+            Text(strings(Strings.import_check_swap_all))
+        }
+    }
+}
+
+/** One row's "Swap in/out": a small button of its own inside the row. */
+@Composable
+private fun SwapChip(description: String, onSwap: () -> Unit) {
+    val label = strings(Strings.import_check_swap_hint, description)
+    Row(
+        Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .clickable(role = Role.Button, onClickLabel = label, onClick = onSwap)
+            .semantics { contentDescription = label }
+            .heightIn(min = 32.dp)
+            .padding(horizontal = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Filled.SwapVert, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
+        Spacer(Modifier.width(2.dp))
+        Text(strings(Strings.import_check_swap), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
     }
 }
 

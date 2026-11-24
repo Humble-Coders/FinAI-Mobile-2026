@@ -1,6 +1,7 @@
 package com.humblesolutions.finai.usecase
 
 import com.humblesolutions.finai.config.StatementLimits
+import com.humblesolutions.finai.model.ExtractedCell
 import com.humblesolutions.finai.model.ExtractedDocument
 import com.humblesolutions.finai.model.ExtractedLine
 import com.humblesolutions.finai.model.ExtractedPage
@@ -371,5 +372,42 @@ class ImportStatementTest {
         ImportStatement(imports) { today }.execute(statement(header, transaction))
 
         assertTrue(assertNotNull(imports.sent).text.contains("14 Aug  SPOTIFY"), "a statement's year comes from its period")
+    }
+
+    @Test
+    fun sendsTheColumnNamesAndTagsEachAmountWithItsColumn() = runTest {
+        val imports = FakeImports()
+        fun words(vararg cells: Pair<String, Float>) = cells.map { (text, x) -> ExtractedCell(text, x, x + text.length * 10f) }
+        val headingCells = words("Date" to 0f, "Details" to 100f, "Withdrawals" to 400f, "Deposits" to 560f, "Balance" to 700f)
+        val rowCells = words("14 Aug" to 0f, "SHOP" to 100f, "450.00" to 450f, "12,340.50" to 700f)
+        val document = ExtractedDocument(
+            pages = listOf(
+                ExtractedPage(
+                    index = 0,
+                    lines = listOf(
+                        ExtractedLine(text = "JANE DOE"),
+                        ExtractedLine(text = header),
+                        ExtractedLine(text = headingCells.joinToString(" ") { it.text }, cells = headingCells),
+                        ExtractedLine(text = rowCells.joinToString("   ") { it.text }, cells = rowCells),
+                    ),
+                ),
+            ),
+            source = SourceKind.PDF_TEXT,
+        )
+
+        ImportStatement(imports).execute(document)
+
+        val sent = assertNotNull(imports.sent)
+        assertEquals("Date | Details | Withdrawals | Deposits | Balance", sent.statementColumns)
+        assertTrue(sent.text.contains("450.00 [out]"), sent.text)
+        assertTrue(sent.text.contains("12,340.50 [balance]"), sent.text)
+        assertFalse(sent.text.contains("JANE DOE"))
+    }
+
+    @Test
+    fun sendsNoColumnsWhenThereIsNoHeading() = runTest {
+        val imports = FakeImports()
+        ImportStatement(imports).execute(statement(header, transaction))
+        assertNull(assertNotNull(imports.sent).statementColumns)
     }
 }

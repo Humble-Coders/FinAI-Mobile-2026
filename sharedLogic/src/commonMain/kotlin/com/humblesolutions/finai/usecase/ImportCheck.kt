@@ -139,6 +139,23 @@ object ImportCheck {
         return rows.map { if (it.row.id == id) it.copy(row = changed, edited = true) else it }
     }
 
+    /**
+     * [rows] with [id]'s money in and money out swapped — the one-tap fix for
+     * a row read the wrong way round. Its category is cleared, because one
+     * chosen for money in rarely fits money out; the server files it again on
+     * save, now on the right side, and learns nothing from the blank. The row
+     * counts as checked: the person has looked at it.
+     */
+    fun swap(rows: List<CheckRow>, id: String): List<CheckRow> = rows.map { if (it.row.id == id) swapped(it) else it }
+
+    /** Every row swapped: for a statement read the wrong way round throughout. */
+    fun swapAll(rows: List<CheckRow>): List<CheckRow> = rows.map(::swapped)
+
+    private fun swapped(check: CheckRow): CheckRow {
+        val other = if (check.row.direction == TransactionDirection.DEBIT) TransactionDirection.CREDIT else TransactionDirection.DEBIT
+        return check.copy(row = check.row.copy(direction = other, categoryId = null), edited = true)
+    }
+
     /** [rows] without [id]. Removing is not editing: the row is simply not saved. */
     fun remove(rows: List<CheckRow>, id: String): List<CheckRow> = rows.filterNot { it.row.id == id }
 
