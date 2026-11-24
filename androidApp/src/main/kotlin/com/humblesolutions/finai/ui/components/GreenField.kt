@@ -116,10 +116,23 @@ internal fun LightStatusBarIcons(dark: Boolean) {
     DisposableEffect(dark) {
         val window = (view.context as? android.app.Activity)?.window
         val controller = window?.let { WindowCompat.getInsetsController(it, view) }
+        greenScreensShowing++
         controller?.isAppearanceLightStatusBars = false
-        onDispose { controller?.isAppearanceLightStatusBars = !dark }
+        onDispose {
+            // Counted, not simply put back: going from one green screen to the
+            // next, the old one leaves after the new one arrives, and putting
+            // the icons back then turned them dark on the new green screen.
+            greenScreensShowing--
+            if (greenScreensShowing <= 0) {
+                greenScreensShowing = 0
+                controller?.isAppearanceLightStatusBars = !dark
+            }
+        }
     }
 }
+
+/** How many green screens are composed right now: all on the main thread. */
+private var greenScreensShowing = 0
 
 /**
  * The faint pictures on the field, as in the design: a tilted card in the top

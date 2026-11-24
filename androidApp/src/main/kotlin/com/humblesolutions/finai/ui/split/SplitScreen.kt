@@ -331,6 +331,24 @@ private fun StartStep(state: SplitUiState, actions: SplitActions) {
         Waves(Modifier.fillMaxSize())
         FieldVectors(Modifier.fillMaxSize())
         Column(Modifier.fillMaxSize().safeDrawingPadding(), horizontalAlignment = Alignment.CenterHorizontally) {
+            // Back and History stay put above the scroll: scrolled, the title
+            // slid up under the status bar and left bits of its letters there.
+            Row(
+                Modifier
+                    .widthIn(max = SplitMaxWidth)
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp)
+                    .padding(top = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                IconButton(onClick = actions.onClose) {
+                    Icon(painterResource(R.drawable.ic_back), contentDescription = strings(Strings.action_back), tint = Field.ink())
+                }
+                Spacer(Modifier.weight(1f))
+                IconButton(onClick = actions.onHistory) {
+                    Icon(Icons.Outlined.History, contentDescription = strings(Strings.split_history), tint = Field.ink())
+                }
+            }
             Column(
                 Modifier
                     .widthIn(max = SplitMaxWidth)
@@ -340,15 +358,6 @@ private fun StartStep(state: SplitUiState, actions: SplitActions) {
                     .padding(horizontal = 20.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
-                Row(Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = actions.onClose) {
-                        Icon(painterResource(R.drawable.ic_back), contentDescription = strings(Strings.action_back), tint = Field.ink())
-                    }
-                    Spacer(Modifier.weight(1f))
-                    IconButton(onClick = actions.onHistory) {
-                        Icon(Icons.Outlined.History, contentDescription = strings(Strings.split_history), tint = Field.ink())
-                    }
-                }
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(
                         strings(Strings.split_title),

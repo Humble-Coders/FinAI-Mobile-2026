@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
@@ -101,7 +102,13 @@ fun AddMoneySheet(
     var choosingDate by rememberSaveable { mutableStateOf(false) }
     var choosingCategory by rememberSaveable { mutableStateOf(false) }
 
-    ModalBottomSheet(onDismissRequest = actions.onClose, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+    ModalBottomSheet(
+        onDismissRequest = actions.onClose,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        // On a shorter phone the form fills the screen; the sheet stops below
+        // the status bar instead of running under the clock.
+        modifier = Modifier.statusBarsPadding(),
+    ) {
         AddMoneyForm(
             state = state,
             actions = actions,
@@ -187,15 +194,10 @@ internal fun AddMoneyForm(
     onPickAccount: () -> Unit,
 ) {
     val focus = LocalFocusManager.current
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .verticalScroll(rememberScrollState())
-            .imePadding()
-            .padding(horizontal = 24.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+    // The title and Save stay put and only the fields scroll between them: on a
+    // shorter phone Save sat below the fold, so the form looked like it had none.
+    Column(Modifier.fillMaxWidth().imePadding()) {
+        Row(Modifier.padding(horizontal = 24.dp).padding(bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(
                 strings(if (investment) Strings.money_add_investment_title else Strings.money_add_transaction),
                 style = MaterialTheme.typography.titleLarge,
@@ -212,81 +214,93 @@ internal fun AddMoneyForm(
             return@Column
         }
         if (state.loadFailed) {
-            ErrorText(state.errorKey ?: Strings.manual_entry_load_failed)
-            GradientButton(text = strings(Strings.manual_entry_retry), onClick = actions.onRetry)
-            Spacer(Modifier.height(24.dp))
+            Column(Modifier.padding(horizontal = 24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                ErrorText(state.errorKey ?: Strings.manual_entry_load_failed)
+                GradientButton(text = strings(Strings.manual_entry_retry), onClick = actions.onRetry)
+                Spacer(Modifier.height(24.dp))
+            }
             return@Column
         }
 
-        Segmented(
-            chosen = state.draft.direction,
-            investment = investment,
-            isError = state.notice == ManualEntryBlock.NO_DIRECTION,
-            onChosen = actions.onDirectionChosen,
-        )
+        Column(
+            Modifier
+                .weight(1f, fill = false)
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 24.dp)
+                .padding(top = 8.dp, bottom = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Segmented(
+                chosen = state.draft.direction,
+                investment = investment,
+                isError = state.notice == ManualEntryBlock.NO_DIRECTION,
+                onChosen = actions.onDirectionChosen,
+            )
 
-        AmountField(
-            value = state.draft.amount,
-            onValueChange = actions.onAmountChange,
-            label = strings(Strings.manual_entry_amount_label),
-            symbol = state.symbol,
-            placeholder = state.amountPlaceholder,
-            isError = state.notice in setOf(ManualEntryBlock.NO_AMOUNT, ManualEntryBlock.AMOUNT_NOT_MONEY, ManualEntryBlock.AMOUNT_ZERO),
-            large = false,
-        )
+            AmountField(
+                value = state.draft.amount,
+                onValueChange = actions.onAmountChange,
+                label = strings(Strings.manual_entry_amount_label),
+                symbol = state.symbol,
+                placeholder = state.amountPlaceholder,
+                isError = state.notice in setOf(ManualEntryBlock.NO_AMOUNT, ManualEntryBlock.AMOUNT_NOT_MONEY, ManualEntryBlock.AMOUNT_ZERO),
+                large = false,
+            )
 
-        PickerField(
-            label = strings(Strings.manual_entry_date_label),
-            value = state.dateLabel,
-            placeholder = strings(Strings.manual_entry_date_placeholder),
-            onClick = {
-                actions.onRefreshToday()
-                onPickDate()
-            },
-            isError = state.notice == ManualEntryBlock.NO_DATE || state.notice == ManualEntryBlock.FUTURE_DATE,
-            leading = Icons.Filled.CalendarMonth,
-            trailing = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-        )
-
-        if (!investment) {
             PickerField(
-                label = strings(Strings.manual_entry_category_label),
-                value = state.categoryName ?: strings(Strings.manual_entry_category_none),
-                placeholder = strings(Strings.manual_entry_category_none),
-                onClick = onPickCategory,
-                leading = Icons.AutoMirrored.Filled.Label,
+                label = strings(Strings.manual_entry_date_label),
+                value = state.dateLabel,
+                placeholder = strings(Strings.manual_entry_date_placeholder),
+                onClick = {
+                    actions.onRefreshToday()
+                    onPickDate()
+                },
+                isError = state.notice == ManualEntryBlock.NO_DATE || state.notice == ManualEntryBlock.FUTURE_DATE,
+                leading = Icons.Filled.CalendarMonth,
                 trailing = Icons.AutoMirrored.Filled.KeyboardArrowRight,
             )
+
+            if (!investment) {
+                PickerField(
+                    label = strings(Strings.manual_entry_category_label),
+                    value = state.categoryName ?: strings(Strings.manual_entry_category_none),
+                    placeholder = strings(Strings.manual_entry_category_none),
+                    onClick = onPickCategory,
+                    leading = Icons.AutoMirrored.Filled.Label,
+                    trailing = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                )
+            }
+
+            WizardField(
+                value = state.draft.description,
+                onValueChange = actions.onDescriptionChange,
+                label = strings(if (investment) Strings.money_investment_label else Strings.money_merchant_label),
+                placeholder = strings(if (investment) Strings.money_investment_hint else Strings.money_merchant_hint),
+                imeAction = ImeAction.Done,
+                capitalization = KeyboardCapitalization.Sentences,
+                isError = state.notice == ManualEntryBlock.NO_DESCRIPTION || state.notice == ManualEntryBlock.DESCRIPTION_TOO_LONG,
+                onDone = { focus.clearFocus() },
+            )
+
+            PickerField(
+                label = strings(Strings.money_payment_method),
+                value = state.account?.name,
+                placeholder = strings(Strings.manual_entry_account_placeholder),
+                onClick = onPickAccount,
+                isError = state.notice == ManualEntryBlock.NO_ACCOUNT,
+                leading = Icons.Filled.AccountBalance,
+                trailing = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+            )
+
+            // Money out only: income is not something that falls due.
+            if (!investment && state.draft.direction == TransactionDirection.DEBIT) {
+                ObligationToggle(markObligation, onMarkObligation)
+            }
+
+            ErrorText(state.errorKey)
+            if (state.errorKey == null) ErrorText(state.notice?.messageKey)
         }
-
-        WizardField(
-            value = state.draft.description,
-            onValueChange = actions.onDescriptionChange,
-            label = strings(if (investment) Strings.money_investment_label else Strings.money_merchant_label),
-            placeholder = strings(if (investment) Strings.money_investment_hint else Strings.money_merchant_hint),
-            imeAction = ImeAction.Done,
-            capitalization = KeyboardCapitalization.Sentences,
-            isError = state.notice == ManualEntryBlock.NO_DESCRIPTION || state.notice == ManualEntryBlock.DESCRIPTION_TOO_LONG,
-            onDone = { focus.clearFocus() },
-        )
-
-        PickerField(
-            label = strings(Strings.money_payment_method),
-            value = state.account?.name,
-            placeholder = strings(Strings.manual_entry_account_placeholder),
-            onClick = onPickAccount,
-            isError = state.notice == ManualEntryBlock.NO_ACCOUNT,
-            leading = Icons.Filled.AccountBalance,
-            trailing = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-        )
-
-        // Money out only: income is not something that falls due.
-        if (!investment && state.draft.direction == TransactionDirection.DEBIT) {
-            ObligationToggle(markObligation, onMarkObligation)
-        }
-
-        ErrorText(state.errorKey)
-        if (state.errorKey == null) ErrorText(state.notice?.messageKey)
         GradientButton(
             text = strings(Strings.money_save_transaction),
             onClick = {
@@ -295,8 +309,8 @@ internal fun AddMoneyForm(
             },
             enabled = state.canSave,
             busy = state.saving,
+            modifier = Modifier.padding(horizontal = 24.dp).padding(top = 8.dp, bottom = 24.dp),
         )
-        Spacer(Modifier.height(24.dp))
     }
 }
 

@@ -488,6 +488,9 @@ private fun HomeOrEntry(userId: String, initials: String, onSignOut: () -> Unit,
     val tabbed = route in tabs
     // A conversation open in the Coach tab has its own input bar at the bottom.
     var chatOpen by rememberSaveable { mutableStateOf(false) }
+    // The bar shows on every tab except over an open conversation, whose own
+    // input bar takes the bottom edge.
+    val barShown = tabbed && !(route == HomeRoute.COACH && chatOpen)
     // Each route's saveable state — its scroll position above all — kept while
     // another route shows, so going back lands where the person left off.
     val kept = rememberSaveableStateHolder()
@@ -497,7 +500,9 @@ private fun HomeOrEntry(userId: String, initials: String, onSignOut: () -> Unit,
                 .weight(1f)
                 // The bar sits over the navigation bar's inset, so the screen
                 // above it must not leave room for that inset a second time.
-                .then(if (tabbed) Modifier.consumeWindowInsets(WindowInsets.navigationBars) else Modifier),
+                // Only while the bar is actually there: over an open conversation
+                // the input bar sat behind the phone's navigation buttons.
+                .then(if (barShown) Modifier.consumeWindowInsets(WindowInsets.navigationBars) else Modifier),
         ) {
             AnimatedContent(
                 targetState = route,
@@ -660,7 +665,7 @@ private fun HomeOrEntry(userId: String, initials: String, onSignOut: () -> Unit,
                 }
             }
         }
-        if (tabbed && !(route == HomeRoute.COACH && chatOpen)) HomeBar(tabs, route) { route = it }
+        if (barShown) HomeBar(tabs, route) { route = it }
     }
 }
 
